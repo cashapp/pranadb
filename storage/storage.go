@@ -1,21 +1,55 @@
 package storage
 
+import (
+	"github.com/squareup/pranadb/kv"
+	"github.com/squareup/pranadb/raft"
+)
+
+type KVPair struct {
+	Key []byte
+	Value []byte
+}
+
 type WriteBatch struct {
+	puts []KVPair
+	deletes [][]byte
+}
+
+type ExecutorPlan struct {
 
 }
 
+// Reliable storage implementation
 type Storage interface {
 
-	writeBatch(partitionNumber uint64, batch *WriteBatch, localLeader bool) error
+	// Writes a batch reliability to a quorum - goes through the raft layer
+	writeBatch(partitionID uint64, batch *WriteBatch, localLeader bool) error
 
-	get(partitionNumber uint64, key []byte) ([]byte, error)
+	// Installs executors on the leader for the partition
+	// These automatically move if the leader moves
+	installExecutors(partitionID uint64, plan *ExecutorPlan)
 
-	scan(partitionNumber uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([][]byte, error)
+	// Can read from follower
+	get(partitionID uint64, key []byte) ([]byte, error)
+
+	// Can read from follower
+	scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([][]byte, error)
 }
 
 type storage struct {
+	kvStore kv.KV
+	raft raft.Raft
+}
 
+func NewStorage(kvStore kv.KV, raft raft.Raft) Storage {
+	return &storage{
+		kvStore: kvStore,
+		raft:    raft,
+	}
+}
 
+func (s *storage) installExecutors(partitionID uint64, plan *ExecutorPlan) {
+	panic("implement me")
 }
 
 func (s *storage) writeBatch(partitionNumber uint64, batch *WriteBatch, localLeader bool) error {

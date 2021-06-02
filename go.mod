@@ -4,10 +4,11 @@ go 1.16
 
 require (
 	github.com/lni/dragonboat/v3 v3.3.4
-	github.com/pingcap/errors v0.11.4 // indirect
-	github.com/pingcap/parser v3.1.2+incompatible
-	github.com/pingcap/tidb v0.0.0-20190108123336-c68ee7318319
+	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
+	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf
+	github.com/pingcap/tipb v0.0.0-20210525032549-b80be13ddf6c
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/text v0.3.6 // indirect
+	github.com/tikv/pd v1.1.0-beta.0.20210323123936-c8fa72502f16 // indirect
+	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 )
