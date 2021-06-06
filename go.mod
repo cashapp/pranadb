@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/lni/dragonboat/v3 v3.3.4
+	github.com/pingcap/kvproto v0.0.0-20210507054410-a8152f8a876c // indirect
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
 	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf
 	github.com/pingcap/tipb v0.0.0-20210525032549-b80be13ddf6c

@@ -19,3 +19,4 @@ type SQLManager interface {
 	store(tableID uint64, row Row) error
 
 }
+
