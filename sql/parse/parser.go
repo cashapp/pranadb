@@ -8,16 +8,20 @@ import (
 	_ "github.com/pingcap/tidb/types/parser_driver"
 )
 
-func NewParser() *Parser {
-	return &Parser{pc_parser.New()}
+func NewParser() Parser {
+	return &parser{pc_parser.New()}
 }
 
-type Parser struct {
+type Parser interface {
+	Parse(sql string) (stmt ast.StmtNode, err error)
+}
+
+type parser struct {
 	parser *pc_parser.Parser
 }
 
 
-func (p *Parser) Parse(sql string) (stmt ast.StmtNode, err error) {
+func (p *parser) Parse(sql string) (stmt ast.StmtNode, err error) {
 	stmtNodes, warns, err := p.parser.Parse(sql, charset.CharsetUTF8, "")
 
 	if err != nil {

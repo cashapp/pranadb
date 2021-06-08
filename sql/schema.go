@@ -15,26 +15,26 @@ type SchemaManager interface {
 }
 
 type SchemaInfo struct {
-	schemaName string
-	tablesInfos map[string]*TableInfo
+	SchemaName  string
+	TablesInfos map[string]*TableInfo
 }
 
 type TableInfo struct {
-	id   		int64
-	tableName   string
-	columnInfos []*ColumnInfo
-	indexInfos  []*IndexInfo
+	ID          int64
+	TableName   string
+	ColumnInfos []*ColumnInfo
+	IndexInfos  []*IndexInfo
 }
 
 type ColumnInfo struct {
-	columnIndex int
-	columnName string
-	columnType ColumnType
+	ColumnIndex int
+	ColumnName  string
+	ColumnType  ColumnType
 }
 
 func columnType(number byte) ColumnType {
 	return ColumnType{
-		typeNumber: number,
+		TypeNumber: number,
 	}
 }
 
@@ -49,7 +49,7 @@ const (
 )
 
 type ColumnType struct {
-	typeNumber byte
+	TypeNumber byte
 }
 
 var TinyIntColumnType = columnType(TypeTinyInt) // 32 bit unsigned int
@@ -65,22 +65,22 @@ type IndexInfo struct {
 }
 
 func (t *TableInfo) Id(id int64) *TableInfo {
-	t.id = id
+	t.ID = id
 	return t
 }
 
 func (t *TableInfo) Name(name string) *TableInfo {
-	t.tableName = name
+	t.TableName = name
 	return t
 }
 
 func (t *TableInfo) AddColumn(name string, columnType ColumnType) *TableInfo {
 	column := &ColumnInfo{
-		columnIndex: len(t.columnInfos),
-		columnName:  name,
-		columnType:  columnType,
+		ColumnIndex: len(t.ColumnInfos),
+		ColumnName:  name,
+		ColumnType:  columnType,
 	}
-	t.columnInfos = append(t.columnInfos, column)
+	t.ColumnInfos = append(t.ColumnInfos, column)
 	return t
 }
 
@@ -102,8 +102,8 @@ func NewSchemaManager() SchemaManager {
 
 func newSchemaInfo(name string) *SchemaInfo {
 	return &SchemaInfo{
-		schemaName: name,
-		tablesInfos: map[string]*TableInfo{},
+		SchemaName:  name,
+		TablesInfos: map[string]*TableInfo{},
 	}
 }
 
@@ -115,10 +115,10 @@ func (s* schemaManager) AddTable(schemaName string, tableInfo *TableInfo) (ok bo
 		schemaInfo = newSchemaInfo(schemaName)
 		s.schemaInfos[schemaName] = schemaInfo
 	}
-	if _, contains := schemaInfo.tablesInfos[tableInfo.tableName]; contains {
+	if _, contains := schemaInfo.TablesInfos[tableInfo.TableName]; contains {
 		return false
 	}
-	schemaInfo.tablesInfos[tableInfo.tableName] = tableInfo
+	schemaInfo.TablesInfos[tableInfo.TableName] = tableInfo
 	return true
 }
 

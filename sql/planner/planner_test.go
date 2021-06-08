@@ -12,15 +12,15 @@ func TestPlanner(t *testing.T) {
 
 	pr := parse.NewParser()
 
-	stmtNode, err := pr.Parse("select a, max(b) from test.table1 group by a")
+	stmtNode, err := pr.Parse("select a, b from test.table1 where b > 3")
 
 	require.Nil(t, err)
 
 	pl := NewPlanner()
 
-	schemaManager := createSchemaManager()
+	schemaManager := CreateSchemaManager()
 
-	is, err := sql.SchemasToInfoSchema(schemaManager)
+	is, err := SchemasToInfoSchema(schemaManager)
 	require.Nil(t, err)
 
 	ctx := context.TODO()
@@ -36,7 +36,7 @@ func TestPlanner(t *testing.T) {
 
 }
 
-func createSchemaManager() sql.SchemaManager {
+func CreateSchemaManager() sql.SchemaManager {
 	tableInfo := sql.TableInfo{}
 	tableInfo.
 		Id(0).

@@ -1,18 +1,25 @@
-package sql
+package planner
 
 import (
 	"context"
 	"fmt"
+	"github.com/pingcap/kvproto/pkg/deadlock"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/types"
 	"github.com/pingcap/tidb/ddl/placement"
+	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta/autoid"
 	"github.com/pingcap/tidb/sessionctx"
+	"github.com/pingcap/tidb/store/tikv"
+	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tidb/table"
 	tidbTypes "github.com/pingcap/tidb/types"
+	"github.com/pingcap/tidb/util/memory"
+	"github.com/pingcap/tidb/util/mock"
+	"github.com/squareup/pranadb/sql"
 )
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
@@ -28,33 +35,33 @@ type schemaTables struct {
 }
 
 // SchemasToInfoSchema converts Prana Schemas to InfoSchema which the TiDB planner understands
-func SchemasToInfoSchema(schemaManager SchemaManager) (infoschema.InfoSchema, error) {
+func SchemasToInfoSchema(schemaManager sql.SchemaManager) (infoschema.InfoSchema, error) {
 	allSchemas := schemaManager.AllSchemas()
 	return newPranaInfoSchema(allSchemas)
 }
 
-func convertColumnType(columnType ColumnType) (types.FieldType, error) {
-	switch columnType {
-	case TinyIntColumnType:
-		return *types.NewFieldType(mysql.TypeTiny), nil
-	case IntColumnType:
-		return *types.NewFieldType(mysql.TypeLong), nil
-	case BigIntColumnType:
-		return *types.NewFieldType(mysql.TypeLonglong), nil
-	case DoubleColumnType:
-		return *types.NewFieldType(mysql.TypeDouble), nil
-	case DecimalColumnType:
-		return *types.NewFieldType(mysql.TypeNewDecimal), nil
-	case VarcharColumnType:
-		return *types.NewFieldType(mysql.TypeVarchar), nil
-	case TimestampColumnType:
-		return *types.NewFieldType(mysql.TypeTimestamp), nil
+func ConvertColumnType(columnType *sql.ColumnType) (*types.FieldType, error) {
+	switch *columnType {
+	case sql.TinyIntColumnType:
+		return types.NewFieldType(mysql.TypeTiny), nil
+	case sql.IntColumnType:
+		return types.NewFieldType(mysql.TypeLong), nil
+	case sql.BigIntColumnType:
+		return types.NewFieldType(mysql.TypeLonglong), nil
+	case sql.DoubleColumnType:
+		return types.NewFieldType(mysql.TypeDouble), nil
+	case sql.DecimalColumnType:
+		return types.NewFieldType(mysql.TypeNewDecimal), nil
+	case sql.VarcharColumnType:
+		return types.NewFieldType(mysql.TypeVarchar), nil
+	case sql.TimestampColumnType:
+		return types.NewFieldType(mysql.TypeTimestamp), nil
 	default:
-		return types.FieldType{}, fmt.Errorf("unknown colum type %d", columnType.typeNumber)
+		return nil, fmt.Errorf("unknown colum type %d", columnType.TypeNumber)
 	}
 }
 
-func newPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error) {
+func newPranaInfoSchema(schemaInfos []*sql.SchemaInfo) (infoschema.InfoSchema, error) {
 	result := &pranaInfoSchema{}
 	result.schemaMap = make(map[string]*schemaTables)
 
@@ -62,47 +69,47 @@ func newPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error
 
 		var tabInfos []*model.TableInfo
 		tablesMap := make(map[string]table.Table)
-		for _, tableInfo := range schemaInfo.tablesInfos {
+		for _, tableInfo := range schemaInfo.TablesInfos {
 
 			var columns []*model.ColumnInfo
-			for _, columnInfo := range tableInfo.columnInfos {
+			for _, columnInfo := range tableInfo.ColumnInfos {
 
-				colType, err := convertColumnType(columnInfo.columnType)
+				colType, err := ConvertColumnType(&columnInfo.ColumnType)
 				if err != nil {
 					return nil, err
 				}
 
 				col := &model.ColumnInfo{
 					State:     model.StatePublic,
-					Offset:    columnInfo.columnIndex,
-					Name:      model.NewCIStr(columnInfo.columnName),
-					FieldType: colType,
-					ID:        int64(columnInfo.columnIndex + 1),
+					Offset:    columnInfo.ColumnIndex,
+					Name:      model.NewCIStr(columnInfo.ColumnName),
+					FieldType: *colType,
+					ID:        int64(columnInfo.ColumnIndex + 1),
 				}
 
 				columns = append(columns, col)
 			}
 
 			tab := &model.TableInfo{
-				ID: tableInfo.id,
+				ID: tableInfo.ID,
 				Columns:    columns,
 				Indices:    []*model.IndexInfo{}, // TODO indexes
-				Name:       model.NewCIStr(tableInfo.tableName),
+				Name:       model.NewCIStr(tableInfo.TableName),
 				PKIsHandle: true,
 			}
 
-			tablesMap[tableInfo.tableName] = newTiDBTable(tab)
+			tablesMap[tableInfo.TableName] = newTiDBTable(tab)
 
 			tabInfos = append(tabInfos, tab)
 		}
 
-		dbInfo := &model.DBInfo{ID: 0, Name: model.NewCIStr(schemaInfo.schemaName), Tables: tabInfos}
+		dbInfo := &model.DBInfo{ID: 0, Name: model.NewCIStr(schemaInfo.SchemaName), Tables: tabInfos}
 
 		tableNames := &schemaTables{
 			dbInfo: dbInfo,
 			tables: tablesMap,
 		}
-		result.schemaMap[schemaInfo.schemaName] = tableNames
+		result.schemaMap[schemaInfo.SchemaName] = tableNames
 	}
 
 	return result, nil
@@ -131,7 +138,7 @@ func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t table.Tabl
 	return nil, infoschema.ErrTableNotExists.GenWithStackByArgs(schema, table)
 }
 
-func (pis* pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
+func (pis*pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
 	if tbNames, ok := pis.schemaMap[schema.L]; ok {
 		if _, ok = tbNames.tables[table.L]; ok {
 			return true
@@ -140,7 +147,7 @@ func (pis* pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
 	return false
 }
 
-func (pis* pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
+func (pis*pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
 	for _, v := range pis.schemaMap {
 		if v.dbInfo.ID == id {
 			return v.dbInfo, true
@@ -149,7 +156,7 @@ func (pis* pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
 	return nil, false
 }
 
-func (pis* pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *model.DBInfo, ok bool) {
+func (pis*pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *model.DBInfo, ok bool) {
 	if tableInfo == nil {
 		return nil, false
 	}
@@ -171,14 +178,14 @@ func (p pranaInfoSchema) AllocByID(id int64) (autoid.Allocators, bool) {
 	panic("should not be called")
 }
 
-func (pis* pranaInfoSchema) AllSchemaNames() (names []string) {
+func (pis*pranaInfoSchema) AllSchemaNames() (names []string) {
 	for _, v := range pis.schemaMap {
 		names = append(names, v.dbInfo.Name.O)
 	}
 	return
 }
 
-func (pis* pranaInfoSchema) AllSchemas() (schemas []*model.DBInfo) {
+func (pis*pranaInfoSchema) AllSchemas() (schemas []*model.DBInfo) {
 	for _, v := range pis.schemaMap {
 		schemas = append(schemas, v.dbInfo)
 	}
@@ -294,4 +301,95 @@ func (t *tiDBTable) Meta() *model.TableInfo {
 
 func (t *tiDBTable) Type() table.Type {
 	return table.NormalTable
+}
+
+
+func NewSessionContext() sessionctx.Context {
+	sessCtx := mock.NewContext()
+	kvClient := fakeKVClient{}
+	storage := fakeStorage{client: kvClient}
+	d := domain.NewDomain(storage, 0, 0, 0, nil)
+	domain.BindDomain(sessCtx, d)
+	sessCtx.Store = storage
+	return sessCtx
+}
+
+type fakeKVClient struct {
+}
+
+func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{}, sessionMemTracker *memory.Tracker, enabledRateLimitAction bool) kv.Response {
+	panic("should not be called")
+}
+
+func (f fakeKVClient) IsRequestTypeSupported(reqType, subType int64) bool {
+	return true
+}
+
+// This is needed for the TiDB planner
+type fakeStorage struct {
+	client kv.Client
+}
+
+func (f fakeStorage) Begin() (kv.Transaction, error) {
+	panic("implement me")
+}
+
+func (f fakeStorage) BeginWithOption(option tikv.StartTSOption) (kv.Transaction, error) {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetSnapshot(ver kv.Version) kv.Snapshot {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetClient() kv.Client {
+	return f.client
+}
+
+func (f fakeStorage) GetMPPClient() kv.MPPClient {
+	panic("implement me")
+}
+
+func (f fakeStorage) Close() error {
+	panic("implement me")
+}
+
+func (f fakeStorage) UUID() string {
+	panic("implement me")
+}
+
+func (f fakeStorage) CurrentVersion(txnScope string) (kv.Version, error) {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetOracle() oracle.Oracle {
+	panic("implement me")
+}
+
+func (f fakeStorage) SupportDeleteRange() (supported bool) {
+	panic("implement me")
+}
+
+func (f fakeStorage) Name() string {
+	panic("implement me")
+}
+
+func (f fakeStorage) Describe() string {
+	panic("implement me")
+}
+
+func (f fakeStorage) ShowStatus(ctx context.Context, key string) (interface{}, error) {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetMemCache() kv.MemManager {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetMinSafeTS(txnScope string) uint64 {
+	panic("implement me")
+}
+
+func (f fakeStorage) GetLockWaits() ([]*deadlock.WaitForEntry, error) {
+	panic("implement me")
 }
