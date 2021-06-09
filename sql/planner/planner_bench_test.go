@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/squareup/pranadb/sql/parse"
+	"github.com/squareup/pranadb/sql/tidb"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -20,7 +21,7 @@ func TestMain(m *testing.M) {
 	schemaManager := CreateSchemaManager()
 
 	var err error
-	is, err = SchemasToInfoSchema(schemaManager)
+	is, err = tidb.SchemasToInfoSchema(schemaManager)
 	if err != nil {
 		println(err)
 		return
@@ -43,7 +44,7 @@ func BenchmarkLogicalPlan(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ctx := context.TODO()
-		sessCtx := NewSessionContext()
+		sessCtx := tidb.NewSessionContext()
 
 		logical, err := pl.CreateLogicalPlan(ctx, sessCtx, stmtNode, is)
 		require.Nil(b, err)

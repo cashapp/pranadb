@@ -4,7 +4,6 @@ import (
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
-	"github.com/squareup/pranadb/sql/planner"
 )
 
 type Row struct {
@@ -21,7 +20,7 @@ type RowsFactory struct {
 	astFieldTypes []*types.FieldType
 }
 
-func NewRowsFactory(columnTypes []*ColumnType) (*RowsFactory, error) {
+func NewRowsFactory(columnTypes []ColumnType) (*RowsFactory, error) {
 	astFieldTypes, err := toAstFieldTypes(columnTypes)
 	if err != nil {
 		return nil, err
@@ -34,10 +33,10 @@ func (rf *RowsFactory) NewRows(capacity int) *Rows {
 	return &Rows{chunk: ch}
 }
 
-func toAstFieldTypes(columnTypes []*ColumnType) ([]*types.FieldType, error) {
+func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
 	var astFieldTypes []*types.FieldType
 	for _, colType := range columnTypes {
-		astColType, err := planner.ConvertColumnType(colType)
+		astColType, err := ConvertColumnType(colType)
 		if err != nil {
 			return nil, err
 		}
@@ -62,6 +61,11 @@ func (r *Rows) AppendRow(row Row) {
 func (r *Rows) AppendInt64ToColumn(colIndex int, val int64) {
 	col := r.chunk.Column(colIndex)
 	col.AppendInt64(val)
+}
+
+func (r *Rows) AppendFloat64ToColumn(colIndex int, val float64) {
+	col := r.chunk.Column(colIndex)
+	col.AppendFloat64(val)
 }
 
 func (r *Rows) AppendDecimalToColumn(colIndex int, val Decimal) {
@@ -103,6 +107,10 @@ func (r *Row) GetDecimal(colIndex int) Decimal {
 	return newDecimal(r.tRow.GetMyDecimal(colIndex))
 }
 
+func (r *Row) GetString(colIndex int) string {
+	return r.tRow.GetString(colIndex)
+}
+
 func (r *Row) ColCount() int {
 	return r.tRow.Len()
 }
@@ -141,4 +149,5 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {
 	return e.expression.EvalString(nil, *row.tRow)
 }
+
 

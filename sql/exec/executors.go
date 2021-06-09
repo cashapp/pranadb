@@ -11,7 +11,7 @@ type RowHandler interface {
 }
 
 type pushExecutorBase struct {
-	colTypes []*sql.ColumnType
+	colTypes []sql.ColumnType
 	rowsFactory *sql.RowsFactory
 	out RowHandler
 }
@@ -22,7 +22,7 @@ type PushSelect struct {
 	out       RowHandler
 }
 
-func NewPushSelect(colTypes []*sql.ColumnType, predicate *sql.Expression, out RowHandler) (*PushSelect, error) {
+func NewPushSelect(colTypes []sql.ColumnType, predicate *sql.Expression, out RowHandler) (*PushSelect, error) {
 	rf, err := sql.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ type PushProjection struct {
 }
 
 
-func NewPushProjection(colTypes []*sql.ColumnType, projColumns []*sql.Expression, out RowHandler) (*PushProjection, error) {
+func NewPushProjection(colTypes []sql.ColumnType, projColumns []*sql.Expression, out RowHandler) (*PushProjection, error) {
 	rf, err := sql.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func newJoinInput(inputFunc func(*sql.Rows) error) joinInput {
 	}
 }
 
-func NewPushTwoWayJoin(colTypes []*sql.ColumnType, out RowHandler) (*PushTwoWayJoin, error) {
+func NewPushTwoWayJoin(colTypes []sql.ColumnType, out RowHandler) (*PushTwoWayJoin, error) {
 	rf, err := sql.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err

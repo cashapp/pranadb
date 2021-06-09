@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/squareup/pranadb/sql"
 	"github.com/squareup/pranadb/sql/parse"
+	"github.com/squareup/pranadb/sql/tidb"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -20,11 +21,11 @@ func TestPlanner(t *testing.T) {
 
 	schemaManager := CreateSchemaManager()
 
-	is, err := SchemasToInfoSchema(schemaManager)
+	is, err := tidb.SchemasToInfoSchema(schemaManager)
 	require.Nil(t, err)
 
 	ctx := context.TODO()
-	sessCtx := NewSessionContext()
+	sessCtx := tidb.NewSessionContext()
 
 	logical, err := pl.CreateLogicalPlan(ctx, sessCtx, stmtNode, is)
 	require.Nil(t, err)

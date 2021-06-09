@@ -3,6 +3,7 @@ module github.com/squareup/pranadb
 go 1.16
 
 require (
+	github.com/google/btree v1.0.0 // indirect
 	github.com/lni/dragonboat/v3 v3.3.4
 	github.com/pingcap/kvproto v0.0.0-20210507054410-a8152f8a876c // indirect
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
