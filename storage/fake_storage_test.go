@@ -93,19 +93,19 @@ func TestScan(t *testing.T) {
 	res, err = storage.scan(partitionID, keyStart, keyEnd, 1000)
 	require.Nil(t, err)
 
-	require.Equal(t, 837 - 456, len(res))
+	require.Equal(t, 837-456, len(res))
 	for i, kvPair := range res {
-		expectedK := fmt.Sprintf("somekey%03d", i + 456)
-		expectedV := fmt.Sprintf("somevalue%03d", i + 456)
+		expectedK := fmt.Sprintf("somekey%03d", i+456)
+		expectedV := fmt.Sprintf("somevalue%03d", i+456)
 		require.Equal(t, expectedK, string(kvPair.Key))
 		require.Equal(t, expectedV, string(kvPair.Value))
 	}
 }
 
-func createWriteBatchWithPuts(puts... KVPair) WriteBatch {
+func createWriteBatchWithPuts(puts ...KVPair) WriteBatch {
 	return WriteBatch{puts: puts}
 }
 
-func createWriteBatchWithDeletes(deletes... []byte) WriteBatch {
+func createWriteBatchWithDeletes(deletes ...[]byte) WriteBatch {
 	return WriteBatch{deletes: deletes}
 }

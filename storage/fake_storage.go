@@ -8,10 +8,10 @@ import (
 
 type FakeStorage struct {
 	btree *btree.BTree
-	mu sync.RWMutex
+	mu    sync.RWMutex
 }
 
-func NewFakeStorage() *FakeStorage {
+func NewFakeStorage() Storage {
 	btree := btree.New(3)
 	return &FakeStorage{
 		btree: btree,
@@ -39,15 +39,15 @@ func (f *FakeStorage) installExecutors(partitionID uint64, plan *ExecutorPlan) {
 	panic("implement me")
 }
 
-func (f *FakeStorage) get(partitionID uint64, key []byte) []byte {
+func (f *FakeStorage) get(partitionID uint64, key []byte) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	internalKey := internalKey(partitionID, key)
-	return f.getInternal(&kvWrapper{key: internalKey})
+	return f.getInternal(&kvWrapper{key: internalKey}), nil
 }
 
 // TODO should probably return an iterator
-func (f * FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
@@ -59,7 +59,7 @@ func (f * FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPre
 	count := 0
 	resFunc := func(i btree.Item) bool {
 		wrapper := i.(*kvWrapper)
-		result = append(result, KVPair {
+		result = append(result, KVPair{
 			// First 8 bytes is the partition key, we remove this
 			Key:   wrapper.key[8:],
 			Value: wrapper.value,
@@ -76,7 +76,7 @@ func (f * FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPre
 }
 
 type kvWrapper struct {
-	key []byte
+	key   []byte
 	value []byte
 }
 
@@ -138,12 +138,10 @@ func (f *FakeStorage) getInternal(key *kvWrapper) []byte {
 
 // Internal key is partitionID bytes concatenated with key bytes
 func internalKey(partitionID uint64, key []byte) []byte {
-	res := make([]byte, 0, 8 + len(key))
+	res := make([]byte, 0, 8+len(key))
 	partBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(partBytes, partitionID)
 	res = append(res, partBytes...)
 	res = append(res, key...)
 	return res
 }
-
-

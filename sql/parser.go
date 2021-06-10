@@ -1,4 +1,4 @@
-package parse
+package sql
 
 import (
 	"fmt"
@@ -19,7 +19,6 @@ type Parser interface {
 type parser struct {
 	parser *pc_parser.Parser
 }
-
 
 func (p *parser) Parse(sql string) (stmt ast.StmtNode, err error) {
 	stmtNodes, warns, err := p.parser.Parse(sql, charset.CharsetUTF8, "")

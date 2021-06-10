@@ -1,91 +1,22 @@
-package planner
+package sql
 
 import (
 	"context"
 	"github.com/pingcap/kvproto/pkg/deadlock"
-	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/tidb/ddl/placement"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta/autoid"
-	"github.com/pingcap/tidb/planner/cascades"
-	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/oracle"
-	"github.com/pingcap/tidb/table"
+	tidbTable "github.com/pingcap/tidb/table"
 	tidbTypes "github.com/pingcap/tidb/types"
-	"github.com/pingcap/tidb/util/hint"
 	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/mock"
-	"github.com/squareup/pranadb/sql"
 )
-
-type Planner interface {
-	CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error)
-	CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error)
-}
-
-type planner struct {
-	pushQueryOptimizer *cascades.Optimizer
-	pullQueryOptimizer *cascades.Optimizer
-}
-
-func NewPlanner() Planner {
-	// TODO different rules for push and pull queries
-	return &planner{
-		pushQueryOptimizer: cascades.NewOptimizer(),
-		pullQueryOptimizer: cascades.NewOptimizer(),
-	}
-}
-
-func (p *planner) CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error) {
-
-	hintProcessor := &hint.BlockHintProcessor{Ctx: sessionContext}
-
-	builder, _ := core.NewPlanBuilder(sessionContext, is, hintProcessor)
-
-	plan, err := builder.Build(ctx, node)
-	if err != nil {
-		return nil, err
-	}
-
-	logicalPlan, isLogicalPlan := plan.(core.LogicalPlan)
-	if !isLogicalPlan {
-		panic("Expected a logical plan")
-	}
-
-	return logicalPlan, nil
-}
-
-func (p * planner) CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error) {
-	if useCascades {
-		// Use the new cost based optimizer
-		if isPushQuery {
-			physicalPlan, _, err := p.pushQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
-			if err != nil {
-				return nil, err
-			}
-			return physicalPlan, nil
-		} else {
-			physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
-			if err != nil {
-				return nil, err
-			}
-			return physicalPlan, nil
-		}
-	} else {
-		// Use the older optimizer
-		physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, 0, logicalPlan)
-		if err != nil {
-			return nil, err
-		}
-		return physicalPlan, nil
-	}
-}
-
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
 // Derived from the tIDB MockInfoSchema
@@ -96,46 +27,40 @@ type pranaInfoSchema struct {
 
 type schemaTables struct {
 	dbInfo *model.DBInfo
-	tables map[string]table.Table
+	tables map[string]tidbTable.Table
 }
 
-// SchemasToInfoSchema converts Prana Schemas to InfoSchema which the TiDB planner understands
-func SchemasToInfoSchema(schemaManager sql.SchemaManager) (infoschema.InfoSchema, error) {
-	allSchemas := schemaManager.AllSchemas()
-	return newPranaInfoSchema(allSchemas)
-}
-
-func newPranaInfoSchema(schemaInfos []*sql.SchemaInfo) (infoschema.InfoSchema, error) {
+func NewPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error) {
 	result := &pranaInfoSchema{}
 	result.schemaMap = make(map[string]*schemaTables)
 
 	for _, schemaInfo := range schemaInfos {
 
 		var tabInfos []*model.TableInfo
-		tablesMap := make(map[string]table.Table)
+		tablesMap := make(map[string]tidbTable.Table)
 		for _, tableInfo := range schemaInfo.TablesInfos {
 
 			var columns []*model.ColumnInfo
-			for _, columnInfo := range tableInfo.ColumnInfos {
+			for columnIndex, columnType := range tableInfo.ColumnTypes {
 
-				colType, err := sql.ConvertColumnType(columnInfo.ColumnType)
+				colType, err := ConvertPranaTypeToTiDBType(columnType)
 				if err != nil {
 					return nil, err
 				}
 
 				col := &model.ColumnInfo{
 					State:     model.StatePublic,
-					Offset:    columnInfo.ColumnIndex,
-					Name:      model.NewCIStr(columnInfo.ColumnName),
+					Offset:    columnIndex,
+					Name:      model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
 					FieldType: *colType,
-					ID:        int64(columnInfo.ColumnIndex + 1),
+					ID:        int64(columnIndex + 1),
 				}
 
 				columns = append(columns, col)
 			}
 
 			tab := &model.TableInfo{
-				ID: tableInfo.ID,
+				ID:         int64(tableInfo.ID),
 				Columns:    columns,
 				Indices:    []*model.IndexInfo{}, // TODO indexes
 				Name:       model.NewCIStr(tableInfo.TableName),
@@ -159,7 +84,6 @@ func newPranaInfoSchema(schemaInfos []*sql.SchemaInfo) (infoschema.InfoSchema, e
 	return result, nil
 }
 
-
 func (pis *pranaInfoSchema) SchemaByName(schema model.CIStr) (val *model.DBInfo, ok bool) {
 	tableNames, ok := pis.schemaMap[schema.L]
 	if !ok {
@@ -173,7 +97,7 @@ func (pis *pranaInfoSchema) SchemaExists(schema model.CIStr) bool {
 	return ok
 }
 
-func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t table.Table, err error) {
+func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t tidbTable.Table, err error) {
 	if tbNames, ok := pis.schemaMap[schema.L]; ok {
 		if t, ok = tbNames.tables[table.L]; ok {
 			return
@@ -182,7 +106,7 @@ func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t table.Tabl
 	return nil, infoschema.ErrTableNotExists.GenWithStackByArgs(schema, table)
 }
 
-func (pis*pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
+func (pis *pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
 	if tbNames, ok := pis.schemaMap[schema.L]; ok {
 		if _, ok = tbNames.tables[table.L]; ok {
 			return true
@@ -191,7 +115,7 @@ func (pis*pranaInfoSchema) TableExists(schema, table model.CIStr) bool {
 	return false
 }
 
-func (pis*pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
+func (pis *pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
 	for _, v := range pis.schemaMap {
 		if v.dbInfo.ID == id {
 			return v.dbInfo, true
@@ -200,7 +124,7 @@ func (pis*pranaInfoSchema) SchemaByID(id int64) (val *model.DBInfo, ok bool) {
 	return nil, false
 }
 
-func (pis*pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *model.DBInfo, ok bool) {
+func (pis *pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *model.DBInfo, ok bool) {
 	if tableInfo == nil {
 		return nil, false
 	}
@@ -214,7 +138,7 @@ func (pis*pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *model
 	return nil, false
 }
 
-func (p pranaInfoSchema) TableByID(id int64) (table.Table, bool) {
+func (p pranaInfoSchema) TableByID(id int64) (tidbTable.Table, bool) {
 	panic("should not be called")
 }
 
@@ -222,14 +146,14 @@ func (p pranaInfoSchema) AllocByID(id int64) (autoid.Allocators, bool) {
 	panic("should not be called")
 }
 
-func (pis*pranaInfoSchema) AllSchemaNames() (names []string) {
+func (pis *pranaInfoSchema) AllSchemaNames() (names []string) {
 	for _, v := range pis.schemaMap {
 		names = append(names, v.dbInfo.Name.O)
 	}
 	return
 }
 
-func (pis*pranaInfoSchema) AllSchemas() (schemas []*model.DBInfo) {
+func (pis *pranaInfoSchema) AllSchemas() (schemas []*model.DBInfo) {
 	for _, v := range pis.schemaMap {
 		schemas = append(schemas, v.dbInfo)
 	}
@@ -240,7 +164,7 @@ func (p pranaInfoSchema) Clone() (result []*model.DBInfo) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) SchemaTables(schema model.CIStr) []table.Table {
+func (p pranaInfoSchema) SchemaTables(schema model.CIStr) []tidbTable.Table {
 	panic("should not be called")
 }
 
@@ -256,7 +180,7 @@ func (p pranaInfoSchema) TableIsSequence(schema, table model.CIStr) bool {
 	return false
 }
 
-func (p pranaInfoSchema) FindTableByPartitionID(partitionID int64) (table.Table, *model.DBInfo, *model.PartitionDefinition) {
+func (p pranaInfoSchema) FindTableByPartitionID(partitionID int64) (tidbTable.Table, *model.DBInfo, *model.PartitionDefinition) {
 	panic("should not be called")
 }
 
@@ -274,44 +198,44 @@ func (p pranaInfoSchema) RuleBundles() []*placement.Bundle {
 
 type tiDBTable struct {
 	tableInfo *model.TableInfo
-	columns []*table.Column
+	columns   []*tidbTable.Column
 }
 
 func newTiDBTable(tableInfo *model.TableInfo) *tiDBTable {
-	var cols []*table.Column
+	var cols []*tidbTable.Column
 	for _, colInfo := range tableInfo.Columns {
-		cols = append(cols, &table.Column{
-			ColumnInfo:    colInfo,
+		cols = append(cols, &tidbTable.Column{
+			ColumnInfo: colInfo,
 		})
 	}
 	tab := tiDBTable{
 		tableInfo: tableInfo,
-		columns: cols,
+		columns:   cols,
 	}
 	return &tab
 }
 
-func (t *tiDBTable) Cols() []*table.Column {
+func (t *tiDBTable) Cols() []*tidbTable.Column {
 	return t.columns
 }
 
-func (t *tiDBTable) VisibleCols() []*table.Column {
+func (t *tiDBTable) VisibleCols() []*tidbTable.Column {
 	return t.columns
 }
 
-func (t *tiDBTable) HiddenCols() []*table.Column {
+func (t *tiDBTable) HiddenCols() []*tidbTable.Column {
 	return nil
 }
 
-func (t *tiDBTable) WritableCols() []*table.Column {
+func (t *tiDBTable) WritableCols() []*tidbTable.Column {
 	return t.columns
 }
 
-func (t *tiDBTable) FullHiddenColsAndVisibleCols() []*table.Column {
+func (t *tiDBTable) FullHiddenColsAndVisibleCols() []*tidbTable.Column {
 	return t.columns
 }
 
-func (t *tiDBTable) Indices() []table.Index {
+func (t *tiDBTable) Indices() []tidbTable.Index {
 	return nil
 }
 
@@ -319,7 +243,7 @@ func (t *tiDBTable) RecordPrefix() kv.Key {
 	panic("should not be called")
 }
 
-func (t tiDBTable) AddRecord(ctx sessionctx.Context, r []tidbTypes.Datum, opts ...table.AddRecordOption) (recordID kv.Handle, err error) {
+func (t tiDBTable) AddRecord(ctx sessionctx.Context, r []tidbTypes.Datum, opts ...tidbTable.AddRecordOption) (recordID kv.Handle, err error) {
 	panic("should not be called")
 }
 
@@ -343,10 +267,9 @@ func (t *tiDBTable) Meta() *model.TableInfo {
 	return t.tableInfo
 }
 
-func (t *tiDBTable) Type() table.Type {
-	return table.NormalTable
+func (t *tiDBTable) Type() tidbTable.Type {
+	return tidbTable.NormalTable
 }
-
 
 func NewSessionContext() sessionctx.Context {
 	sessCtx := mock.NewContext()

@@ -14,6 +14,3 @@ func (p Pebble) get(key []byte) ([]byte, error) {
 func (p Pebble) scan(startPrefix []byte, endPrefix []byte) ([][]byte, error) {
 	panic("implement me")
 }
-
-
-

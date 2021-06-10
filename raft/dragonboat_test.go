@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 func TestDragonboat(t *testing.T) {
 
 	nhc := config.NodeHostConfig{}

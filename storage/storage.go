@@ -6,17 +6,24 @@ import (
 )
 
 type KVPair struct {
-	Key []byte
+	Key   []byte
 	Value []byte
 }
 
 type WriteBatch struct {
-	puts []KVPair
+	puts    []KVPair
 	deletes [][]byte
 }
 
-type ExecutorPlan struct {
+func (wb *WriteBatch) AddPut(kvPair KVPair) {
+	wb.puts = append(wb.puts, kvPair)
+}
 
+func (wb *WriteBatch) AddDelete(key []byte) {
+	wb.deletes = append(wb.deletes, key)
+}
+
+type ExecutorPlan struct {
 }
 
 // Reliable storage implementation
@@ -33,12 +40,28 @@ type Storage interface {
 	get(partitionID uint64, key []byte) ([]byte, error)
 
 	// Can read from follower
-	scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([][]byte, error)
+	scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
 }
 
 type storage struct {
 	kvStore kv.KV
-	raft raft.Raft
+	raft    raft.Raft
+}
+
+func (s storage) writeBatch(partitionID uint64, batch *WriteBatch, localLeader bool) error {
+	panic("implement me")
+}
+
+func (s storage) installExecutors(partitionID uint64, plan *ExecutorPlan) {
+	panic("implement me")
+}
+
+func (s storage) get(partitionID uint64, key []byte) ([]byte, error) {
+	panic("implement me")
+}
+
+func (s storage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+	panic("implement me")
 }
 
 func NewStorage(kvStore kv.KV, raft raft.Raft) Storage {
@@ -46,20 +69,4 @@ func NewStorage(kvStore kv.KV, raft raft.Raft) Storage {
 		kvStore: kvStore,
 		raft:    raft,
 	}
-}
-
-func (s *storage) installExecutors(partitionID uint64, plan *ExecutorPlan) {
-	panic("implement me")
-}
-
-func (s *storage) writeBatch(partitionNumber uint64, batch *WriteBatch, localLeader bool) error {
-	panic("implement me")
-}
-
-func (s *storage) get(partitionNumber uint64, key []byte) ([]byte, error) {
-	panic("implement me")
-}
-
-func (s *storage) scan(partitionNumber uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([][]byte, error) {
-	panic("implement me")
 }

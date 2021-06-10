@@ -8,50 +8,71 @@ import (
 	"unsafe"
 )
 
-// EncodeRow encodes a row to binary form for storage
+func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer *[]byte) (*[]byte, error) {
+	for _, colIndex := range colIndexes {
+		colType := colTypes[colIndex]
+		var err error
+		buffer, err = encodeCol(row, colIndex, colType, buffer)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buffer, nil
+}
+
 func EncodeRow(row *Row, colTypes []ColumnType, buffer *[]byte) (*[]byte, error) {
 	data := *buffer
 	for colIndex, colType := range colTypes {
-		switch colType.TypeNumber {
-		case TinyIntColumnType.TypeNumber, IntColumnType.TypeNumber, BigIntColumnType.TypeNumber:
-			isNull := row.IsNull(colIndex)
-			if isNull {
-				data = append(data, 0)
-			} else {
-				data = append(data, 1)
-				// We store as unsigned so convert signed to unsigned
-				valInt64 := row.GetInt64(colIndex)
-				v := *(*uint64)(unsafe.Pointer(&valInt64))
-				// Write it in little-endian
-				data = *appendUint64ToBufferLittleEndian(&data, v)
-			}
-		case DecimalColumnType.TypeNumber:
-			// TODO
-		case DoubleColumnType.TypeNumber:
-			isNull := row.IsNull(colIndex)
-			if isNull {
-				data = append(data, 0)
-			} else {
-				data = append(data, 1)
-				val := row.GetFloat64(colIndex)
-				valToStore := math.Float64bits(val)
-				bytes := make([]byte, 8)
-				binary.LittleEndian.PutUint64(bytes, valToStore)
-				data = append(data, bytes...)
-			}
-		case VarcharColumnType.TypeNumber:
-			isNull := row.IsNull(colIndex)
-			if isNull {
-				data = append(data, 0)
-			} else {
-				data = append(data, 1)
-				val := row.GetString(colIndex)
-				data = *appendUint32ToBufferLittleEndian(&data, uint32(len(val)))
-				data = append(data, val...)
-			}
-		default:
-			return nil, fmt.Errorf("unexpected column type %d", colType.TypeNumber)
+		var err error
+		buffer, err = encodeCol(row, colIndex, colType, buffer)
+		if err != nil {
+			return nil, err
 		}
+	}
+	return &data, nil
+}
+
+func encodeCol(row *Row, colIndex int, colType ColumnType, buffer *[]byte) (*[]byte, error) {
+	data := *buffer
+	switch colType {
+	case TypeTinyInt, TypeInt, TypeBigInt:
+		isNull := row.IsNull(colIndex)
+		if isNull {
+			data = append(data, 0)
+		} else {
+			data = append(data, 1)
+			// We store as unsigned so convert signed to unsigned
+			valInt64 := row.GetInt64(colIndex)
+			v := *(*uint64)(unsafe.Pointer(&valInt64))
+			// Write it in little-endian
+			data = *appendUint64ToBufferLittleEndian(&data, v)
+		}
+	case TypeDecimal:
+		// TODO
+	case TypeDouble:
+		isNull := row.IsNull(colIndex)
+		if isNull {
+			data = append(data, 0)
+		} else {
+			data = append(data, 1)
+			val := row.GetFloat64(colIndex)
+			valToStore := math.Float64bits(val)
+			bytes := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bytes, valToStore)
+			data = append(data, bytes...)
+		}
+	case TypeVarchar:
+		isNull := row.IsNull(colIndex)
+		if isNull {
+			data = append(data, 0)
+		} else {
+			data = append(data, 1)
+			val := row.GetString(colIndex)
+			data = *appendUint32ToBufferLittleEndian(&data, uint32(len(val)))
+			data = append(data, val...)
+		}
+	default:
+		return nil, fmt.Errorf("unexpected column type %d", colType)
 	}
 	return &data, nil
 }
@@ -62,8 +83,8 @@ func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
 	var null bool
 	var err error
 	for colIndex, colType := range colTypes {
-		switch colType.TypeNumber {
-		case TinyIntColumnType.TypeNumber, IntColumnType.TypeNumber, BigIntColumnType.TypeNumber:
+		switch colType {
+		case TypeTinyInt, TypeInt, TypeBigInt:
 			var val int64
 			val, null, offset, err = decodeInt64(data, offset)
 			if err != nil {
@@ -74,7 +95,7 @@ func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
 			} else {
 				rows.AppendInt64ToColumn(colIndex, val)
 			}
-		case DecimalColumnType.TypeNumber:
+		case TypeDecimal:
 			var val Decimal
 			val, null, offset, err = decodeDecimal(data, offset)
 			if err != nil {
@@ -85,7 +106,7 @@ func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
 			} else {
 				rows.AppendDecimalToColumn(colIndex, val)
 			}
-		case DoubleColumnType.TypeNumber:
+		case TypeDouble:
 			var val float64
 			val, null, offset, err = decodeFloat64(data, offset)
 			if err != nil {
@@ -96,7 +117,7 @@ func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
 			} else {
 				rows.AppendFloat64ToColumn(colIndex, val)
 			}
-		case VarcharColumnType.TypeNumber:
+		case TypeVarchar:
 			var val string
 			val, null, offset, err = decodeString(data, offset)
 			if err != nil {
@@ -108,7 +129,7 @@ func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
 				rows.AppendStringToColumn(colIndex, val)
 			}
 		default:
-			return fmt.Errorf("unexpected column type %d", colType.TypeNumber)
+			return fmt.Errorf("unexpected column type %d", colType)
 		}
 	}
 	return nil
@@ -152,7 +173,7 @@ func decodeString(data []byte, offset int) (val string, null bool, off int, err 
 	lenPtr := (*uint32)(unsafe.Pointer(&data[offset]))
 	len := int(*lenPtr)
 	offset += 4
-	str := toStringZeroCopy(data[offset: offset + len])
+	str := toStringZeroCopy(data[offset : offset+len])
 	offset += len
 	return str, false, offset, nil
 }
@@ -171,15 +192,12 @@ func toStringZeroCopy(b []byte) string {
 }
 
 func appendUint32ToBufferLittleEndian(data *[]byte, v uint32) *[]byte {
-	buff := append(*data, byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24))
+	buff := append(*data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 	return &buff
 }
 
 func appendUint64ToBufferLittleEndian(data *[]byte, v uint64) *[]byte {
-	buff := append(*data, byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24), byte(v >> 32),
-		byte(v >> 40), byte(v >> 48), byte(v >> 56))
+	buff := append(*data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
+		byte(v>>40), byte(v>>48), byte(v>>56))
 	return &buff
 }
-
-
-

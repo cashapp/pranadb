@@ -14,6 +14,10 @@ type Rows struct {
 	chunk *chunk.Chunk
 }
 
+type Key struct {
+	ColumnIndexes []int
+}
+
 // RowsFactory caches the field types so we don't have to calculate them each time
 // we create a new Rows
 type RowsFactory struct {
@@ -36,7 +40,7 @@ func (rf *RowsFactory) NewRows(capacity int) *Rows {
 func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
 	var astFieldTypes []*types.FieldType
 	for _, colType := range columnTypes {
-		astColType, err := ConvertColumnType(colType)
+		astColType, err := ConvertPranaTypeToTiDBType(colType)
 		if err != nil {
 			return nil, err
 		}
@@ -127,6 +131,10 @@ type Expression struct {
 	expression expression.Expression
 }
 
+func NewExpression(expression expression.Expression) *Expression {
+	return &Expression{expression: expression}
+}
+
 func (e *Expression) EvalInt64(row *Row) (val int64, null bool, err error) {
 	return e.expression.EvalInt(nil, *row.tRow)
 }
@@ -149,5 +157,3 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {
 	return e.expression.EvalString(nil, *row.tRow)
 }
-
-

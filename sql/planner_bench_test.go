@@ -1,32 +1,30 @@
-package planner
+package sql
 
 import (
 	"context"
 	"github.com/pingcap/tidb/infoschema"
-	"github.com/squareup/pranadb/sql/parse"
-	"github.com/squareup/pranadb/sql/tidb"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
-var pr parse.Parser
+var pr Parser
 var pl Planner
 var is infoschema.InfoSchema
 
 func TestMain(m *testing.M) {
-	pr = parse.NewParser()
+	pr = NewParser()
 
 	pl = NewPlanner()
 
-	schemaManager := CreateSchemaManager()
-
-	var err error
-	is, err = tidb.SchemasToInfoSchema(schemaManager)
+	schemaManager, err := CreateSchemaManager()
 	if err != nil {
-		println(err)
-		return
+		panic(err)
 	}
 
+	is, err = schemaManager.ToInfoSchema()
+	if err != nil {
+		panic(err)
+	}
 	m.Run()
 }
 
@@ -44,7 +42,7 @@ func BenchmarkLogicalPlan(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ctx := context.TODO()
-		sessCtx := tidb.NewSessionContext()
+		sessCtx := NewSessionContext()
 
 		logical, err := pl.CreateLogicalPlan(ctx, sessCtx, stmtNode, is)
 		require.Nil(b, err)
