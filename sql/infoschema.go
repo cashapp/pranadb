@@ -2,14 +2,17 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"github.com/pingcap/kvproto/pkg/deadlock"
 	"github.com/pingcap/parser/model"
+	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/ddl/placement"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta/autoid"
 	"github.com/pingcap/tidb/sessionctx"
+	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/oracle"
 	tidbTable "github.com/pingcap/tidb/table"
@@ -56,15 +59,52 @@ func NewPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error
 					ID:        int64(columnIndex + 1),
 				}
 
+				for pkIndex := range tableInfo.PrimaryKeyCols {
+					if columnIndex == pkIndex {
+						col.Flag |= mysql.PriKeyFlag
+					}
+				}
+
 				columns = append(columns, col)
 			}
+
+			tableName := model.NewCIStr(tableInfo.TableName)
+
+			var indexes []*model.IndexInfo
+			var pkCols []*model.IndexColumn
+			for columnIndex := range tableInfo.PrimaryKeyCols {
+				col := &model.IndexColumn{
+					Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+					Offset: columnIndex,
+					Length: 0,
+				}
+
+				pkCols = append(pkCols, col)
+			}
+
+			pkIndex := &model.IndexInfo{
+				ID:        0,
+				Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.TableName)),
+				Table:     tableName,
+				Columns:   pkCols,
+				State:     model.StatePublic,
+				Comment:   "",
+				Tp:        model.IndexTypeHash,
+				Unique:    true,
+				Primary:   true,
+				Invisible: false,
+				Global:    false,
+			}
+
+			indexes = append(indexes, pkIndex)
 
 			tab := &model.TableInfo{
 				ID:         int64(tableInfo.ID),
 				Columns:    columns,
-				Indices:    []*model.IndexInfo{}, // TODO indexes
-				Name:       model.NewCIStr(tableInfo.TableName),
-				PKIsHandle: true,
+				Indices:    indexes,
+				Name:       tableName,
+				PKIsHandle: len(tableInfo.PrimaryKeyCols) == 1,
+				State:      model.StatePublic,
 			}
 
 			tablesMap[tableInfo.TableName] = newTiDBTable(tab)
@@ -199,6 +239,7 @@ func (p pranaInfoSchema) RuleBundles() []*placement.Bundle {
 type tiDBTable struct {
 	tableInfo *model.TableInfo
 	columns   []*tidbTable.Column
+	indexes   []tidbTable.Index
 }
 
 func newTiDBTable(tableInfo *model.TableInfo) *tiDBTable {
@@ -208,9 +249,14 @@ func newTiDBTable(tableInfo *model.TableInfo) *tiDBTable {
 			ColumnInfo: colInfo,
 		})
 	}
+	var indexes []tidbTable.Index
+	for _, indexInfo := range tableInfo.Indices {
+		indexes = append(indexes, newTiDBIndex(indexInfo))
+	}
 	tab := tiDBTable{
 		tableInfo: tableInfo,
 		columns:   cols,
+		indexes:   indexes,
 	}
 	return &tab
 }
@@ -236,7 +282,7 @@ func (t *tiDBTable) FullHiddenColsAndVisibleCols() []*tidbTable.Column {
 }
 
 func (t *tiDBTable) Indices() []tidbTable.Index {
-	return nil
+	return t.indexes
 }
 
 func (t *tiDBTable) RecordPrefix() kv.Key {
@@ -271,6 +317,53 @@ func (t *tiDBTable) Type() tidbTable.Type {
 	return tidbTable.NormalTable
 }
 
+type tiDBIndex struct {
+	indexInfo *model.IndexInfo
+}
+
+func (t *tiDBIndex) Meta() *model.IndexInfo {
+	return t.indexInfo
+}
+
+func (t tiDBIndex) Create(ctx sessionctx.Context, txn kv.Transaction, indexedValues []tidbTypes.Datum, h kv.Handle, handleRestoreData []tidbTypes.Datum, opts ...tidbTable.CreateIdxOptFunc) (kv.Handle, error) {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) Delete(sc *stmtctx.StatementContext, txn kv.Transaction, indexedValues []tidbTypes.Datum, h kv.Handle) error {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) Drop(txn kv.Transaction) error {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) Exist(sc *stmtctx.StatementContext, txn kv.Transaction, indexedValues []tidbTypes.Datum, h kv.Handle) (bool, kv.Handle, error) {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) GenIndexKey(sc *stmtctx.StatementContext, indexedValues []tidbTypes.Datum, h kv.Handle, buf []byte) (key []byte, distinct bool, err error) {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) Seek(sc *stmtctx.StatementContext, r kv.Retriever, indexedValues []tidbTypes.Datum) (iter tidbTable.IndexIterator, hit bool, err error) {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) SeekFirst(r kv.Retriever) (iter tidbTable.IndexIterator, err error) {
+	panic("should not be called")
+}
+
+func (t tiDBIndex) FetchValues(row []tidbTypes.Datum, columns []tidbTypes.Datum) ([]tidbTypes.Datum, error) {
+	panic("should not be called")
+}
+
+func newTiDBIndex(indexInfo *model.IndexInfo) *tiDBIndex {
+	index := tiDBIndex{
+		indexInfo: indexInfo,
+	}
+	return &index
+}
+
 func NewSessionContext() sessionctx.Context {
 	sessCtx := mock.NewContext()
 	kvClient := fakeKVClient{}
@@ -289,7 +382,10 @@ func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{
 }
 
 func (f fakeKVClient) IsRequestTypeSupported(reqType, subType int64) bool {
-	return true
+	// We're not using TiKV so we're saying no you can't push anything to the KV store
+	// However we might want to change this as we do actually want to compute near the data
+	// and the planner can help us here
+	return false
 }
 
 // This is needed for the TiDB planner
@@ -298,15 +394,15 @@ type fakeStorage struct {
 }
 
 func (f fakeStorage) Begin() (kv.Transaction, error) {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) BeginWithOption(option tikv.StartTSOption) (kv.Transaction, error) {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetSnapshot(ver kv.Version) kv.Snapshot {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetClient() kv.Client {
@@ -314,49 +410,49 @@ func (f fakeStorage) GetClient() kv.Client {
 }
 
 func (f fakeStorage) GetMPPClient() kv.MPPClient {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) Close() error {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) UUID() string {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) CurrentVersion(txnScope string) (kv.Version, error) {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetOracle() oracle.Oracle {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) SupportDeleteRange() (supported bool) {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) Name() string {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) Describe() string {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) ShowStatus(ctx context.Context, key string) (interface{}, error) {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetMemCache() kv.MemManager {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetMinSafeTS(txnScope string) uint64 {
-	panic("implement me")
+	panic("should not be called")
 }
 
 func (f fakeStorage) GetLockWaits() ([]*deadlock.WaitForEntry, error) {
-	panic("implement me")
+	panic("should not be called")
 }

@@ -2,10 +2,8 @@ package sql
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/infoschema"
-	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/storage"
 	"sync"
 )
@@ -99,13 +97,22 @@ func (m *manager) CreateSource(schemaName string, name string, columnNames []str
 		Partitions:     partitions,
 	}
 
-	sourceTable := NewTable(m.storage, &tableInfo)
+	sourceTable, err := NewTable(m.storage, &tableInfo)
+	if err != nil {
+		return err
+	}
+
+	tableExecutor, err := NewTableExecutor(columnTypes, sourceTable, m.storage)
+	if err != nil {
+		return err
+	}
 
 	source := Source{
-		SchemaName: schemaName,
-		Name:       name,
-		Table:      sourceTable,
-		TopicInfo:  topicInfo,
+		SchemaName:    schemaName,
+		Name:          name,
+		Table:         sourceTable,
+		TopicInfo:     topicInfo,
+		TableExecutor: tableExecutor,
 	}
 
 	schema.sources[name] = &source
@@ -137,28 +144,34 @@ func (m *manager) CreateMaterializedView(schemaName string, name string, query s
 	m.tableIDSequence++
 
 	tableInfo := TableInfo{
-		ID:          id,
-		TableName:   name,
-		ColumnNames: dag.ColNames(),
-		ColumnTypes: dag.ColTypes(),
-		//PrimaryKeyCols: primaryKeyColumns, // TODO
-		Partitions: partitions,
+		ID:             id,
+		TableName:      name,
+		ColumnNames:    dag.ColNames(),
+		ColumnTypes:    dag.ColTypes(),
+		PrimaryKeyCols: dag.KeyCols(),
+		Partitions:     partitions,
 	}
 
-	mvTable := NewTable(m.storage, &tableInfo)
+	mvTable, err := NewTable(m.storage, &tableInfo)
+	if err != nil {
+		return err
+	}
 
-	mvNode, err := NewMaterializedViewExecutor(dag.ColTypes(), mvTable, nil)
+	tableNode, err := NewTableExecutor(dag.ColTypes(), mvTable, m.storage)
 	if err != nil {
 		return err
 	}
 
 	mv := MaterializedView{
-		SchemaName: schemaName,
-		Name:       name,
-		Query:      query,
-		Table:      mvTable,
-		MvNode:     mvNode,
+		SchemaName:    schemaName,
+		Name:          name,
+		Query:         query,
+		Table:         mvTable,
+		TableExecutor: tableNode,
+		store:         m.storage,
 	}
+
+	ConnectNodes([]PushExecutorNode{dag}, tableNode)
 
 	schema.mvs[name] = &mv
 
@@ -264,114 +277,37 @@ func (m *manager) buildPushQueryExecution(schema *schema, is infoschema.InfoSche
 	if err != nil {
 		return nil, err
 	}
-	dag, err := m.convertToDAG(nil, physicalPlan, schema)
+	dag, err := BuildDAG(nil, physicalPlan, schema)
 	if err != nil {
 		return nil, err
 	}
+	dag.RecalcSchema()
 	return dag, nil
 }
 
-func (m *manager) convertToDAG(parentNode PushExecutorNode, plan core.PhysicalPlan, schema *schema) (PushExecutorNode, error) {
-	cols := plan.Schema().Columns
-	colTypes := make([]ColumnType, 0, len(cols))
-	colNames := make([]string, 0, len(cols))
-	for _, col := range cols {
-		colType := col.GetType()
-		pranaType, err := ConvertTiDBTypeToPranaType(colType)
-		if err != nil {
-			return nil, err
-		}
-		colTypes = append(colTypes, pranaType)
-		colNames = append(colNames, col.OrigName)
-	}
-	var node PushExecutorNode
-	var err error
-	switch plan.(type) {
-	case *core.PhysicalProjection:
-		physProj := plan.(*core.PhysicalProjection)
-		var exprs []*Expression
-		for _, expr := range physProj.Exprs {
-			exprs = append(exprs, NewExpression(expr))
-		}
-		node, err = NewPushProjection(colNames, colTypes, exprs)
-		if err != nil {
-			return nil, err
-		}
-	case *core.PhysicalSelection:
-		physSel := plan.(*core.PhysicalSelection)
-		var exprs []*Expression
-		for _, expr := range physSel.Conditions {
-			exprs = append(exprs, NewExpression(expr))
-		}
-		node, err = NewPushSelect(colNames, colTypes, exprs)
-		if err != nil {
-			return nil, err
-		}
-	case *core.PhysicalTableReader:
-		physTabReader := plan.(*core.PhysicalTableReader)
-
-		if len(physTabReader.TablePlans) != 1 {
-			panic("expected one table plan")
-		}
-
-		tabPlan := physTabReader.TablePlans[0]
-		if physTableScan, ok := tabPlan.(*core.PhysicalTableScan); !ok {
-			return nil, errors.New("expected PhysicalTableScan")
-		} else {
-			tableName := physTableScan.Table.Name
-
-			mv, ok := schema.mvs[tableName.L]
-			if !ok {
-				source, ok := schema.sources[tableName.L]
-				if !ok {
-					return nil, fmt.Errorf("unknown source or materialized view %s", tableName.L)
-				}
-				source.AddConsumingNode(parentNode)
-				return nil, nil
-			}
-			mv.AddConsumingNode(parentNode)
-			return nil, nil
-		}
-	default:
-		return nil, fmt.Errorf("unexpected plan type %T", plan)
-	}
-
-	for _, child := range plan.Children() {
-		childNode, err := m.convertToDAG(node, child, schema)
-		if err != nil {
-			return nil, err
-		}
-		if childNode != nil {
-			childNode.SetParent(node)
-		}
-	}
-
-	return node, nil
-}
-
 type MaterializedView struct {
-	SchemaName     string
-	Name           string
-	Query          string
-	Table          Table
-	MvNode         *MaterializedViewExecutor
-	consumingNodes []PushExecutorNode
+	SchemaName    string
+	Name          string
+	Query         string
+	Table         Table
+	TableExecutor *TableExecutor
+	store         storage.Storage
 }
 
 func (m *MaterializedView) AddConsumingNode(node PushExecutorNode) {
-	m.consumingNodes = append(m.consumingNodes, node)
+	m.TableExecutor.AddConsumingNode(node)
 }
 
 type Source struct {
-	SchemaName     string
-	Name           string
-	Table          Table
-	TopicInfo      *TopicInfo
-	consumingNodes []PushExecutorNode
+	SchemaName    string
+	Name          string
+	Table         Table
+	TopicInfo     *TopicInfo
+	TableExecutor *TableExecutor
 }
 
 func (s *Source) AddConsumingNode(node PushExecutorNode) {
-	s.consumingNodes = append(s.consumingNodes, node)
+	s.TableExecutor.AddConsumingNode(node)
 }
 
 type Sink struct {

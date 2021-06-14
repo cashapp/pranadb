@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/binary"
 	"github.com/google/btree"
 	"sync"
 )
@@ -18,43 +17,38 @@ func NewFakeStorage() Storage {
 	}
 }
 
-func (f *FakeStorage) writeBatch(partitionID uint64, batch *WriteBatch, localLeader bool) error {
+func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, kvPair := range batch.puts {
-		internalKey := internalKey(partitionID, kvPair.Key)
 		f.putInternal(&kvWrapper{
-			key:   internalKey,
+			key:   kvPair.Key,
 			value: kvPair.Value,
 		})
 	}
 	for _, key := range batch.deletes {
-		internalKey := internalKey(partitionID, key)
-		f.deleteInternal(&kvWrapper{key: internalKey})
+		f.deleteInternal(&kvWrapper{key: key})
 	}
 	return nil
 }
 
-func (f *FakeStorage) installExecutors(partitionID uint64, plan *ExecutorPlan) {
+func (f *FakeStorage) InstallExecutors(shardID uint64, plan *ExecutorPlan) {
 	panic("implement me")
 }
 
-func (f *FakeStorage) get(partitionID uint64, key []byte) ([]byte, error) {
+func (f *FakeStorage) Get(shardID uint64, key []byte) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	internalKey := internalKey(partitionID, key)
-	return f.getInternal(&kvWrapper{key: internalKey}), nil
+	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
 // TODO should probably return an iterator
-func (f *FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeStorage) Scan(shardID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}
-	startPrefix := internalKey(partitionID, startKeyPrefix)
-	endPrefix := internalKey(partitionID, endKeyPrefix)
 	var result []KVPair
 	count := 0
 	resFunc := func(i btree.Item) bool {
@@ -68,9 +62,9 @@ func (f *FakeStorage) scan(partitionID uint64, startKeyPrefix []byte, endKeyPref
 		return limit == -1 || count < limit
 	}
 	if endKeyPrefix != nil {
-		f.btree.AscendRange(&kvWrapper{key: startPrefix}, &kvWrapper{key: endPrefix}, resFunc)
+		f.btree.AscendRange(&kvWrapper{key: startKeyPrefix}, &kvWrapper{key: endKeyPrefix}, resFunc)
 	} else {
-		f.btree.AscendGreaterOrEqual(&kvWrapper{key: startPrefix}, resFunc)
+		f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
 	}
 	return result, nil
 }
@@ -134,14 +128,4 @@ func (f *FakeStorage) getInternal(key *kvWrapper) []byte {
 	} else {
 		return nil
 	}
-}
-
-// Internal key is partitionID bytes concatenated with key bytes
-func internalKey(partitionID uint64, key []byte) []byte {
-	res := make([]byte, 0, 8+len(key))
-	partBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(partBytes, partitionID)
-	res = append(res, partBytes...)
-	res = append(res, key...)
-	return res
 }

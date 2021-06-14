@@ -23,10 +23,10 @@ func TestPutGet(t *testing.T) {
 
 	partitionID := uint64(123545)
 
-	err := storage.writeBatch(partitionID, &writeBatch, false)
+	err := storage.WriteBatch(partitionID, &writeBatch, false)
 	require.Nil(t, err)
 
-	res := storage.get(partitionID, key)
+	res := storage.Get(partitionID, key)
 	require.NotNil(t, res)
 
 	require.Equal(t, string(value), string(res))
@@ -49,22 +49,22 @@ func TestPutDelete(t *testing.T) {
 
 	partitionID := uint64(123545)
 
-	err := storage.writeBatch(partitionID, &writeBatch, false)
+	err := storage.WriteBatch(partitionID, &writeBatch, false)
 	require.Nil(t, err)
 
-	res := storage.get(partitionID, key)
+	res := storage.Get(partitionID, key)
 	require.NotNil(t, res)
 
 	deleteBatch := createWriteBatchWithDeletes(key)
 
-	err = storage.writeBatch(partitionID, &deleteBatch, false)
+	err = storage.WriteBatch(partitionID, &deleteBatch, false)
 	require.Nil(t, err)
 
-	res = storage.get(partitionID, key)
+	res = storage.Get(partitionID, key)
 	require.Nil(t, res)
 }
 
-// TODO test scan with limit, scan with no end range
+// TODO test Scan with limit, Scan with no end range
 
 func TestScan(t *testing.T) {
 
@@ -83,14 +83,14 @@ func TestScan(t *testing.T) {
 
 	partitionID := uint64(123545)
 
-	err := storage.writeBatch(partitionID, &wb, false)
+	err := storage.WriteBatch(partitionID, &wb, false)
 	require.Nil(t, err)
 
 	keyStart := []byte("somekey456")
 	keyEnd := []byte("somekey837")
 
 	var res []KVPair
-	res, err = storage.scan(partitionID, keyStart, keyEnd, 1000)
+	res, err = storage.Scan(partitionID, keyStart, keyEnd, 1000)
 	require.Nil(t, err)
 
 	require.Equal(t, 837-456, len(res))

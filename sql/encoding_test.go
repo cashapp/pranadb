@@ -41,12 +41,12 @@ func encodeDecodeString(t *testing.T, rf *RowsFactory, val string) {
 	encodeDecode(t, rows, singleVarcharColumn)
 }
 
-func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
+func encodeDecode(t *testing.T, rows *PullRows, columnTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
-	bufPtr, err := EncodeRow(&row, columnTypes, &buffer)
+	buffer, err := EncodeRow(&row, columnTypes, buffer)
 	require.Nil(t, err)
-	err = DecodeRow(bufPtr, columnTypes, rows)
+	err = DecodeRow(buffer, columnTypes, rows)
 	require.Nil(t, err)
 
 	row1 := rows.GetRow(0)
@@ -55,23 +55,23 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 	RowsEqual(t, &row1, &row2, columnTypes)
 }
 
-func RowsEqual(t *testing.T, row1 *Row, row2 *Row, colTypes []ColumnType) {
-	require.Equal(t, row1.ColCount(), row2.ColCount())
+func RowsEqual(t *testing.T, expected *PullRow, actual *PullRow, colTypes []ColumnType) {
+	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType {
 		case TypeTinyInt, TypeInt, TypeBigInt:
-			val1 := row1.GetInt64(colIndex)
-			val2 := row2.GetInt64(colIndex)
+			val1 := expected.GetInt64(colIndex)
+			val2 := actual.GetInt64(colIndex)
 			require.Equal(t, val1, val2)
 		case TypeDecimal:
 			// TODO
 		case TypeDouble:
-			val1 := row1.GetFloat64(colIndex)
-			val2 := row2.GetFloat64(colIndex)
+			val1 := expected.GetFloat64(colIndex)
+			val2 := actual.GetFloat64(colIndex)
 			require.Equal(t, val1, val2)
 		case TypeVarchar:
-			val1 := row1.GetString(colIndex)
-			val2 := row2.GetString(colIndex)
+			val1 := expected.GetString(colIndex)
+			val2 := actual.GetString(colIndex)
 			require.Equal(t, val1, val2)
 		default:
 			t.Errorf("unexpected column type %d", colType)

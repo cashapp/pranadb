@@ -8,11 +8,11 @@ import (
 	"unsafe"
 )
 
-func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer *[]byte) (*[]byte, error) {
+func EncodeCols(row *PullRow, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for _, colIndex := range colIndexes {
 		colType := colTypes[colIndex]
 		var err error
-		buffer, err = encodeCol(row, colIndex, colType, buffer)
+		buffer, err = EncodeCol(row, colIndex, colType, buffer)
 		if err != nil {
 			return nil, err
 		}
@@ -20,184 +20,176 @@ func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer *[]byt
 	return buffer, nil
 }
 
-func EncodeRow(row *Row, colTypes []ColumnType, buffer *[]byte) (*[]byte, error) {
-	data := *buffer
+func EncodeRow(row *PullRow, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for colIndex, colType := range colTypes {
 		var err error
-		buffer, err = encodeCol(row, colIndex, colType, buffer)
+		buffer, err = EncodeCol(row, colIndex, colType, buffer)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return &data, nil
+	return buffer, nil
 }
 
-func encodeCol(row *Row, colIndex int, colType ColumnType, buffer *[]byte) (*[]byte, error) {
-	data := *buffer
-	switch colType {
-	case TypeTinyInt, TypeInt, TypeBigInt:
-		isNull := row.IsNull(colIndex)
-		if isNull {
-			data = append(data, 0)
-		} else {
-			data = append(data, 1)
-			// We store as unsigned so convert signed to unsigned
-			valInt64 := row.GetInt64(colIndex)
-			v := *(*uint64)(unsafe.Pointer(&valInt64))
-			// Write it in little-endian
-			data = *appendUint64ToBufferLittleEndian(&data, v)
-		}
-	case TypeDecimal:
-		// TODO
-	case TypeDouble:
-		isNull := row.IsNull(colIndex)
-		if isNull {
-			data = append(data, 0)
-		} else {
-			data = append(data, 1)
-			val := row.GetFloat64(colIndex)
-			valToStore := math.Float64bits(val)
-			bytes := make([]byte, 8)
-			binary.LittleEndian.PutUint64(bytes, valToStore)
-			data = append(data, bytes...)
-		}
-	case TypeVarchar:
-		isNull := row.IsNull(colIndex)
-		if isNull {
-			data = append(data, 0)
-		} else {
-			data = append(data, 1)
-			val := row.GetString(colIndex)
-			data = *appendUint32ToBufferLittleEndian(&data, uint32(len(val)))
-			data = append(data, val...)
-		}
-	default:
-		return nil, fmt.Errorf("unexpected column type %d", colType)
-	}
-	return &data, nil
-}
-
-func DecodeRow(dataPtr *[]byte, colTypes []ColumnType, rows *Rows) error {
-	data := *dataPtr
-	offset := 0
-	var null bool
-	var err error
-	for colIndex, colType := range colTypes {
+func EncodeCol(row *PullRow, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
+	isNull := row.IsNull(colIndex)
+	if isNull {
+		buffer = append(buffer, 0)
+	} else {
+		buffer = append(buffer, 1)
 		switch colType {
 		case TypeTinyInt, TypeInt, TypeBigInt:
-			var val int64
-			val, null, offset, err = decodeInt64(data, offset)
-			if err != nil {
-				return err
-			}
-			if null {
-				rows.AppendNullToColumn(colIndex)
-			} else {
-				rows.AppendInt64ToColumn(colIndex, val)
-			}
+			// We store as unsigned so convert signed to unsigned
+			valInt64 := row.GetInt64(colIndex)
+			buffer = EncodeInt64(valInt64, buffer)
 		case TypeDecimal:
-			var val Decimal
-			val, null, offset, err = decodeDecimal(data, offset)
-			if err != nil {
-				return err
-			}
-			if null {
-				rows.AppendNullToColumn(colIndex)
-			} else {
-				rows.AppendDecimalToColumn(colIndex, val)
-			}
+			// TODO
 		case TypeDouble:
-			var val float64
-			val, null, offset, err = decodeFloat64(data, offset)
-			if err != nil {
-				return err
-			}
-			if null {
-				rows.AppendNullToColumn(colIndex)
-			} else {
-				rows.AppendFloat64ToColumn(colIndex, val)
-			}
+			valFloat64 := row.GetFloat64(colIndex)
+			buffer = EncodeFloat64(valFloat64, buffer)
 		case TypeVarchar:
-			var val string
-			val, null, offset, err = decodeString(data, offset)
-			if err != nil {
-				return err
-			}
-			if null {
-				rows.AppendNullToColumn(colIndex)
-			} else {
-				rows.AppendStringToColumn(colIndex, val)
-			}
+			valString := row.GetString(colIndex)
+			buffer = EncodeString(valString, buffer)
 		default:
-			return fmt.Errorf("unexpected column type %d", colType)
+			return nil, fmt.Errorf("unexpected column type %d", colType)
+		}
+	}
+	return buffer, nil
+}
+
+func EncodeKey(key Key, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+	for i, val := range key {
+		var err error
+		buffer, err = EncodeElement(val, colTypes[i], buffer)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buffer, nil
+}
+
+func EncodeInt64(value int64, buffer []byte) []byte {
+	v := *(*uint64)(unsafe.Pointer(&value))
+	// Write it in little-endian
+	return appendUint64ToBufferLittleEndian(buffer, v)
+}
+
+func EncodeFloat64(value float64, buffer []byte) []byte {
+	valToStore := math.Float64bits(value)
+	bytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bytes, valToStore)
+	return append(buffer, bytes...)
+}
+
+func EncodeString(value string, buffer []byte) []byte {
+	buffPtr := appendUint32ToBufferLittleEndian(buffer, uint32(len(value)))
+	buffPtr = append(buffPtr, value...)
+	return buffPtr
+}
+
+func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, error) {
+	if value == nil {
+		data = append(data, 0)
+	} else {
+		data = append(data, 1)
+		switch colType {
+		case TypeTinyInt, TypeInt, TypeBigInt:
+			valInt64 := value.(int64)
+			data = EncodeInt64(valInt64, data)
+		case TypeDecimal:
+			// TODO
+		case TypeDouble:
+			valFloat64 := value.(float64)
+			data = EncodeFloat64(valFloat64, data)
+		case TypeVarchar:
+			valString := value.(string)
+			data = EncodeString(valString, data)
+		default:
+			return nil, fmt.Errorf("unexpected column type %d", colType)
+		}
+	}
+	return data, nil
+}
+
+func DecodeRow(buffer []byte, colTypes []ColumnType, rows *PullRows) error {
+	offset := 0
+	for colIndex, colType := range colTypes {
+		if buffer[offset] == 0 {
+			offset++
+			rows.AppendNullToColumn(colIndex)
+		} else {
+			offset++
+			switch colType {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				var val int64
+				val, offset = decodeInt64(buffer, offset)
+				rows.AppendInt64ToColumn(colIndex, val)
+			case TypeDecimal:
+				var val Decimal
+				val, offset = decodeDecimal(buffer, offset)
+				rows.AppendDecimalToColumn(colIndex, val)
+			case TypeDouble:
+				var val float64
+				val, offset = decodeFloat64(buffer, offset)
+				rows.AppendFloat64ToColumn(colIndex, val)
+			case TypeVarchar:
+				var val string
+				val, offset = decodeString(buffer, offset)
+				rows.AppendStringToColumn(colIndex, val)
+			default:
+				return fmt.Errorf("unexpected column type %d", colType)
+			}
 		}
 	}
 	return nil
 }
 
-func decodeInt64(data []byte, offset int) (val int64, null bool, off int, err error) {
-	isNull := data[offset] == 0
-	offset++
-	if isNull {
-		return 0, true, offset, nil
-	}
-	ptr := (*int64)(unsafe.Pointer(&data[offset]))
+func decodeInt64(buffer []byte, offset int) (val int64, off int) {
+	ptr := (*int64)(unsafe.Pointer(&buffer[offset]))
 	val = *ptr
 	offset += 8
-	return val, false, offset, nil
+	return val, offset
 }
 
-func decodeFloat64(data []byte, offset int) (val float64, null bool, off int, err error) {
-	isNull := data[offset] == 0
-	offset++
-	if isNull {
-		return 0, true, offset, nil
-	}
-	ptr := (*float64)(unsafe.Pointer(&data[offset]))
+func decodeFloat64(buffer []byte, offset int) (val float64, off int) {
+	ptr := (*float64)(unsafe.Pointer(&buffer[offset]))
 	val = *ptr
 	offset += 8
-	return val, false, offset, nil
+	return val, offset
 }
 
-func decodeDecimal(data []byte, offset int) (val Decimal, null bool, off int, err error) {
+func decodeDecimal(buffer []byte, offset int) (val Decimal, off int) {
 	// TODO
-	return Decimal{}, false, 0, nil
+	return Decimal{}, 0
 }
 
-func decodeString(data []byte, offset int) (val string, null bool, off int, err error) {
-	isNull := data[offset] == 0
-	offset++
-	if isNull {
-		return "", true, offset, nil
-	}
-	lenPtr := (*uint32)(unsafe.Pointer(&data[offset]))
-	len := int(*lenPtr)
+func decodeString(buffer []byte, offset int) (val string, off int) {
+	lenPtr := (*uint32)(unsafe.Pointer(&buffer[offset]))
+	l := int(*lenPtr)
 	offset += 4
-	str := toStringZeroCopy(data[offset : offset+len])
-	offset += len
-	return str, false, offset, nil
+	str := toStringZeroCopy(buffer[offset : offset+l])
+	offset += l
+	return str, offset
 }
 
 // Convert slice to string without copying
-func toStringZeroCopy(b []byte) string {
-	if len(b) == 0 {
+func toStringZeroCopy(buffer []byte) string {
+	if len(buffer) == 0 {
 		return ""
 	}
 	var s string
-	bytesPtr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	bytesPtr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
 	stringPtr := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	stringPtr.Data = bytesPtr.Data
 	stringPtr.Len = bytesPtr.Len
 	return s
 }
 
-func appendUint32ToBufferLittleEndian(data *[]byte, v uint32) *[]byte {
-	buff := append(*data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
-	return &buff
+func appendUint32ToBufferLittleEndian(data []byte, v uint32) []byte {
+	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
-func appendUint64ToBufferLittleEndian(data *[]byte, v uint64) *[]byte {
-	buff := append(*data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
+func appendUint64ToBufferLittleEndian(data []byte, v uint64) []byte {
+	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
 		byte(v>>40), byte(v>>48), byte(v>>56))
-	return &buff
 }
