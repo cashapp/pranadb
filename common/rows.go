@@ -1,7 +1,6 @@
-package sql
+package common
 
 import (
-	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 )
@@ -13,14 +12,14 @@ type PullRow struct {
 	tRow *chunk.Row
 }
 
-type PullRows struct {
+type PushRows struct {
 	chunk *chunk.Chunk
 }
 
 type Key []interface{}
 
 // RowsFactory caches the field types so we don't have to calculate them each time
-// we create a new PullRows
+// we create a new PushRows
 type RowsFactory struct {
 	astFieldTypes []*types.FieldType
 }
@@ -33,9 +32,9 @@ func NewRowsFactory(columnTypes []ColumnType) (*RowsFactory, error) {
 	return &RowsFactory{astFieldTypes: astFieldTypes}, nil
 }
 
-func (rf *RowsFactory) NewRows(capacity int) *PullRows {
+func (rf *RowsFactory) NewRows(capacity int) *PushRows {
 	ch := chunk.NewChunkWithCapacity(rf.astFieldTypes, capacity)
-	return &PullRows{chunk: ch}
+	return &PushRows{chunk: ch}
 }
 
 func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
@@ -50,40 +49,40 @@ func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
 	return astFieldTypes, nil
 }
 
-func (r *PullRows) GetRow(rowIndex int) PullRow {
+func (r *PushRows) GetRow(rowIndex int) PullRow {
 	row := r.chunk.GetRow(rowIndex)
 	return PullRow{tRow: &row}
 }
 
-func (r *PullRows) RowCount() int {
+func (r *PushRows) RowCount() int {
 	return r.chunk.NumRows()
 }
 
-func (r *PullRows) AppendRow(row PullRow) {
+func (r *PushRows) AppendRow(row PullRow) {
 	r.chunk.AppendRow(*row.tRow)
 }
 
-func (r *PullRows) AppendInt64ToColumn(colIndex int, val int64) {
+func (r *PushRows) AppendInt64ToColumn(colIndex int, val int64) {
 	col := r.chunk.Column(colIndex)
 	col.AppendInt64(val)
 }
 
-func (r *PullRows) AppendFloat64ToColumn(colIndex int, val float64) {
+func (r *PushRows) AppendFloat64ToColumn(colIndex int, val float64) {
 	col := r.chunk.Column(colIndex)
 	col.AppendFloat64(val)
 }
 
-func (r *PullRows) AppendDecimalToColumn(colIndex int, val Decimal) {
+func (r *PushRows) AppendDecimalToColumn(colIndex int, val Decimal) {
 	col := r.chunk.Column(colIndex)
 	col.AppendMyDecimal(val.decimal)
 }
 
-func (r *PullRows) AppendStringToColumn(colIndex int, val string) {
+func (r *PushRows) AppendStringToColumn(colIndex int, val string) {
 	col := r.chunk.Column(colIndex)
 	col.AppendString(val)
 }
 
-func (r *PullRows) AppendNullToColumn(colIndex int) {
+func (r *PushRows) AppendNullToColumn(colIndex int) {
 	col := r.chunk.Column(colIndex)
 	col.AppendNull()
 }
@@ -126,49 +125,4 @@ type Decimal struct {
 
 func newDecimal(dec *types.MyDecimal) Decimal {
 	return Decimal{decimal: dec}
-}
-
-type Expression struct {
-	expression expression.Expression
-}
-
-func NewExpression(expression expression.Expression) *Expression {
-	return &Expression{expression: expression}
-}
-
-func (e *Expression) getColumnIndex() (int, bool) {
-	exp, ok := e.expression.(*expression.Column)
-	if ok {
-		return exp.Index, true
-	} else {
-		return -1, false
-	}
-}
-
-func (e *Expression) EvalBoolean(row *PullRow) (bool, bool, error) {
-	val, null, err := e.expression.EvalInt(nil, *row.tRow)
-	return val != 0, null, err
-}
-
-func (e *Expression) EvalInt64(row *PullRow) (val int64, null bool, err error) {
-	return e.expression.EvalInt(nil, *row.tRow)
-}
-
-func (e *Expression) EvalFloat64(row *PullRow) (val float64, null bool, err error) {
-	return e.expression.EvalReal(nil, *row.tRow)
-}
-
-func (e *Expression) EvalDecimal(row *PullRow) (Decimal, bool, error) {
-	dec, null, err := e.expression.EvalDecimal(nil, *row.tRow)
-	if err != nil {
-		return Decimal{}, false, err
-	}
-	if null {
-		return Decimal{}, true, err
-	}
-	return newDecimal(dec), false, err
-}
-
-func (e *Expression) EvalString(row *PullRow) (val string, null bool, err error) {
-	return e.expression.EvalString(nil, *row.tRow)
 }

@@ -9,7 +9,7 @@ import (
 
 func TestPutGet(t *testing.T) {
 
-	storage := NewFakeStorage()
+	storage := NewFakeStorage(1, 1)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -19,14 +19,14 @@ func TestPutGet(t *testing.T) {
 		Value: value,
 	}
 
-	writeBatch := createWriteBatchWithPuts(kvPair)
+	shardID := uint64(123545)
+	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	partitionID := uint64(123545)
-
-	err := storage.WriteBatch(partitionID, &writeBatch, false)
+	err := storage.WriteBatch(&writeBatch, false)
 	require.Nil(t, err)
 
-	res := storage.Get(partitionID, key)
+	res, err := storage.Get(shardID, key, true)
+	require.Nil(t, err)
 	require.NotNil(t, res)
 
 	require.Equal(t, string(value), string(res))
@@ -35,7 +35,7 @@ func TestPutGet(t *testing.T) {
 
 func TestPutDelete(t *testing.T) {
 
-	storage := NewFakeStorage()
+	storage := NewFakeStorage(1, 1)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -45,22 +45,23 @@ func TestPutDelete(t *testing.T) {
 		Value: value,
 	}
 
-	writeBatch := createWriteBatchWithPuts(kvPair)
+	shardID := uint64(123545)
+	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	partitionID := uint64(123545)
-
-	err := storage.WriteBatch(partitionID, &writeBatch, false)
+	err := storage.WriteBatch(&writeBatch, false)
 	require.Nil(t, err)
 
-	res := storage.Get(partitionID, key)
+	res, err := storage.Get(shardID, key, true)
+	require.Nil(t, err)
 	require.NotNil(t, res)
 
-	deleteBatch := createWriteBatchWithDeletes(key)
+	deleteBatch := createWriteBatchWithDeletes(shardID, key)
 
-	err = storage.WriteBatch(partitionID, &deleteBatch, false)
+	err = storage.WriteBatch(&deleteBatch, false)
 	require.Nil(t, err)
 
-	res = storage.Get(partitionID, key)
+	res, err = storage.Get(shardID, key, true)
+	require.Nil(t, err)
 	require.Nil(t, res)
 }
 
@@ -68,7 +69,7 @@ func TestPutDelete(t *testing.T) {
 
 func TestScan(t *testing.T) {
 
-	storage := NewFakeStorage()
+	storage := NewFakeStorage(1, 1)
 
 	var kvPairs []KVPair
 	for i := 0; i < 1000; i++ {
@@ -79,18 +80,17 @@ func TestScan(t *testing.T) {
 	rand.Shuffle(len(kvPairs), func(i, j int) {
 		kvPairs[i], kvPairs[j] = kvPairs[j], kvPairs[i]
 	})
-	wb := WriteBatch{puts: kvPairs}
+	shardID := uint64(123545)
+	wb := WriteBatch{puts: kvPairs, ShardID: shardID}
 
-	partitionID := uint64(123545)
-
-	err := storage.WriteBatch(partitionID, &wb, false)
+	err := storage.WriteBatch(&wb, false)
 	require.Nil(t, err)
 
 	keyStart := []byte("somekey456")
 	keyEnd := []byte("somekey837")
 
 	var res []KVPair
-	res, err = storage.Scan(partitionID, keyStart, keyEnd, 1000)
+	res, err = storage.Scan(shardID, keyStart, keyEnd, 1000)
 	require.Nil(t, err)
 
 	require.Equal(t, 837-456, len(res))
@@ -102,10 +102,10 @@ func TestScan(t *testing.T) {
 	}
 }
 
-func createWriteBatchWithPuts(puts ...KVPair) WriteBatch {
-	return WriteBatch{puts: puts}
+func createWriteBatchWithPuts(shardID uint64, puts ...KVPair) WriteBatch {
+	return WriteBatch{ShardID: shardID, puts: puts}
 }
 
-func createWriteBatchWithDeletes(deletes ...[]byte) WriteBatch {
-	return WriteBatch{deletes: deletes}
+func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
+	return WriteBatch{ShardID: shardID, deletes: deletes}
 }

@@ -1,4 +1,4 @@
-package sql
+package parplan
 
 import (
 	"testing"

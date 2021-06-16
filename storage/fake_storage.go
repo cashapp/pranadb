@@ -1,19 +1,23 @@
 package storage
 
 import (
+	"fmt"
 	"github.com/google/btree"
 	"sync"
 )
 
 type FakeStorage struct {
-	btree *btree.BTree
-	mu    sync.RWMutex
+	btree         *btree.BTree
+	mu            sync.RWMutex
+	clusterInfo   *ClusterInfo
+	tableSequence uint64
 }
 
-func NewFakeStorage() Storage {
+func NewFakeStorage(nodeID int, numShards int) Storage {
 	btree := btree.New(3)
 	return &FakeStorage{
-		btree: btree,
+		btree:       btree,
+		clusterInfo: createClusterInfo(nodeID, numShards),
 	}
 }
 
@@ -36,7 +40,15 @@ func (f *FakeStorage) InstallExecutors(shardID uint64, plan *ExecutorPlan) {
 	panic("implement me")
 }
 
-func (f *FakeStorage) Get(shardID uint64, key []byte) ([]byte, error) {
+func (f *FakeStorage) GenerateTableID() (uint64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	res := f.tableSequence
+	f.tableSequence++
+	return res, nil
+}
+
+func (f *FakeStorage) Get(shardID uint64, key []byte, localLeader bool) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.getInternal(&kvWrapper{key: key}), nil
@@ -67,6 +79,26 @@ func (f *FakeStorage) Scan(shardID uint64, startKeyPrefix []byte, endKeyPrefix [
 		f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
 	}
 	return result, nil
+}
+
+func (f *FakeStorage) AddShard(shardID uint64, callback ShardCallback) error {
+	panic("implement me")
+}
+
+func (f *FakeStorage) RemoveShard(shardID uint64) error {
+	panic("implement me")
+}
+
+func (f *FakeStorage) GetClusterInfo() (*ClusterInfo, error) {
+	return f.clusterInfo, nil
+}
+
+func (f *FakeStorage) GetNodeInfo(nodeID int) (*NodeInfo, error) {
+	nodeInfo, ok := f.clusterInfo.NodeInfos[nodeID]
+	if !ok {
+		return nil, fmt.Errorf("Invalid node id %d", nodeID)
+	}
+	return nodeInfo, nil
 }
 
 type kvWrapper struct {
@@ -128,4 +160,18 @@ func (f *FakeStorage) getInternal(key *kvWrapper) []byte {
 	} else {
 		return nil
 	}
+}
+
+func createClusterInfo(nodeID int, numShards int) *ClusterInfo {
+	leaders := make([]uint64, numShards)
+	for i := 0; i < numShards; i++ {
+		leaders[i] = uint64(i)
+	}
+	nodeInfo := &NodeInfo{
+		Leaders:   leaders,
+		Followers: nil,
+	}
+	nodeInfos := make(map[int]*NodeInfo)
+	nodeInfos[nodeID] = nodeInfo
+	return &ClusterInfo{NodeInfos: nodeInfos}
 }

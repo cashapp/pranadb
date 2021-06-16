@@ -1,4 +1,4 @@
-package sql
+package parplan
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 type Planner interface {
 	CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error)
 	CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error)
+	QueryToPlan(query string, is infoschema.InfoSchema) (core.PhysicalPlan, error)
 }
 
 type planner struct {
@@ -73,4 +74,18 @@ func (p *planner) CreatePhysicalPlan(ctx context.Context, sessionContext session
 		}
 		return physicalPlan, nil
 	}
+}
+
+func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema) (core.PhysicalPlan, error) {
+	stmt, err := p.parser.Parse(query)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.TODO()
+	sessCtx := NewSessionContext()
+	logicalPlan, err := p.CreateLogicalPlan(ctx, sessCtx, stmt, is)
+	if err != nil {
+		return nil, err
+	}
+	return p.CreatePhysicalPlan(ctx, sessCtx, logicalPlan, true, false)
 }

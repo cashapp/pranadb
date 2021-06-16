@@ -1,4 +1,4 @@
-package sql
+package common
 
 import (
 	"github.com/stretchr/testify/require"
@@ -41,7 +41,7 @@ func encodeDecodeString(t *testing.T, rf *RowsFactory, val string) {
 	encodeDecode(t, rows, singleVarcharColumn)
 }
 
-func encodeDecode(t *testing.T, rows *PullRows, columnTypes []ColumnType) {
+func encodeDecode(t *testing.T, rows *PushRows, columnTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
 	buffer, err := EncodeRow(&row, columnTypes, buffer)

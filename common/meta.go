@@ -1,4 +1,16 @@
-package sql
+package common
+
+type ColumnType int
+
+const (
+	TypeTinyInt ColumnType = iota + 1
+	TypeInt
+	TypeBigInt
+	TypeDouble
+	TypeDecimal
+	TypeVarchar
+	TypeTimestamp
+)
 
 type SchemaInfo struct {
 	SchemaName  string
@@ -12,25 +24,12 @@ type TableInfo struct {
 	ColumnNames    []string
 	ColumnTypes    []ColumnType
 	IndexInfos     []*IndexInfo
-	Partitions     int
 }
 
 type IndexInfo struct {
 	Name      string
 	IndexCols []int
 }
-
-type ColumnType int
-
-const (
-	TypeTinyInt ColumnType = iota + 1
-	TypeInt
-	TypeBigInt
-	TypeDouble
-	TypeDecimal
-	TypeVarchar
-	TypeTimestamp
-)
 
 func (t *TableInfo) Id(id uint64) *TableInfo {
 	t.ID = id
@@ -51,11 +50,4 @@ func (t *TableInfo) AddColumn(name string, columnType ColumnType) *TableInfo {
 func (t *TableInfo) AddIndex(name string) *TableInfo {
 	// TODO
 	return t
-}
-
-func newSchemaInfo(name string) *SchemaInfo {
-	return &SchemaInfo{
-		SchemaName:  name,
-		TablesInfos: map[string]*TableInfo{},
-	}
 }

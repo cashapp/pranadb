@@ -1,4 +1,4 @@
-package sql
+package common
 
 import (
 	"fmt"
@@ -72,7 +72,7 @@ func (t *table) LookupInPk(key Key, shardID uint64) (*PullRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	buffRes, err := t.storage.Get(shardID, buffer)
+	buffRes, err := t.storage.Get(shardID, buffer, true)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +102,10 @@ func (t *table) IndexScan(indexName string, startKey *Key, endKey *Key, limit in
 }
 
 func (t *table) encodeKeyPrefix(shardID uint64) []byte {
-	// Key is |table_id|shard_id|pk_value
+	// Key is |shard_id|table_id|pk_value
 	keyBuff := make([]byte, 0, 32)
-	keyBuff = appendUint64ToBufferLittleEndian(keyBuff, t.info.ID)
-	keyBuff = appendUint64ToBufferLittleEndian(keyBuff, shardID)
+	keyBuff = AppendUint64ToBufferLittleEndian(keyBuff, shardID)
+	keyBuff = AppendUint64ToBufferLittleEndian(keyBuff, t.info.ID)
 	return keyBuff
 }
 

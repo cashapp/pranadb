@@ -1,4 +1,4 @@
-package sql
+package parplan
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	tidbTypes "github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/mock"
+	"github.com/squareup/pranadb/common"
 )
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
@@ -33,7 +34,7 @@ type schemaTables struct {
 	tables map[string]tidbTable.Table
 }
 
-func NewPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error) {
+func NewPranaInfoSchema(schemaInfos []*common.SchemaInfo) (infoschema.InfoSchema, error) {
 	result := &pranaInfoSchema{}
 	result.schemaMap = make(map[string]*schemaTables)
 
@@ -46,7 +47,7 @@ func NewPranaInfoSchema(schemaInfos []*SchemaInfo) (infoschema.InfoSchema, error
 			var columns []*model.ColumnInfo
 			for columnIndex, columnType := range tableInfo.ColumnTypes {
 
-				colType, err := ConvertPranaTypeToTiDBType(columnType)
+				colType, err := common.ConvertPranaTypeToTiDBType(columnType)
 				if err != nil {
 					return nil, err
 				}

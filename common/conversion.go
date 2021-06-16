@@ -1,4 +1,4 @@
-package sql
+package common
 
 import (
 	"fmt"

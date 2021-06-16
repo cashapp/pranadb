@@ -1,7 +1,9 @@
-package sql
+package parplan
 
 import (
 	"context"
+	"github.com/squareup/pranadb"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -36,20 +38,20 @@ func TestPlanner(t *testing.T) {
 
 }
 
-func CreateSchemaManager() (Manager, error) {
-	tableInfo := TableInfo{}
+func CreateSchemaManager() (pranadb.Manager, error) {
+	tableInfo := common.TableInfo{}
 	tableInfo.
 		Id(0).
 		Name("table1").
-		AddColumn("a", TypeVarchar).
-		AddColumn("b", TypeBigInt).
-		AddColumn("c", TypeBigInt)
+		AddColumn("a", common.TypeVarchar).
+		AddColumn("b", common.TypeBigInt).
+		AddColumn("c", common.TypeBigInt)
 
 	stor := storage.NewFakeStorage()
-	schemaManager := NewManager(stor)
+	schemaManager := pranadb.NewManager(stor)
 
 	colNames := []string{"a", "b", "c"}
-	colTypes := []ColumnType{TypeVarchar, TypeBigInt, TypeBigInt}
+	colTypes := []common.ColumnType{common.TypeVarchar, common.TypeBigInt, common.TypeBigInt}
 
 	err := schemaManager.CreateSource("test", "table1", colNames, colTypes, nil, 1, nil)
 	if err != nil {

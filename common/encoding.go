@@ -1,4 +1,4 @@
-package sql
+package common
 
 import (
 	"encoding/binary"
@@ -71,7 +71,7 @@ func EncodeKey(key Key, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 func EncodeInt64(value int64, buffer []byte) []byte {
 	v := *(*uint64)(unsafe.Pointer(&value))
 	// Write it in little-endian
-	return appendUint64ToBufferLittleEndian(buffer, v)
+	return AppendUint64ToBufferLittleEndian(buffer, v)
 }
 
 func EncodeFloat64(value float64, buffer []byte) []byte {
@@ -82,7 +82,7 @@ func EncodeFloat64(value float64, buffer []byte) []byte {
 }
 
 func EncodeString(value string, buffer []byte) []byte {
-	buffPtr := appendUint32ToBufferLittleEndian(buffer, uint32(len(value)))
+	buffPtr := AppendUint32ToBufferLittleEndian(buffer, uint32(len(value)))
 	buffPtr = append(buffPtr, value...)
 	return buffPtr
 }
@@ -111,7 +111,7 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 	return data, nil
 }
 
-func DecodeRow(buffer []byte, colTypes []ColumnType, rows *PullRows) error {
+func DecodeRow(buffer []byte, colTypes []ColumnType, rows *PushRows) error {
 	offset := 0
 	for colIndex, colType := range colTypes {
 		if buffer[offset] == 0 {
@@ -185,11 +185,11 @@ func toStringZeroCopy(buffer []byte) string {
 	return s
 }
 
-func appendUint32ToBufferLittleEndian(data []byte, v uint32) []byte {
+func AppendUint32ToBufferLittleEndian(data []byte, v uint32) []byte {
 	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
-func appendUint64ToBufferLittleEndian(data []byte, v uint64) []byte {
+func AppendUint64ToBufferLittleEndian(data []byte, v uint64) []byte {
 	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
 		byte(v>>40), byte(v>>48), byte(v>>56))
 }
