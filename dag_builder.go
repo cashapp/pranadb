@@ -10,20 +10,29 @@ import (
 	planner2 "github.com/squareup/pranadb/parplan"
 )
 
-func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query string, planner planner2.Planner) (queryDAG exec.PushExecutor, err error) {
+func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query string,
+	planner planner2.Planner, remoteConsumers map[uint64]*remoteConsumer) (queryDAG exec.PushExecutor, err error) {
+	// Build the physical plan
 	physicalPlan, err := planner.QueryToPlan(query, is)
 	if err != nil {
 		return nil, err
 	}
-	dag, err := buildPushDAG(nil, physicalPlan, schema)
+	// Build initial dag from the plan
+	dag, err := buildPushDAG(physicalPlan)
 	if err != nil {
 		return nil, err
 	}
-	dag.ReCalcSchema()
+	// Update schemas to the form we need
+	err = updateSchemas(dag, schema, remoteConsumers)
+	if err != nil {
+		return nil, err
+	}
+	// Split the dag at any aggregations
+	splitAtAggregations(dag)
 	return dag, nil
 }
 
-func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, schema *Schema) (exec.PushExecutor, error) {
+func buildPushDAG(plan core.PhysicalPlan) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -37,6 +46,7 @@ func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, sche
 		colNames = append(colNames, col.OrigName)
 	}
 	var executor exec.PushExecutor
+	var executorToConnect exec.PushExecutor
 	var err error
 	switch plan.(type) {
 	case *core.PhysicalProjection:
@@ -49,6 +59,7 @@ func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, sche
 		if err != nil {
 			return nil, err
 		}
+		executorToConnect = executor
 	case *core.PhysicalSelection:
 		physSel := plan.(*core.PhysicalSelection)
 		var exprs []*common.Expression
@@ -59,6 +70,7 @@ func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, sche
 		if err != nil {
 			return nil, err
 		}
+		executorToConnect = executor
 	case *core.PhysicalHashAgg:
 		physAgg := plan.(*core.PhysicalHashAgg)
 		var aggFuncs []common.AggFunction
@@ -67,43 +79,42 @@ func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, sche
 		for _, expr := range physAgg.GroupByItems {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor, err = exec.NewAggPartitioner(colNames, colTypes, aggFuncs, exprs, nil, 0)
+		// We build two executors here - a partitioner and an aggregator
+		// Then we'll split those later into multiple DAGs
+		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, aggFuncs, exprs, nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		aggregator, err := exec.NewAggregator(colNames, colTypes, aggFuncs, nil, nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		exec.ConnectExecutors([]exec.PushExecutor{partitioner}, aggregator)
+		executor = aggregator
+		executorToConnect = partitioner
 	case *core.PhysicalTableReader:
 		physTabReader := plan.(*core.PhysicalTableReader)
-
 		if len(physTabReader.TablePlans) != 1 {
 			panic("expected one table plan")
 		}
-
 		tabPlan := physTabReader.TablePlans[0]
-		if physTableScan, ok := tabPlan.(*core.PhysicalTableScan); !ok {
+		physTableScan, ok := tabPlan.(*core.PhysicalTableScan)
+		if !ok {
 			return nil, errors.New("expected PhysicalTableScan")
-		} else {
-			tableName := physTableScan.Table.Name
-
-			mv, ok := schema.Mvs[tableName.L]
-			if !ok {
-				source, ok := schema.Sources[tableName.L]
-				if !ok {
-					return nil, fmt.Errorf("unknown source or materialized view %s", tableName.L)
-				}
-				source.AddConsumingExecutor(parentExecutor)
-				tableInfo := source.Table.Info()
-				parentExecutor.ReCalcSchemaFromSources(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
-				return nil, nil
-			}
-			mv.AddConsumingExecutor(parentExecutor)
-			tableInfo := mv.Table.Info()
-			parentExecutor.ReCalcSchemaFromSources(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
-			return nil, nil
 		}
+		tableName := physTableScan.Table.Name
+		executor, err = exec.NewTableScan(colTypes, tableName.L)
+		if err != nil {
+			return nil, err
+		}
+		executorToConnect = executor
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := buildPushDAG(executor, child, schema)
+		childExecutor, err := buildPushDAG(child)
 		if err != nil {
 			return nil, err
 		}
@@ -111,8 +122,83 @@ func buildPushDAG(parentExecutor exec.PushExecutor, plan core.PhysicalPlan, sche
 			childExecutors = append(childExecutors, childExecutor)
 		}
 	}
-
-	exec.ConnectExecutors(childExecutors, executor)
+	exec.ConnectExecutors(childExecutors, executorToConnect)
 
 	return executor, nil
+}
+
+// TODO - do we need the schema information provided from the planner at all?? We could not bother setting it
+// The schema provided by the planner may not be the ones we need. We need to provide information
+// on key cols, which the planner does not provide, also we need to propagate keys through
+// projections which don't include the key columns. These are needed when subsequently
+// identifying a row when it changes
+// We also connect up any executors which consumer data from sources, materialized views, or remote receivers
+// to their feeders
+func updateSchemas(executor exec.PushExecutor, schema *Schema, remoteConsumers map[uint64]*remoteConsumer) error {
+	for _, child := range executor.GetChildren() {
+		err := updateSchemas(child, schema, remoteConsumers)
+		if err != nil {
+			return err
+		}
+	}
+	switch executor.(type) {
+	case *exec.TableScan:
+		tableScan := executor.(*exec.TableScan)
+		tableName := tableScan.TableName
+		var tableInfo *common.TableInfo
+		mv, ok := schema.Mvs[tableName]
+		if !ok {
+			source, ok := schema.Sources[tableName]
+			if !ok {
+				return fmt.Errorf("unknown source or materialized view %s", tableName)
+			}
+			tableInfo = source.Table.Info()
+			source.AddConsumingExecutor(executor)
+		} else {
+			tableInfo = mv.Table.Info()
+			mv.AddConsumingExecutor(executor)
+		}
+		tableScan.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
+	case *exec.Aggregator:
+		aggregator := executor.(*exec.Aggregator)
+		rf, err := common.NewRowsFactory(aggregator.ColTypes())
+		if err != nil {
+			return err
+		}
+		rc := &remoteConsumer{
+			rowsFactory: rf,
+			colTypes:    aggregator.ColTypes(),
+			rowsHandler: aggregator,
+		}
+		remoteConsumers[aggregator.TableID] = rc
+	default:
+		executor.ReCalcSchemaFromChildren()
+	}
+	return nil
+}
+
+// TODO do we need the return value here?
+// Traverse the dag and wherever we find an [aggregate partitioner, aggregate] split the dag
+// at that point, and return all the dags that have been split at the partitioner
+func splitAtAggregations(executor exec.PushExecutor) []exec.PushExecutor {
+	var dags []exec.PushExecutor
+	for _, child := range executor.GetChildren() {
+		dags = append(dags, splitAtAggregations(child)...)
+	}
+	_, ok := executor.(*exec.Aggregator)
+	if ok {
+		execChildren := executor.GetChildren()
+		if len(execChildren) != 1 {
+			panic("expected one child")
+		}
+		aggPartitioner := executor.GetChildren()[0]
+		if _, ok := aggPartitioner.(*exec.AggPartitioner); !ok {
+			panic("expected an aggregate partitioner")
+		}
+		// break the link between partitioner and aggregate
+		aggPartitioner.SetParent(nil)
+		executor.ClearChildren()
+		dags = append(dags, aggPartitioner)
+	}
+	return dags
 }

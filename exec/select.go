@@ -26,14 +26,15 @@ func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates [
 	}, nil
 }
 
-func (p *PushSelect) ReCalcSchema() {
+func (p *PushSelect) ReCalcSchemaFromChildren() {
 	if len(p.children) > 1 {
 		panic("too many children")
 	}
 	if len(p.children) == 1 {
 		child := p.children[0]
-		child.ReCalcSchema()
-		p.ReCalcSchemaFromSources(child.ColNames(), child.ColTypes(), child.KeyCols())
+		p.colNames = child.ColNames()
+		p.colTypes = child.ColTypes()
+		p.keyCols = child.KeyCols()
 	}
 }
 

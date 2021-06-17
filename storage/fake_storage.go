@@ -7,10 +7,17 @@ import (
 )
 
 type FakeStorage struct {
-	btree         *btree.BTree
-	mu            sync.RWMutex
-	clusterInfo   *ClusterInfo
-	tableSequence uint64
+	btree              *btree.BTree
+	mu                 sync.RWMutex
+	clusterInfo        *ClusterInfo
+	tableSequence      uint64
+	remoteWriteHandler RemoteWriteHandler
+}
+
+func (f *FakeStorage) SetRemoteWriteHandler(handler RemoteWriteHandler) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.remoteWriteHandler = handler
 }
 
 func NewFakeStorage(nodeID int, numShards int) Storage {
@@ -32,6 +39,9 @@ func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 	}
 	for _, key := range batch.deletes {
 		f.deleteInternal(&kvWrapper{key: key})
+	}
+	if !localLeader && f.remoteWriteHandler != nil {
+		f.remoteWriteHandler.RemoteWriteOccurred(batch.ShardID)
 	}
 	return nil
 }

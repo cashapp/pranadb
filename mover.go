@@ -2,7 +2,6 @@ package pranadb
 
 import (
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/exec"
 	"github.com/squareup/pranadb/storage"
 	"unsafe"
 )
@@ -14,12 +13,8 @@ const (
 	ReceiverSequenceTableID  = 4
 )
 
-type RemoteRowsHandler interface {
-	HandleRemoteRows(rows *common.PushRows, ctx *exec.ExecutionContext) error
-}
-
 type ReceiverHandler interface {
-	HandleRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error
+	HandleRemoteRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error
 }
 
 func NewMover(store storage.Storage, receiveHandler ReceiverHandler, sharder Sharder) *Mover {
@@ -129,7 +124,7 @@ func (m *Mover) pollForForwards(localShardID uint64) error {
 	return nil
 }
 
-func (m *Mover) PollForReceives(receivingShardID uint64, batch *storage.WriteBatch) error {
+func (m *Mover) HandleReceivedRows(receivingShardID uint64, batch *storage.WriteBatch) error {
 	keyStartPrefix := make([]byte, 0, 16)
 	// key is:
 	// remote_shard_id|receiver_table_id|sending_shard_id|seq_number|entity_id
@@ -174,7 +169,7 @@ func (m *Mover) PollForReceives(receivingShardID uint64, batch *storage.WriteBat
 		receivingSequences[sendingShardID] = lastReceivedSeq
 	}
 
-	err = m.handler.HandleRows(entityValues, batch)
+	err = m.handler.HandleRemoteRows(entityValues, batch)
 	if err != nil {
 		for sendingShardID, lastReceivedSequence := range receivingSequences {
 			err = m.updateNextReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)

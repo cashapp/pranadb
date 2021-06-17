@@ -60,6 +60,13 @@ type Storage interface {
 
 	// GenerateTableID generates a table if using a cluster wide persistent counter
 	GenerateTableID() (uint64, error)
+
+	SetRemoteWriteHandler(handler RemoteWriteHandler)
+}
+
+// RemoteWriteHandler will be called when a remote write is done to a shard
+type RemoteWriteHandler interface {
+	RemoteWriteOccurred(shardID uint64)
 }
 
 // ClusterInfo describes the cluster in terms of which nodes have which shards, both leaders and followers
@@ -80,6 +87,10 @@ type ShardCallback interface {
 type storage struct {
 	kvStore kv.KV
 	raft    raft.Raft
+}
+
+func (s storage) SetRemoteWriteHandler(handler RemoteWriteHandler) {
+	panic("implement me")
 }
 
 func (s storage) GenerateTableID() (uint64, error) {

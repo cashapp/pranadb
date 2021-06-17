@@ -7,33 +7,34 @@ import (
 	"github.com/squareup/pranadb/exec"
 	planner2 "github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/storage"
+	"log"
 	"sync"
 )
 
 func NewPranaNode(storage storage.Storage, nodeID int) *PranaNode {
 	pranaNode := PranaNode{
-		nodeID:      nodeID,
-		storage:     storage,
-		planner:     planner2.NewPlanner(),
-		schemas:     make(map[string]*Schema),
-		entityInfos: make(map[uint64]*entityInfo),
-		schedulers:  make(map[uint64]*ShardScheduler),
+		nodeID:          nodeID,
+		storage:         storage,
+		planner:         planner2.NewPlanner(),
+		schemas:         make(map[string]*Schema),
+		remoteConsumers: make(map[uint64]*remoteConsumer),
+		schedulers:      make(map[uint64]*ShardScheduler),
 	}
 	pranaNode.mover = NewMover(storage, &pranaNode, &pranaNode)
 	return &pranaNode
 }
 
 type PranaNode struct {
-	lock        sync.RWMutex
-	nodeID      int
-	storage     storage.Storage
-	schemas     map[string]*Schema
-	planner     planner2.Planner
-	mover       *Mover
-	started     bool
-	entityInfos map[uint64]*entityInfo
-	schedulers  map[uint64]*ShardScheduler
-	allShards   []uint64
+	lock            sync.RWMutex
+	nodeID          int
+	storage         storage.Storage
+	schemas         map[string]*Schema
+	planner         planner2.Planner
+	mover           *Mover
+	started         bool
+	remoteConsumers map[uint64]*remoteConsumer
+	schedulers      map[uint64]*ShardScheduler
+	allShards       []uint64
 }
 
 // TODO does this need to be exported?
@@ -48,7 +49,13 @@ type Sharder interface {
 	CalculateShard(key []byte) (uint64, error)
 }
 
-type entityInfo struct {
+type RemoteRowsHandler interface {
+	HandleRows(rows *common.PushRows, ctx *exec.ExecutionContext) error
+}
+
+// remoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
+// e.g. a source or an aggregator
+type remoteConsumer struct {
 	rowsFactory *common.RowsFactory
 	colTypes    []common.ColumnType
 	rowsHandler RemoteRowsHandler
@@ -70,6 +77,8 @@ func (p *PranaNode) Start() error {
 	if err != nil {
 		return err
 	}
+
+	p.storage.SetRemoteWriteHandler(p)
 
 	return nil
 }
@@ -146,12 +155,12 @@ func (p *PranaNode) CreateSource(schemaName string, name string, columnNames []s
 	if err != nil {
 		return err
 	}
-	entityInfo := &entityInfo{
+	rc := &remoteConsumer{
 		rowsFactory: rf,
 		colTypes:    columnTypes,
-		rowsHandler: source,
+		rowsHandler: source.TableExecutor,
 	}
-	p.entityInfos[tableID] = entityInfo
+	p.remoteConsumers[tableID] = rc
 	return nil
 }
 
@@ -172,7 +181,7 @@ func (p *PranaNode) CreateMaterializedView(schemaName string, name string, query
 	if err != nil {
 		return err
 	}
-	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner)
+	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner, p.remoteConsumers)
 	if err != nil {
 		return err
 	}
@@ -272,21 +281,21 @@ func (p *PranaNode) newSchema(name string) *Schema {
 	}
 }
 
-// HandleRows handles rows forwarded from other shards
-func (p *PranaNode) HandleRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error {
+// HandleRemoteRows handles rows forwarded from other shards
+func (p *PranaNode) HandleRemoteRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error {
 
 	// TODO use copy on write and atomic references to entities to avoid read lock
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
 	for entityID, rawRows := range entityValues {
-		entityInfo, ok := p.entityInfos[entityID]
+		rc, ok := p.remoteConsumers[entityID]
 		if !ok {
 			return fmt.Errorf("entity with id %d not registered", entityID)
 		}
-		rows := entityInfo.rowsFactory.NewRows(len(rawRows))
+		rows := rc.rowsFactory.NewRows(len(rawRows))
 		for _, row := range rawRows {
-			err := common.DecodeRow(row, entityInfo.colTypes, rows)
+			err := common.DecodeRow(row, rc.colTypes, rows)
 			if err != nil {
 				return err
 			}
@@ -295,12 +304,19 @@ func (p *PranaNode) HandleRows(entityValues map[uint64][][]byte, batch *storage.
 			WriteBatch: batch,
 			Forwarder:  p.mover,
 		}
-		err := entityInfo.rowsHandler.HandleRemoteRows(rows, execContext)
+		err := rc.rowsHandler.HandleRows(rows, execContext)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (p *PranaNode) RemoteWriteOccurred(shardID uint64) {
+	err := p.remoteBatchArrived(shardID)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 // Triggered when some data is written into the forward queue of a shard for which this node

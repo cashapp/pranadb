@@ -7,7 +7,6 @@ import (
 
 type AggPartitioner struct {
 	pushExecutorBase
-	aggFunctions       []common.AggFunction
 	groupByExpressions []*common.Expression
 	groupByCols        []int
 	tableID            uint64
@@ -26,7 +25,6 @@ func NewAggPartitioner(colNames []string, colTypes []common.ColumnType, aggFunct
 	}
 	return &AggPartitioner{
 		pushExecutorBase:   base,
-		aggFunctions:       aggFunctions,
 		groupByExpressions: groupByExpressions,
 		groupByCols:        groupByCols,
 		tableID:            tableID,
@@ -92,6 +90,7 @@ func (a *AggPartitioner) HandleRows(rows *common.PushRows, ctx *ExecutionContext
 			}
 		}
 
+		// Send the row to the aggregator node which most likely lives in a different shard
 		err := ctx.Forwarder.QueueForRemoteSend(key, &row, ctx.WriteBatch.ShardID, a.tableID, a.colTypes, ctx.WriteBatch)
 		if err != nil {
 			return err
@@ -101,10 +100,6 @@ func (a *AggPartitioner) HandleRows(rows *common.PushRows, ctx *ExecutionContext
 	return nil
 }
 
-func (a AggPartitioner) ReCalcSchema() {
-	// NOOP
-}
-
-func (a AggPartitioner) ReCalcSchemaFromSources(colNames []string, colTypes []common.ColumnType, keyCols []int) {
+func (a *AggPartitioner) ReCalcSchemaFromChildren() {
 	// NOOP
 }

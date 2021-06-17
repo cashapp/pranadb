@@ -27,43 +27,37 @@ func NewPushProjection(colNames []string, colTypes []common.ColumnType, projColu
 	}, nil
 }
 
-func (p *PushProjection) ReCalcSchema() {
+func (p *PushProjection) ReCalcSchemaFromChildren() {
 	if len(p.children) > 1 {
 		panic("too many children")
 	}
 	if len(p.children) == 1 {
 		child := p.children[0]
-		child.ReCalcSchema()
-		p.ReCalcSchemaFromSources(child.ColNames(), child.ColTypes(), child.KeyCols())
-	}
-}
-
-func (p *PushProjection) ReCalcSchemaFromSources(colNames []string, colTypes []common.ColumnType, keyCols []int) {
-
-	// A projection might not include key columns from the child - but we need to maintain these
-	// as invisible columns so we can identify the row and maintain it in storage
-	var projColumns = make(map[int]int)
-	for projIndex, projExpr := range p.projColumns {
-		colIndex, ok := projExpr.GetColumnIndex()
-		if ok {
-			projColumns[colIndex] = projIndex
+		// A projection might not include key columns from the child - but we need to maintain these
+		// as invisible columns so we can identify the row and maintain it in storage
+		var projColumns = make(map[int]int)
+		for projIndex, projExpr := range p.projColumns {
+			colIndex, ok := projExpr.GetColumnIndex()
+			if ok {
+				projColumns[colIndex] = projIndex
+			}
 		}
-	}
 
-	invisibleKeyColIndex := len(p.projColumns)
-	for _, childKeyCol := range keyCols {
-		projIndex, ok := projColumns[childKeyCol]
-		if ok {
-			// The projection already contains the key column - so we just use that column
-			p.keyCols = append(p.keyCols, projIndex)
-		} else {
-			// The projection doesn't include the key column so we need to include it from
-			// the child - we will append this on the end of the row when we handle data
-			p.keyCols = append(p.keyCols, invisibleKeyColIndex)
-			p.invisibleKeyColumns = append(p.invisibleKeyColumns, childKeyCol)
-			invisibleKeyColIndex++
-			p.colNames = append(p.colNames, colNames[childKeyCol])
-			p.colTypes = append(p.colTypes, colTypes[childKeyCol])
+		invisibleKeyColIndex := len(p.projColumns)
+		for _, childKeyCol := range child.KeyCols() {
+			projIndex, ok := projColumns[childKeyCol]
+			if ok {
+				// The projection already contains the key column - so we just use that column
+				p.keyCols = append(p.keyCols, projIndex)
+			} else {
+				// The projection doesn't include the key column so we need to include it from
+				// the child - we will append this on the end of the row when we handle data
+				p.keyCols = append(p.keyCols, invisibleKeyColIndex)
+				p.invisibleKeyColumns = append(p.invisibleKeyColumns, childKeyCol)
+				invisibleKeyColIndex++
+				p.colNames = append(p.colNames, child.ColNames()[childKeyCol])
+				p.colTypes = append(p.colTypes, child.ColTypes()[childKeyCol])
+			}
 		}
 	}
 }

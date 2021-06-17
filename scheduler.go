@@ -35,7 +35,7 @@ func (s *ShardScheduler) runLoop() {
 		if !ok {
 			break
 		}
-		err := s.maybeDeliverRemoteBatch()
+		err := s.maybeHandleRemoteBatch()
 		if err != nil {
 			// TODO best way to log stuff?
 			log.Println(err)
@@ -48,11 +48,15 @@ func (s *ShardScheduler) CheckForRemoteBatch() {
 	s.trigger <- true
 }
 
-func (s *ShardScheduler) maybeDeliverRemoteBatch() error {
+func (s *ShardScheduler) maybeHandleRemoteBatch() error {
 	batch := storage.NewWriteBatch(s.shardID)
-	err := s.mover.PollForReceives(s.shardID, batch)
+	err := s.mover.HandleReceivedRows(s.shardID, batch)
 	if err != nil {
 		return err
 	}
-	return s.storage.WriteBatch(batch, true)
+	err = s.storage.WriteBatch(batch, true)
+	if err != nil {
+		return err
+	}
+	return s.mover.pollForForwards(s.shardID)
 }

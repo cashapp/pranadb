@@ -62,8 +62,3 @@ func NewSource(name string, schemaName string, sourceTableID uint64, columnNames
 func (s *Source) AddConsumingExecutor(node exec.PushExecutor) {
 	s.TableExecutor.AddConsumingNode(node)
 }
-
-// HandleRemoteRows handles rows forwarded from other shards
-func (s *Source) HandleRemoteRows(rows *common.PushRows, ctx *exec.ExecutionContext) error {
-	return s.TableExecutor.HandleRows(rows, ctx)
-}

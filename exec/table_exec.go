@@ -30,21 +30,16 @@ func NewTableExecutor(colTypes []common.ColumnType, table common.Table, store st
 	}, nil
 }
 
-func (t *TableExecutor) ReCalcSchema() {
+func (t *TableExecutor) ReCalcSchemaFromChildren() {
 	if len(t.children) > 1 {
 		panic("too many children")
 	}
 	if len(t.children) == 1 {
 		child := t.children[0]
-		child.ReCalcSchema()
-		t.ReCalcSchemaFromSources(child.ColNames(), child.ColTypes(), child.KeyCols())
+		t.colNames = child.ColNames()
+		t.colTypes = child.ColTypes()
+		t.keyCols = child.KeyCols()
 	}
-}
-
-func (t *TableExecutor) ReCalcSchemaFromSources(colNames []string, colTypes []common.ColumnType, keyCols []int) {
-	t.keyCols = keyCols
-	t.colNames = colNames
-	t.colTypes = colTypes
 }
 
 func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
