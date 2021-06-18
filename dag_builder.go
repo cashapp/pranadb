@@ -3,22 +3,27 @@ package pranadb
 import (
 	"errors"
 	"fmt"
+	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/planner/core"
+	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/exec"
 	planner2 "github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/storage"
+	"github.com/squareup/pranadb/table"
 )
 
 func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query string,
-	planner planner2.Planner, remoteConsumers map[uint64]*remoteConsumer) (queryDAG exec.PushExecutor, err error) {
+	planner planner2.Planner, remoteConsumers map[uint64]*remoteConsumer, tableIDGenerator TableIDGenerator,
+	queryName string, store storage.Storage) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
 	physicalPlan, err := planner.QueryToPlan(query, is)
 	if err != nil {
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := buildPushDAG(physicalPlan)
+	dag, err := buildPushDAG(physicalPlan, tableIDGenerator, 0, queryName, store)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +37,8 @@ func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query str
 	return dag, nil
 }
 
-func buildPushDAG(plan core.PhysicalPlan) (exec.PushExecutor, error) {
+func buildPushDAG(plan core.PhysicalPlan, tableIDGenerator TableIDGenerator, aggSequence int,
+	queryName string, store storage.Storage) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -73,19 +79,88 @@ func buildPushDAG(plan core.PhysicalPlan) (exec.PushExecutor, error) {
 		executorToConnect = executor
 	case *core.PhysicalHashAgg:
 		physAgg := plan.(*core.PhysicalHashAgg)
-		var aggFuncs []common.AggFunction
-		// TODO agg functions
-		var exprs []*common.Expression
-		for _, expr := range physAgg.GroupByItems {
-			exprs = append(exprs, common.NewExpression(expr))
+
+		var aggFuncs []*exec.AggregateFunctionInfo
+
+		firstRowFuncs := 0
+		for _, aggFunc := range physAgg.AggFuncs {
+			argExprs := aggFunc.Args
+			if len(argExprs) > 1 {
+				return nil, errors.New("more than one aggregate function arg")
+			}
+			var argExpr *common.Expression
+			if len(argExprs) == 1 {
+				argExpr = common.NewExpression(argExprs[0])
+			}
+
+			var funcType aggfuncs.AggFunctionType
+			switch aggFunc.Name {
+			case "sum":
+				funcType = aggfuncs.SumAggregateFunctionType
+			case "avg":
+				funcType = aggfuncs.AverageAggregateFunctionType
+			case "count":
+				funcType = aggfuncs.CountAggregateFunctionType
+			case "max":
+				funcType = aggfuncs.MaxAggregateFunctionType
+			case "min":
+				funcType = aggfuncs.MinAggregateFunctionType
+			case "firstrow":
+				funcType = aggfuncs.FirstRowAggregateFunctionType
+				firstRowFuncs++
+			default:
+				return nil, fmt.Errorf("unexpected aggregate function %s", aggFunc.Name)
+			}
+			af := &exec.AggregateFunctionInfo{
+				FuncType: funcType,
+				Distinct: aggFunc.HasDistinct,
+				ArgExpr:  argExpr,
+			}
+			aggFuncs = append(aggFuncs, af)
 		}
-		// We build two executors here - a partitioner and an aggregator
-		// Then we'll split those later into multiple DAGs
-		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, aggFuncs, exprs, nil, 0)
+
+		nonFirstRowFuncs := len(aggFuncs) - firstRowFuncs
+		var groupByExprs []*common.Expression
+		pkCols := make([]int, len(physAgg.GroupByItems))
+		for i, expr := range physAgg.GroupByItems {
+			col, ok := expr.(*expression.Column)
+			if !ok {
+				return nil, errors.New("group by expression not a column")
+			}
+			ind := col.Index + nonFirstRowFuncs
+			pkCols[i] = ind
+			groupByExprs = append(groupByExprs, common.NewExpression(expr))
+		}
+
+		tableID, err := tableIDGenerator()
 		if err != nil {
 			return nil, err
 		}
-		aggregator, err := exec.NewAggregator(colNames, colTypes, aggFuncs, nil, nil, 0)
+
+		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
+		aggSequence++
+
+		tableInfo := &common.TableInfo{
+			ID:             tableID,
+			TableName:      tableName,
+			PrimaryKeyCols: pkCols,
+			ColumnNames:    colNames,
+			ColumnTypes:    colTypes,
+			IndexInfos:     nil, // TODO
+		}
+
+		aggTable, err := table.NewTable(store, tableInfo)
+		if err != nil {
+			return nil, err
+		}
+
+		// We build two executors here - a partitioner and an aggregator
+		// Then we'll split those later into multiple DAGs
+		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, pkCols, tableID)
+		if err != nil {
+			return nil, err
+		}
+		aggregator, err := exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, aggTable)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +189,7 @@ func buildPushDAG(plan core.PhysicalPlan) (exec.PushExecutor, error) {
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := buildPushDAG(child)
+		childExecutor, err := buildPushDAG(child, tableIDGenerator, aggSequence, queryName, store)
 		if err != nil {
 			return nil, err
 		}
@@ -170,7 +245,7 @@ func updateSchemas(executor exec.PushExecutor, schema *Schema, remoteConsumers m
 			colTypes:    aggregator.ColTypes(),
 			rowsHandler: aggregator,
 		}
-		remoteConsumers[aggregator.TableID] = rc
+		remoteConsumers[aggregator.Table.Info().ID] = rc
 	default:
 		executor.ReCalcSchemaFromChildren()
 	}

@@ -25,7 +25,7 @@ type ExecutionContext struct {
 }
 
 type Forwarder interface {
-	QueueForRemoteSend(key []byte, row *common.PullRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error
+	QueueForRemoteSend(key []byte, row *common.PushRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error
 }
 
 type pushExecutorBase struct {

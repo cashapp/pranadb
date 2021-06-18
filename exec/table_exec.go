@@ -3,18 +3,19 @@ package exec
 import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
+	table2 "github.com/squareup/pranadb/table"
 )
 
 // TableExecutor updates the changes into the associated table - used to persist state
 // of a materialized view or source
 type TableExecutor struct {
 	pushExecutorBase
-	table          common.Table
+	table          table2.Table
 	consumingNodes []PushExecutor
 	store          storage.Storage
 }
 
-func NewTableExecutor(colTypes []common.ColumnType, table common.Table, store storage.Storage) (*TableExecutor, error) {
+func NewTableExecutor(colTypes []common.ColumnType, table table2.Table, store storage.Storage) (*TableExecutor, error) {
 	rf, err := common.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err

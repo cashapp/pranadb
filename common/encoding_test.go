@@ -55,7 +55,7 @@ func encodeDecode(t *testing.T, rows *PushRows, columnTypes []ColumnType) {
 	RowsEqual(t, &row1, &row2, columnTypes)
 }
 
-func RowsEqual(t *testing.T, expected *PullRow, actual *PullRow, colTypes []ColumnType) {
+func RowsEqual(t *testing.T, expected *PushRow, actual *PushRow, colTypes []ColumnType) {
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType {

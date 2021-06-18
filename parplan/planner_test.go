@@ -19,10 +19,10 @@ func TestPlanner(t *testing.T) {
 
 	pl := NewPlanner()
 
-	schemaManager, err := CreateSchemaManager()
+	prana, err := CreatePrana()
 	require.Nil(t, err)
 
-	is, err := schemaManager.ToInfoSchema()
+	is, err := prana.GetInfoSchema()
 	require.Nil(t, err)
 
 	ctx := context.TODO()
@@ -35,10 +35,9 @@ func TestPlanner(t *testing.T) {
 	require.Nil(t, err)
 
 	println(physical.ExplainInfo())
-
 }
 
-func CreateSchemaManager() (pranadb.Manager, error) {
+func CreatePrana() (*pranadb.PranaNode, error) {
 	tableInfo := common.TableInfo{}
 	tableInfo.
 		Id(0).
@@ -47,16 +46,14 @@ func CreateSchemaManager() (pranadb.Manager, error) {
 		AddColumn("b", common.TypeBigInt).
 		AddColumn("c", common.TypeBigInt)
 
-	stor := storage.NewFakeStorage()
-	schemaManager := pranadb.NewManager(stor)
-
+	nodeID := 1
+	stor := storage.NewFakeStorage(nodeID, 10)
+	prana := pranadb.NewPranaNode(stor, nodeID)
 	colNames := []string{"a", "b", "c"}
 	colTypes := []common.ColumnType{common.TypeVarchar, common.TypeBigInt, common.TypeBigInt}
-
-	err := schemaManager.CreateSource("test", "table1", colNames, colTypes, nil, 1, nil)
+	err := prana.CreateSource("test", "source1", colNames, colTypes, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	return schemaManager, nil
+	return prana, nil
 }

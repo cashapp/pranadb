@@ -6,9 +6,6 @@ import (
 )
 
 type PushRow struct {
-}
-
-type PullRow struct {
 	tRow *chunk.Row
 }
 
@@ -49,16 +46,16 @@ func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
 	return astFieldTypes, nil
 }
 
-func (r *PushRows) GetRow(rowIndex int) PullRow {
+func (r *PushRows) GetRow(rowIndex int) PushRow {
 	row := r.chunk.GetRow(rowIndex)
-	return PullRow{tRow: &row}
+	return PushRow{tRow: &row}
 }
 
 func (r *PushRows) RowCount() int {
 	return r.chunk.NumRows()
 }
 
-func (r *PushRows) AppendRow(row PullRow) {
+func (r *PushRows) AppendRow(row PushRow) {
 	r.chunk.AppendRow(*row.tRow)
 }
 
@@ -87,35 +84,35 @@ func (r *PushRows) AppendNullToColumn(colIndex int) {
 	col.AppendNull()
 }
 
-func (r *PullRow) IsNull(colIndex int) bool {
+func (r *PushRow) IsNull(colIndex int) bool {
 	return r.tRow.IsNull(colIndex)
 }
 
-func (r *PullRow) GetByte(colIndex int) byte {
+func (r *PushRow) GetByte(colIndex int) byte {
 	return r.tRow.GetBytes(colIndex)[0]
 }
 
-func (r *PullRow) GetInt64(colIndex int) int64 {
+func (r *PushRow) GetInt64(colIndex int) int64 {
 	return r.tRow.GetInt64(colIndex)
 }
 
-func (r *PullRow) GetFloat64(colIndex int) float64 {
+func (r *PushRow) GetFloat64(colIndex int) float64 {
 	return r.tRow.GetFloat64(colIndex)
 }
 
-func (r *PullRow) GetFloat32(colIndex int) float32 {
+func (r *PushRow) GetFloat32(colIndex int) float32 {
 	return r.tRow.GetFloat32(colIndex)
 }
 
-func (r *PullRow) GetDecimal(colIndex int) Decimal {
+func (r *PushRow) GetDecimal(colIndex int) Decimal {
 	return newDecimal(r.tRow.GetMyDecimal(colIndex))
 }
 
-func (r *PullRow) GetString(colIndex int) string {
+func (r *PushRow) GetString(colIndex int) string {
 	return r.tRow.GetString(colIndex)
 }
 
-func (r *PullRow) ColCount() int {
+func (r *PushRow) ColCount() int {
 	return r.tRow.Len()
 }
 

@@ -31,7 +31,7 @@ type Mover struct {
 	sharder Sharder
 }
 
-func (m *Mover) QueueForRemoteSend(key []byte, row *common.PullRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error {
+func (m *Mover) QueueForRemoteSend(key []byte, row *common.PushRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error {
 	remoteShardID, err := m.sharder.CalculateShard(key)
 	if err != nil {
 		return err
@@ -46,11 +46,7 @@ func (m *Mover) QueueForRemoteSend(key []byte, row *common.PullRow, localShardID
 	if err != nil {
 		return err
 	}
-	kvPair := storage.KVPair{
-		Key:   queueKeyBytes,
-		Value: valueBuff,
-	}
-	batch.AddPut(kvPair)
+	batch.AddPut(queueKeyBytes, valueBuff)
 	sequence++
 	return m.updateNextForwardSequence(localShardID, sequence, batch)
 }
@@ -99,11 +95,7 @@ func (m *Mover) pollForForwards(localShardID uint64) error {
 		// seq|entity_id are the last 16 bytes
 		pos := len(key) - 16
 		remoteKey = append(remoteKey, key[pos:]...)
-		remoteKVPair := storage.KVPair{
-			Key:   remoteKey,
-			Value: kvPair.Value,
-		}
-		remoteBatch.AddPut(remoteKVPair)
+		remoteBatch.AddPut(remoteKey, kvPair.Value)
 		deleteBatch.AddDelete(key)
 	}
 
@@ -207,11 +199,7 @@ func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, 
 	seqKey := m.genForwardSequenceKey(localShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)
-	seqKvPair := storage.KVPair{
-		Key:   seqKey,
-		Value: seqValueBytes,
-	}
-	batch.AddPut(seqKvPair)
+	batch.AddPut(seqKey, seqValueBytes)
 	return nil
 }
 
@@ -229,11 +217,7 @@ func (m *Mover) updateNextReceivingSequence(receivingShardID uint64, sendingShar
 	seqKey := m.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)
-	seqKvPair := storage.KVPair{
-		Key:   seqKey,
-		Value: seqValueBytes,
-	}
-	batch.AddPut(seqKvPair)
+	batch.AddPut(seqKey, seqValueBytes)
 	return nil
 }
 

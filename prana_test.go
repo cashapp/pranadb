@@ -5,19 +5,21 @@ import (
 	"github.com/squareup/pranadb/storage"
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 func TestCreateMaterializedView(t *testing.T) {
-	store := storage.NewFakeStorage()
-	prana := NewPranaNode(store, 1)
+	store := storage.NewFakeStorage(1, 10)
+	prana, err := NewPranaNode(store, 1)
+	require.Nil(t, err)
 
 	colTypes := []common.ColumnType{common.TypeBigInt, common.TypeVarchar, common.TypeDouble}
 
-	err := prana.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
+	err = prana.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
 	require.Nil(t, err)
 
-	query := "select location, avg(temperature) from test.sensor_readings group by location"
-	err = prana.CreateMaterializedView("test", "hot_temps", query)
+	query := "select sensor_id, max(temperature) from test.sensor_readings where location='wincanton' group by sensor_id"
+	err = prana.CreateMaterializedView("test", "max_readings", query)
 	require.Nil(t, err)
 
 	rf, err := common.NewRowsFactory(colTypes)
@@ -29,14 +31,15 @@ func TestCreateMaterializedView(t *testing.T) {
 	appendRow(t, rows, colTypes, 2, "london", 28.1)
 	appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 
-	_, ok := prana.getSource("test", "sensor_readings")
+	source, ok := prana.getSource("test", "sensor_readings")
 	require.True(t, ok)
-	//sourceExecutor := source.TableExecutor
 
-	//err = sourceExecutor.ForwardToConsumingNodes(rows, 1)
-	//require.Nil(t, err)
+	err = source.IngestRows(rows, 1)
+	require.Nil(t, err)
 
-	mv, ok := prana.getMaterializedView("test", "hot_temps")
+	time.Sleep(5 * time.Second)
+
+	mv, ok := prana.getMaterializedView("test", "max_readings")
 	require.True(t, ok)
 
 	table := mv.Table
@@ -70,7 +73,7 @@ func appendRow(t *testing.T, rows *common.PushRows, colTypes []common.ColumnType
 	}
 }
 
-func RowsEqual(t *testing.T, expected *common.PullRow, actual *common.PullRow, colTypes []common.ColumnType) {
+func RowsEqual(t *testing.T, expected *common.PushRow, actual *common.PushRow, colTypes []common.ColumnType) {
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType {

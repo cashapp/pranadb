@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kv"
 	"github.com/squareup/pranadb/raft"
 )
@@ -12,24 +13,28 @@ type KVPair struct {
 
 type WriteBatch struct {
 	ShardID uint64
-	puts    []KVPair
-	deletes [][]byte
+	puts    *common.ByteSliceMap
+	deletes *common.ByteSliceMap
 }
 
 func NewWriteBatch(shardID uint64) *WriteBatch {
-	return &WriteBatch{ShardID: shardID}
+	return &WriteBatch{
+		ShardID: shardID,
+		puts:    common.NewByteSliceMap(),
+		deletes: common.NewByteSliceMap(),
+	}
 }
 
-func (wb *WriteBatch) AddPut(kvPair KVPair) {
-	wb.puts = append(wb.puts, kvPair)
+func (wb *WriteBatch) AddPut(k []byte, v []byte) {
+	wb.puts.Put(k, v)
 }
 
-func (wb *WriteBatch) AddDelete(key []byte) {
-	wb.deletes = append(wb.deletes, key)
+func (wb *WriteBatch) AddDelete(k []byte) {
+	wb.deletes.Put(k, nil)
 }
 
 func (wb *WriteBatch) HasWrites() bool {
-	return len(wb.puts) > 0 || len(wb.deletes) > 0
+	return len(wb.puts.TheMap) > 0 || len(wb.deletes.TheMap) > 0
 }
 
 type ExecutorPlan struct {

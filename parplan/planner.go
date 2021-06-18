@@ -82,7 +82,11 @@ func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema) (core.Phys
 		return nil, err
 	}
 	ctx := context.TODO()
-	sessCtx := NewSessionContext()
+	sessCtx := NewSessionContext(is)
+	err = core.Preprocess(sessCtx, stmt)
+	if err != nil {
+		return nil, err
+	}
 	logicalPlan, err := p.CreateLogicalPlan(ctx, sessCtx, stmt, is)
 	if err != nil {
 		return nil, err

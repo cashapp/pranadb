@@ -19,20 +19,20 @@ func (e *Expression) GetColumnIndex() (int, bool) {
 	}
 }
 
-func (e *Expression) EvalBoolean(row *PullRow) (bool, bool, error) {
+func (e *Expression) EvalBoolean(row *PushRow) (bool, bool, error) {
 	val, null, err := e.expression.EvalInt(nil, *row.tRow)
 	return val != 0, null, err
 }
 
-func (e *Expression) EvalInt64(row *PullRow) (val int64, null bool, err error) {
+func (e *Expression) EvalInt64(row *PushRow) (val int64, null bool, err error) {
 	return e.expression.EvalInt(nil, *row.tRow)
 }
 
-func (e *Expression) EvalFloat64(row *PullRow) (val float64, null bool, err error) {
+func (e *Expression) EvalFloat64(row *PushRow) (val float64, null bool, err error) {
 	return e.expression.EvalReal(nil, *row.tRow)
 }
 
-func (e *Expression) EvalDecimal(row *PullRow) (Decimal, bool, error) {
+func (e *Expression) EvalDecimal(row *PushRow) (Decimal, bool, error) {
 	dec, null, err := e.expression.EvalDecimal(nil, *row.tRow)
 	if err != nil {
 		return Decimal{}, false, err
@@ -43,6 +43,6 @@ func (e *Expression) EvalDecimal(row *PullRow) (Decimal, bool, error) {
 	return newDecimal(dec), false, err
 }
 
-func (e *Expression) EvalString(row *PullRow) (val string, null bool, err error) {
+func (e *Expression) EvalString(row *PushRow) (val string, null bool, err error) {
 	return e.expression.EvalString(nil, *row.tRow)
 }

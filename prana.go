@@ -1,6 +1,7 @@
 package pranadb
 
 import (
+	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/squareup/pranadb/common"
@@ -11,7 +12,7 @@ import (
 	"sync"
 )
 
-func NewPranaNode(storage storage.Storage, nodeID int) *PranaNode {
+func NewPranaNode(storage storage.Storage, nodeID int) (*PranaNode, error) {
 	pranaNode := PranaNode{
 		nodeID:          nodeID,
 		storage:         storage,
@@ -21,7 +22,12 @@ func NewPranaNode(storage storage.Storage, nodeID int) *PranaNode {
 		schedulers:      make(map[uint64]*ShardScheduler),
 	}
 	pranaNode.mover = NewMover(storage, &pranaNode, &pranaNode)
-	return &pranaNode
+
+	err := pranaNode.Start()
+	if err != nil {
+		return nil, err
+	}
+	return &pranaNode, nil
 }
 
 type PranaNode struct {
@@ -53,6 +59,8 @@ type RemoteRowsHandler interface {
 	HandleRows(rows *common.PushRows, ctx *exec.ExecutionContext) error
 }
 
+type TableIDGenerator func() (uint64, error)
+
 // remoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
 // e.g. a source or an aggregator
 type remoteConsumer struct {
@@ -78,7 +86,14 @@ func (p *PranaNode) Start() error {
 		return err
 	}
 
+	err = p.loadAllShards()
+	if err != nil {
+		return err
+	}
+
 	p.storage.SetRemoteWriteHandler(p)
+
+	p.started = true
 
 	return nil
 }
@@ -137,6 +152,10 @@ func (p *PranaNode) CreateSource(schemaName string, name string, columnNames []s
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	if !p.started {
+		return errors.New("not started")
+	}
+
 	schema := p.getOrCreateSchema(schemaName)
 	err := p.existsMvOrSource(schema, name)
 	if err != nil {
@@ -146,7 +165,7 @@ func (p *PranaNode) CreateSource(schemaName string, name string, columnNames []s
 	if err != nil {
 		return err
 	}
-	source, err := NewSource(name, schemaName, tableID, columnNames, columnTypes, primaryKeyColumns, topicInfo, p.storage)
+	source, err := NewSource(name, schemaName, tableID, columnNames, columnTypes, primaryKeyColumns, topicInfo, p.storage, p.mover)
 	if err != nil {
 		return err
 	}
@@ -168,12 +187,16 @@ func (p *PranaNode) CreateMaterializedView(schemaName string, name string, query
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	if !p.started {
+		return errors.New("not started")
+	}
+
 	schema := p.getOrCreateSchema(schemaName)
 	err := p.existsMvOrSource(schema, name)
 	if err != nil {
 		return err
 	}
-	is, err := p.toInfoSchema()
+	is, err := p.GetInfoSchema()
 	if err != nil {
 		return err
 	}
@@ -181,7 +204,7 @@ func (p *PranaNode) CreateMaterializedView(schemaName string, name string, query
 	if err != nil {
 		return err
 	}
-	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner, p.remoteConsumers)
+	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner, p.remoteConsumers, p.genTableID, name, p.storage)
 	if err != nil {
 		return err
 	}
@@ -230,7 +253,7 @@ func (p *PranaNode) existsMvOrSource(schema *Schema, name string) error {
 	return nil
 }
 
-func (p *PranaNode) toInfoSchema() (infoschema.InfoSchema, error) {
+func (p *PranaNode) GetInfoSchema() (infoschema.InfoSchema, error) {
 	var schemaInfos []*common.SchemaInfo
 	for _, schema := range p.schemas {
 		tableInfos := make(map[string]*common.TableInfo)

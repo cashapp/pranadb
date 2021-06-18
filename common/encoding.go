@@ -4,11 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"reflect"
 	"unsafe"
 )
 
-func EncodeCols(row *PullRow, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+func EncodeCols(row *PushRow, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for _, colIndex := range colIndexes {
 		colType := colTypes[colIndex]
 		var err error
@@ -20,7 +19,7 @@ func EncodeCols(row *PullRow, colIndexes []int, colTypes []ColumnType, buffer []
 	return buffer, nil
 }
 
-func EncodeRow(row *PullRow, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+func EncodeRow(row *PushRow, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for colIndex, colType := range colTypes {
 		var err error
 		buffer, err = EncodeCol(row, colIndex, colType, buffer)
@@ -31,7 +30,7 @@ func EncodeRow(row *PullRow, colTypes []ColumnType, buffer []byte) ([]byte, erro
 	return buffer, nil
 }
 
-func EncodeCol(row *PullRow, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
+func EncodeCol(row *PushRow, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
 	isNull := row.IsNull(colIndex)
 	if isNull {
 		buffer = append(buffer, 0)
@@ -167,22 +166,9 @@ func decodeString(buffer []byte, offset int) (val string, off int) {
 	lenPtr := (*uint32)(unsafe.Pointer(&buffer[offset]))
 	l := int(*lenPtr)
 	offset += 4
-	str := toStringZeroCopy(buffer[offset : offset+l])
+	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
 	offset += l
 	return str, offset
-}
-
-// Convert slice to string without copying
-func toStringZeroCopy(buffer []byte) string {
-	if len(buffer) == 0 {
-		return ""
-	}
-	var s string
-	bytesPtr := (*reflect.SliceHeader)(unsafe.Pointer(&buffer))
-	stringPtr := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	stringPtr.Data = bytesPtr.Data
-	stringPtr.Len = bytesPtr.Len
-	return s
 }
 
 func AppendUint32ToBufferLittleEndian(data []byte, v uint32) []byte {

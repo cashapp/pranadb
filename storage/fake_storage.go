@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"github.com/google/btree"
+	"github.com/squareup/pranadb/common"
 	"sync"
 )
 
@@ -31,14 +32,16 @@ func NewFakeStorage(nodeID int, numShards int) Storage {
 func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, kvPair := range batch.puts {
+	for k, v := range batch.puts.TheMap {
 		f.putInternal(&kvWrapper{
-			key:   kvPair.Key,
-			value: kvPair.Value,
+			key:   common.StringToByteSliceZeroCopy(k),
+			value: v,
 		})
 	}
-	for _, key := range batch.deletes {
-		f.deleteInternal(&kvWrapper{key: key})
+	for k, _ := range batch.deletes.TheMap {
+		f.deleteInternal(&kvWrapper{
+			key: common.StringToByteSliceZeroCopy(k),
+		})
 	}
 	if !localLeader && f.remoteWriteHandler != nil {
 		f.remoteWriteHandler.RemoteWriteOccurred(batch.ShardID)
