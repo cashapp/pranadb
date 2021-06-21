@@ -81,9 +81,13 @@ func TestScan(t *testing.T) {
 		kvPairs[i], kvPairs[j] = kvPairs[j], kvPairs[i]
 	})
 	shardID := uint64(123545)
-	wb := WriteBatch{puts: kvPairs, ShardID: shardID}
 
-	err := storage.WriteBatch(&wb, false)
+	wb := NewWriteBatch(shardID)
+	for _, kvPair := range kvPairs {
+		wb.AddPut(kvPair.Key, kvPair.Value)
+	}
+
+	err := storage.WriteBatch(wb, false)
 	require.Nil(t, err)
 
 	keyStart := []byte("somekey456")
@@ -103,9 +107,17 @@ func TestScan(t *testing.T) {
 }
 
 func createWriteBatchWithPuts(shardID uint64, puts ...KVPair) WriteBatch {
-	return WriteBatch{ShardID: shardID, puts: puts}
+	wb := NewWriteBatch(shardID)
+	for _, kvPair := range puts {
+		wb.AddPut(kvPair.Key, kvPair.Value)
+	}
+	return *wb
 }
 
 func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
-	return WriteBatch{ShardID: shardID, deletes: deletes}
+	wb := NewWriteBatch(shardID)
+	for _, delete := range deletes {
+		wb.AddDelete(delete)
+	}
+	return *wb
 }

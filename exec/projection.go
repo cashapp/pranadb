@@ -99,6 +99,16 @@ func (p *PushProjection) HandleRows(rows *common.PushRows, ctx *ExecutionContext
 				} else {
 					result.AppendStringToColumn(j, val)
 				}
+			case common.TypeDouble:
+				val, null, err := projColumn.EvalFloat64(&row)
+				if err != nil {
+					return err
+				}
+				if null {
+					result.AppendNullToColumn(j)
+				} else {
+					result.AppendFloat64ToColumn(j, val)
+				}
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}
@@ -121,11 +131,14 @@ func (p *PushProjection) HandleRows(rows *common.PushRows, ctx *ExecutionContext
 			case common.TypeVarchar:
 				val := row.GetString(colNumber)
 				result.AppendStringToColumn(j, val)
+			case common.TypeDouble:
+				val := row.GetFloat64(colNumber)
+				result.AppendFloat64ToColumn(j, val)
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}
 		}
 	}
 
-	return p.parent.HandleRows(rows, ctx)
+	return p.parent.HandleRows(result, ctx)
 }

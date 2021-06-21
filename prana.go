@@ -51,10 +51,6 @@ type Schema struct {
 	Sinks   map[string]*Sink
 }
 
-type Sharder interface {
-	CalculateShard(key []byte) (uint64, error)
-}
-
 type RemoteRowsHandler interface {
 	HandleRows(rows *common.PushRows, ctx *exec.ExecutionContext) error
 }
@@ -165,7 +161,8 @@ func (p *PranaNode) CreateSource(schemaName string, name string, columnNames []s
 	if err != nil {
 		return err
 	}
-	source, err := NewSource(name, schemaName, tableID, columnNames, columnTypes, primaryKeyColumns, topicInfo, p.storage, p.mover)
+	source, err := NewSource(name, schemaName, tableID, columnNames, columnTypes, primaryKeyColumns,
+		topicInfo, p.storage, p.mover, p, p.schedulers)
 	if err != nil {
 		return err
 	}
@@ -204,7 +201,7 @@ func (p *PranaNode) CreateMaterializedView(schemaName string, name string, query
 	if err != nil {
 		return err
 	}
-	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner, p.remoteConsumers, p.genTableID, name, p.storage)
+	mv, err := NewMaterializedView(name, query, tableID, schema, is, p.storage, p.planner, p.remoteConsumers, p.genTableID, name, p.storage, p)
 	if err != nil {
 		return err
 	}
@@ -307,6 +304,8 @@ func (p *PranaNode) newSchema(name string) *Schema {
 // HandleRemoteRows handles rows forwarded from other shards
 func (p *PranaNode) HandleRemoteRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error {
 
+	log.Println("Handling remote rows")
+
 	// TODO use copy on write and atomic references to entities to avoid read lock
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -327,6 +326,7 @@ func (p *PranaNode) HandleRemoteRows(entityValues map[uint64][][]byte, batch *st
 			WriteBatch: batch,
 			Forwarder:  p.mover,
 		}
+		log.Println("Sending to entity handler")
 		err := rc.rowsHandler.HandleRows(rows, execContext)
 		if err != nil {
 			return err

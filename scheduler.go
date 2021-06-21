@@ -9,7 +9,14 @@ type ShardScheduler struct {
 	shardID uint64
 	mover   *Mover
 	storage storage.Storage
-	trigger chan bool
+	actions chan *actionHolder
+}
+
+type Action func() error
+
+type actionHolder struct {
+	action  Action
+	errChan chan error
 }
 
 func NewShardScheduler(shardID uint64, mover *Mover, storage storage.Storage) *ShardScheduler {
@@ -17,7 +24,7 @@ func NewShardScheduler(shardID uint64, mover *Mover, storage storage.Storage) *S
 		shardID: shardID,
 		mover:   mover,
 		storage: storage,
-		trigger: make(chan bool),
+		actions: make(chan *actionHolder),
 	}
 }
 
@@ -26,29 +33,34 @@ func (s *ShardScheduler) Start() {
 }
 
 func (s *ShardScheduler) Stop() {
-	close(s.trigger)
+	close(s.actions)
 }
 
 func (s *ShardScheduler) runLoop() {
 	for {
-		_, ok := <-s.trigger
+		holder, ok := <-s.actions
 		if !ok {
 			break
 		}
-		err := s.maybeHandleRemoteBatch()
-		if err != nil {
-			// TODO best way to log stuff?
-			log.Println(err)
-			break
-		}
+		holder.errChan <- holder.action()
 	}
 }
 
 func (s *ShardScheduler) CheckForRemoteBatch() {
-	s.trigger <- true
+	s.ScheduleAction(s.maybeHandleRemoteBatch)
+}
+
+func (s *ShardScheduler) ScheduleAction(action Action) chan error {
+	ch := make(chan error, 1)
+	s.actions <- &actionHolder{
+		action:  action,
+		errChan: ch,
+	}
+	return ch
 }
 
 func (s *ShardScheduler) maybeHandleRemoteBatch() error {
+	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
 	batch := storage.NewWriteBatch(s.shardID)
 	err := s.mover.HandleReceivedRows(s.shardID, batch)
 	if err != nil {

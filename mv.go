@@ -21,9 +21,9 @@ type MaterializedView struct {
 func NewMaterializedView(mvName string, query string, mvTableID uint64, schema *Schema,
 	is infoschema.InfoSchema, storage storage.Storage, planner planner2.Planner,
 	remoteConsumers map[uint64]*remoteConsumer, tableIDGenerator TableIDGenerator,
-	queryName string, store storage.Storage) (*MaterializedView, error) {
+	queryName string, store storage.Storage, sharder common.Sharder) (*MaterializedView, error) {
 
-	dag, err := BuildPushQueryExecution(schema, is, query, planner, remoteConsumers, tableIDGenerator, queryName, store)
+	dag, err := BuildPushQueryExecution(schema, is, query, planner, remoteConsumers, tableIDGenerator, queryName, store, sharder)
 
 	if err != nil {
 		return nil, err

@@ -38,12 +38,6 @@ func (p *PushSelect) ReCalcSchemaFromChildren() {
 	}
 }
 
-func (p *PushSelect) ReCalcSchemaFromSources(colNames []string, colTypes []common.ColumnType, keyCols []int) {
-	p.keyCols = keyCols
-	p.colNames = colNames
-	p.colTypes = colTypes
-}
-
 func (p *PushSelect) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
 	result := p.rowsFactory.NewRows(rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {

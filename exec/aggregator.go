@@ -5,12 +5,14 @@ import (
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
+	"log"
 )
 
 type Aggregator struct {
 	pushExecutorBase
-	aggFuncs []aggfuncs.AggregateFunction
-	Table    table.Table
+	aggFuncs    []aggfuncs.AggregateFunction
+	Table       table.Table
+	groupByCols []int
 }
 
 type AggregateFunctionInfo struct {
@@ -19,7 +21,8 @@ type AggregateFunctionInfo struct {
 	ArgExpr  *common.Expression
 }
 
-func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTable table.Table) (*Aggregator, error) {
+func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTable table.Table,
+	groupByCols []int) (*Aggregator, error) {
 	rf, err := common.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err
@@ -38,6 +41,7 @@ func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int
 		pushExecutorBase: base,
 		aggFuncs:         aggFuncs,
 		Table:            aggTable,
+		groupByCols:      groupByCols,
 	}, nil
 }
 
@@ -90,6 +94,7 @@ func (a *Aggregator) HandleRows(rows *common.PushRows, ctx *ExecutionContext) er
 		}
 	}
 
+	log.Printf("Aggregator writing %d rows into agg state", resultRows.RowCount())
 	for i := 0; i < resultRows.RowCount(); i++ {
 		row := resultRows.GetRow(i)
 		err := a.Table.Upsert(&row, ctx.WriteBatch)
@@ -98,33 +103,34 @@ func (a *Aggregator) HandleRows(rows *common.PushRows, ctx *ExecutionContext) er
 		}
 	}
 
+	//FIXME - we don't output all result rows, only ones that have changed
 	return a.parent.HandleRows(resultRows, ctx)
 }
 
 // The cols for the output of an aggregation are:
 // one col holding each aggregate result in the order they appear in the select
 // one col for each original column from the input in the same order as the input
-
 // There is one agg function for each of the columns above, for aggregate columns,
 // it's the actual aggregate function, otherwise it's a "firstrow" function
-
 func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext, aggStates map[string]*aggfuncs.AggState) error {
 
+	// TODO this seems unnecessary - we should just lookup the row in storage using the
+	// keyBytes
 	groupByVals := make([]interface{}, len(a.keyCols))
-	for i, pkCol := range a.keyCols {
-		colType := a.colTypes[pkCol]
+	for i, groupByCol := range a.groupByCols {
+		colType := a.GetChildren()[0].ColTypes()[groupByCol]
 		var val interface{}
-		null := row.IsNull(pkCol)
+		null := row.IsNull(groupByCol)
 		if !null {
 			switch colType {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-				val = row.GetInt64(pkCol)
+				val = row.GetInt64(groupByCol)
 			case common.TypeDecimal:
 				// TODO
 			case common.TypeDouble:
-				val = row.GetFloat64(pkCol)
+				val = row.GetFloat64(groupByCol)
 			case common.TypeVarchar:
-				val = row.GetString(pkCol)
+				val = row.GetString(groupByCol)
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}
@@ -132,16 +138,19 @@ func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext
 		}
 	}
 
-	// TODO faster encoding that doesn't require creating of []interface{} ??
-	var keyBytes []byte
-	keyBytes, err := common.EncodeKey(groupByVals, a.colTypes, keyBytes)
+	keyBytes := make([]byte, 0, 8)
+	keyBytes, err := common.EncodeCols(row, a.groupByCols, a.GetChildren()[0].ColTypes(), keyBytes)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	aggState, ok := aggStates[common.ByteSliceToStringZeroCopy(keyBytes)]
 	if !ok {
+
+		// TODO Seems inefficient to have to encode the key again just to lookup the row -
+		// we should lookup direct in storage - not use table
 		currRow, err := a.Table.LookupInPk(groupByVals, ctx.WriteBatch.ShardID)
+
 		if err != nil {
 			return err
 		}

@@ -16,14 +16,14 @@ import (
 
 func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query string,
 	planner planner2.Planner, remoteConsumers map[uint64]*remoteConsumer, tableIDGenerator TableIDGenerator,
-	queryName string, store storage.Storage) (queryDAG exec.PushExecutor, err error) {
+	queryName string, store storage.Storage, sharder common.Sharder) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
 	physicalPlan, err := planner.QueryToPlan(query, is)
 	if err != nil {
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := buildPushDAG(physicalPlan, tableIDGenerator, 0, queryName, store)
+	dag, err := buildPushDAG(physicalPlan, tableIDGenerator, 0, queryName, store, sharder)
 	if err != nil {
 		return nil, err
 	}
@@ -32,13 +32,11 @@ func BuildPushQueryExecution(schema *Schema, is infoschema.InfoSchema, query str
 	if err != nil {
 		return nil, err
 	}
-	// Split the dag at any aggregations
-	splitAtAggregations(dag)
 	return dag, nil
 }
 
 func buildPushDAG(plan core.PhysicalPlan, tableIDGenerator TableIDGenerator, aggSequence int,
-	queryName string, store storage.Storage) (exec.PushExecutor, error) {
+	queryName string, store storage.Storage, sharder common.Sharder) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -120,16 +118,16 @@ func buildPushDAG(plan core.PhysicalPlan, tableIDGenerator TableIDGenerator, agg
 		}
 
 		nonFirstRowFuncs := len(aggFuncs) - firstRowFuncs
-		var groupByExprs []*common.Expression
+
 		pkCols := make([]int, len(physAgg.GroupByItems))
+		groupByCols := make([]int, len(physAgg.GroupByItems))
 		for i, expr := range physAgg.GroupByItems {
 			col, ok := expr.(*expression.Column)
 			if !ok {
 				return nil, errors.New("group by expression not a column")
 			}
-			ind := col.Index + nonFirstRowFuncs
-			pkCols[i] = ind
-			groupByExprs = append(groupByExprs, common.NewExpression(expr))
+			groupByCols[i] = col.Index
+			pkCols[i] = col.Index + nonFirstRowFuncs
 		}
 
 		tableID, err := tableIDGenerator()
@@ -156,11 +154,11 @@ func buildPushDAG(plan core.PhysicalPlan, tableIDGenerator TableIDGenerator, agg
 
 		// We build two executors here - a partitioner and an aggregator
 		// Then we'll split those later into multiple DAGs
-		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, pkCols, tableID)
+		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, pkCols, tableID, groupByCols, sharder)
 		if err != nil {
 			return nil, err
 		}
-		aggregator, err := exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, aggTable)
+		aggregator, err := exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, aggTable, groupByCols)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +187,7 @@ func buildPushDAG(plan core.PhysicalPlan, tableIDGenerator TableIDGenerator, agg
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := buildPushDAG(child, tableIDGenerator, aggSequence, queryName, store)
+		childExecutor, err := buildPushDAG(child, tableIDGenerator, aggSequence, queryName, store, sharder)
 		if err != nil {
 			return nil, err
 		}
@@ -236,13 +234,16 @@ func updateSchemas(executor exec.PushExecutor, schema *Schema, remoteConsumers m
 		tableScan.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
 		aggregator := executor.(*exec.Aggregator)
-		rf, err := common.NewRowsFactory(aggregator.ColTypes())
+		// The col types for decoding from a remote receive before passing to the aggregator are
+		// from the agg partitioner not the aggregator
+		colTypes := aggregator.GetChildren()[0].ColTypes()
+		rf, err := common.NewRowsFactory(colTypes)
 		if err != nil {
 			return err
 		}
 		rc := &remoteConsumer{
 			rowsFactory: rf,
-			colTypes:    aggregator.ColTypes(),
+			colTypes:    colTypes,
 			rowsHandler: aggregator,
 		}
 		remoteConsumers[aggregator.Table.Info().ID] = rc
@@ -250,30 +251,4 @@ func updateSchemas(executor exec.PushExecutor, schema *Schema, remoteConsumers m
 		executor.ReCalcSchemaFromChildren()
 	}
 	return nil
-}
-
-// TODO do we need the return value here?
-// Traverse the dag and wherever we find an [aggregate partitioner, aggregate] split the dag
-// at that point, and return all the dags that have been split at the partitioner
-func splitAtAggregations(executor exec.PushExecutor) []exec.PushExecutor {
-	var dags []exec.PushExecutor
-	for _, child := range executor.GetChildren() {
-		dags = append(dags, splitAtAggregations(child)...)
-	}
-	_, ok := executor.(*exec.Aggregator)
-	if ok {
-		execChildren := executor.GetChildren()
-		if len(execChildren) != 1 {
-			panic("expected one child")
-		}
-		aggPartitioner := executor.GetChildren()[0]
-		if _, ok := aggPartitioner.(*exec.AggPartitioner); !ok {
-			panic("expected an aggregate partitioner")
-		}
-		// break the link between partitioner and aggregate
-		aggPartitioner.SetParent(nil)
-		executor.ClearChildren()
-		dags = append(dags, aggPartitioner)
-	}
-	return dags
 }

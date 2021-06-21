@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	"github.com/stretchr/testify/require"
+	"log"
 	"testing"
 	"time"
 )
@@ -28,13 +29,13 @@ func TestCreateMaterializedView(t *testing.T) {
 	rows := rf.NewRows(10)
 
 	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	appendRow(t, rows, colTypes, 2, "london", 28.1)
-	appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	//appendRow(t, rows, colTypes, 2, "london", 28.1)
+	//appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 
 	source, ok := prana.getSource("test", "sensor_readings")
 	require.True(t, ok)
 
-	err = source.IngestRows(rows, 1)
+	err = source.IngestRows(rows)
 	require.Nil(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -44,14 +45,15 @@ func TestCreateMaterializedView(t *testing.T) {
 
 	table := mv.Table
 
-	expectedColTypes := []common.ColumnType{common.TypeBigInt, common.TypeVarchar}
+	expectedColTypes := []common.ColumnType{common.TypeBigInt, common.TypeDouble}
 	expectedRf, err := common.NewRowsFactory(expectedColTypes)
 	require.Nil(t, err)
 	expectedRows := expectedRf.NewRows(10)
-	appendRow(t, expectedRows, expectedColTypes, 1, "wincanton")
+	appendRow(t, expectedRows, expectedColTypes, 1, 25.5)
 	expectedRow := expectedRows.GetRow(0)
 
-	row, err := table.LookupInPk([]interface{}{int64(1)}, 1)
+	log.Println("Looking up key!!")
+	row, err := table.LookupInPk([]interface{}{int64(1)}, 9)
 	require.Nil(t, err)
 	require.NotNil(t, row)
 	RowsEqual(t, &expectedRow, row, expectedColTypes)

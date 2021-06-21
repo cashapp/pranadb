@@ -1,9 +1,12 @@
 package storage
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"github.com/google/btree"
 	"github.com/squareup/pranadb/common"
+	"log"
 	"sync"
 )
 
@@ -24,27 +27,37 @@ func (f *FakeStorage) SetRemoteWriteHandler(handler RemoteWriteHandler) {
 func NewFakeStorage(nodeID int, numShards int) Storage {
 	btree := btree.New(3)
 	return &FakeStorage{
-		btree:       btree,
-		clusterInfo: createClusterInfo(nodeID, numShards),
+		btree:         btree,
+		clusterInfo:   createClusterInfo(nodeID, numShards),
+		tableSequence: uint64(100), // First 100 reserved for system tables
 	}
 }
 
 func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	log.Printf("Write batch for shard %d, local leader %t", batch.ShardID, localLeader)
+	log.Printf("Writing batch, puts %d, deletes %d", len(batch.puts.TheMap), len(batch.deletes.TheMap))
 	for k, v := range batch.puts.TheMap {
+		kBytes := common.StringToByteSliceZeroCopy(k)
+		log.Printf("Putting key %v value %v", kBytes, v)
 		f.putInternal(&kvWrapper{
-			key:   common.StringToByteSliceZeroCopy(k),
+			key:   kBytes,
 			value: v,
 		})
 	}
 	for k, _ := range batch.deletes.TheMap {
-		f.deleteInternal(&kvWrapper{
-			key: common.StringToByteSliceZeroCopy(k),
+		kBytes := common.StringToByteSliceZeroCopy(k)
+		log.Printf("Deleting key %v", kBytes)
+		err := f.deleteInternal(&kvWrapper{
+			key: kBytes,
 		})
+		if err != nil {
+			return err
+		}
 	}
 	if !localLeader && f.remoteWriteHandler != nil {
-		f.remoteWriteHandler.RemoteWriteOccurred(batch.ShardID)
+		go f.remoteWriteHandler.RemoteWriteOccurred(batch.ShardID)
 	}
 	return nil
 }
@@ -67,30 +80,31 @@ func (f *FakeStorage) Get(shardID uint64, key []byte, localLeader bool) ([]byte,
 	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
-// TODO should probably return an iterator
-func (f *FakeStorage) Scan(shardID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeStorage) Scan(shardID uint64, startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}
+	if whileKeyPrefix == nil {
+		panic("whileKeyPrefix cannot be nil")
+	}
+	whilePrefixLen := len(whileKeyPrefix)
 	var result []KVPair
 	count := 0
 	resFunc := func(i btree.Item) bool {
 		wrapper := i.(*kvWrapper)
+		if bytes.Compare(wrapper.key[0:whilePrefixLen], whileKeyPrefix) > 0 {
+			return false
+		}
 		result = append(result, KVPair{
-			// First 8 bytes is the partition key, we remove this
-			Key:   wrapper.key[8:],
+			Key:   wrapper.key,
 			Value: wrapper.value,
 		})
 		count++
 		return limit == -1 || count < limit
 	}
-	if endKeyPrefix != nil {
-		f.btree.AscendRange(&kvWrapper{key: startKeyPrefix}, &kvWrapper{key: endKeyPrefix}, resFunc)
-	} else {
-		f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
-	}
+	f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
 	return result, nil
 }
 
@@ -125,44 +139,19 @@ func (k kvWrapper) Less(than btree.Item) bool {
 	thisKey := k.key
 	otherKey := otherKVwrapper.key
 
-	return compareBytes(thisKey, otherKey) < 0
-}
-
-func compareBytes(b1 []byte, b2 []byte) int {
-	lb1 := len(b1)
-	lb2 := len(b2)
-	var min int
-	if lb1 < lb2 {
-		min = lb1
-	} else {
-		min = lb2
-	}
-	for i := 0; i < min; i++ {
-		byte1 := b1[i]
-		byte2 := b2[i]
-		if byte1 == byte2 {
-			continue
-		} else if byte1 > byte2 {
-			return 1
-		} else {
-			return -1
-		}
-	}
-	if lb1 == lb2 {
-		return 0
-	} else if lb1 > lb2 {
-		return 1
-	} else {
-		return -1
-	}
+	return bytes.Compare(thisKey, otherKey) < 0
 }
 
 func (f *FakeStorage) putInternal(item *kvWrapper) {
 	f.btree.ReplaceOrInsert(item)
 }
 
-func (f *FakeStorage) deleteInternal(item *kvWrapper) {
-	f.btree.ReplaceOrInsert(item)
+func (f *FakeStorage) deleteInternal(item *kvWrapper) error {
+	prevItem := f.btree.Delete(item)
+	if prevItem == nil {
+		return errors.New("didn't find item to delete")
+	}
+	return nil
 }
 
 func (f *FakeStorage) getInternal(key *kvWrapper) []byte {

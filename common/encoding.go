@@ -56,10 +56,10 @@ func EncodeCol(row *PushRow, colIndex int, colType ColumnType, buffer []byte) ([
 	return buffer, nil
 }
 
-func EncodeKey(key Key, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+func EncodeKey(key Key, keyColTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for i, val := range key {
 		var err error
-		buffer, err = EncodeElement(val, colTypes[i], buffer)
+		buffer, err = EncodeElement(val, keyColTypes[i], buffer)
 		if err != nil {
 			return nil, err
 		}

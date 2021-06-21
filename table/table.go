@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
+	"log"
 )
 
 type Table interface {
@@ -24,6 +25,7 @@ type table struct {
 	storage     storage.Storage
 	info        *common.TableInfo
 	rowsFactory *common.RowsFactory
+	keyColTypes []common.ColumnType
 }
 
 func NewTable(storage storage.Storage, info *common.TableInfo) (Table, error) {
@@ -31,7 +33,15 @@ func NewTable(storage storage.Storage, info *common.TableInfo) (Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &table{storage: storage, info: info, rowsFactory: rowsFactory}, nil
+	keyColTypes := make([]common.ColumnType, len(info.PrimaryKeyCols))
+	for i, pkCol := range info.PrimaryKeyCols {
+		keyColTypes[i] = info.ColumnTypes[pkCol]
+	}
+	return &table{
+		storage:     storage,
+		info:        info,
+		rowsFactory: rowsFactory,
+		keyColTypes: keyColTypes}, nil
 }
 
 func (t *table) Info() *common.TableInfo {
@@ -50,7 +60,7 @@ func (t *table) Upsert(row *common.PushRow, writeBatch *storage.WriteBatch) erro
 	}
 	writeBatch.AddPut(keyBuff, valueBuff)
 
-	fmt.Sprintf("upserting k:%s v:%s", string(keyBuff), string(valueBuff))
+	log.Printf("upserting k:%v v:%v", keyBuff, valueBuff)
 
 	return nil
 }
@@ -69,6 +79,8 @@ func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.PushRow, err
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("Looking up key %v in table %d", buffer, t.info.ID)
 	buffRes, err := t.storage.Get(shardID, buffer, true)
 	if err != nil {
 		return nil, err
@@ -117,7 +129,7 @@ func (t *table) encodeKeyFromRow(row *common.PushRow, shardID uint64) ([]byte, e
 
 func (t *table) encodeKey(key common.Key, shardID uint64) ([]byte, error) {
 	keyBuff := t.encodeKeyPrefix(shardID)
-	keyBuff, err := common.EncodeKey(key, t.info.ColumnTypes, keyBuff)
+	keyBuff, err := common.EncodeKey(key, t.keyColTypes, keyBuff)
 	if err != nil {
 		return nil, err
 	}

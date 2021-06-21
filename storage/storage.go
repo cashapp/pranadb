@@ -53,7 +53,7 @@ type Storage interface {
 	Get(shardID uint64, key []byte, localLeader bool) ([]byte, error)
 
 	// Scan can read from follower
-	Scan(shardID uint64, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
+	Scan(shardID uint64, startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error)
 
 	AddShard(shardID uint64, callback ShardCallback) error
 

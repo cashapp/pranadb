@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	table2 "github.com/squareup/pranadb/table"
+	"log"
 )
 
 // TableExecutor updates the changes into the associated table - used to persist state
@@ -48,6 +49,7 @@ func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
 }
 
 func (t *TableExecutor) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+	log.Printf("Table executor writing %d rows into table state", rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		t.table.Upsert(&row, ctx.WriteBatch)
@@ -63,4 +65,8 @@ func (t *TableExecutor) ForwardToConsumingNodes(rows *common.PushRows, ctx *Exec
 		}
 	}
 	return nil
+}
+
+func (t *TableExecutor) RowsFactory() *common.RowsFactory {
+	return t.rowsFactory
 }
