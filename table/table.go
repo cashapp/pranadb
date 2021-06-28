@@ -7,18 +7,19 @@ import (
 	"log"
 )
 
+// TODO get rid of this and add encoding methods to common encoding
 type Table interface {
 	Info() *common.TableInfo
 
-	Upsert(row *common.PushRow, writeBatch *storage.WriteBatch) error
+	Upsert(row *common.Row, writeBatch *storage.WriteBatch) error
 
-	Delete(row *common.PushRow, writeBatch *storage.WriteBatch) error
+	Delete(row *common.Row, writeBatch *storage.WriteBatch) error
 
-	LookupInPk(key common.Key, shardID uint64) (*common.PushRow, error)
+	LookupInPk(key common.Key, shardID uint64) (*common.Row, error)
 
-	TableScan(startKey *common.Key, endKey *common.Key, limit int) ([]*common.PushRow, error)
+	LocalNodeTableScan(limit int) (*common.Rows, error)
 
-	IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int)
+	IndexScan(indexName string, startKey *common.Key, whileKey *common.Key, limit int, shardID uint64) (*common.Rows, error)
 }
 
 type table struct {
@@ -48,7 +49,7 @@ func (t *table) Info() *common.TableInfo {
 	return t.info
 }
 
-func (t *table) Upsert(row *common.PushRow, writeBatch *storage.WriteBatch) error {
+func (t *table) Upsert(row *common.Row, writeBatch *storage.WriteBatch) error {
 	keyBuff, err := t.encodeKeyFromRow(row, writeBatch.ShardID)
 	if err != nil {
 		return err
@@ -65,7 +66,7 @@ func (t *table) Upsert(row *common.PushRow, writeBatch *storage.WriteBatch) erro
 	return nil
 }
 
-func (t *table) Delete(row *common.PushRow, writeBatch *storage.WriteBatch) error {
+func (t *table) Delete(row *common.Row, writeBatch *storage.WriteBatch) error {
 	keyBuff, err := t.encodeKeyFromRow(row, writeBatch.ShardID)
 	if err != nil {
 		return err
@@ -74,7 +75,7 @@ func (t *table) Delete(row *common.PushRow, writeBatch *storage.WriteBatch) erro
 	return nil
 }
 
-func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.PushRow, error) {
+func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.Row, error) {
 	buffer, err := t.encodeKey(key, shardID)
 	if err != nil {
 		return nil, err
@@ -102,11 +103,27 @@ func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.PushRow, err
 	return &row, nil
 }
 
-func (t *table) TableScan(startKey *common.Key, endKey *common.Key, limit int) ([]*common.PushRow, error) {
-	panic("implement me")
+// LocalNodeTableScan returns all rows for all shards in the local node
+func (t *table) LocalNodeTableScan(limit int) (*common.Rows, error) {
+
+	prefix := make([]byte, 0, 8)
+	prefix = common.AppendUint64ToBufferLittleEndian(prefix, t.info.ID)
+
+	kvPairs, err := t.storage.Scan(prefix, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	rows := t.rowsFactory.NewRows(len(kvPairs))
+	for _, kvPair := range kvPairs {
+		err := common.DecodeRow(kvPair.Value, t.info.ColumnTypes, rows)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return rows, nil
 }
 
-func (t *table) IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int) {
+func (t *table) IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int, shardID uint64) (*common.Rows, error) {
 	panic("implement me")
 }
 
@@ -118,7 +135,7 @@ func (t *table) encodeKeyPrefix(shardID uint64) []byte {
 	return keyBuff
 }
 
-func (t *table) encodeKeyFromRow(row *common.PushRow, shardID uint64) ([]byte, error) {
+func (t *table) encodeKeyFromRow(row *common.Row, shardID uint64) ([]byte, error) {
 	keyBuff := t.encodeKeyPrefix(shardID)
 	keyBuff, err := common.EncodeCols(row, t.info.PrimaryKeyCols, t.info.ColumnTypes, keyBuff)
 	if err != nil {

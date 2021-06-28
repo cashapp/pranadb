@@ -90,7 +90,7 @@ func (s *Source) AddConsumingExecutor(node exec.PushExecutor) {
 	s.TableExecutor.AddConsumingNode(node)
 }
 
-func (s *Source) IngestRows(rows *common.PushRows) error {
+func (s *Source) IngestRows(rows *common.Rows) error {
 	// We choose a local shard to handle this batch - rows are written into forwarder queue
 	// and forwarded to dest shards
 	shardIndex := s.nextLocalShardIndex
@@ -107,7 +107,7 @@ func (s *Source) IngestRows(rows *common.PushRows) error {
 	return s.mover.pollForForwards(shardID)
 }
 
-func (s *Source) doIngest(rows *common.PushRows, shardID uint64) error {
+func (s *Source) doIngest(rows *common.Rows, shardID uint64) error {
 
 	log.Printf("Ingesting rows on shard %d", shardID)
 

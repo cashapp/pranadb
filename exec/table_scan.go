@@ -10,11 +10,13 @@ type TableScan struct {
 }
 
 func NewTableScan(colTypes []common.ColumnType, tableName string) (*TableScan, error) {
-	base := pushExecutorBase{
-		colTypes: colTypes,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colTypes: colTypes,
+		},
 	}
 	return &TableScan{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		TableName:        tableName,
 	}, nil
 }
@@ -29,6 +31,6 @@ func (t *TableScan) ReCalcSchemaFromChildren() {
 	// NOOP
 }
 
-func (t *TableScan) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (t *TableScan) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	return t.parent.HandleRows(rows, ctx)
 }

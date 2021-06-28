@@ -32,14 +32,22 @@ type Mover struct {
 	sharder common.Sharder
 }
 
-func (m *Mover) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.PushRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error {
+func (m *Mover) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error {
 	log.Printf("Queueing row for remote send from shard %d to shard %d for entityid %d key is %v", localShardID, remoteShardID, entityID, key)
 	sequence, err := m.lastForwardSequence(localShardID)
 	if err != nil {
 		return err
 	}
 	sequence++
-	queueKeyBytes := encodeLocalKey(localShardID, remoteShardID, entityID, sequence)
+
+	queueKeyBytes := make([]byte, 0, 40)
+
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, ForwarderTableID)
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, localShardID)
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, remoteShardID)
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, sequence)
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, entityID)
+
 	valueBuff := make([]byte, 0, 32)
 	valueBuff, err = common.EncodeRow(row, colTypes, valueBuff)
 	if err != nil {
@@ -57,11 +65,11 @@ func (m *Mover) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common
 func (m *Mover) pollForForwards(localShardID uint64) error {
 	log.Printf("Polling for forwards on shard %d", localShardID)
 	keyStartPrefix := make([]byte, 0, 16)
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
+	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 
 	// TODO make limit configurable
-	kvPairs, err := m.store.Scan(localShardID, keyStartPrefix, keyStartPrefix, 100)
+	kvPairs, err := m.store.Scan(keyStartPrefix, keyStartPrefix, 100)
 	if err != nil {
 		return err
 	}
@@ -92,12 +100,9 @@ func (m *Mover) pollForForwards(localShardID uint64) error {
 		}
 		log.Printf("remote shard id is %d", remoteShardID)
 
-		// Required key is
-		// remote_shard_id|receiver_table_id|sending_shard_id|seq_number|entity_id
-
 		remoteKey := make([]byte, 0, 40)
-		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, remoteShardID)
 		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, ReceiverTableID)
+		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, remoteShardID)
 		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, localShardID)
 
 		// seq|entity_id are the last 16 bytes
@@ -129,13 +134,12 @@ func (m *Mover) pollForForwards(localShardID uint64) error {
 func (m *Mover) HandleReceivedRows(receivingShardID uint64, batch *storage.WriteBatch) error {
 	log.Printf("In HandleReceivedRows for shard id %d", receivingShardID)
 	keyStartPrefix := make([]byte, 0, 16)
-	// key is:
-	// remote_shard_id|receiver_table_id|sending_shard_id|seq_number|entity_id
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, receivingShardID)
+
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ReceiverTableID)
+	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, receivingShardID)
 
 	// TODO make limit configurable
-	kvPairs, err := m.store.Scan(receivingShardID, keyStartPrefix, keyStartPrefix, 100)
+	kvPairs, err := m.store.Scan(keyStartPrefix, keyStartPrefix, 100)
 	log.Printf("Found %d received rows", len(kvPairs))
 	if err != nil {
 		return err
@@ -189,18 +193,6 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, batch *storage.Write
 	return nil
 }
 
-func encodeLocalKey(localShardID uint64, remoteShardID uint64, entityID uint64, sequence uint64) []byte {
-	keyBuff := make([]byte, 0, 40)
-
-	// Local key structure is:
-	// shard_id|forwarder_table_id|remote_shard_id|sequence_number|entity_id
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, localShardID)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, ForwarderTableID)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, remoteShardID)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, sequence)
-	return common.AppendUint64ToBufferLittleEndian(keyBuff, entityID)
-}
-
 // TODO consider caching sequences in memory to avoid reading from storage each time
 func (m *Mover) lastForwardSequence(localShardID uint64) (uint64, error) {
 	seqKey := m.genForwardSequenceKey(localShardID)
@@ -242,13 +234,13 @@ func (m *Mover) updateLastReceivingSequence(receivingShardID uint64, sendingShar
 
 func (m *Mover) genForwardSequenceKey(localShardID uint64) []byte {
 	seqKey := make([]byte, 0, 24)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
-	return common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
+	return common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
 }
 
 func (m *Mover) genReceivingSequenceKey(receivingShardID uint64, sendingShardID uint64) []byte {
 	seqKey := make([]byte, 0, 24)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, receivingShardID)
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ReceiverSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, receivingShardID)
 	return common.AppendUint64ToBufferLittleEndian(seqKey, sendingShardID)
 }

@@ -19,21 +19,23 @@ func NewAggPartitioner(colNames []string, colTypes []common.ColumnType, keyCols 
 	if err != nil {
 		return nil, err
 	}
-	base := pushExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		keyCols:     keyCols,
-		rowsFactory: rf,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colNames:    colNames,
+			colTypes:    colTypes,
+			keyCols:     keyCols,
+			rowsFactory: rf,
+		},
 	}
 	return &AggPartitioner{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		tableID:          tableID,
 		groupByCols:      groupByCols,
 		sharder:          sharder,
 	}, nil
 }
 
-func (a *AggPartitioner) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (a *AggPartitioner) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 
 	for i := 0; i < rows.RowCount(); i++ {
 

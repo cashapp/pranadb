@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-func EncodeCols(row *PushRow, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for _, colIndex := range colIndexes {
 		colType := colTypes[colIndex]
 		var err error
@@ -19,7 +19,7 @@ func EncodeCols(row *PushRow, colIndexes []int, colTypes []ColumnType, buffer []
 	return buffer, nil
 }
 
-func EncodeRow(row *PushRow, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+func EncodeRow(row *Row, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for colIndex, colType := range colTypes {
 		var err error
 		buffer, err = EncodeCol(row, colIndex, colType, buffer)
@@ -30,13 +30,13 @@ func EncodeRow(row *PushRow, colTypes []ColumnType, buffer []byte) ([]byte, erro
 	return buffer, nil
 }
 
-func EncodeCol(row *PushRow, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
+func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
 	isNull := row.IsNull(colIndex)
 	if isNull {
 		buffer = append(buffer, 0)
 	} else {
 		buffer = append(buffer, 1)
-		switch colType {
+		switch colType.TypeNumber {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			// We store as unsigned so convert signed to unsigned
 			valInt64 := row.GetInt64(colIndex)
@@ -91,7 +91,7 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 		data = append(data, 0)
 	} else {
 		data = append(data, 1)
-		switch colType {
+		switch colType.TypeNumber {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			valInt64 := value.(int64)
 			data = EncodeInt64(valInt64, data)
@@ -110,7 +110,7 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 	return data, nil
 }
 
-func DecodeRow(buffer []byte, colTypes []ColumnType, rows *PushRows) error {
+func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 	offset := 0
 	for colIndex, colType := range colTypes {
 		if buffer[offset] == 0 {
@@ -118,7 +118,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *PushRows) error {
 			rows.AppendNullToColumn(colIndex)
 		} else {
 			offset++
-			switch colType {
+			switch colType.TypeNumber {
 			case TypeTinyInt, TypeInt, TypeBigInt:
 				var val int64
 				val, offset = decodeInt64(buffer, offset)

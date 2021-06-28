@@ -15,13 +15,15 @@ func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates [
 	if err != nil {
 		return nil, err
 	}
-	base := pushExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colNames:    colNames,
+			colTypes:    colTypes,
+			rowsFactory: rf,
+		},
 	}
 	return &PushSelect{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		predicates:       predicates,
 	}, nil
 }
@@ -38,7 +40,7 @@ func (p *PushSelect) ReCalcSchemaFromChildren() {
 	}
 }
 
-func (p *PushSelect) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (p *PushSelect) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	result := p.rowsFactory.NewRows(rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)

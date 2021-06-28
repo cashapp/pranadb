@@ -89,13 +89,13 @@ func NewPranaInfoSchema(schemaInfos []*common.SchemaInfo) (infoschema.InfoSchema
 			}
 
 			pkIndex := &model.IndexInfo{
-				ID:        0,
+				ID:        1001,
 				Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.TableName)),
 				Table:     tableName,
 				Columns:   pkCols,
 				State:     model.StatePublic,
 				Comment:   "",
-				Tp:        model.IndexTypeHash,
+				Tp:        model.IndexTypeBtree,
 				Unique:    true,
 				Primary:   true,
 				Invisible: false,
@@ -371,6 +371,7 @@ func newTiDBIndex(indexInfo *model.IndexInfo) *tiDBIndex {
 }
 
 type fakeKVClient struct {
+	pullQuery bool
 }
 
 func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{}, sessionMemTracker *memory.Tracker, enabledRateLimitAction bool) kv.Response {
@@ -378,10 +379,11 @@ func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{
 }
 
 func (f fakeKVClient) IsRequestTypeSupported(reqType, subType int64) bool {
-	// We're not using TiKV so we're saying no you can't push anything to the KV store
-	// However we might want to change this as we do actually want to compute near the data
-	// and the planner can help us here
-	return false
+	// By returning true we allow the optimiser to push select and aggregations to remote nodes
+	// which is what we want for pull queries
+	// But for push queries we don't want partial aggregations or pushing select to table scans
+	// so we return false
+	return f.pullQuery
 }
 
 // This is needed for the TiDB planner
@@ -453,10 +455,11 @@ func (f fakeStorage) GetLockWaits() ([]*deadlock.WaitForEntry, error) {
 	panic("should not be called")
 }
 
-func NewSessionContext(is infoschema.InfoSchema) sessionctx.Context {
-	kvClient := fakeKVClient{}
+func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Context {
+	kvClient := fakeKVClient{pullQuery: pullQuery}
 	storage := fakeStorage{client: kvClient}
 	d := domain.NewDomain(storage, 0, 0, 0, nil)
+
 	ctx := sessCtx{
 		is:          is,
 		store:       storage,

@@ -7,7 +7,7 @@ import (
 )
 
 func ConvertPranaTypeToTiDBType(columnType ColumnType) (*types.FieldType, error) {
-	switch columnType {
+	switch columnType.TypeNumber {
 	case TypeTinyInt:
 		return types.NewFieldType(mysql.TypeTiny), nil
 	case TypeInt:
@@ -30,20 +30,22 @@ func ConvertPranaTypeToTiDBType(columnType ColumnType) (*types.FieldType, error)
 func ConvertTiDBTypeToPranaType(columnType *types.FieldType) (ColumnType, error) {
 	switch columnType.Tp {
 	case mysql.TypeTiny:
-		return TypeTinyInt, nil
+		return TinyIntColumnType, nil
 	case mysql.TypeLong:
-		return TypeInt, nil
+		return IntColumnType, nil
 	case mysql.TypeLonglong:
-		return TypeBigInt, nil
+		return BigIntColumnType, nil
 	case mysql.TypeDouble:
-		return TypeDouble, nil
+		return DoubleColumnType, nil
 	case mysql.TypeNewDecimal:
-		return TypeDecimal, nil
+		precision := columnType.Flen
+		scale := columnType.Decimal
+		return NewDecimalColumnType(byte(precision), byte(scale)), nil
 	case mysql.TypeVarchar:
-		return TypeVarchar, nil
+		return VarcharColumnType, nil
 	case mysql.TypeTimestamp:
-		return TypeTimestamp, nil
+		return TimestampColumnType, nil
 	default:
-		return -1, fmt.Errorf("unknown colum type %d", columnType.Tp)
+		return ColumnType{}, fmt.Errorf("unknown colum type %d", columnType.Tp)
 	}
 }

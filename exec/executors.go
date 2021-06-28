@@ -5,8 +5,16 @@ import (
 	"github.com/squareup/pranadb/storage"
 )
 
+type PullExecutor interface {
+	GetRows(limit int) (rows *common.Rows, err error)
+	SetParent(parent PullExecutor)
+	AddChild(parent PullExecutor)
+	GetParent() PullExecutor
+	GetChildren() []PullExecutor
+}
+
 type PushExecutor interface {
-	HandleRows(rows *common.PushRows, ctx *ExecutionContext) error
+	HandleRows(rows *common.Rows, ctx *ExecutionContext) error
 
 	SetParent(parent PushExecutor)
 	GetParent() PushExecutor
@@ -25,16 +33,27 @@ type ExecutionContext struct {
 }
 
 type Forwarder interface {
-	QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.PushRow, localShardID uint64, entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error
+	QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64,
+		entityID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error
 }
 
-type pushExecutorBase struct {
+type executorBase struct {
 	colNames    []string
 	colTypes    []common.ColumnType
 	keyCols     []int
 	rowsFactory *common.RowsFactory
-	parent      PushExecutor
-	children    []PushExecutor
+}
+
+type pullExecutorBase struct {
+	executorBase
+	parent   PullExecutor
+	children []PullExecutor
+}
+
+type pushExecutorBase struct {
+	executorBase
+	parent   PushExecutor
+	children []PushExecutor
 }
 
 func (p *pushExecutorBase) SetParent(parent PushExecutor) {
@@ -57,19 +76,42 @@ func (p *pushExecutorBase) ClearChildren() {
 	p.children = make([]PushExecutor, 0)
 }
 
-func (p *pushExecutorBase) KeyCols() []int {
+func (p *executorBase) KeyCols() []int {
 	return p.keyCols
 }
 
-func (p *pushExecutorBase) ColNames() []string {
+func (p *executorBase) ColNames() []string {
 	return p.colNames
 }
 
-func (p *pushExecutorBase) ColTypes() []common.ColumnType {
+func (p *executorBase) ColTypes() []common.ColumnType {
 	return p.colTypes
 }
 
-func ConnectExecutors(childExecutors []PushExecutor, parent PushExecutor) {
+func (p *pullExecutorBase) SetParent(parent PullExecutor) {
+	p.parent = parent
+}
+
+func (p *pullExecutorBase) AddChild(child PullExecutor) {
+	p.children = append(p.children, child)
+}
+
+func (p *pullExecutorBase) GetParent() PullExecutor {
+	return p.parent
+}
+
+func (p *pullExecutorBase) GetChildren() []PullExecutor {
+	return p.children
+}
+
+func ConnectPushExecutors(childExecutors []PushExecutor, parent PushExecutor) {
+	for _, child := range childExecutors {
+		child.SetParent(parent)
+		parent.AddChild(child)
+	}
+}
+
+func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {
 	for _, child := range childExecutors {
 		child.SetParent(parent)
 		parent.AddChild(child)

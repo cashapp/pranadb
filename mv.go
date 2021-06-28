@@ -51,7 +51,7 @@ func NewMaterializedView(mvName string, query string, mvTableID uint64, schema *
 		TableExecutor: tableNode,
 		store:         storage,
 	}
-	exec.ConnectExecutors([]exec.PushExecutor{dag}, tableNode)
+	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, tableNode)
 	return &mv, nil
 }
 

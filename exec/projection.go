@@ -16,13 +16,15 @@ func NewPushProjection(colNames []string, colTypes []common.ColumnType, projColu
 	if err != nil {
 		return nil, err
 	}
-	base := pushExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colNames:    colNames,
+			colTypes:    colTypes,
+			rowsFactory: rf,
+		},
 	}
 	return &PushProjection{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		projColumns:      projColumns,
 	}, nil
 }
@@ -62,13 +64,13 @@ func (p *PushProjection) ReCalcSchemaFromChildren() {
 	}
 }
 
-func (p *PushProjection) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	result := p.rowsFactory.NewRows(rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		for j, projColumn := range p.projColumns {
 			colType := p.colTypes[j]
-			switch colType {
+			switch colType.TypeNumber {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val, null, err := projColumn.EvalInt64(&row)
 				if err != nil {
@@ -121,7 +123,7 @@ func (p *PushProjection) HandleRows(rows *common.PushRows, ctx *ExecutionContext
 		for index, colNumber := range p.invisibleKeyColumns {
 			j := appendStart + index
 			colType := p.colTypes[j]
-			switch colType {
+			switch colType.TypeNumber {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val := row.GetInt64(colNumber)
 				result.AppendInt64ToColumn(j, val)

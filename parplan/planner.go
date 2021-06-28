@@ -8,12 +8,13 @@ import (
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/util/hint"
+	"math"
 )
 
 type Planner interface {
 	CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error)
 	CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error)
-	QueryToPlan(query string, is infoschema.InfoSchema) (core.PhysicalPlan, error)
+	QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error)
 }
 
 type planner struct {
@@ -68,7 +69,8 @@ func (p *planner) CreatePhysicalPlan(ctx context.Context, sessionContext session
 		}
 	} else {
 		// Use the older optimizer
-		physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, 0, logicalPlan)
+		flag := uint64(math.MaxUint64)
+		physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, flag, logicalPlan)
 		if err != nil {
 			return nil, err
 		}
@@ -76,13 +78,13 @@ func (p *planner) CreatePhysicalPlan(ctx context.Context, sessionContext session
 	}
 }
 
-func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema) (core.PhysicalPlan, error) {
+func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error) {
 	stmt, err := p.parser.Parse(query)
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
-	sessCtx := NewSessionContext(is)
+	sessCtx := NewSessionContext(is, pullQuery)
 	err = core.Preprocess(sessCtx, stmt)
 	if err != nil {
 		return nil, err
@@ -91,5 +93,5 @@ func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema) (core.Phys
 	if err != nil {
 		return nil, err
 	}
-	return p.CreatePhysicalPlan(ctx, sessCtx, logicalPlan, true, false)
+	return p.CreatePhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
 }

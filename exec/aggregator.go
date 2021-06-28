@@ -8,6 +8,7 @@ import (
 	"log"
 )
 
+// TODO combine with agg partitioner
 type Aggregator struct {
 	pushExecutorBase
 	aggFuncs    []aggfuncs.AggregateFunction
@@ -27,18 +28,20 @@ func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int
 	if err != nil {
 		return nil, err
 	}
-	base := pushExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		keyCols:     pkCols,
-		rowsFactory: rf,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colNames:    colNames,
+			colTypes:    colTypes,
+			keyCols:     pkCols,
+			rowsFactory: rf,
+		},
 	}
 	aggFuncs, err := createAggFunctions(aggFunctions, colTypes)
 	if err != nil {
 		return nil, err
 	}
 	return &Aggregator{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		aggFuncs:         aggFuncs,
 		Table:            aggTable,
 		groupByCols:      groupByCols,
@@ -59,7 +62,7 @@ func createAggFunctions(aggFunctionInfos []*AggregateFunctionInfo, colTypes []co
 	return aggFuncs, nil
 }
 
-func (a *Aggregator) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 
 	aggStates := make(map[string]*aggfuncs.AggState)
 
@@ -77,7 +80,7 @@ func (a *Aggregator) HandleRows(rows *common.PushRows, ctx *ExecutionContext) er
 			if aggState.IsNull(i) {
 				resultRows.AppendNullToColumn(i)
 			} else {
-				switch colType {
+				switch colType.TypeNumber {
 				case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 					resultRows.AppendInt64ToColumn(i, aggState.GetInt64(i))
 				case common.TypeDecimal:
@@ -112,7 +115,7 @@ func (a *Aggregator) HandleRows(rows *common.PushRows, ctx *ExecutionContext) er
 // one col for each original column from the input in the same order as the input
 // There is one agg function for each of the columns above, for aggregate columns,
 // it's the actual aggregate function, otherwise it's a "firstrow" function
-func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext, aggStates map[string]*aggfuncs.AggState) error {
+func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, aggStates map[string]*aggfuncs.AggState) error {
 
 	// TODO this seems unnecessary - we should just lookup the row in storage using the
 	// keyBytes
@@ -122,7 +125,7 @@ func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext
 		var val interface{}
 		null := row.IsNull(groupByCol)
 		if !null {
-			switch colType {
+			switch colType.TypeNumber {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val = row.GetInt64(groupByCol)
 			case common.TypeDecimal:
@@ -163,7 +166,7 @@ func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext
 				if currRow.IsNull(i) {
 					aggState.SetNull(i, true)
 				} else {
-					switch colType {
+					switch colType.TypeNumber {
 					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 						aggState.SetInt64(i, currRow.GetInt64(i))
 					case common.TypeDecimal:
@@ -182,7 +185,7 @@ func (a *Aggregator) calcAggregations(row *common.PushRow, ctx *ExecutionContext
 	}
 
 	for index, aggFunc := range a.aggFuncs {
-		switch aggFunc.ValueType() {
+		switch aggFunc.ValueType().TypeNumber {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			arg, null, err := aggFunc.ArgExpression().EvalInt64(row)
 			if err != nil {

@@ -1,9 +1,13 @@
 package common
 
-type ColumnType int
+type ColumnType struct {
+	TypeNumber   int
+	DecPrecision byte
+	DecLen       byte
+}
 
 const (
-	TypeTinyInt ColumnType = iota + 1
+	TypeTinyInt int = iota + 1
 	TypeInt
 	TypeBigInt
 	TypeDouble
@@ -11,6 +15,21 @@ const (
 	TypeVarchar
 	TypeTimestamp
 )
+
+var TinyIntColumnType = ColumnType{TypeNumber: TypeTinyInt}
+var IntColumnType = ColumnType{TypeNumber: TypeInt}
+var BigIntColumnType = ColumnType{TypeNumber: TypeInt}
+var DoubleColumnType = ColumnType{TypeNumber: TypeDouble}
+var VarcharColumnType = ColumnType{TypeNumber: TypeVarchar}
+var TimestampColumnType = ColumnType{TypeNumber: TypeTimestamp}
+
+func NewDecimalColumnType(precision byte, scale byte) ColumnType {
+	return ColumnType{
+		TypeNumber:   TypeDecimal,
+		DecPrecision: precision,
+		DecLen:       scale,
+	}
+}
 
 type SchemaInfo struct {
 	SchemaName  string

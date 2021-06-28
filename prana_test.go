@@ -1,20 +1,22 @@
 package pranadb
 
 import (
+	"github.com/squareup/pranadb/clstr"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	"github.com/stretchr/testify/require"
-	"log"
 	"testing"
 	"time"
 )
 
 func TestCreateMaterializedView(t *testing.T) {
-	store := storage.NewFakeStorage(1, 10)
-	prana, err := NewPranaNode(store, 1)
+	nodeID := 1
+	store := storage.NewFakeStorage(nodeID, 10)
+	clusterMgr := clstr.NewFakeClusterManager(nodeID, 10)
+	prana, err := NewPranaNode(store, clusterMgr, nodeID)
 	require.Nil(t, err)
 
-	colTypes := []common.ColumnType{common.TypeBigInt, common.TypeVarchar, common.TypeDouble}
+	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
 
 	err = prana.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
 	require.Nil(t, err)
@@ -45,26 +47,44 @@ func TestCreateMaterializedView(t *testing.T) {
 
 	table := mv.Table
 
-	expectedColTypes := []common.ColumnType{common.TypeBigInt, common.TypeDouble}
+	expectedColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType}
 	expectedRf, err := common.NewRowsFactory(expectedColTypes)
 	require.Nil(t, err)
 	expectedRows := expectedRf.NewRows(10)
 	appendRow(t, expectedRows, expectedColTypes, 1, 25.5)
 	expectedRow := expectedRows.GetRow(0)
 
-	log.Println("Looking up key!!")
 	row, err := table.LookupInPk([]interface{}{int64(1)}, 9)
 	require.Nil(t, err)
 	require.NotNil(t, row)
 	RowsEqual(t, &expectedRow, row, expectedColTypes)
 }
 
-func appendRow(t *testing.T, rows *common.PushRows, colTypes []common.ColumnType, colVals ...interface{}) {
+func TestExecutePullQuery(t *testing.T) {
+	nodeID := 1
+	store := storage.NewFakeStorage(nodeID, 10)
+	clusterMgr := clstr.NewFakeClusterManager(nodeID, 10)
+	prana, err := NewPranaNode(store, clusterMgr, nodeID)
+	require.Nil(t, err)
+
+	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
+
+	err = prana.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
+	require.Nil(t, err)
+
+	//query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
+	query := "select 1, res.* from (select sensor_id, location, temperature from test.sensor_readings union all select sensor_id +1, location, temperature from test.sensor_readings) res"
+	_, err = prana.ExecutePullQuery("test", query)
+	require.Nil(t, err)
+
+}
+
+func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {
 	require.Equal(t, len(colVals), len(colTypes))
 
 	for i, colType := range colTypes {
 		colVal := colVals[i]
-		switch colType {
+		switch colType.TypeNumber {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			rows.AppendInt64ToColumn(i, int64(colVal.(int)))
 		case common.TypeDouble:
@@ -75,10 +95,10 @@ func appendRow(t *testing.T, rows *common.PushRows, colTypes []common.ColumnType
 	}
 }
 
-func RowsEqual(t *testing.T, expected *common.PushRow, actual *common.PushRow, colTypes []common.ColumnType) {
+func RowsEqual(t *testing.T, expected *common.Row, actual *common.Row, colTypes []common.ColumnType) {
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
-		switch colType {
+		switch colType.TypeNumber {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			val1 := expected.GetInt64(colIndex)
 			val2 := actual.GetInt64(colIndex)

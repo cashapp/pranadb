@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/infoschema"
+	"github.com/squareup/pranadb/clstr"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/exec"
 	planner2 "github.com/squareup/pranadb/parplan"
@@ -12,10 +13,11 @@ import (
 	"sync"
 )
 
-func NewPranaNode(storage storage.Storage, nodeID int) (*PranaNode, error) {
+func NewPranaNode(storage storage.Storage, clusterMgr clstr.ClusterManager, nodeID int) (*PranaNode, error) {
 	pranaNode := PranaNode{
 		nodeID:          nodeID,
 		storage:         storage,
+		clusterMgr:      clusterMgr,
 		planner:         planner2.NewPlanner(),
 		schemas:         make(map[string]*Schema),
 		remoteConsumers: make(map[uint64]*remoteConsumer),
@@ -34,6 +36,7 @@ type PranaNode struct {
 	lock            sync.RWMutex
 	nodeID          int
 	storage         storage.Storage
+	clusterMgr      clstr.ClusterManager
 	schemas         map[string]*Schema
 	planner         planner2.Planner
 	mover           *Mover
@@ -52,7 +55,7 @@ type Schema struct {
 }
 
 type RemoteRowsHandler interface {
-	HandleRows(rows *common.PushRows, ctx *exec.ExecutionContext) error
+	HandleRows(rows *common.Rows, ctx *exec.ExecutionContext) error
 }
 
 type TableIDGenerator func() (uint64, error)
@@ -104,7 +107,7 @@ func (p *PranaNode) loadSchemas() error {
 // Load and start a scheduler for every shard for which we are a leader
 // These are used to deliver any incoming rows for that shard
 func (p *PranaNode) loadAndStartSchedulers() error {
-	nodeInfo, err := p.storage.GetNodeInfo(p.nodeID)
+	nodeInfo, err := p.clusterMgr.GetNodeInfo(p.nodeID)
 	if err != nil {
 		return err
 	}
@@ -117,7 +120,7 @@ func (p *PranaNode) loadAndStartSchedulers() error {
 }
 
 func (p *PranaNode) loadAllShards() error {
-	clusterInfo, err := p.storage.GetClusterInfo()
+	clusterInfo, err := p.clusterMgr.GetClusterInfo()
 	if err != nil {
 		return err
 	}
@@ -209,6 +212,28 @@ func (p *PranaNode) CreateMaterializedView(schemaName string, name string, query
 	return nil
 }
 
+func (p *PranaNode) ExecutePullQuery(schemaName string, sql string) (exec.PullExecutor, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	schema, ok := p.schemas[schemaName]
+	if !ok {
+		return nil, fmt.Errorf("unknown schema %s", schemaName)
+	}
+
+	is, err := p.GetInfoSchema()
+	if err != nil {
+		return nil, err
+	}
+
+	dag, err := BuildPullQueryExecution(schema, is, sql, p.planner)
+	if err != nil {
+		return nil, err
+	}
+
+	return dag, nil
+}
+
 func (p *PranaNode) CreateSink(schemaName string, name string, materializedViewName string, topicInfo TopicInfo) error {
 	panic("implement me")
 }
@@ -287,9 +312,8 @@ func (p *PranaNode) getSource(schemaName string, name string) (source *Source, o
 	return source, ok
 }
 
-// TODO does this need to be globally unique?
 func (p *PranaNode) genTableID() (uint64, error) {
-	return p.storage.GenerateTableID()
+	return p.clusterMgr.GenerateTableID()
 }
 
 func (p *PranaNode) newSchema(name string) *Schema {

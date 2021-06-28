@@ -21,12 +21,14 @@ func NewTableExecutor(colTypes []common.ColumnType, table table2.Table, store st
 	if err != nil {
 		return nil, err
 	}
-	base := pushExecutorBase{
-		colTypes:    colTypes,
-		rowsFactory: rf,
+	pushBase := pushExecutorBase{
+		executorBase: executorBase{
+			colTypes:    colTypes,
+			rowsFactory: rf,
+		},
 	}
 	return &TableExecutor{
-		pushExecutorBase: base,
+		pushExecutorBase: pushBase,
 		table:            table,
 		store:            store,
 	}, nil
@@ -48,7 +50,7 @@ func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
 	t.consumingNodes = append(t.consumingNodes, node)
 }
 
-func (t *TableExecutor) HandleRows(rows *common.PushRows, ctx *ExecutionContext) error {
+func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	log.Printf("Table executor writing %d rows into table state", rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -57,7 +59,7 @@ func (t *TableExecutor) HandleRows(rows *common.PushRows, ctx *ExecutionContext)
 	return t.ForwardToConsumingNodes(rows, ctx)
 }
 
-func (t *TableExecutor) ForwardToConsumingNodes(rows *common.PushRows, ctx *ExecutionContext) error {
+func (t *TableExecutor) ForwardToConsumingNodes(rows *common.Rows, ctx *ExecutionContext) error {
 	for _, consumingNode := range t.consumingNodes {
 		err := consumingNode.HandleRows(rows, ctx)
 		if err != nil {

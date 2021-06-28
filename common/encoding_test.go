@@ -41,7 +41,7 @@ func encodeDecodeString(t *testing.T, rf *RowsFactory, val string) {
 	encodeDecode(t, rows, singleVarcharColumn)
 }
 
-func encodeDecode(t *testing.T, rows *PushRows, columnTypes []ColumnType) {
+func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
 	buffer, err := EncodeRow(&row, columnTypes, buffer)
@@ -55,7 +55,7 @@ func encodeDecode(t *testing.T, rows *PushRows, columnTypes []ColumnType) {
 	RowsEqual(t, &row1, &row2, columnTypes)
 }
 
-func RowsEqual(t *testing.T, expected *PushRow, actual *PushRow, colTypes []ColumnType) {
+func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) {
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType {
