@@ -15,13 +15,21 @@ type FakeStorage struct {
 	remoteWriteHandler RemoteWriteHandler
 }
 
+func (f *FakeStorage) Start() error {
+	return nil
+}
+
+func (f *FakeStorage) Stop() error {
+	return nil
+}
+
 func (f *FakeStorage) SetRemoteWriteHandler(handler RemoteWriteHandler) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.remoteWriteHandler = handler
 }
 
-func NewFakeStorage(nodeID int, numShards int) Storage {
+func NewFakeStorage() Storage {
 	return &FakeStorage{
 		btree: btree.New(3),
 	}

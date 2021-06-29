@@ -9,7 +9,7 @@ import (
 
 func TestPutGet(t *testing.T) {
 
-	storage := NewFakeStorage(1, 1)
+	storage := NewFakeStorage()
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -35,7 +35,7 @@ func TestPutGet(t *testing.T) {
 
 func TestPutDelete(t *testing.T) {
 
-	storage := NewFakeStorage(1, 1)
+	storage := NewFakeStorage()
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -69,7 +69,7 @@ func TestPutDelete(t *testing.T) {
 
 func TestScan(t *testing.T) {
 
-	storage := NewFakeStorage(1, 1)
+	storage := NewFakeStorage()
 
 	var kvPairs []KVPair
 	for i := 0; i < 1000; i++ {
@@ -94,7 +94,7 @@ func TestScan(t *testing.T) {
 	keyEnd := []byte("somekey837")
 
 	var res []KVPair
-	res, err = storage.Scan(shardID, keyStart, keyEnd, 1000)
+	res, err = storage.Scan(keyStart, keyEnd, 1000)
 	require.Nil(t, err)
 
 	require.Equal(t, 837-456, len(res))

@@ -11,47 +11,54 @@ import (
 	"math"
 )
 
-type Planner interface {
-	CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error)
-	CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error)
-	QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error)
-}
-
-type planner struct {
+type Planner struct {
 	pushQueryOptimizer *cascades.Optimizer
 	pullQueryOptimizer *cascades.Optimizer
-	parser             Parser
+	parser             *parser
 }
 
-func NewPlanner() Planner {
+func NewPlanner() *Planner {
 	// TODO different rules for push and pull queries
-	return &planner{
+	return &Planner{
 		pushQueryOptimizer: cascades.NewOptimizer(),
 		pullQueryOptimizer: cascades.NewOptimizer(),
-		parser:             NewParser(),
+		parser:             newParser(),
 	}
 }
 
-func (p *planner) CreateLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error) {
+func (p *Planner) QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error) {
+	stmt, err := p.parser.Parse(query)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.TODO()
+	sessCtx := NewSessionContext(is, pullQuery)
+	err = core.Preprocess(sessCtx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	logicalPlan, err := p.createLogicalPlan(ctx, sessCtx, stmt, is)
+	if err != nil {
+		return nil, err
+	}
+	return p.createPhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
+}
 
+func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error) {
 	hintProcessor := &hint.BlockHintProcessor{Ctx: sessionContext}
-
 	builder, _ := core.NewPlanBuilder(sessionContext, is, hintProcessor)
-
 	plan, err := builder.Build(ctx, node)
 	if err != nil {
 		return nil, err
 	}
-
 	logicalPlan, isLogicalPlan := plan.(core.LogicalPlan)
 	if !isLogicalPlan {
 		panic("Expected a logical plan")
 	}
-
 	return logicalPlan, nil
 }
 
-func (p *planner) CreatePhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error) {
+func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext sessionctx.Context, logicalPlan core.LogicalPlan, isPushQuery, useCascades bool) (core.PhysicalPlan, error) {
 	if useCascades {
 		// Use the new cost based optimizer
 		if isPushQuery {
@@ -76,22 +83,4 @@ func (p *planner) CreatePhysicalPlan(ctx context.Context, sessionContext session
 		}
 		return physicalPlan, nil
 	}
-}
-
-func (p *planner) QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error) {
-	stmt, err := p.parser.Parse(query)
-	if err != nil {
-		return nil, err
-	}
-	ctx := context.TODO()
-	sessCtx := NewSessionContext(is, pullQuery)
-	err = core.Preprocess(sessCtx, stmt)
-	if err != nil {
-		return nil, err
-	}
-	logicalPlan, err := p.CreateLogicalPlan(ctx, sessCtx, stmt, is)
-	if err != nil {
-		return nil, err
-	}
-	return p.CreatePhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
 }

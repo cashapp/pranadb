@@ -2,8 +2,6 @@ package storage
 
 import (
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/kv"
-	"github.com/squareup/pranadb/raft"
 )
 
 type KVPair struct {
@@ -60,6 +58,10 @@ type Storage interface {
 	RemoveShard(shardID uint64) error
 
 	SetRemoteWriteHandler(handler RemoteWriteHandler)
+
+	Start() error
+
+	Stop() error
 }
 
 // RemoteWriteHandler will be called when a remote write is done to a shard
@@ -69,48 +71,4 @@ type RemoteWriteHandler interface {
 
 type ShardCallback interface {
 	Write(batch WriteBatch) error
-}
-
-type storage struct {
-	kvStore kv.KV
-	raft    raft.Raft
-}
-
-func (s storage) SetRemoteWriteHandler(handler RemoteWriteHandler) {
-	panic("implement me")
-}
-
-func (s storage) GenerateTableID() (uint64, error) {
-	panic("implement me")
-}
-
-func (s storage) Get(shardID uint64, key []byte, localLeader bool) ([]byte, error) {
-	panic("implement me")
-}
-
-func (s storage) WriteBatch(batch *WriteBatch, localLeader bool) error {
-	panic("implement me")
-}
-
-func (s storage) InstallExecutors(groupID uint64, plan *ExecutorPlan) {
-	panic("implement me")
-}
-
-func (s storage) Scan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
-	panic("implement me")
-}
-
-func (s storage) CreateShard(shardID uint64, callback ShardCallback) error {
-	panic("implement me")
-}
-
-func (s storage) RemoveShard(shardID uint64) error {
-	panic("implement me")
-}
-
-func NewStorage(kvStore kv.KV, raft raft.Raft) Storage {
-	return &storage{
-		kvStore: kvStore,
-		raft:    raft,
-	}
 }

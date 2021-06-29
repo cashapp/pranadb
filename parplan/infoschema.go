@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/tidb/util/sli"
 	"github.com/pingcap/tipb/go-binlog"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/meta"
 )
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
@@ -39,7 +40,7 @@ type schemaTables struct {
 	tables map[string]tidbTable.Table
 }
 
-func NewPranaInfoSchema(schemaInfos []*common.SchemaInfo) (infoschema.InfoSchema, error) {
+func NewPranaInfoSchema(schemaInfos []*meta.ISSchemaInfo) (infoschema.InfoSchema, error) {
 	result := &pranaInfoSchema{}
 	result.schemaMap = make(map[string]*schemaTables)
 

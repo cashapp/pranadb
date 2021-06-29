@@ -1,11 +1,5 @@
 package common
 
-type ColumnType struct {
-	TypeNumber   int
-	DecPrecision byte
-	DecLen       byte
-}
-
 const (
 	TypeTinyInt int = iota + 1
 	TypeInt
@@ -31,9 +25,10 @@ func NewDecimalColumnType(precision byte, scale byte) ColumnType {
 	}
 }
 
-type SchemaInfo struct {
-	SchemaName  string
-	TablesInfos map[string]*TableInfo
+type ColumnType struct {
+	TypeNumber   int
+	DecPrecision byte
+	DecLen       byte
 }
 
 type TableInfo struct {
@@ -50,23 +45,44 @@ type IndexInfo struct {
 	IndexCols []int
 }
 
-func (t *TableInfo) Id(id uint64) *TableInfo {
-	t.ID = id
-	return t
+type Schema struct {
+	Name    string
+	Mvs     map[string]*MaterializedViewInfo
+	Sources map[string]*SourceInfo
+	Sinks   map[string]*SinkInfo
 }
 
-func (t *TableInfo) Name(name string) *TableInfo {
-	t.TableName = name
-	return t
+type SourceInfo struct {
+	SchemaName string
+	Name       string
+	TableInfo  *TableInfo
+	TopicInfo  *TopicInfo
 }
 
-func (t *TableInfo) AddColumn(name string, columnType ColumnType) *TableInfo {
-	t.ColumnNames = append(t.ColumnNames, name)
-	t.ColumnTypes = append(t.ColumnTypes, columnType)
-	return t
+type TopicInfo struct {
+	brokerName string
+	topicName  string
+	keyFormat  TopicEncoding
+	properties map[string]interface{}
 }
 
-func (t *TableInfo) AddIndex(name string) *TableInfo {
-	// TODO
-	return t
+type TopicEncoding int
+
+const (
+	EncodingJSON TopicEncoding = iota + 1
+	EncodingProtobuf
+	EncodingRaw
+)
+
+type MaterializedViewInfo struct {
+	SchemaName string
+	Name       string
+	Query      string
+	TableInfo  *TableInfo
+}
+
+type SinkInfo struct {
+	Name      string
+	Query     string
+	TopicInfo *TopicInfo
 }

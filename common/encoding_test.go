@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-var singleVarcharColumn = []ColumnType{TypeVarchar}
-var singleIntColumn = []ColumnType{TypeBigInt}
+var singleVarcharColumn = []ColumnType{VarcharColumnType}
+var singleIntColumn = []ColumnType{IntColumnType}
 
 func TestEncodeDecodeInt(t *testing.T) {
 	rf, err := NewRowsFactory(singleIntColumn)
@@ -58,7 +58,7 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) {
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
-		switch colType {
+		switch colType.TypeNumber {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			val1 := expected.GetInt64(colIndex)
 			val2 := actual.GetInt64(colIndex)

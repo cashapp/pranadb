@@ -7,55 +7,13 @@ import (
 	"log"
 )
 
-// TODO get rid of this and add encoding methods to common encoding
-type Table interface {
-	Info() *common.TableInfo
-
-	Upsert(row *common.Row, writeBatch *storage.WriteBatch) error
-
-	Delete(row *common.Row, writeBatch *storage.WriteBatch) error
-
-	LookupInPk(key common.Key, shardID uint64) (*common.Row, error)
-
-	LocalNodeTableScan(limit int) (*common.Rows, error)
-
-	IndexScan(indexName string, startKey *common.Key, whileKey *common.Key, limit int, shardID uint64) (*common.Rows, error)
-}
-
-type table struct {
-	storage     storage.Storage
-	info        *common.TableInfo
-	rowsFactory *common.RowsFactory
-	keyColTypes []common.ColumnType
-}
-
-func NewTable(storage storage.Storage, info *common.TableInfo) (Table, error) {
-	rowsFactory, err := common.NewRowsFactory(info.ColumnTypes)
-	if err != nil {
-		return nil, err
-	}
-	keyColTypes := make([]common.ColumnType, len(info.PrimaryKeyCols))
-	for i, pkCol := range info.PrimaryKeyCols {
-		keyColTypes[i] = info.ColumnTypes[pkCol]
-	}
-	return &table{
-		storage:     storage,
-		info:        info,
-		rowsFactory: rowsFactory,
-		keyColTypes: keyColTypes}, nil
-}
-
-func (t *table) Info() *common.TableInfo {
-	return t.info
-}
-
-func (t *table) Upsert(row *common.Row, writeBatch *storage.WriteBatch) error {
-	keyBuff, err := t.encodeKeyFromRow(row, writeBatch.ShardID)
+func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *storage.WriteBatch) error {
+	keyBuff, err := encodeKeyFromRow(tableInfo, row, writeBatch.ShardID)
 	if err != nil {
 		return err
 	}
 	var valueBuff []byte
-	valueBuff, err = common.EncodeRow(row, t.info.ColumnTypes, valueBuff)
+	valueBuff, err = common.EncodeRow(row, tableInfo.ColumnTypes, valueBuff)
 	if err != nil {
 		return err
 	}
@@ -66,8 +24,8 @@ func (t *table) Upsert(row *common.Row, writeBatch *storage.WriteBatch) error {
 	return nil
 }
 
-func (t *table) Delete(row *common.Row, writeBatch *storage.WriteBatch) error {
-	keyBuff, err := t.encodeKeyFromRow(row, writeBatch.ShardID)
+func Delete(tableInfo *common.TableInfo, row *common.Row, writeBatch *storage.WriteBatch) error {
+	keyBuff, err := encodeKeyFromRow(tableInfo, row, writeBatch.ShardID)
 	if err != nil {
 		return err
 	}
@@ -75,14 +33,14 @@ func (t *table) Delete(row *common.Row, writeBatch *storage.WriteBatch) error {
 	return nil
 }
 
-func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.Row, error) {
-	buffer, err := t.encodeKey(key, shardID)
+func LookupInPk(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int, shardID uint64, rowsFactory *common.RowsFactory, storage storage.Storage) (*common.Row, error) {
+	buffer, err := encodeKey(tableInfo, key, keyColIndexes, shardID)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("Looking up key %v in table %d", buffer, t.info.ID)
-	buffRes, err := t.storage.Get(shardID, buffer, true)
+	log.Printf("Looking up key %v in table %d", buffer, tableInfo.ID)
+	buffRes, err := storage.Get(shardID, buffer, true)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +49,8 @@ func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.Row, error) 
 	}
 	fmt.Printf("Getting k:%s v:%s", string(buffer), string(buffRes))
 
-	rows := t.rowsFactory.NewRows(1)
-	err = common.DecodeRow(buffRes, t.info.ColumnTypes, rows)
+	rows := rowsFactory.NewRows(1)
+	err = common.DecodeRow(buffRes, tableInfo.ColumnTypes, rows)
 	if err != nil {
 		return nil, err
 	}
@@ -104,18 +62,18 @@ func (t *table) LookupInPk(key common.Key, shardID uint64) (*common.Row, error) 
 }
 
 // LocalNodeTableScan returns all rows for all shards in the local node
-func (t *table) LocalNodeTableScan(limit int) (*common.Rows, error) {
+func LocalNodeTableScan(tableInfo *common.TableInfo, limit int, rowsFactory *common.RowsFactory, storage storage.Storage) (*common.Rows, error) {
 
 	prefix := make([]byte, 0, 8)
-	prefix = common.AppendUint64ToBufferLittleEndian(prefix, t.info.ID)
+	prefix = common.AppendUint64ToBufferLittleEndian(prefix, tableInfo.ID)
 
-	kvPairs, err := t.storage.Scan(prefix, prefix, limit)
+	kvPairs, err := storage.Scan(prefix, prefix, limit)
 	if err != nil {
 		return nil, err
 	}
-	rows := t.rowsFactory.NewRows(len(kvPairs))
+	rows := rowsFactory.NewRows(len(kvPairs))
 	for _, kvPair := range kvPairs {
-		err := common.DecodeRow(kvPair.Value, t.info.ColumnTypes, rows)
+		err := common.DecodeRow(kvPair.Value, tableInfo.ColumnTypes, rows)
 		if err != nil {
 			return nil, err
 		}
@@ -123,32 +81,24 @@ func (t *table) LocalNodeTableScan(limit int) (*common.Rows, error) {
 	return rows, nil
 }
 
-func (t *table) IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int, shardID uint64) (*common.Rows, error) {
+func IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int, shardID uint64) (*common.Rows, error) {
 	panic("implement me")
 }
 
-func (t *table) encodeKeyPrefix(shardID uint64) []byte {
+func encodeKeyPrefix(tableID uint64, shardID uint64) []byte {
 	// Key is |shard_id|table_id|pk_value
 	keyBuff := make([]byte, 0, 32)
 	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, shardID)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, t.info.ID)
+	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, tableID)
 	return keyBuff
 }
 
-func (t *table) encodeKeyFromRow(row *common.Row, shardID uint64) ([]byte, error) {
-	keyBuff := t.encodeKeyPrefix(shardID)
-	keyBuff, err := common.EncodeCols(row, t.info.PrimaryKeyCols, t.info.ColumnTypes, keyBuff)
-	if err != nil {
-		return nil, err
-	}
-	return keyBuff, nil
+func encodeKeyFromRow(tableInfo *common.TableInfo, row *common.Row, shardID uint64) ([]byte, error) {
+	keyBuff := encodeKeyPrefix(tableInfo.ID, shardID)
+	return common.EncodeCols(row, tableInfo.PrimaryKeyCols, tableInfo.ColumnTypes, keyBuff)
 }
 
-func (t *table) encodeKey(key common.Key, shardID uint64) ([]byte, error) {
-	keyBuff := t.encodeKeyPrefix(shardID)
-	keyBuff, err := common.EncodeKey(key, t.keyColTypes, keyBuff)
-	if err != nil {
-		return nil, err
-	}
-	return keyBuff, nil
+func encodeKey(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int, shardID uint64) ([]byte, error) {
+	keyBuff := encodeKeyPrefix(tableInfo.ID, shardID)
+	return common.EncodeKey(key, tableInfo.ColumnTypes, keyColIndexes, keyBuff)
 }
