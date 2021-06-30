@@ -4,16 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/expression"
-	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
 )
 
-func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, is infoschema.InfoSchema, query string, queryName string) (queryDAG exec.PushExecutor, err error) {
+func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string, queryName string) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
-	physicalPlan, err := p.planner.QueryToPlan(query, is, false)
+	physicalPlan, err := p.planner.QueryToPlan(schema, query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +43,6 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		colNames = append(colNames, col.OrigName)
 	}
 	var executor exec.PushExecutor
-	var executorToConnect exec.PushExecutor
 	var err error
 	switch plan.(type) {
 	case *core.PhysicalProjection:
@@ -57,7 +55,6 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		if err != nil {
 			return nil, err
 		}
-		executorToConnect = executor
 	case *core.PhysicalSelection:
 		physSel := plan.(*core.PhysicalSelection)
 		var exprs []*common.Expression
@@ -68,7 +65,6 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		if err != nil {
 			return nil, err
 		}
-		executorToConnect = executor
 	case *core.PhysicalHashAgg:
 		physAgg := plan.(*core.PhysicalHashAgg)
 
@@ -140,20 +136,10 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			ColumnTypes:    colTypes,
 			IndexInfos:     nil, // TODO
 		}
-
-		// We build two executors here - a partitioner and an aggregator
-		// Then we'll split those later into multiple DAGs
-		partitioner, err := exec.NewAggPartitioner(colNames, colTypes, pkCols, tableID, groupByCols, p)
+		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.storage, p.sharder)
 		if err != nil {
 			return nil, err
 		}
-		aggregator, err := exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.storage)
-		if err != nil {
-			return nil, err
-		}
-		exec.ConnectPushExecutors([]exec.PushExecutor{partitioner}, aggregator)
-		executor = aggregator
-		executorToConnect = partitioner
 	case *core.PhysicalTableReader:
 		physTabReader := plan.(*core.PhysicalTableReader)
 		if len(physTabReader.TablePlans) != 1 {
@@ -169,7 +155,6 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		if err != nil {
 			return nil, err
 		}
-		executorToConnect = executor
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}
@@ -184,8 +169,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			childExecutors = append(childExecutors, childExecutor)
 		}
 	}
-	exec.ConnectPushExecutors(childExecutors, executorToConnect)
-
+	exec.ConnectPushExecutors(childExecutors, executor)
 	return executor, nil
 }
 
@@ -225,8 +209,6 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		tableScan.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
 		aggregator := executor.(*exec.Aggregator)
-		// The col types for decoding from a remote receive before passing to the aggregator are
-		// from the agg partitioner not the aggregator
 		colTypes := aggregator.GetChildren()[0].ColTypes()
 		rf, err := common.NewRowsFactory(colTypes)
 		if err != nil {

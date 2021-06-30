@@ -48,6 +48,10 @@ func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
 	t.consumingNodes = append(t.consumingNodes, node)
 }
 
+func (t *TableExecutor) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
+	return t.HandleRows(rows, ctx)
+}
+
 func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	log.Printf("Table executor writing %d rows into table state", rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {

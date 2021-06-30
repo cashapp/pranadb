@@ -1,7 +1,6 @@
 package table
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	"log"
@@ -47,7 +46,7 @@ func LookupInPk(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int
 	if buffRes == nil {
 		return nil, nil
 	}
-	fmt.Printf("Getting k:%s v:%s", string(buffer), string(buffRes))
+	log.Printf("Got k:%v v:%v", buffer, buffRes)
 
 	rows := rowsFactory.NewRows(1)
 	err = common.DecodeRow(buffRes, tableInfo.ColumnTypes, rows)

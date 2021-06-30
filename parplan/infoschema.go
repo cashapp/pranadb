@@ -25,7 +25,6 @@ import (
 	"github.com/pingcap/tidb/util/sli"
 	"github.com/pingcap/tipb/go-binlog"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/meta"
 )
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
@@ -40,93 +39,108 @@ type schemaTables struct {
 	tables map[string]tidbTable.Table
 }
 
-func NewPranaInfoSchema(schemaInfos []*meta.ISSchemaInfo) (infoschema.InfoSchema, error) {
+type iSSchemaInfo struct {
+	SchemaName  string
+	TablesInfos map[string]*common.TableInfo
+}
+
+func schemaToInfoSchema(schema *common.Schema) (infoschema.InfoSchema, error) {
+
+	tableInfos := make(map[string]*common.TableInfo)
+	for mvName, mv := range schema.Mvs {
+		tableInfos[mvName] = mv.TableInfo
+	}
+	for sourceName, source := range schema.Sources {
+		tableInfos[sourceName] = source.TableInfo
+	}
+	schemaInfo := iSSchemaInfo{
+		SchemaName:  schema.Name,
+		TablesInfos: tableInfos,
+	}
+
 	result := &pranaInfoSchema{}
 	result.schemaMap = make(map[string]*schemaTables)
 
-	for _, schemaInfo := range schemaInfos {
+	var tabInfos []*model.TableInfo
+	tablesMap := make(map[string]tidbTable.Table)
+	for _, tableInfo := range schemaInfo.TablesInfos {
 
-		var tabInfos []*model.TableInfo
-		tablesMap := make(map[string]tidbTable.Table)
-		for _, tableInfo := range schemaInfo.TablesInfos {
+		var columns []*model.ColumnInfo
+		for columnIndex, columnType := range tableInfo.ColumnTypes {
 
-			var columns []*model.ColumnInfo
-			for columnIndex, columnType := range tableInfo.ColumnTypes {
-
-				colType, err := common.ConvertPranaTypeToTiDBType(columnType)
-				if err != nil {
-					return nil, err
-				}
-
-				col := &model.ColumnInfo{
-					State:     model.StatePublic,
-					Offset:    columnIndex,
-					Name:      model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
-					FieldType: *colType,
-					ID:        int64(columnIndex + 1),
-				}
-
-				for pkIndex := range tableInfo.PrimaryKeyCols {
-					if columnIndex == pkIndex {
-						col.Flag |= mysql.PriKeyFlag
-					}
-				}
-
-				columns = append(columns, col)
+			colType, err := common.ConvertPranaTypeToTiDBType(columnType)
+			if err != nil {
+				return nil, err
 			}
 
-			tableName := model.NewCIStr(tableInfo.TableName)
-
-			var indexes []*model.IndexInfo
-			var pkCols []*model.IndexColumn
-			for columnIndex := range tableInfo.PrimaryKeyCols {
-				col := &model.IndexColumn{
-					Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
-					Offset: columnIndex,
-					Length: 0,
-				}
-
-				pkCols = append(pkCols, col)
-			}
-
-			pkIndex := &model.IndexInfo{
-				ID:        1001,
-				Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.TableName)),
-				Table:     tableName,
-				Columns:   pkCols,
+			col := &model.ColumnInfo{
 				State:     model.StatePublic,
-				Comment:   "",
-				Tp:        model.IndexTypeBtree,
-				Unique:    true,
-				Primary:   true,
-				Invisible: false,
-				Global:    false,
+				Offset:    columnIndex,
+				Name:      model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+				FieldType: *colType,
+				ID:        int64(columnIndex + 1),
 			}
 
-			indexes = append(indexes, pkIndex)
-
-			tab := &model.TableInfo{
-				ID:         int64(tableInfo.ID),
-				Columns:    columns,
-				Indices:    indexes,
-				Name:       tableName,
-				PKIsHandle: len(tableInfo.PrimaryKeyCols) == 1,
-				State:      model.StatePublic,
+			for pkIndex := range tableInfo.PrimaryKeyCols {
+				if columnIndex == pkIndex {
+					col.Flag |= mysql.PriKeyFlag
+				}
 			}
 
-			tablesMap[tableInfo.TableName] = newTiDBTable(tab)
-
-			tabInfos = append(tabInfos, tab)
+			columns = append(columns, col)
 		}
 
-		dbInfo := &model.DBInfo{ID: 0, Name: model.NewCIStr(schemaInfo.SchemaName), Tables: tabInfos}
+		tableName := model.NewCIStr(tableInfo.TableName)
 
-		tableNames := &schemaTables{
-			dbInfo: dbInfo,
-			tables: tablesMap,
+		var indexes []*model.IndexInfo
+		var pkCols []*model.IndexColumn
+		for columnIndex := range tableInfo.PrimaryKeyCols {
+			col := &model.IndexColumn{
+				Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+				Offset: columnIndex,
+				Length: 0,
+			}
+
+			pkCols = append(pkCols, col)
 		}
-		result.schemaMap[schemaInfo.SchemaName] = tableNames
+
+		pkIndex := &model.IndexInfo{
+			ID:        1001,
+			Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.TableName)),
+			Table:     tableName,
+			Columns:   pkCols,
+			State:     model.StatePublic,
+			Comment:   "",
+			Tp:        model.IndexTypeBtree,
+			Unique:    true,
+			Primary:   true,
+			Invisible: false,
+			Global:    false,
+		}
+
+		indexes = append(indexes, pkIndex)
+
+		tab := &model.TableInfo{
+			ID:         int64(tableInfo.ID),
+			Columns:    columns,
+			Indices:    indexes,
+			Name:       tableName,
+			PKIsHandle: len(tableInfo.PrimaryKeyCols) == 1,
+			State:      model.StatePublic,
+		}
+
+		tablesMap[tableInfo.TableName] = newTiDBTable(tab)
+
+		tabInfos = append(tabInfos, tab)
 	}
+
+	dbInfo := &model.DBInfo{ID: 0, Name: model.NewCIStr(schemaInfo.SchemaName), Tables: tabInfos}
+
+	tableNames := &schemaTables{
+		dbInfo: dbInfo,
+		tables: tablesMap,
+	}
+	result.schemaMap[schemaInfo.SchemaName] = tableNames
 
 	return result, nil
 }

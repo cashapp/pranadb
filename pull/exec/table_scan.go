@@ -2,21 +2,24 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
 )
 
 type PullTableScan struct {
 	pullExecutorBase
-	table table.Table
+	tableInfo *common.TableInfo
+	storage   storage.Storage
 }
 
-func NewPullTableScan(colTypes []common.ColumnType, table table.Table) (*PullTableScan, error) {
+func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) (*PullTableScan, error) {
 	base := pullExecutorBase{
 		colTypes: colTypes,
 	}
 	return &PullTableScan{
 		pullExecutorBase: base,
-		table:            table,
+		tableInfo:        tableInfo,
+		storage:          storage,
 	}, nil
 }
 
@@ -27,6 +30,5 @@ func (t *PullTableScan) SetSchema(colNames []string, colTypes []common.ColumnTyp
 }
 
 func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
-	// Do we even need to go through table for this?
-	return t.table.LocalNodeTableScan(limit)
+	return table.LocalNodeTableScan(t.tableInfo, limit, t.rowsFactory, t.storage)
 }

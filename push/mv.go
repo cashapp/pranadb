@@ -1,7 +1,6 @@
 package push
 
 import (
-	"github.com/pingcap/tidb/infoschema"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/storage"
@@ -13,8 +12,8 @@ type materializedView struct {
 	store         storage.Storage
 }
 
-func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64, is infoschema.InfoSchema) (*common.MaterializedViewInfo, error) {
-	dag, err := p.buildPushQueryExecution(schema, is, query, schema.Name+"."+mvName)
+func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64) (*common.MaterializedViewInfo, error) {
+	dag, err := p.buildPushQueryExecution(schema, query, schema.Name+"."+mvName)
 	if err != nil {
 		return nil, nil
 	}

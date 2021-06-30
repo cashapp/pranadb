@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
 	"log"
 )
 
-// TODO combine with agg partitioner
 type Aggregator struct {
 	pushExecutorBase
 	aggFuncs     []aggfuncs.AggregateFunction
 	AggTableInfo *common.TableInfo
 	groupByCols  []int
 	storage      storage.Storage
+	sharder      *sharder.Sharder
 }
 
 type AggregateFunctionInfo struct {
@@ -25,7 +26,7 @@ type AggregateFunctionInfo struct {
 }
 
 func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo, groupByCols []int,
-	storage storage.Storage) (*Aggregator, error) {
+	storage storage.Storage, sharder *sharder.Sharder) (*Aggregator, error) {
 	rf, err := common.NewRowsFactory(colTypes)
 	if err != nil {
 		return nil, err
@@ -46,6 +47,7 @@ func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int
 		AggTableInfo:     aggTableInfo,
 		groupByCols:      groupByCols,
 		storage:          storage,
+		sharder:          sharder,
 	}, nil
 }
 
@@ -64,6 +66,34 @@ func createAggFunctions(aggFunctionInfos []*AggregateFunctionInfo, colTypes []co
 }
 
 func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
+	for i := 0; i < rows.RowCount(); i++ {
+
+		row := rows.GetRow(i)
+		key := make([]byte, 0, 8)
+		incomingColTypes := a.children[0].ColTypes()
+		key, err := common.EncodeCols(&row, a.groupByCols, incomingColTypes, key)
+		if err != nil {
+			return err
+		}
+
+		log.Println("Agg partitioner forwarding row(s)")
+
+		remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, key)
+		if remoteShardID == ctx.WriteBatch.ShardID {
+			// Destination shard is same as this one, so no need for remote send
+			return a.HandleRemoteRows(rows, ctx)
+		} else {
+			err = ctx.Forwarder.QueueForRemoteSend(key, remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
 
 	aggStates := make(map[string]*aggfuncs.AggState)
 

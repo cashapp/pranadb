@@ -10,11 +10,9 @@ import (
 
 func TestCreateMaterializedView(t *testing.T) {
 	nodeID := 1
-
 	server := NewServer(nodeID)
 	err := server.Start()
 	require.Nil(t, err)
-
 	ce := server.GetCommandExecutor()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
@@ -38,7 +36,7 @@ func TestCreateMaterializedView(t *testing.T) {
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 
-	err = ce.GetPushEngine().IngestRows(source.TableInfo.ID, rows)
+	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
 	require.Nil(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -53,29 +51,32 @@ func TestCreateMaterializedView(t *testing.T) {
 	appendRow(t, expectedRows, expectedColTypes, 1, 25.5)
 	expectedRow := expectedRows.GetRow(0)
 
-	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, rf, server.GetStorage())
+	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetStorage())
 	require.Nil(t, err)
 	require.NotNil(t, row)
 	RowsEqual(t, &expectedRow, row, expectedColTypes)
 }
 
-//func TestExecutePullQuery(t *testing.T) {
-//	nodeID := 1
-//	store := storage.NewFakeStorage(nodeID, 10)
-//	clusterMgr := cluster.NewFakeClusterManager(nodeID, 10)
-//	prana, err := NewPranaNode(store, clusterMgr, nodeID)
-//	require.Nil(t, err)
-//
-//	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
-//
-//	err = prana.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
-//	require.Nil(t, err)
-//
-//	//query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
-//	query := "select 1, res.* from (select sensor_id, location, temperature from test.sensor_readings union all select sensor_id +1, location, temperature from test.sensor_readings) res"
-//	_, err = prana.ExecutePullQuery("test", query)
-//	require.Nil(t, err)
-//}
+func TestExecutePullQuery(t *testing.T) {
+	nodeID := 1
+	server := NewServer(nodeID)
+	err := server.Start()
+	require.Nil(t, err)
+	ce := server.GetCommandExecutor()
+
+	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
+
+	err = ce.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
+	require.Nil(t, err)
+
+	//query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
+	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
+	exec, err := ce.ExecutePullQuery("test", query)
+	require.Nil(t, err)
+	rows, err := exec.GetRows(100)
+	require.Nil(t, err)
+	require.Equal(t, 1, rows.RowCount())
+}
 
 func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {
 	require.Equal(t, len(colVals), len(colTypes))

@@ -7,8 +7,7 @@ import (
 
 type shardScheduler struct {
 	shardID uint64
-	mover   *mover
-	storage storage.Storage
+	engine  *PushEngine
 	actions chan *actionHolder
 }
 
@@ -19,11 +18,10 @@ type actionHolder struct {
 	errChan chan error
 }
 
-func NewShardScheduler(shardID uint64, mover *mover, storage storage.Storage) *shardScheduler {
+func NewShardScheduler(shardID uint64, mover *PushEngine) *shardScheduler {
 	return &shardScheduler{
 		shardID: shardID,
-		mover:   mover,
-		storage: storage,
+		engine:  mover,
 		actions: make(chan *actionHolder),
 	}
 }
@@ -62,13 +60,13 @@ func (s *shardScheduler) ScheduleAction(action Action) chan error {
 func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
 	batch := storage.NewWriteBatch(s.shardID)
-	err := s.mover.HandleReceivedRows(s.shardID, batch)
+	err := s.engine.handleReceivedRows(s.shardID, batch)
 	if err != nil {
 		return err
 	}
-	err = s.storage.WriteBatch(batch, true)
+	err = s.engine.storage.WriteBatch(batch, true)
 	if err != nil {
 		return err
 	}
-	return s.mover.PollForForwards(s.shardID)
+	return s.engine.pollForForwards(s.shardID)
 }

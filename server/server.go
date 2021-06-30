@@ -7,22 +7,25 @@ import (
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
+	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
 	"sync"
 )
 
 func NewServer(nodeID int) *Server {
-	clusterMgr := cluster.NewFakeClusterManager(nodeID, 10)
+	cluster := cluster.NewFakeClusterManager(nodeID, 10)
 	store := storage.NewFakeStorage()
-	metaController := meta.NewController()
+	metaController := meta.NewController(store)
 	planner := parplan.NewPlanner()
-	pushEngine := push.NewPushEngine(store, clusterMgr, planner)
-	pullEngine := pull.NewPullEngine(planner)
-	commandExecutor := command.NewCommandExecutor(store, metaController, pushEngine, pullEngine, clusterMgr)
+	shardr := sharder.NewSharder(cluster)
+	pushEngine := push.NewPushEngine(store, cluster, planner, shardr)
+	pullEngine := pull.NewPullEngine(planner, store, cluster)
+	commandExecutor := command.NewCommandExecutor(store, metaController, pushEngine, pullEngine, cluster)
 	server := Server{
 		nodeID:          nodeID,
 		storage:         store,
-		clusterMgr:      clusterMgr,
+		cluster:         cluster,
+		shardr:          shardr,
 		metaController:  metaController,
 		pushEngine:      pushEngine,
 		pullEngine:      pullEngine,
@@ -35,7 +38,8 @@ type Server struct {
 	lock            sync.RWMutex
 	nodeID          int
 	storage         storage.Storage
-	clusterMgr      cluster.Cluster
+	cluster         cluster.Cluster
+	shardr          *sharder.Sharder
 	metaController  *meta.Controller
 	pushEngine      *push.PushEngine
 	pullEngine      *pull.PullEngine
@@ -57,7 +61,11 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
-	err = s.clusterMgr.Start()
+	err = s.cluster.Start()
+	if err != nil {
+		return err
+	}
+	err = s.shardr.Start()
 	if err != nil {
 		return err
 	}
@@ -78,7 +86,11 @@ func (s *Server) Stop() error {
 	defer s.lock.Unlock()
 	s.pushEngine.Stop()
 	s.pullEngine.Stop()
-	err := s.clusterMgr.Stop()
+	err := s.shardr.Stop()
+	if err != nil {
+		return err
+	}
+	err = s.cluster.Stop()
 	if err != nil {
 		return err
 	}

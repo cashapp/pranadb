@@ -2,35 +2,52 @@ package meta
 
 import (
 	"fmt"
-	"github.com/pingcap/tidb/infoschema"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/storage"
 	"sync"
 )
 
 type Controller struct {
 	lock    sync.RWMutex
 	schemas map[string]*common.Schema
+	started bool
+	store   storage.Storage
 }
 
-func NewController() *Controller {
+func NewController(store storage.Storage) *Controller {
 	return &Controller{
 		lock:    sync.RWMutex{},
 		schemas: make(map[string]*common.Schema),
+		store:   store,
 	}
 }
 
-type ISSchemaInfo struct {
-	SchemaName  string
-	TablesInfos map[string]*common.TableInfo
-}
-
 func (c *Controller) Start() error {
-	// TODO load all state from storage
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if !c.started {
+		return nil
+	}
+	err := c.loadSchemas()
+	if err != nil {
+		return err
+	}
+	c.started = true
 	return nil
 }
 
 func (c *Controller) Stop() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if !c.started {
+		return nil
+	}
+	c.started = false
+	return nil
+}
+
+func (c *Controller) loadSchemas() error {
+	// TODO load all the schemas from storage
 	return nil
 }
 
@@ -56,30 +73,13 @@ func (c *Controller) GetSource(schemaName string, name string) (source *common.S
 	return source, ok
 }
 
-func (c *Controller) GetInfoSchema() (infoschema.InfoSchema, error) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	var schemaInfos []*ISSchemaInfo
-	for _, schema := range c.schemas {
-		tableInfos := make(map[string]*common.TableInfo)
-		for mvName, mv := range schema.Mvs {
-			tableInfos[mvName] = mv.TableInfo
-		}
-		for sourceName, source := range schema.Sources {
-			tableInfos[sourceName] = source.TableInfo
-		}
-		schemaInfo := &ISSchemaInfo{
-			SchemaName:  schema.Name,
-			TablesInfos: tableInfos,
-		}
-		schemaInfos = append(schemaInfos, schemaInfo)
-	}
-	return parplan.NewPranaInfoSchema(schemaInfos)
-}
-
 func (c *Controller) GetSchema(schemaName string) (schema *common.Schema, ok bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	return c.getSchema(schemaName)
+}
+
+func (c *Controller) getSchema(schemaName string) (schema *common.Schema, ok bool) {
 	schema, ok = c.schemas[schemaName]
 	return
 }
@@ -120,10 +120,7 @@ func (c *Controller) existsMvOrSource(schema *common.Schema, name string) error 
 func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	schema, ok := c.GetSchema(sourceInfo.SchemaName)
-	if !ok {
-		return fmt.Errorf("no such schema %s", schema.Name)
-	}
+	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
 	err := c.existsMvOrSource(schema, sourceInfo.Name)
 	if err != nil {
 		return err
@@ -135,10 +132,7 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	schema, ok := c.GetSchema(mvInfo.SchemaName)
-	if !ok {
-		return fmt.Errorf("no such schema %s", schema.Name)
-	}
+	schema := c.getOrCreateSchema(mvInfo.SchemaName)
 	err := c.existsMvOrSource(schema, mvInfo.Name)
 	if err != nil {
 		return err

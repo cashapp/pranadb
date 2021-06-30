@@ -62,11 +62,7 @@ func (p *Executor) CreateMaterializedView(schemaName string, name string, query 
 		return err
 	}
 	schema := p.metaController.GetOrCreateSchema(schemaName)
-	is, err := p.metaController.GetInfoSchema()
-	if err != nil {
-		return err
-	}
-	mvInfo, err := p.pushEngine.CreateMaterializedView(schema, name, query, id, is)
+	mvInfo, err := p.pushEngine.CreateMaterializedView(schema, name, query, id)
 	if err != nil {
 		return err
 	}
@@ -82,11 +78,7 @@ func (p *Executor) ExecutePullQuery(schemaName string, sql string) (exec.PullExe
 	if !ok {
 		return nil, fmt.Errorf("unknown schema %s", schemaName)
 	}
-	is, err := p.metaController.GetInfoSchema()
-	if err != nil {
-		return nil, err
-	}
-	dag, err := p.pullEngine.ExecutePullQuery(schema, is, sql)
+	dag, err := p.pullEngine.ExecutePullQuery(schema, sql)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/util/hint"
+	"github.com/squareup/pranadb/common"
 	"math"
 )
 
@@ -26,8 +27,12 @@ func NewPlanner() *Planner {
 	}
 }
 
-func (p *Planner) QueryToPlan(query string, is infoschema.InfoSchema, pullQuery bool) (core.PhysicalPlan, error) {
+func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery bool) (core.PhysicalPlan, error) {
 	stmt, err := p.parser.Parse(query)
+	if err != nil {
+		return nil, err
+	}
+	is, err := schemaToInfoSchema(schema)
 	if err != nil {
 		return nil, err
 	}

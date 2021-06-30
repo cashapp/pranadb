@@ -3,18 +3,15 @@ package push
 import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
+	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
 	"log"
 )
 
 type source struct {
-	sourceInfo          *common.SourceInfo
-	tableExecutor       *exec.TableExecutor
-	store               storage.Storage
-	mover               *mover
-	sharder             common.Sharder
-	localShards         []uint64
-	nextLocalShardIndex int
+	sourceInfo    *common.SourceInfo
+	tableExecutor *exec.TableExecutor
+	engine        *PushEngine
 }
 
 func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
@@ -32,10 +29,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 	source := source{
 		sourceInfo:    sourceInfo,
 		tableExecutor: tableExecutor,
-		store:         p.storage,
-		mover:         p.mover,
-		sharder:       p,
-		localShards:   genLocalShards(p.schedulers),
+		engine:        p,
 	}
 
 	rf, err := common.NewRowsFactory(colTypes)
@@ -77,36 +71,11 @@ func (s *source) stop() error {
 	return nil
 }
 
-func genLocalShards(schedulers map[uint64]*shardScheduler) []uint64 {
-	var localShards []uint64
-	for shardID, _ := range schedulers {
-		localShards = append(localShards, shardID)
-	}
-	return localShards
-}
-
 func (s *source) addConsumingExecutor(executor exec.PushExecutor) {
 	s.tableExecutor.AddConsumingNode(executor)
 }
 
-func (s *source) ingestRows(rows *common.Rows) error {
-	// We choose a local shard to handle this batch - rows are written into forwarder queue
-	// and forwarded to dest shards
-	shardIndex := s.nextLocalShardIndex
-	// Doesn't matter if accessed concurrently an index update non atomic - this is best effort
-	s.nextLocalShardIndex++
-	if s.nextLocalShardIndex == len(s.localShards) {
-		s.nextLocalShardIndex = 0
-	}
-	shardID := s.localShards[shardIndex]
-	err := s.doIngest(rows, shardID)
-	if err != nil {
-		return err
-	}
-	return s.mover.PollForForwards(shardID)
-}
-
-func (s *source) doIngest(rows *common.Rows, shardID uint64) error {
+func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 
 	log.Printf("Ingesting rows on shard %d", shardID)
 
@@ -126,16 +95,20 @@ func (s *source) doIngest(rows *common.Rows, shardID uint64) error {
 		if err != nil {
 			return err
 		}
-		destShardID, err := s.sharder.CalculateShard(key)
+		destShardID, err := s.engine.sharder.CalculateShard(sharder.ShardTypeHash, key)
 		if err != nil {
 			return err
 		}
 		// TODO we can consider an optimisation where execute on any local shards directly
-		err = s.mover.QueueForRemoteSend(key, destShardID, &row, shardID, tableID, colTypes, batch)
+		err = s.engine.QueueForRemoteSend(key, destShardID, &row, shardID, tableID, colTypes, batch)
 		if err != nil {
 			return err
 		}
 	}
 
-	return s.store.WriteBatch(batch, true)
+	err := s.engine.storage.WriteBatch(batch, true)
+	if err != nil {
+		return err
+	}
+	return s.engine.pollForForwards(shardID)
 }
