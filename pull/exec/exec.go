@@ -1,15 +1,37 @@
 package exec
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/common"
 )
+
+type ExecutorType int
+
+const (
+	ExecutorTypeSelect ExecutorType = iota
+	ExecutorTypeAggregation
+	ExecutorTypeTableScan
+)
+
+func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
+	switch executorType {
+	case ExecutorTypeSelect:
+		return &PullSelect{}, nil
+	case ExecutorTypeTableScan:
+		return &PullTableScan{}, nil
+	default:
+		return nil, fmt.Errorf("unexpected executorType %d", executorType)
+	}
+}
 
 type PullExecutor interface {
 	GetRows(limit int) (rows *common.Rows, err error)
 	SetParent(parent PullExecutor)
-	AddChild(parent PullExecutor)
+	AddChild(child PullExecutor)
 	GetParent() PullExecutor
 	GetChildren() []PullExecutor
+	Serialize(buffer []byte) ([]byte, error)
+	Deserialize(buffer []byte) (int, error)
 }
 
 type pullExecutorBase struct {
@@ -19,6 +41,14 @@ type pullExecutorBase struct {
 	rowsFactory *common.RowsFactory
 	parent      PullExecutor
 	children    []PullExecutor
+}
+
+func (p *pullExecutorBase) Serialize(buffer []byte) ([]byte, error) {
+	panic("implement me")
+}
+
+func (p *pullExecutorBase) Deserialize(buffer []byte) (int, error) {
+	panic("implement me")
 }
 
 func (p *pullExecutorBase) SetParent(parent PullExecutor) {

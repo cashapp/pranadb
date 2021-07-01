@@ -89,7 +89,7 @@ func (p *PullEngine) getDag(serializedDag []byte, queryID string) (exec.PullExec
 	defer p.lock.RUnlock()
 
 	if serializedDag != nil {
-		dag, err := exec.DeserializeDAG(serializedDag)
+		dag, _, err := exec.DeserializeDAG(serializedDag, 0)
 		if err != nil {
 			return nil, err
 		}

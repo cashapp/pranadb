@@ -58,41 +58,42 @@ func (s *Sharder) setShardIDs(shardIds []uint64) {
 	s.shardIDs.Store(shardIds)
 }
 
-func (p *Sharder) loadAllShards() error {
-	clusterInfo, err := p.cluster.GetClusterInfo()
+func (s *Sharder) loadAllShards() error {
+	clusterInfo, err := s.cluster.GetClusterInfo()
 	if err != nil {
 		return err
 	}
 	var shardIDs []uint64
+	// TODO is this really necessary? If shard ids form a contiguous sequence then it's not
 	for _, nodeInfo := range clusterInfo.NodeInfos {
 		for _, leader := range nodeInfo.Leaders {
 			shardIDs = append(shardIDs, leader)
 		}
 	}
-	p.setShardIDs(shardIDs)
+	s.setShardIDs(shardIDs)
 	return nil
 }
 
-func (p *Sharder) Start() error {
-	p.startStopLock.Lock()
-	defer p.startStopLock.Unlock()
-	if p.started {
+func (s *Sharder) Start() error {
+	s.startStopLock.Lock()
+	defer s.startStopLock.Unlock()
+	if s.started {
 		return nil
 	}
-	err := p.loadAllShards()
+	err := s.loadAllShards()
 	if err != nil {
 		return nil
 	}
-	p.started = true
+	s.started = true
 	return nil
 }
 
-func (p *Sharder) Stop() error {
-	p.startStopLock.Lock()
-	defer p.startStopLock.Unlock()
-	if !p.started {
+func (s *Sharder) Stop() error {
+	s.startStopLock.Lock()
+	defer s.startStopLock.Unlock()
+	if !s.started {
 		return nil
 	}
-	p.started = false
+	s.started = false
 	return nil
 }

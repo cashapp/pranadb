@@ -64,10 +64,6 @@ func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 	return nil
 }
 
-func (f *FakeStorage) InstallExecutors(shardID uint64, plan *ExecutorPlan) {
-	panic("implement me")
-}
-
 func (f *FakeStorage) Get(shardID uint64, key []byte, localLeader bool) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()

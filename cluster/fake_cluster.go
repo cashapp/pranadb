@@ -15,22 +15,22 @@ type fakeCluster struct {
 	remoteQueryExecutionCallback RemoteQueryExecutionCallback
 }
 
-func (f *fakeCluster) ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan AsyncRowGetterResult {
+func (f *fakeCluster) ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan RemoteQueryResult {
 	f.mu.Lock()
 	callback := f.remoteQueryExecutionCallback
 	f.mu.Unlock()
-	ch := make(chan AsyncRowGetterResult, 1)
+	ch := make(chan RemoteQueryResult, 1)
 	if callback != nil {
 		go func() {
 			rows, err := callback.ExecuteRemotePullQuery(serializedDag, queryID, limit)
-			ch <- AsyncRowGetterResult{
+			ch <- RemoteQueryResult{
 				Rows: rows,
 				Err:  err,
 			}
 		}()
 		return ch
 	} else {
-		ch <- AsyncRowGetterResult{
+		ch <- RemoteQueryResult{
 			Err: errors.New("no remote query callback registered"),
 		}
 	}

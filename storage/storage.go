@@ -35,17 +35,10 @@ func (wb *WriteBatch) HasWrites() bool {
 	return len(wb.puts.TheMap) > 0 || len(wb.deletes.TheMap) > 0
 }
 
-type ExecutorPlan struct {
-}
-
 type Storage interface {
 
 	// WriteBatch writes a batch reliability to a quorum - goes through the raft layer
 	WriteBatch(batch *WriteBatch, localLeader bool) error
-
-	// InstallExecutors installs executors on the leader for the partition
-	// These automatically move if the leader moves
-	InstallExecutors(shardID uint64, plan *ExecutorPlan)
 
 	// Get can read from follower
 	Get(shardID uint64, key []byte, localLeader bool) ([]byte, error)

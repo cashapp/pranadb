@@ -4,14 +4,15 @@ import (
 	"errors"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"unsafe"
 )
 
 type RemoteExecutor struct {
 	pullExecutorBase
-	asyncRowGetters []*clusterGetter
-	queryID         string
-	serializedDag   []byte
-	cluster         cluster.Cluster
+	clusterGetters []*clusterGetter
+	queryID        string
+	serializedDag  []byte
+	cluster        cluster.Cluster
 }
 
 func NewRemoteExecutor(colTypes []common.ColumnType, queryID string, remoteDag PullExecutor, nodeIDs []int, cluster cluster.Cluster) (*RemoteExecutor, error) {
@@ -23,13 +24,14 @@ func NewRemoteExecutor(colTypes []common.ColumnType, queryID string, remoteDag P
 		colTypes:    colTypes,
 		rowsFactory: rf,
 	}
+	serialized, err := SerializeDAG(remoteDag, make([]byte, 32))
 	pg := RemoteExecutor{
 		pullExecutorBase: base,
 		queryID:          queryID,
-		serializedDag:    SerializeDAG(remoteDag),
+		serializedDag:    serialized,
 		cluster:          cluster,
 	}
-	pg.asyncRowGetters = createGetters(nodeIDs, &pg)
+	pg.clusterGetters = createGetters(nodeIDs, &pg)
 	return &pg, nil
 }
 
@@ -49,7 +51,7 @@ type clusterGetter struct {
 	gatherer *RemoteExecutor
 }
 
-func (c clusterGetter) GetRows(limit int, queryID string) (resultChan chan cluster.AsyncRowGetterResult) {
+func (c clusterGetter) GetRows(limit int, queryID string) (resultChan chan cluster.RemoteQueryResult) {
 	return c.gatherer.cluster.ExecuteRemotePullQuery(c.gatherer.serializedDag, queryID, limit, c.nodeID)
 }
 
@@ -57,8 +59,8 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 	// TODO this can be optimised
 
-	numGetters := len(p.asyncRowGetters)
-	channels := make([]chan cluster.AsyncRowGetterResult, numGetters)
+	numGetters := len(p.clusterGetters)
+	channels := make([]chan cluster.RemoteQueryResult, numGetters)
 	complete := make([]bool, numGetters)
 	rows = p.rowsFactory.NewRows(limit)
 
@@ -66,7 +68,7 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 	for completeCount < numGetters {
 		toGet := (limit - rows.RowCount()) / (numGetters - completeCount)
-		for i, getter := range p.asyncRowGetters {
+		for i, getter := range p.clusterGetters {
 			if !complete[i] {
 				channels[i] = getter.GetRows(toGet, p.queryID)
 			}
@@ -94,12 +96,42 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 	return rows, nil
 }
 
-func SerializeDAG(dag PullExecutor) []byte {
-	// TODO
-	return nil
+func SerializeDAG(dag PullExecutor, buffer []byte) ([]byte, error) {
+	buffer, err := dag.Serialize(buffer)
+	if err != nil {
+		return nil, err
+	}
+	buffer = common.AppendUint32ToBufferLittleEndian(buffer, uint32(len(dag.GetChildren())))
+	for _, child := range dag.GetChildren() {
+		buffer, err = child.Serialize(buffer)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buffer, nil
 }
 
-func DeserializeDAG(buf []byte) (PullExecutor, error) {
-	// TODO
-	return nil, nil
+func DeserializeDAG(buffer []byte, offset int) (PullExecutor, int, error) {
+	executorType := ExecutorType(readInt(buffer, offset))
+	offset += 4
+	pullExecutor, err := CreateExecutor(executorType)
+	if err != nil {
+		return nil, 0, err
+	}
+	numChildren := readInt(buffer, offset)
+	offset += 4
+	for i := 0; i < numChildren; i++ {
+		var child PullExecutor
+		child, offset, err = DeserializeDAG(buffer, offset)
+		if err != nil {
+			return nil, 0, err
+		}
+		pullExecutor.AddChild(child)
+	}
+	return pullExecutor, offset, nil
+}
+
+func readInt(buffer []byte, offset int) int {
+	intPtr := (*uint32)(unsafe.Pointer(&buffer[offset]))
+	return int(*intPtr)
 }

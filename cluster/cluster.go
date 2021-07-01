@@ -15,7 +15,7 @@ type Cluster interface {
 
 	SetLeaderChangedCallback(callback LeaderChangeCallback)
 
-	ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan AsyncRowGetterResult
+	ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan RemoteQueryResult
 
 	SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback)
 
@@ -24,7 +24,7 @@ type Cluster interface {
 	Stop() error
 }
 
-type AsyncRowGetterResult struct {
+type RemoteQueryResult struct {
 	Rows *common.Rows
 	Err  error
 }
