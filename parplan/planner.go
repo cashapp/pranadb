@@ -2,6 +2,8 @@ package parplan
 
 import (
 	"context"
+	"math"
+
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/planner/cascades"
@@ -9,7 +11,6 @@ import (
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/util/hint"
 	"github.com/squareup/pranadb/common"
-	"math"
 )
 
 type Planner struct {
@@ -73,20 +74,18 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 				return nil, err
 			}
 			return physicalPlan, nil
-		} else {
-			physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
-			if err != nil {
-				return nil, err
-			}
-			return physicalPlan, nil
 		}
-	} else {
-		// Use the older optimizer
-		flag := uint64(math.MaxUint64)
-		physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, flag, logicalPlan)
+		physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
 		if err != nil {
 			return nil, err
 		}
 		return physicalPlan, nil
 	}
+	// Use the older optimizer
+	flag := uint64(math.MaxUint64)
+	physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, flag, logicalPlan)
+	if err != nil {
+		return nil, err
+	}
+	return physicalPlan, nil
 }

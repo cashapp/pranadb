@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/pull/exec"
@@ -15,6 +16,9 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 	}
 	// Build initial dag from the plan
 	dag, err := p.buildPullDAG(physicalPlan, schema, query, queryID)
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO TODO
 	// We need to create out own remote call executor which corresponds to the TableReader
@@ -31,6 +35,8 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 	return dag, nil
 }
 
+// TODO: extract functions and break apart giant switch
+// nolint: gocyclo
 func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
@@ -46,11 +52,10 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 	}
 	var executor exec.PullExecutor
 	var err error
-	switch plan.(type) {
+	switch op := plan.(type) {
 	case *core.PhysicalProjection:
-		physProj := plan.(*core.PhysicalProjection)
 		var exprs []*common.Expression
-		for _, expr := range physProj.Exprs {
+		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor, err = exec.NewPullProjection(colNames, colTypes, exprs)
@@ -58,9 +63,8 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 			return nil, err
 		}
 	case *core.PhysicalSelection:
-		physSel := plan.(*core.PhysicalSelection)
 		var exprs []*common.Expression
-		for _, expr := range physSel.Conditions {
+		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor, err = exec.NewPullSelect(colNames, colTypes, exprs)
@@ -68,16 +72,14 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 			return nil, err
 		}
 	case *core.PhysicalHashAgg:
-		physAgg := plan.(*core.PhysicalHashAgg)
 		// TODO
-		println("%v", physAgg)
+		println("%v", op)
 	case *core.PhysicalTableReader:
 		// The Physical tab reader may have a a list of plans which can be sent to remote nodes
 		// So we need to take each one of those and assemble into a dag, then add the dag to
 		// RemoteExecutor pull executor
-		physTabReader := plan.(*core.PhysicalTableReader)
 		// This is the part of the plan that needs to be executed remotely
-		remotePlan := physTabReader.GetTablePlan()
+		remotePlan := op.GetTablePlan()
 		remoteDag, err := p.buildPullDAG(remotePlan, schema, query, queryID)
 		if err != nil {
 			return nil, err
@@ -87,7 +89,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		if err != nil {
 			return nil, err
 		}
-		for nodeID, _ := range clusterInfo.NodeInfos {
+		for nodeID := range clusterInfo.NodeInfos {
 			nodeIDs = append(nodeIDs, nodeID)
 		}
 		executor, err = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, nodeIDs, p.cluster)
@@ -95,9 +97,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 			return nil, err
 		}
 	case *core.PhysicalTableScan:
-		physTableScan, ok := plan.(*core.PhysicalTableScan)
-
-		tableName := physTableScan.Table.Name.L
+		tableName := op.Table.Name.L
 		var t *common.TableInfo
 		mv, ok := schema.Mvs[tableName]
 		if !ok {

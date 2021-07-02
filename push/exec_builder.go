@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
@@ -29,6 +30,8 @@ func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string
 	return dag, nil
 }
 
+// TODO: extract functions and break apart giant switch
+// nolint: gocyclo
 func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
@@ -44,11 +47,10 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 	}
 	var executor exec.PushExecutor
 	var err error
-	switch plan.(type) {
+	switch op := plan.(type) {
 	case *core.PhysicalProjection:
-		physProj := plan.(*core.PhysicalProjection)
 		var exprs []*common.Expression
-		for _, expr := range physProj.Exprs {
+		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor, err = exec.NewPushProjection(colNames, colTypes, exprs)
@@ -56,9 +58,8 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			return nil, err
 		}
 	case *core.PhysicalSelection:
-		physSel := plan.(*core.PhysicalSelection)
 		var exprs []*common.Expression
-		for _, expr := range physSel.Conditions {
+		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor, err = exec.NewPushSelect(colNames, colTypes, exprs)
@@ -66,12 +67,10 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			return nil, err
 		}
 	case *core.PhysicalHashAgg:
-		physAgg := plan.(*core.PhysicalHashAgg)
-
 		var aggFuncs []*exec.AggregateFunctionInfo
 
 		firstRowFuncs := 0
-		for _, aggFunc := range physAgg.AggFuncs {
+		for _, aggFunc := range op.AggFuncs {
 			argExprs := aggFunc.Args
 			if len(argExprs) > 1 {
 				return nil, errors.New("more than one aggregate function arg")
@@ -109,9 +108,9 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 		nonFirstRowFuncs := len(aggFuncs) - firstRowFuncs
 
-		pkCols := make([]int, len(physAgg.GroupByItems))
-		groupByCols := make([]int, len(physAgg.GroupByItems))
-		for i, expr := range physAgg.GroupByItems {
+		pkCols := make([]int, len(op.GroupByItems))
+		groupByCols := make([]int, len(op.GroupByItems))
+		for i, expr := range op.GroupByItems {
 			col, ok := expr.(*expression.Column)
 			if !ok {
 				return nil, errors.New("group by expression not a column")
@@ -141,11 +140,10 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			return nil, err
 		}
 	case *core.PhysicalTableReader:
-		physTabReader := plan.(*core.PhysicalTableReader)
-		if len(physTabReader.TablePlans) != 1 {
+		if len(op.TablePlans) != 1 {
 			panic("expected one table plan")
 		}
-		tabPlan := physTabReader.TablePlans[0]
+		tabPlan := op.TablePlans[0]
 		physTableScan, ok := tabPlan.(*core.PhysicalTableScan)
 		if !ok {
 			return nil, errors.New("expected PhysicalTableScan")
@@ -187,10 +185,9 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 			return err
 		}
 	}
-	switch executor.(type) {
+	switch op := executor.(type) {
 	case *exec.TableScan:
-		tableScan := executor.(*exec.TableScan)
-		tableName := tableScan.TableName
+		tableName := op.TableName
 		var tableInfo *common.TableInfo
 		mvInfo, ok := schema.Mvs[tableName]
 		if !ok {
@@ -206,10 +203,9 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 			mv := p.materializedViews[tableInfo.ID]
 			mv.addConsumingExecutor(executor)
 		}
-		tableScan.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
+		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
-		aggregator := executor.(*exec.Aggregator)
-		colTypes := aggregator.GetChildren()[0].ColTypes()
+		colTypes := op.GetChildren()[0].ColTypes()
 		rf, err := common.NewRowsFactory(colTypes)
 		if err != nil {
 			return err
@@ -217,9 +213,9 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		rc := &remoteConsumer{
 			RowsFactory: rf,
 			ColTypes:    colTypes,
-			RowsHandler: aggregator,
+			RowsHandler: op,
 		}
-		p.remoteConsumers[aggregator.AggTableInfo.ID] = rc
+		p.remoteConsumers[op.AggTableInfo.ID] = rc
 	default:
 		executor.ReCalcSchemaFromChildren()
 	}

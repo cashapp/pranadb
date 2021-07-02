@@ -14,9 +14,8 @@ func (e *Expression) GetColumnIndex() (int, bool) {
 	exp, ok := e.expression.(*expression.Column)
 	if ok {
 		return exp.Index, true
-	} else {
-		return -1, false
 	}
+	return -1, false
 }
 
 func (e *Expression) EvalBoolean(row *Row) (bool, bool, error) {

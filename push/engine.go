@@ -3,15 +3,16 @@ package push
 import (
 	"errors"
 	"fmt"
+	"log"
+	"sync"
+	"sync/atomic"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
-	"log"
-	"sync"
-	"sync/atomic"
 )
 
 type PushEngine struct {
@@ -104,7 +105,7 @@ func (p *PushEngine) loadAndStartSchedulers() error {
 		return err
 	}
 	for _, shardID := range nodeInfo.Leaders {
-		scheduler := NewShardScheduler(shardID, p)
+		scheduler := newShardScheduler(shardID, p)
 		p.schedulers[shardID] = scheduler
 		scheduler.Start()
 		p.localShards = append(p.localShards, shardID)
@@ -151,7 +152,7 @@ func (p *PushEngine) RemoteWriteOccurred(shardID uint64) {
 	}
 }
 
-// Only used in testing to inject rows
+// IngestRows is only used in testing to inject rows
 func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 	source, ok := p.sources[sourceID]
 	if !ok {
@@ -190,14 +191,6 @@ func (p *PushEngine) remoteBatchArrived(shardID uint64) error {
 	}
 	scheduler.CheckForRemoteBatch()
 	return nil
-}
-
-func genLocalShards(schedulers map[uint64]*shardScheduler) []uint64 {
-	var localShards []uint64
-	for shardID, _ := range schedulers {
-		localShards = append(localShards, shardID)
-	}
-	return localShards
 }
 
 func (p *PushEngine) getLocalShardRoundRobin() uint64 {

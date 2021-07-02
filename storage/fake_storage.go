@@ -3,10 +3,11 @@ package storage
 import (
 	"bytes"
 	"errors"
-	"github.com/google/btree"
-	"github.com/squareup/pranadb/common"
 	"log"
 	"sync"
+
+	"github.com/google/btree"
+	"github.com/squareup/pranadb/common"
 )
 
 type FakeStorage struct {
@@ -48,7 +49,7 @@ func (f *FakeStorage) WriteBatch(batch *WriteBatch, localLeader bool) error {
 			value: v,
 		})
 	}
-	for k, _ := range batch.deletes.TheMap {
+	for k := range batch.deletes.TheMap {
 		kBytes := common.StringToByteSliceZeroCopy(k)
 		log.Printf("Deleting key %v", kBytes)
 		err := f.deleteInternal(&kvWrapper{
@@ -83,7 +84,7 @@ func (f *FakeStorage) Scan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 	var result []KVPair
 	count := 0
 	resFunc := func(i btree.Item) bool {
-		wrapper := i.(*kvWrapper)
+		wrapper := i.(*kvWrapper) // nolint: forcetypeassert
 		if bytes.Compare(wrapper.key[0:whilePrefixLen], whileKeyPrefix) > 0 {
 			return false
 		}
@@ -112,7 +113,7 @@ type kvWrapper struct {
 }
 
 func (k kvWrapper) Less(than btree.Item) bool {
-	otherKVwrapper := than.(*kvWrapper)
+	otherKVwrapper := than.(*kvWrapper) // nolint: forcetypeassert
 
 	thisKey := k.key
 	otherKey := otherKVwrapper.key
@@ -133,11 +134,9 @@ func (f *FakeStorage) deleteInternal(item *kvWrapper) error {
 }
 
 func (f *FakeStorage) getInternal(key *kvWrapper) []byte {
-	item := f.btree.Get(key)
-	if item != nil {
-		wrapper := item.(*kvWrapper)
+	if item := f.btree.Get(key); item != nil {
+		wrapper := item.(*kvWrapper) // nolint: forcetypeassert
 		return wrapper.value
-	} else {
-		return nil
 	}
+	return nil
 }

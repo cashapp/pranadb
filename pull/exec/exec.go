@@ -2,10 +2,11 @@ package exec
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
 )
 
-type ExecutorType int
+type ExecutorType uint32
 
 const (
 	ExecutorTypeSelect ExecutorType = iota
@@ -19,6 +20,8 @@ func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
 		return &PullSelect{}, nil
 	case ExecutorTypeTableScan:
 		return &PullTableScan{}, nil
+	case ExecutorTypeAggregation:
+		return nil, fmt.Errorf("not implemented")
 	default:
 		return nil, fmt.Errorf("unexpected executorType %d", executorType)
 	}

@@ -15,7 +15,7 @@ type materializedView struct {
 func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64) (*common.MaterializedViewInfo, error) {
 	dag, err := p.buildPushQueryExecution(schema, query, schema.Name+"."+mvName)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	tableInfo := common.TableInfo{
 		ID:             tableID,
@@ -33,7 +33,7 @@ func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string
 	}
 	tableNode, err := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.storage)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	mv := materializedView{
 		Info:          &mvInfo,

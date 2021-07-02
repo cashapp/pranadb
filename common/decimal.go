@@ -12,8 +12,7 @@ func NewDecimal(dec *types.MyDecimal) *Decimal {
 
 func NewDecFromFloat64(f float64) (*Decimal, error) {
 	dec := new(types.MyDecimal)
-	err := dec.FromFloat64(f)
-	if err != nil {
+	if err := dec.FromFloat64(f); err != nil {
 		return nil, err
 	}
 	return &Decimal{

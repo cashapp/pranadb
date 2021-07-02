@@ -1,11 +1,12 @@
 package push
 
 import (
+	"log"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
-	"log"
 )
 
 type source struct {
@@ -20,13 +21,13 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	tableExecutor, err := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.storage)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	source := source{
+	src := source{
 		sourceInfo:    sourceInfo,
 		tableExecutor: tableExecutor,
 		engine:        p,
@@ -34,16 +35,16 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	rf, err := common.NewRowsFactory(colTypes)
 	if err != nil {
-		return nil
+		return err
 	}
 	rc := &remoteConsumer{
 		RowsFactory: rf,
 		ColTypes:    colTypes,
-		RowsHandler: source.tableExecutor,
+		RowsHandler: src.tableExecutor,
 	}
 	p.remoteConsumers[sourceInfo.TableInfo.ID] = rc
 
-	p.sources[sourceInfo.TableInfo.ID] = &source
+	p.sources[sourceInfo.TableInfo.ID] = &src
 
 	return nil
 }

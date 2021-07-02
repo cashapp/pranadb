@@ -1,8 +1,9 @@
 package push
 
 import (
-	"github.com/squareup/pranadb/storage"
 	"log"
+
+	"github.com/squareup/pranadb/storage"
 )
 
 type shardScheduler struct {
@@ -18,7 +19,7 @@ type actionHolder struct {
 	errChan chan error
 }
 
-func NewShardScheduler(shardID uint64, mover *PushEngine) *shardScheduler {
+func newShardScheduler(shardID uint64, mover *PushEngine) *shardScheduler {
 	return &shardScheduler{
 		shardID: shardID,
 		engine:  mover,

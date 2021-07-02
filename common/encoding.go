@@ -7,6 +7,8 @@ import (
 	"unsafe"
 )
 
+var littleEndian = binary.LittleEndian
+
 func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for _, colIndex := range colIndexes {
 		colType := colTypes[colIndex]
@@ -31,8 +33,7 @@ func EncodeRow(row *Row, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 }
 
 func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
-	isNull := row.IsNull(colIndex)
-	if isNull {
+	if row.IsNull(colIndex) {
 		buffer = append(buffer, 0)
 	} else {
 		buffer = append(buffer, 1)
@@ -93,15 +94,24 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 		data = append(data, 1)
 		switch colType.TypeNumber {
 		case TypeTinyInt, TypeInt, TypeBigInt:
-			valInt64 := value.(int64)
+			valInt64, ok := value.(int64)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be int64", value)
+			}
 			data = EncodeInt64(valInt64, data)
 		case TypeDecimal:
 			// TODO
 		case TypeDouble:
-			valFloat64 := value.(float64)
+			valFloat64, ok := value.(float64)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be float64", value)
+			}
 			data = EncodeFloat64(valFloat64, data)
 		case TypeVarchar:
-			valString := value.(string)
+			valString, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be string", value)
+			}
 			data = EncodeString(valString, data)
 		default:
 			return nil, fmt.Errorf("unexpected column type %d", colType)

@@ -2,12 +2,13 @@ package exec
 
 import (
 	"fmt"
+	"log"
+
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
-	"log"
 )
 
 type Aggregator struct {
@@ -79,14 +80,16 @@ func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error 
 		log.Println("Agg partitioner forwarding row(s)")
 
 		remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, key)
+		if err != nil {
+			return err
+		}
 		if remoteShardID == ctx.WriteBatch.ShardID {
 			// Destination shard is same as this one, so no need for remote send
 			return a.HandleRemoteRows(rows, ctx)
-		} else {
-			err = ctx.Forwarder.QueueForRemoteSend(key, remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
-			if err != nil {
-				return err
-			}
+		}
+		err = ctx.Forwarder.QueueForRemoteSend(key, remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -137,7 +140,7 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 		}
 	}
 
-	//FIXME - we don't output all result rows, only ones that have changed
+	// FIXME - we don't output all result rows, only ones that have changed
 	return a.parent.HandleRows(resultRows, ctx)
 }
 
@@ -146,6 +149,8 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 // one col for each original column from the input in the same order as the input
 // There is one agg function for each of the columns above, for aggregate columns,
 // it's the actual aggregate function, otherwise it's a "firstrow" function
+// TODO: break into smaller functions
+// nolint: gocyclo
 func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, aggStates map[string]*aggfuncs.AggState) error {
 
 	// TODO this seems unnecessary - we should just lookup the row in storage using the
@@ -224,7 +229,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 			}
 			err = aggFunc.EvalInt64(arg, null, aggState, index)
 			if err != nil {
-				return nil
+				return err
 			}
 		case common.TypeDecimal:
 			// TODO
@@ -235,7 +240,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 			}
 			err = aggFunc.EvalFloat64(arg, null, aggState, index)
 			if err != nil {
-				return nil
+				return err
 			}
 		case common.TypeVarchar:
 			arg, null, err := aggFunc.ArgExpression().EvalString(row)
@@ -244,7 +249,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 			}
 			err = aggFunc.EvalString(arg, null, aggState, index)
 			if err != nil {
-				return nil
+				return err
 			}
 		default:
 			return fmt.Errorf("unexpected column type %d", aggFunc.ValueType())

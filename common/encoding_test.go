@@ -1,9 +1,10 @@
 package common
 
 import (
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 var singleVarcharColumn = []ColumnType{VarcharColumnType}
@@ -30,18 +31,21 @@ func TestEncodeDecodeString(t *testing.T) {
 }
 
 func encodeDecodeInt(t *testing.T, rf *RowsFactory, val int64) {
+	t.Helper()
 	rows := rf.NewRows(1)
 	rows.AppendInt64ToColumn(0, val)
 	encodeDecode(t, rows, singleIntColumn)
 }
 
 func encodeDecodeString(t *testing.T, rf *RowsFactory, val string) {
+	t.Helper()
 	rows := rf.NewRows(1)
 	rows.AppendStringToColumn(0, val)
 	encodeDecode(t, rows, singleVarcharColumn)
 }
 
 func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
+	t.Helper()
 	row := rows.GetRow(0)
 	var buffer []byte
 	buffer, err := EncodeRow(&row, columnTypes, buffer)
@@ -56,6 +60,7 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 }
 
 func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) {
+	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType.TypeNumber {

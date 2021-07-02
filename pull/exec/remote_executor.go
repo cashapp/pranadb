@@ -2,6 +2,7 @@ package exec
 
 import (
 	"errors"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 )

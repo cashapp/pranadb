@@ -1,9 +1,11 @@
 package aggfuncs
 
 import (
+	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"unsafe"
+
+	"github.com/squareup/pranadb/common"
 )
 
 type AggState struct {
@@ -111,8 +113,8 @@ func NewAggregateFunction(argExpression *common.Expression, funcType AggFunction
 		return &MaxAggregateFunction{aggregateFunctionBase: base}, nil
 	case MinAggregateFunctionType:
 		return &MinAggregateFunction{aggregateFunctionBase: base}, nil
-	//case AverageAggregateFunctionType:
-	//	return &AverageAggregateFunction{aggregateFunctionBase: base}, nil
+	case AverageAggregateFunctionType:
+		return nil, errors.New("AverageAggregateFunctionType not implemented")
 	case FirstRowAggregateFunctionType:
 		return &FirstRowAggregateFunction{aggregateFunctionBase: base}, nil
 	default:
