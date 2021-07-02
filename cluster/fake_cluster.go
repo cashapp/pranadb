@@ -15,14 +15,14 @@ type fakeCluster struct {
 	remoteQueryExecutionCallback RemoteQueryExecutionCallback
 }
 
-func (f *fakeCluster) ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan RemoteQueryResult {
+func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan RemoteQueryResult {
 	f.mu.Lock()
 	callback := f.remoteQueryExecutionCallback
 	f.mu.Unlock()
 	ch := make(chan RemoteQueryResult, 1)
 	if callback != nil {
 		go func() {
-			rows, err := callback.ExecuteRemotePullQuery(serializedDag, queryID, limit)
+			rows, err := callback.ExecuteRemotePullQuery(schemaName, query, queryID, limit)
 			ch <- RemoteQueryResult{
 				Rows: rows,
 				Err:  err,

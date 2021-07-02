@@ -15,7 +15,7 @@ type Cluster interface {
 
 	SetLeaderChangedCallback(callback LeaderChangeCallback)
 
-	ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int, nodeID int) chan RemoteQueryResult
+	ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan RemoteQueryResult
 
 	SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback)
 
@@ -34,7 +34,7 @@ type LeaderChangeCallback interface {
 }
 
 type RemoteQueryExecutionCallback interface {
-	ExecuteRemotePullQuery(serializedDag []byte, queryID string, limit int) (*common.Rows, error)
+	ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int) (*common.Rows, error)
 }
 
 // ClusterInfo describes the cluster in terms of which nodes have which shards, both leaders and followers

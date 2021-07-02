@@ -13,8 +13,13 @@ type PullTableScan struct {
 }
 
 func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) (*PullTableScan, error) {
+	rf, err := common.NewRowsFactory(colTypes)
+	if err != nil {
+		return nil, err
+	}
 	base := pullExecutorBase{
-		colTypes: colTypes,
+		colTypes:    colTypes,
+		rowsFactory: rf,
 	}
 	return &PullTableScan{
 		pullExecutorBase: base,

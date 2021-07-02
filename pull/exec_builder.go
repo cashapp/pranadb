@@ -14,7 +14,7 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(physicalPlan, schema, queryID)
+	dag, err := p.buildPullDAG(physicalPlan, schema, query, queryID)
 
 	// TODO TODO
 	// We need to create out own remote call executor which corresponds to the TableReader
@@ -31,7 +31,7 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 	return dag, nil
 }
 
-func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, queryID string) (exec.PullExecutor, error) {
+func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -78,7 +78,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		physTabReader := plan.(*core.PhysicalTableReader)
 		// This is the part of the plan that needs to be executed remotely
 		remotePlan := physTabReader.GetTablePlan()
-		remoteDag, err := p.buildPullDAG(remotePlan, schema, queryID)
+		remoteDag, err := p.buildPullDAG(remotePlan, schema, query, queryID)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +90,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		for nodeID, _ := range clusterInfo.NodeInfos {
 			nodeIDs = append(nodeIDs, nodeID)
 		}
-		executor, err = exec.NewRemoteExecutor(colTypes, queryID, remoteDag, nodeIDs, p.cluster)
+		executor, err = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, nodeIDs, p.cluster)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +119,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(child, schema, queryID)
+		childExecutor, err := p.buildPullDAG(child, schema, query, queryID)
 		if err != nil {
 			return nil, err
 		}

@@ -19,7 +19,7 @@ func NewServer(nodeID int) *Server {
 	planner := parplan.NewPlanner()
 	shardr := sharder.NewSharder(cluster)
 	pushEngine := push.NewPushEngine(store, cluster, planner, shardr)
-	pullEngine := pull.NewPullEngine(planner, store, cluster)
+	pullEngine := pull.NewPullEngine(planner, store, cluster, metaController)
 	commandExecutor := command.NewCommandExecutor(store, metaController, pushEngine, pullEngine, cluster)
 	server := Server{
 		nodeID:          nodeID,

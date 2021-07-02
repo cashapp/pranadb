@@ -85,10 +85,9 @@ func IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit
 }
 
 func encodeKeyPrefix(tableID uint64, shardID uint64) []byte {
-	// Key is |shard_id|table_id|pk_value
 	keyBuff := make([]byte, 0, 32)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, shardID)
 	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, tableID)
+	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, shardID)
 	return keyBuff
 }
 

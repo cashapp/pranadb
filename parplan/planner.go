@@ -38,6 +38,7 @@ func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery boo
 	}
 	ctx := context.TODO()
 	sessCtx := NewSessionContext(is, pullQuery)
+	//TODO doesn't seem to work if there are prepared statement markers
 	err = core.Preprocess(sessCtx, stmt)
 	if err != nil {
 		return nil, err

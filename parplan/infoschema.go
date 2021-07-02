@@ -475,11 +475,15 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Cont
 	storage := fakeStorage{client: kvClient}
 	d := domain.NewDomain(storage, 0, 0, 0, nil)
 
+	sessVars := variable.NewSessionVars()
+	// This is necessary to ensure prepared statement param markers are created properly in the
+	// plan
+	sessVars.StmtCtx.UseCache = true
 	ctx := sessCtx{
 		is:          is,
 		store:       storage,
 		values:      make(map[fmt.Stringer]interface{}),
-		sessionVars: variable.NewSessionVars(),
+		sessionVars: sessVars,
 	}
 	domain.BindDomain(&ctx, d)
 	return &ctx

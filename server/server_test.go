@@ -28,14 +28,11 @@ func TestCreateMaterializedView(t *testing.T) {
 	require.Nil(t, err)
 
 	rows := rf.NewRows(10)
-
 	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
 	//appendRow(t, rows, colTypes, 2, "london", 28.1)
 	//appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
-
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
-
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
 	require.Nil(t, err)
 
@@ -69,13 +66,38 @@ func TestExecutePullQuery(t *testing.T) {
 	err = ce.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
 	require.Nil(t, err)
 
+	rf, err := common.NewRowsFactory(colTypes)
+	require.Nil(t, err)
+	rows := rf.NewRows(10)
+	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	//appendRow(t, rows, colTypes, 2, "london", 28.1)
+	//appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
+	require.True(t, ok)
+	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
+	require.Nil(t, err)
+
+	time.Sleep(5 * time.Second)
+
 	//query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
+	//query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	exec, err := ce.ExecutePullQuery("test", query)
 	require.Nil(t, err)
-	rows, err := exec.GetRows(100)
+	rows, err = exec.GetRows(100)
 	require.Nil(t, err)
 	require.Equal(t, 1, rows.RowCount())
+
+	expectedRows := rf.NewRows(10)
+	appendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
+	//appendRow(t, expectedRows, colTypes, 2, "london", 28.1)
+	//appendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
+
+	expectedRow := expectedRows.GetRow(0)
+
+	actualRow := rows.GetRow(0)
+
+	RowsEqual(t, &expectedRow, &actualRow, colTypes)
 }
 
 func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {

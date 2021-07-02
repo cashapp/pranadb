@@ -10,14 +10,6 @@ type PullSelect struct {
 	predicates []*common.Expression
 }
 
-func (p *PullSelect) Serialize(buffer []byte) ([]byte, error) {
-	panic("implement me")
-}
-
-func (p *PullSelect) Deserialize(buffer []byte) (int, error) {
-	panic("implement me")
-}
-
 func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) (*PullSelect, error) {
 	rf, err := common.NewRowsFactory(colTypes)
 	if err != nil {
