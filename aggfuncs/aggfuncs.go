@@ -33,23 +33,23 @@ func (as *AggState) SetNull(index int, null bool) {
 
 func (as *AggState) SetInt64(index int, val int64) {
 	as.set[index] = true
-	ptrInt64 := (*int64)(unsafe.Pointer(&as.state[index]))
+	ptrInt64 := (*int64)(unsafe.Pointer(&as.state[index])) // nolint: gosec
 	*ptrInt64 = val
 }
 
 func (as *AggState) GetInt64(index int) int64 {
-	ptrInt64 := (*int64)(unsafe.Pointer(&as.state[index]))
+	ptrInt64 := (*int64)(unsafe.Pointer(&as.state[index])) // nolint: gosec
 	return *ptrInt64
 }
 
 func (as *AggState) SetFloat64(index int, val float64) {
 	as.set[index] = true
-	ptrFloat64 := (*float64)(unsafe.Pointer(&as.state[index]))
+	ptrFloat64 := (*float64)(unsafe.Pointer(&as.state[index])) // nolint: gosec
 	*ptrFloat64 = val
 }
 
 func (as *AggState) GetFloat64(index int) float64 {
-	ptrFloat64 := (*float64)(unsafe.Pointer(&as.state[index]))
+	ptrFloat64 := (*float64)(unsafe.Pointer(&as.state[index])) // nolint: gosec
 	return *ptrFloat64
 }
 

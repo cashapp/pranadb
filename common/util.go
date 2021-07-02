@@ -25,11 +25,16 @@ func (b *ByteSliceMap) Put(key []byte, value []byte) {
 }
 
 func ByteSliceToStringZeroCopy(buffer []byte) string {
+	// nolint: gosec
 	return *(*string)(unsafe.Pointer(&buffer))
 }
 
 func StringToByteSliceZeroCopy(str string) []byte {
-	var buffer = *(*[]byte)(unsafe.Pointer(&str))
-	(*reflect.SliceHeader)(unsafe.Pointer(&buffer)).Cap = len(str)
-	return buffer
+	// see https://groups.google.com/g/golang-nuts/c/Zsfk-VMd_fU/m/nZoH4kExBgAJ
+	const max = 0x7fff0000
+	if len(str) > max {
+		panic("string too long")
+	}
+	// nolint: gosec
+	return (*[max]byte)(unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&str)).Data))[:len(str):len(str)]
 }
