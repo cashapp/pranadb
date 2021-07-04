@@ -3,6 +3,7 @@ package parplan
 import (
 	"context"
 	"fmt"
+
 	"github.com/pingcap/kvproto/pkg/deadlock"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
@@ -199,11 +200,11 @@ func (pis *pranaInfoSchema) SchemaByTable(tableInfo *model.TableInfo) (val *mode
 	return nil, false
 }
 
-func (p pranaInfoSchema) TableByID(id int64) (tidbTable.Table, bool) {
+func (pis pranaInfoSchema) TableByID(id int64) (tidbTable.Table, bool) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) AllocByID(id int64) (autoid.Allocators, bool) {
+func (pis pranaInfoSchema) AllocByID(id int64) (autoid.Allocators, bool) {
 	panic("should not be called")
 }
 
@@ -221,39 +222,39 @@ func (pis *pranaInfoSchema) AllSchemas() (schemas []*model.DBInfo) {
 	return
 }
 
-func (p pranaInfoSchema) Clone() (result []*model.DBInfo) {
+func (pis pranaInfoSchema) Clone() (result []*model.DBInfo) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) SchemaTables(schema model.CIStr) []tidbTable.Table {
+func (pis pranaInfoSchema) SchemaTables(schema model.CIStr) []tidbTable.Table {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) SchemaMetaVersion() int64 {
+func (pis pranaInfoSchema) SchemaMetaVersion() int64 {
 	return 0
 }
 
-func (p pranaInfoSchema) TableIsView(schema, table model.CIStr) bool {
+func (pis pranaInfoSchema) TableIsView(schema, table model.CIStr) bool {
 	return false
 }
 
-func (p pranaInfoSchema) TableIsSequence(schema, table model.CIStr) bool {
+func (pis pranaInfoSchema) TableIsSequence(schema, table model.CIStr) bool {
 	return false
 }
 
-func (p pranaInfoSchema) FindTableByPartitionID(partitionID int64) (tidbTable.Table, *model.DBInfo, *model.PartitionDefinition) {
+func (pis pranaInfoSchema) FindTableByPartitionID(partitionID int64) (tidbTable.Table, *model.DBInfo, *model.PartitionDefinition) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) BundleByName(name string) (*placement.Bundle, bool) {
+func (pis pranaInfoSchema) BundleByName(name string) (*placement.Bundle, bool) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) SetBundle(bundle *placement.Bundle) {
+func (pis pranaInfoSchema) SetBundle(bundle *placement.Bundle) {
 	panic("should not be called")
 }
 
-func (p pranaInfoSchema) RuleBundles() []*placement.Bundle {
+func (pis pranaInfoSchema) RuleBundles() []*placement.Bundle {
 	panic("should not be called")
 }
 

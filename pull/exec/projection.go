@@ -2,13 +2,14 @@ package exec
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
 )
 
 type PullProjection struct {
 	pullExecutorBase
-	projColumns         []*common.Expression
-	invisibleKeyColumns []int
+	projColumns []*common.Expression
+	// invisibleKeyColumns []int
 }
 
 func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) (*PullProjection, error) {
@@ -27,6 +28,7 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 	}, nil
 }
 
+// GetRows returns the projected columns.
 func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 
 	rows, err = p.GetChildren()[0].GetRows(limit)

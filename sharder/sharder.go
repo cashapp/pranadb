@@ -1,9 +1,10 @@
 package sharder
 
 import (
-	"github.com/squareup/pranadb/cluster"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/cluster"
 )
 
 type ShardType int
@@ -29,9 +30,8 @@ func NewSharder(cluster cluster.Cluster) *Sharder {
 func (s *Sharder) CalculateShard(shardType ShardType, key []byte) (uint64, error) {
 	if shardType == ShardTypeHash {
 		return s.computeHashShard(key), nil
-	} else {
-		panic("unsupported")
 	}
+	panic("unsupported")
 }
 
 func (s *Sharder) computeHashShard(key []byte) uint64 {
@@ -80,9 +80,8 @@ func (s *Sharder) Start() error {
 	if s.started {
 		return nil
 	}
-	err := s.loadAllShards()
-	if err != nil {
-		return nil
+	if err := s.loadAllShards(); err != nil {
+		return err
 	}
 	s.started = true
 	return nil

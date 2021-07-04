@@ -3,14 +3,15 @@ package pull
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/storage"
-	"sync"
-	"sync/atomic"
 )
 
 type PullEngine struct {
@@ -64,8 +65,8 @@ func (p *PullEngine) ExecutePullQuery(schema *common.Schema, query string) (quer
 	return p.buildPullQueryExecution(schema, query, queryID)
 }
 
-// TODO one-shot optimisation - no need to register query
 func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int) (*common.Rows, error) {
+	// TODO one-shot optimisation - no need to register query
 
 	p.lock.RLock()
 	defer p.lock.RUnlock()

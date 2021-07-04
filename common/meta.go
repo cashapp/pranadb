@@ -60,10 +60,10 @@ type SourceInfo struct {
 }
 
 type TopicInfo struct {
-	brokerName string
-	topicName  string
-	keyFormat  TopicEncoding
-	properties map[string]interface{}
+	BrokerName string
+	TopicName  string
+	KeyFormat  TopicEncoding
+	Properties map[string]interface{}
 }
 
 type TopicEncoding int

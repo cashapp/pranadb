@@ -1,13 +1,15 @@
 package common
 
 import (
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 var singleVarcharColumn = []ColumnType{VarcharColumnType}
 var singleIntColumn = []ColumnType{IntColumnType}
+var singleFloatColumn = []ColumnType{DoubleColumnType}
 
 func TestEncodeDecodeInt(t *testing.T) {
 	rf, err := NewRowsFactory(singleIntColumn)
@@ -29,19 +31,38 @@ func TestEncodeDecodeString(t *testing.T) {
 	encodeDecodeString(t, rf, "\u2318")
 }
 
+func TestEncodeDecodeFloat(t *testing.T) {
+	rf, err := NewRowsFactory(singleFloatColumn)
+	require.Nil(t, err)
+	encodeDecodeFloat(t, rf, 0)
+	encodeDecodeFloat(t, rf, -1234.5678)
+	encodeDecodeFloat(t, rf, 1234.5678)
+	encodeDecodeFloat(t, rf, math.MaxFloat64)
+}
+
 func encodeDecodeInt(t *testing.T, rf *RowsFactory, val int64) {
+	t.Helper()
 	rows := rf.NewRows(1)
 	rows.AppendInt64ToColumn(0, val)
 	encodeDecode(t, rows, singleIntColumn)
 }
 
 func encodeDecodeString(t *testing.T, rf *RowsFactory, val string) {
+	t.Helper()
 	rows := rf.NewRows(1)
 	rows.AppendStringToColumn(0, val)
 	encodeDecode(t, rows, singleVarcharColumn)
 }
 
+func encodeDecodeFloat(t *testing.T, rf *RowsFactory, val float64) {
+	t.Helper()
+	rows := rf.NewRows(1)
+	rows.AppendFloat64ToColumn(0, val)
+	encodeDecode(t, rows, singleFloatColumn)
+}
+
 func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
+	t.Helper()
 	row := rows.GetRow(0)
 	var buffer []byte
 	buffer, err := EncodeRow(&row, columnTypes, buffer)
@@ -56,6 +77,7 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 }
 
 func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) {
+	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType.TypeNumber {
@@ -68,7 +90,7 @@ func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) 
 		case TypeDouble:
 			val1 := expected.GetFloat64(colIndex)
 			val2 := actual.GetFloat64(colIndex)
-			require.Equal(t, val1, val2)
+			require.InDelta(t, val1, val2, 0.0001)
 		case TypeVarchar:
 			val1 := expected.GetString(colIndex)
 			val2 := actual.GetString(colIndex)

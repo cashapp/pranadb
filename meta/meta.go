@@ -2,9 +2,10 @@ package meta
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
-	"sync"
 )
 
 type Controller struct {
@@ -28,8 +29,7 @@ func (c *Controller) Start() error {
 	if !c.started {
 		return nil
 	}
-	err := c.loadSchemas()
-	if err != nil {
+	if err := c.loadSchemas(); err != nil {
 		return err
 	}
 	c.started = true

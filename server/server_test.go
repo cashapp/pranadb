@@ -1,11 +1,12 @@
 package server
 
 import (
+	"testing"
+	"time"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestCreateMaterializedView(t *testing.T) {
@@ -101,6 +102,7 @@ func TestExecutePullQuery(t *testing.T) {
 }
 
 func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {
+	t.Helper()
 	require.Equal(t, len(colVals), len(colTypes))
 
 	for i, colType := range colTypes {
@@ -117,6 +119,7 @@ func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, co
 }
 
 func RowsEqual(t *testing.T, expected *common.Row, actual *common.Row, colTypes []common.ColumnType) {
+	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
 		switch colType.TypeNumber {

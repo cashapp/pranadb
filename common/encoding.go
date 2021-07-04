@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"unsafe"
 )
+
+var littleEndian = binary.LittleEndian
 
 func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 	for _, colIndex := range colIndexes {
@@ -31,8 +32,7 @@ func EncodeRow(row *Row, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 }
 
 func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
-	isNull := row.IsNull(colIndex)
-	if isNull {
+	if row.IsNull(colIndex) {
 		buffer = append(buffer, 0)
 	} else {
 		buffer = append(buffer, 1)
@@ -68,9 +68,8 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 }
 
 func EncodeInt64(value int64, buffer []byte) []byte {
-	v := *(*uint64)(unsafe.Pointer(&value))
 	// Write it in little-endian
-	return AppendUint64ToBufferLittleEndian(buffer, v)
+	return AppendUint64ToBufferLittleEndian(buffer, uint64(value))
 }
 
 func EncodeFloat64(value float64, buffer []byte) []byte {
@@ -93,15 +92,24 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 		data = append(data, 1)
 		switch colType.TypeNumber {
 		case TypeTinyInt, TypeInt, TypeBigInt:
-			valInt64 := value.(int64)
+			valInt64, ok := value.(int64)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be int64", value)
+			}
 			data = EncodeInt64(valInt64, data)
 		case TypeDecimal:
 			// TODO
 		case TypeDouble:
-			valFloat64 := value.(float64)
+			valFloat64, ok := value.(float64)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be float64", value)
+			}
 			data = EncodeFloat64(valFloat64, data)
 		case TypeVarchar:
-			valString := value.(string)
+			valString, ok := value.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be string", value)
+			}
 			data = EncodeString(valString, data)
 		default:
 			return nil, fmt.Errorf("unexpected column type %d", colType)
@@ -144,15 +152,13 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 }
 
 func decodeInt64(buffer []byte, offset int) (val int64, off int) {
-	ptr := (*int64)(unsafe.Pointer(&buffer[offset]))
-	val = *ptr
+	val = int64(littleEndian.Uint64(buffer[offset:]))
 	offset += 8
 	return val, offset
 }
 
 func decodeFloat64(buffer []byte, offset int) (val float64, off int) {
-	ptr := (*float64)(unsafe.Pointer(&buffer[offset]))
-	val = *ptr
+	val = math.Float64frombits(littleEndian.Uint64(buffer[offset:]))
 	offset += 8
 	return val, offset
 }
@@ -163,8 +169,7 @@ func decodeDecimal(buffer []byte, offset int) (val Decimal, off int) {
 }
 
 func decodeString(buffer []byte, offset int) (val string, off int) {
-	lenPtr := (*uint32)(unsafe.Pointer(&buffer[offset]))
-	l := int(*lenPtr)
+	l := int(littleEndian.Uint32(buffer[offset:]))
 	offset += 4
 	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
 	offset += l

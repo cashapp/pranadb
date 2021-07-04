@@ -29,10 +29,9 @@ func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, qu
 			}
 		}()
 		return ch
-	} else {
-		ch <- RemoteQueryResult{
-			Err: errors.New("no remote query callback registered"),
-		}
+	}
+	ch <- RemoteQueryResult{
+		Err: errors.New("no remote query callback registered"),
 	}
 	return ch
 }
@@ -80,7 +79,7 @@ func (f *fakeCluster) GetNodeInfo(nodeID int) (*NodeInfo, error) {
 	defer f.mu.RUnlock()
 	nodeInfo, ok := f.clusterInfo.NodeInfos[nodeID]
 	if !ok {
-		return nil, fmt.Errorf("Invalid node id %d", nodeID)
+		return nil, fmt.Errorf("invalid node id %d", nodeID)
 	}
 	return nodeInfo, nil
 }
