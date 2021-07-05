@@ -68,7 +68,7 @@ func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) er
 		row := rows.GetRow(i)
 		for j, projColumn := range p.projColumns {
 			colType := p.colTypes[j]
-			switch colType.TypeNumber {
+			switch colType.Type {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val, null, err := projColumn.EvalInt64(&row)
 				if err != nil {
@@ -121,7 +121,7 @@ func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) er
 		for index, colNumber := range p.invisibleKeyColumns {
 			j := appendStart + index
 			colType := p.colTypes[j]
-			switch colType.TypeNumber {
+			switch colType.Type {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val := row.GetInt64(colNumber)
 				result.AppendInt64ToColumn(j, val)

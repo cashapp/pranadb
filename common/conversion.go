@@ -2,12 +2,13 @@ package common
 
 import (
 	"fmt"
+
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/types"
 )
 
 func ConvertPranaTypeToTiDBType(columnType ColumnType) (*types.FieldType, error) {
-	switch columnType.TypeNumber {
+	switch columnType.Type {
 	case TypeTinyInt:
 		return types.NewFieldType(mysql.TypeTiny), nil
 	case TypeInt:

@@ -80,7 +80,7 @@ func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) 
 	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
-		switch colType.TypeNumber {
+		switch colType.Type {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			val1 := expected.GetInt64(colIndex)
 			val2 := actual.GetInt64(colIndex)

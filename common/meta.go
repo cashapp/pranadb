@@ -1,7 +1,10 @@
 package common
 
+type Type int
+
 const (
-	TypeTinyInt int = iota + 1
+	TypeUnknown Type = iota
+	TypeTinyInt
 	TypeInt
 	TypeBigInt
 	TypeDouble
@@ -10,23 +13,25 @@ const (
 	TypeTimestamp
 )
 
-var TinyIntColumnType = ColumnType{TypeNumber: TypeTinyInt}
-var IntColumnType = ColumnType{TypeNumber: TypeInt}
-var BigIntColumnType = ColumnType{TypeNumber: TypeInt}
-var DoubleColumnType = ColumnType{TypeNumber: TypeDouble}
-var VarcharColumnType = ColumnType{TypeNumber: TypeVarchar}
-var TimestampColumnType = ColumnType{TypeNumber: TypeTimestamp}
+var (
+	TinyIntColumnType   = ColumnType{Type: TypeTinyInt}
+	IntColumnType       = ColumnType{Type: TypeInt}
+	BigIntColumnType    = ColumnType{Type: TypeInt}
+	DoubleColumnType    = ColumnType{Type: TypeDouble}
+	VarcharColumnType   = ColumnType{Type: TypeVarchar}
+	TimestampColumnType = ColumnType{Type: TypeTimestamp}
+)
 
 func NewDecimalColumnType(precision byte, scale byte) ColumnType {
 	return ColumnType{
-		TypeNumber:   TypeDecimal,
+		Type:         TypeDecimal,
 		DecPrecision: precision,
 		DecLen:       scale,
 	}
 }
 
 type ColumnType struct {
-	TypeNumber   int
+	Type         Type
 	DecPrecision byte
 	DecLen       byte
 }
@@ -69,7 +74,8 @@ type TopicInfo struct {
 type TopicEncoding int
 
 const (
-	EncodingJSON TopicEncoding = iota + 1
+	EncodingUnknown TopicEncoding = iota
+	EncodingJSON
 	EncodingProtobuf
 	EncodingRaw
 )

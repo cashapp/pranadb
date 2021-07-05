@@ -1,9 +1,10 @@
 package table
 
 import (
+	"log"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
-	"log"
 )
 
 func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *storage.WriteBatch) error {

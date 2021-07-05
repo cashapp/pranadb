@@ -36,7 +36,7 @@ func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byt
 		buffer = append(buffer, 0)
 	} else {
 		buffer = append(buffer, 1)
-		switch colType.TypeNumber {
+		switch colType.Type {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			// We store as unsigned so convert signed to unsigned
 			valInt64 := row.GetInt64(colIndex)
@@ -90,7 +90,7 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 		data = append(data, 0)
 	} else {
 		data = append(data, 1)
-		switch colType.TypeNumber {
+		switch colType.Type {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			valInt64, ok := value.(int64)
 			if !ok {
@@ -126,7 +126,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 			rows.AppendNullToColumn(colIndex)
 		} else {
 			offset++
-			switch colType.TypeNumber {
+			switch colType.Type {
 			case TypeTinyInt, TypeInt, TypeBigInt:
 				var val int64
 				val, offset = decodeInt64(buffer, offset)
