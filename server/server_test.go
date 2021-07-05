@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCreateMaterializedView(t *testing.T) {
@@ -30,8 +31,8 @@ func TestCreateMaterializedView(t *testing.T) {
 
 	rows := rf.NewRows(10)
 	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	//appendRow(t, rows, colTypes, 2, "london", 28.1)
-	//appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	// appendRow(t, rows, colTypes, 2, "london", 28.1)
+	// appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
@@ -71,8 +72,8 @@ func TestExecutePullQuery(t *testing.T) {
 	require.Nil(t, err)
 	rows := rf.NewRows(10)
 	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	//appendRow(t, rows, colTypes, 2, "london", 28.1)
-	//appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	// appendRow(t, rows, colTypes, 2, "london", 28.1)
+	// appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
@@ -80,8 +81,8 @@ func TestExecutePullQuery(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 
-	//query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
-	//query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
+	// query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
+	// query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	exec, err := ce.ExecutePullQuery("test", query)
 	require.Nil(t, err)
@@ -91,8 +92,8 @@ func TestExecutePullQuery(t *testing.T) {
 
 	expectedRows := rf.NewRows(10)
 	appendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
-	//appendRow(t, expectedRows, colTypes, 2, "london", 28.1)
-	//appendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
+	// appendRow(t, expectedRows, colTypes, 2, "london", 28.1)
+	// appendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
 
 	expectedRow := expectedRows.GetRow(0)
 
@@ -107,7 +108,7 @@ func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, co
 
 	for i, colType := range colTypes {
 		colVal := colVals[i]
-		switch colType.TypeNumber {
+		switch colType.Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			rows.AppendInt64ToColumn(i, int64(colVal.(int)))
 		case common.TypeDouble:
@@ -122,7 +123,7 @@ func RowsEqual(t *testing.T, expected *common.Row, actual *common.Row, colTypes 
 	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
-		switch colType.TypeNumber {
+		switch colType.Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			val1 := expected.GetInt64(colIndex)
 			val2 := actual.GetInt64(colIndex)

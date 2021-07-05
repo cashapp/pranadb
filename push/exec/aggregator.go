@@ -114,7 +114,7 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 			if aggState.IsNull(i) {
 				resultRows.AppendNullToColumn(i)
 			} else {
-				switch colType.TypeNumber {
+				switch colType.Type {
 				case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 					resultRows.AppendInt64ToColumn(i, aggState.GetInt64(i))
 				case common.TypeDecimal:
@@ -161,7 +161,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 		var val interface{}
 		null := row.IsNull(groupByCol)
 		if !null {
-			switch colType.TypeNumber {
+			switch colType.Type {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val = row.GetInt64(groupByCol)
 			case common.TypeDecimal:
@@ -202,7 +202,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 				if currRow.IsNull(i) {
 					aggState.SetNull(i, true)
 				} else {
-					switch colType.TypeNumber {
+					switch colType.Type {
 					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 						aggState.SetInt64(i, currRow.GetInt64(i))
 					case common.TypeDecimal:
@@ -221,7 +221,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 	}
 
 	for index, aggFunc := range a.aggFuncs {
-		switch aggFunc.ValueType().TypeNumber {
+		switch aggFunc.ValueType().Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			arg, null, err := aggFunc.ArgExpression().EvalInt64(row)
 			if err != nil {

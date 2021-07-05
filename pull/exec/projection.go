@@ -43,7 +43,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 		row := rows.GetRow(i)
 		for j, projColumn := range p.projColumns {
 			colType := p.colTypes[j]
-			switch colType.TypeNumber {
+			switch colType.Type {
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val, null, err := projColumn.EvalInt64(&row)
 				if err != nil {
