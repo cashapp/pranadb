@@ -32,8 +32,8 @@ func TestCreateMaterializedView(t *testing.T) {
 	rows := rf.NewRows(10)
 
 	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	// testutils.AppendRow(t, rows, colTypes, 2, "london", 28.1)
-	// testutils.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	common.AppendRow(t, rows, colTypes, 2, "london", 28.1)
+	common.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
