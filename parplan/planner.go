@@ -2,6 +2,7 @@ package parplan
 
 import (
 	"context"
+	"github.com/squareup/pranadb/sessctx"
 	"math"
 
 	"github.com/pingcap/parser/ast"
@@ -38,7 +39,7 @@ func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery boo
 		return nil, err
 	}
 	ctx := context.TODO()
-	sessCtx := NewSessionContext(is, pullQuery)
+	sessCtx := sessctx.NewSessionContext(is, pullQuery)
 	//TODO doesn't seem to work if there are prepared statement markers
 	err = core.Preprocess(sessCtx, stmt)
 	if err != nil {

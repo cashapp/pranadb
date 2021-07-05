@@ -40,6 +40,21 @@ func TestEncodeDecodeFloat(t *testing.T) {
 	encodeDecodeFloat(t, rf, math.MaxFloat64)
 }
 
+func TestEncodeDecodeDecimal(t *testing.T) {
+	colTypes := []ColumnType{NewDecimalColumnType(10, 2)}
+	rf, err := NewRowsFactory(colTypes)
+	require.Nil(t, err)
+	dec, err := NewDecFromString("0.00")
+	require.Nil(t, err)
+	encodeDecodeDecimal(t, rf, *dec, colTypes)
+	dec, err = NewDecFromString("-12345678.12")
+	require.Nil(t, err)
+	encodeDecodeDecimal(t, rf, *dec, colTypes)
+	dec, err = NewDecFromString("12345678.12")
+	require.Nil(t, err)
+	encodeDecodeDecimal(t, rf, *dec, colTypes)
+}
+
 func encodeDecodeInt(t *testing.T, rf *RowsFactory, val int64) {
 	t.Helper()
 	rows := rf.NewRows(1)
@@ -61,6 +76,13 @@ func encodeDecodeFloat(t *testing.T, rf *RowsFactory, val float64) {
 	encodeDecode(t, rows, singleFloatColumn)
 }
 
+func encodeDecodeDecimal(t *testing.T, rf *RowsFactory, val Decimal, colTypes []ColumnType) {
+	t.Helper()
+	rows := rf.NewRows(1)
+	rows.AppendDecimalToColumn(0, val)
+	encodeDecode(t, rows, colTypes)
+}
+
 func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 	t.Helper()
 	row := rows.GetRow(0)
@@ -73,30 +95,5 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 	row1 := rows.GetRow(0)
 	row2 := rows.GetRow(1)
 
-	RowsEqual(t, &row1, &row2, columnTypes)
-}
-
-func RowsEqual(t *testing.T, expected *Row, actual *Row, colTypes []ColumnType) {
-	t.Helper()
-	require.Equal(t, expected.ColCount(), actual.ColCount())
-	for colIndex, colType := range colTypes {
-		switch colType.Type {
-		case TypeTinyInt, TypeInt, TypeBigInt:
-			val1 := expected.GetInt64(colIndex)
-			val2 := actual.GetInt64(colIndex)
-			require.Equal(t, val1, val2)
-		case TypeDecimal:
-			// TODO
-		case TypeDouble:
-			val1 := expected.GetFloat64(colIndex)
-			val2 := actual.GetFloat64(colIndex)
-			require.InDelta(t, val1, val2, 0.0001)
-		case TypeVarchar:
-			val1 := expected.GetString(colIndex)
-			val2 := actual.GetString(colIndex)
-			require.Equal(t, val1, val2)
-		default:
-			t.Errorf("unexpected column type %d", colType)
-		}
-	}
+	RowsEqual(t, row1, row2, columnTypes)
 }

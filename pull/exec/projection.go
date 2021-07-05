@@ -9,7 +9,6 @@ import (
 type PullProjection struct {
 	pullExecutorBase
 	projColumns []*common.Expression
-	// invisibleKeyColumns []int
 }
 
 func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) (*PullProjection, error) {

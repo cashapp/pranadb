@@ -68,6 +68,7 @@ func (p *PushEngine) pollForForwards(localShardID uint64) error {
 
 		// Key structure is
 		// shard_id|forwarder_table_id|remote_shard_id|seq|entity_id
+		// nolint: gosec
 		currRemoteShardID := *(*uint64)(unsafe.Pointer(&key[16]))
 		log.Printf("Curr remote shard id is %d", currRemoteShardID)
 		if first || remoteShardID != currRemoteShardID {
@@ -130,6 +131,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, batch *storage.
 	receivingSequences := make(map[uint64]uint64)
 
 	for _, kvPair := range kvPairs {
+		// nolint: gosec
 		sendingShardID := *(*uint64)(unsafe.Pointer(&kvPair.Key[16]))
 
 		log.Printf("Received key %v", kvPair.Key)
@@ -142,7 +144,9 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, batch *storage.
 			}
 		}
 
+		// nolint: gosec
 		receivedSeq := *(*uint64)(unsafe.Pointer(&kvPair.Key[24]))
+		// nolint: gosec
 		entityID := *(*uint64)(unsafe.Pointer(&kvPair.Key[32]))
 		if receivedSeq > lastReceivedSeq {
 			// We only handle rows which we haven't seen before - it's possible the forwarder
@@ -183,6 +187,7 @@ func (p *PushEngine) lastForwardSequence(localShardID uint64) (uint64, error) {
 	if seqBytes == nil {
 		return 0, nil
 	}
+	// nolint: gosec
 	return *(*uint64)(unsafe.Pointer(&seqBytes)), nil
 }
 
@@ -201,6 +206,7 @@ func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShard
 	if err != nil {
 		return 0, err
 	}
+	// nolint: gosec
 	return *(*uint64)(unsafe.Pointer(&seqBytes)), nil
 }
 

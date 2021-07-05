@@ -60,5 +60,5 @@ func (p *PushSelect) HandleRows(rows *common.Rows, ctx *ExecutionContext) error 
 			result.AppendRow(row)
 		}
 	}
-	return p.parent.HandleRows(rows, ctx)
+	return p.parent.HandleRows(result, ctx)
 }

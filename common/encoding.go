@@ -42,7 +42,12 @@ func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byt
 			valInt64 := row.GetInt64(colIndex)
 			buffer = EncodeInt64(valInt64, buffer)
 		case TypeDecimal:
-			// TODO
+			valDec := row.GetDecimal(colIndex)
+			var err error
+			buffer, err = valDec.Encode(buffer, colType.DecPrecision, colType.DecScale)
+			if err != nil {
+				return nil, err
+			}
 		case TypeDouble:
 			valFloat64 := row.GetFloat64(colIndex)
 			buffer = EncodeFloat64(valFloat64, buffer)
@@ -98,7 +103,11 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, 
 			}
 			data = EncodeInt64(valInt64, data)
 		case TypeDecimal:
-			// TODO
+			valDec, ok := value.(Decimal)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be Decimal", value)
+			}
+			return valDec.Encode(data, colType.DecPrecision, colType.DecScale)
 		case TypeDouble:
 			valFloat64, ok := value.(float64)
 			if !ok {
@@ -133,7 +142,11 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 				rows.AppendInt64ToColumn(colIndex, val)
 			case TypeDecimal:
 				var val Decimal
-				val, offset = decodeDecimal(buffer, offset)
+				var err error
+				val, offset, err = decodeDecimal(buffer, offset, colType.DecPrecision, colType.DecScale)
+				if err != nil {
+					return err
+				}
 				rows.AppendDecimalToColumn(colIndex, val)
 			case TypeDouble:
 				var val float64
@@ -163,9 +176,13 @@ func decodeFloat64(buffer []byte, offset int) (val float64, off int) {
 	return val, offset
 }
 
-func decodeDecimal(buffer []byte, offset int) (val Decimal, off int) {
-	// TODO
-	return Decimal{}, 0
+func decodeDecimal(buffer []byte, offset int, precision int, scale int) (val Decimal, off int, err error) {
+	dec := Decimal{}
+	offset, err = dec.Decode(buffer, offset, precision, scale)
+	if err != nil {
+		return Decimal{}, 0, err
+	}
+	return dec, offset, nil
 }
 
 func decodeString(buffer []byte, offset int) (val string, off int) {
