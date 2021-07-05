@@ -22,18 +22,18 @@ var (
 	TimestampColumnType = ColumnType{Type: TypeTimestamp}
 )
 
-func NewDecimalColumnType(precision byte, scale byte) ColumnType {
+func NewDecimalColumnType(precision int, scale int) ColumnType {
 	return ColumnType{
 		Type:         TypeDecimal,
 		DecPrecision: precision,
-		DecLen:       scale,
+		DecScale:     scale,
 	}
 }
 
 type ColumnType struct {
 	Type         Type
-	DecPrecision byte
-	DecLen       byte
+	DecPrecision int
+	DecScale     int
 }
 
 type TableInfo struct {

@@ -18,9 +18,6 @@ func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *storage.Wr
 		return err
 	}
 	writeBatch.AddPut(keyBuff, valueBuff)
-
-	log.Printf("upserting k:%v v:%v", keyBuff, valueBuff)
-
 	return nil
 }
 
@@ -79,10 +76,6 @@ func LocalNodeTableScan(tableInfo *common.TableInfo, limit int, rowsFactory *com
 		}
 	}
 	return rows, nil
-}
-
-func IndexScan(indexName string, startKey *common.Key, endKey *common.Key, limit int, shardID uint64) (*common.Rows, error) {
-	panic("implement me")
 }
 
 func encodeKeyPrefix(tableID uint64, shardID uint64) []byte {

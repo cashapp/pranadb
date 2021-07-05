@@ -30,9 +30,11 @@ func TestCreateMaterializedView(t *testing.T) {
 	require.Nil(t, err)
 
 	rows := rf.NewRows(10)
-	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	// appendRow(t, rows, colTypes, 2, "london", 28.1)
-	// appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+
+	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	// testutils.AppendRow(t, rows, colTypes, 2, "london", 28.1)
+	// testutils.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
@@ -47,13 +49,13 @@ func TestCreateMaterializedView(t *testing.T) {
 	expectedRf, err := common.NewRowsFactory(expectedColTypes)
 	require.Nil(t, err)
 	expectedRows := expectedRf.NewRows(10)
-	appendRow(t, expectedRows, expectedColTypes, 1, 25.5)
+	common.AppendRow(t, expectedRows, expectedColTypes, 1, 25.5)
 	expectedRow := expectedRows.GetRow(0)
 
 	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetStorage())
 	require.Nil(t, err)
 	require.NotNil(t, row)
-	RowsEqual(t, &expectedRow, row, expectedColTypes)
+	common.RowsEqual(t, expectedRow, *row, expectedColTypes)
 }
 
 func TestExecutePullQuery(t *testing.T) {
@@ -71,9 +73,9 @@ func TestExecutePullQuery(t *testing.T) {
 	rf, err := common.NewRowsFactory(colTypes)
 	require.Nil(t, err)
 	rows := rf.NewRows(10)
-	appendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	// appendRow(t, rows, colTypes, 2, "london", 28.1)
-	// appendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	// testutils.AppendRow(t, rows, colTypes, 2, "london", 28.1)
+	// testutils.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
@@ -91,55 +93,14 @@ func TestExecutePullQuery(t *testing.T) {
 	require.Equal(t, 1, rows.RowCount())
 
 	expectedRows := rf.NewRows(10)
-	appendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
-	// appendRow(t, expectedRows, colTypes, 2, "london", 28.1)
-	// appendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
+
+	common.AppendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
+	// testutils.AppendRow(t, expectedRows, colTypes, 2, "london", 28.1)
+	// testutils.AppendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
 
 	expectedRow := expectedRows.GetRow(0)
 
 	actualRow := rows.GetRow(0)
 
-	RowsEqual(t, &expectedRow, &actualRow, colTypes)
-}
-
-func appendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {
-	t.Helper()
-	require.Equal(t, len(colVals), len(colTypes))
-
-	for i, colType := range colTypes {
-		colVal := colVals[i]
-		switch colType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			rows.AppendInt64ToColumn(i, int64(colVal.(int)))
-		case common.TypeDouble:
-			rows.AppendFloat64ToColumn(i, colVal.(float64))
-		case common.TypeVarchar:
-			rows.AppendStringToColumn(i, colVal.(string))
-		}
-	}
-}
-
-func RowsEqual(t *testing.T, expected *common.Row, actual *common.Row, colTypes []common.ColumnType) {
-	t.Helper()
-	require.Equal(t, expected.ColCount(), actual.ColCount())
-	for colIndex, colType := range colTypes {
-		switch colType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			val1 := expected.GetInt64(colIndex)
-			val2 := actual.GetInt64(colIndex)
-			require.Equal(t, val1, val2)
-		case common.TypeDecimal:
-			// TODO
-		case common.TypeDouble:
-			val1 := expected.GetFloat64(colIndex)
-			val2 := actual.GetFloat64(colIndex)
-			require.Equal(t, val1, val2)
-		case common.TypeVarchar:
-			val1 := expected.GetString(colIndex)
-			val2 := actual.GetString(colIndex)
-			require.Equal(t, val1, val2)
-		default:
-			t.Errorf("unexpected column type %d", colType)
-		}
-	}
+	common.RowsEqual(t, expectedRow, actualRow, colTypes)
 }

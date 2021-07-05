@@ -10,6 +10,7 @@ import (
 
 type AggState struct {
 	state     []uint64
+	strState  *string
 	nullFlags []bool
 	set       []bool
 }
@@ -55,13 +56,11 @@ func (as *AggState) GetFloat64(index int) float64 {
 
 func (as *AggState) SetString(index int, val *string) {
 	as.set[index] = true
-	ptrptrString := (**string)(unsafe.Pointer(&as.state[index]))
-	*ptrptrString = val
+	as.strState = val
 }
 
 func (as *AggState) GetString(index int) *string {
-	ptrptrString := (**string)(unsafe.Pointer(&as.state[index]))
-	return *ptrptrString
+	return as.strState
 }
 
 func (as *AggState) IsSet(index int) bool {

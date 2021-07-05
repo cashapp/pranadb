@@ -41,7 +41,7 @@ func ConvertTiDBTypeToPranaType(columnType *types.FieldType) (ColumnType, error)
 	case mysql.TypeNewDecimal:
 		precision := columnType.Flen
 		scale := columnType.Decimal
-		return NewDecimalColumnType(byte(precision), byte(scale)), nil
+		return NewDecimalColumnType(precision, scale), nil
 	case mysql.TypeVarchar:
 		return VarcharColumnType, nil
 	case mysql.TypeTimestamp:
