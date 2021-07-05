@@ -19,6 +19,7 @@ type Key []interface{}
 // we create a new Rows
 type RowsFactory struct {
 	astFieldTypes []*types.FieldType
+	ColumnTypes []ColumnType
 }
 
 func NewRowsFactory(columnTypes []ColumnType) (*RowsFactory, error) {
@@ -26,7 +27,7 @@ func NewRowsFactory(columnTypes []ColumnType) (*RowsFactory, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RowsFactory{astFieldTypes: astFieldTypes}, nil
+	return &RowsFactory{astFieldTypes: astFieldTypes, ColumnTypes: columnTypes}, nil
 }
 
 func (rf *RowsFactory) NewRows(capacity int) *Rows {

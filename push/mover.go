@@ -7,6 +7,7 @@ import (
 	"unsafe"
 )
 
+// Don't use iota here as these must not change
 const (
 	ForwarderTableID         = 1
 	ForwarderSequenceTableID = 2
@@ -55,10 +56,8 @@ func (p *PushEngine) pollForForwards(localShardID uint64) error {
 	}
 	// TODO if num rows returned = limit async schedule another batch
 
-	var addBatches []*storage.WriteBatch
-	var deleteBatches []*storage.WriteBatch
-	var remoteBatch *storage.WriteBatch
-	var deleteBatch *storage.WriteBatch
+	var batches []*forwardBatch
+	var batch *forwardBatch
 	var remoteShardID uint64
 	first := true
 	log.Printf("There are %d rows to forward", len(kvPairs))
@@ -66,16 +65,17 @@ func (p *PushEngine) pollForForwards(localShardID uint64) error {
 		key := kvPair.Key
 		log.Printf("Key is %v", key)
 
-		// Key structure is
-		// shard_id|forwarder_table_id|remote_shard_id|seq|entity_id
 		// nolint: gosec
 		currRemoteShardID := *(*uint64)(unsafe.Pointer(&key[16]))
 		log.Printf("Curr remote shard id is %d", currRemoteShardID)
 		if first || remoteShardID != currRemoteShardID {
-			remoteBatch = storage.NewWriteBatch(currRemoteShardID)
-			addBatches = append(addBatches, remoteBatch)
-			deleteBatch = storage.NewWriteBatch(currRemoteShardID)
-			deleteBatches = append(deleteBatches, deleteBatch)
+			addBatch := storage.NewWriteBatch(currRemoteShardID)
+			deleteBatch := storage.NewWriteBatch(localShardID)
+			batch = &forwardBatch{
+				addBatch:    addBatch,
+				deleteBatch: deleteBatch,
+			}
+			batches = append(batches, batch)
 			remoteShardID = currRemoteShardID
 			first = false
 		}
@@ -89,27 +89,33 @@ func (p *PushEngine) pollForForwards(localShardID uint64) error {
 		// seq|entity_id are the last 16 bytes
 		pos := len(key) - 16
 		remoteKey = append(remoteKey, key[pos:]...)
-		remoteBatch.AddPut(remoteKey, kvPair.Value)
-		deleteBatch.AddDelete(key)
+		batch.addBatch.AddPut(remoteKey, kvPair.Value)
 
-		log.Printf("Forwarding row to shard %d with key %v batch shard id is %d", currRemoteShardID, remoteKey, remoteBatch.ShardID)
+		log.Printf("Adding key %v to delete batch", key)
+		batch.deleteBatch.AddDelete(key)
+
+		log.Printf("Forwarding row to shard %d with key %v batch shard id is %d", currRemoteShardID, remoteKey, batch.addBatch.ShardID)
 	}
 
-	// TODO  Different addBatches can be executed concurrently
-	for _, batch := range addBatches {
+	for _, fBatch := range batches {
 		// Write to the remote shard
-		err := p.storage.WriteBatch(batch, false)
+		err := p.storage.WriteBatch(fBatch.addBatch, false)
 		if err != nil {
 			return err
 		}
 		// Delete locally
-		err = p.storage.WriteBatch(deleteBatch, true)
+		err = p.storage.WriteBatch(fBatch.deleteBatch, true)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+type forwardBatch struct {
+	addBatch *storage.WriteBatch
+	deleteBatch *storage.WriteBatch
 }
 
 func (p *PushEngine) handleReceivedRows(receivingShardID uint64, batch *storage.WriteBatch) error {

@@ -40,6 +40,34 @@ func TestEncodeDecodeFloat(t *testing.T) {
 	encodeDecodeFloat(t, rf, math.MaxFloat64)
 }
 
+func TestEncodeDecodeRow(t *testing.T) {
+	decType1 := NewDecimalColumnType(10, 2)
+	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
+	rf, err := NewRowsFactory(colTypes)
+	require.Nil(t, err)
+	rows := rf.NewRows(10)
+	rows.AppendInt64ToColumn(0, 255)
+	rows.AppendInt64ToColumn(1, math.MaxInt32)
+	rows.AppendInt64ToColumn(2, math.MaxInt64)
+	rows.AppendFloat64ToColumn(3, math.MaxFloat64)
+	rows.AppendStringToColumn(4, "somestringxyz")
+	dec, err := NewDecFromString("12345678.32")
+	require.Nil(t, err)
+	rows.AppendDecimalToColumn(5, *dec)
+	testEncodeDecodeRow(t, rows, colTypes)
+}
+
+func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
+	row := rows.GetRow(0)
+	var buffer []byte
+	buff, err := EncodeRow(&row, colTypes, buffer)
+	require.Nil(t, err)
+	err = DecodeRow(buff, colTypes, rows)
+	require.Nil(t, err)
+	actualRow := rows.GetRow(1)
+	RowsEqual(t, row, actualRow, colTypes)
+}
+
 func TestEncodeDecodeDecimal(t *testing.T) {
 	colTypes := []ColumnType{NewDecimalColumnType(10, 2)}
 	rf, err := NewRowsFactory(colTypes)
