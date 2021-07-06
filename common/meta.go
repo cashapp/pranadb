@@ -1,7 +1,10 @@
+//go2proto:package squareup.cash.pranadb.info
 package common
 
-type Type int
+//go2proto:enum
+type Type uint32
 
+// Column types.
 const (
 	TypeUnknown Type = iota
 	TypeTinyInt
@@ -25,17 +28,19 @@ var (
 func NewDecimalColumnType(precision byte, scale byte) ColumnType {
 	return ColumnType{
 		Type:         TypeDecimal,
-		DecPrecision: precision,
-		DecLen:       scale,
+		DecPrecision: uint32(precision),
+		DecLen:       uint32(scale),
 	}
 }
 
+//go2proto:message
 type ColumnType struct {
 	Type         Type
-	DecPrecision byte
-	DecLen       byte
+	DecPrecision uint32
+	DecLen       uint32
 }
 
+//go2proto:message
 type TableInfo struct {
 	ID             uint64
 	TableName      string
@@ -45,11 +50,13 @@ type TableInfo struct {
 	IndexInfos     []*IndexInfo
 }
 
+//go2proto:message
 type IndexInfo struct {
 	Name      string
 	IndexCols []int
 }
 
+//go2proto:message
 type Schema struct {
 	Name    string
 	Mvs     map[string]*MaterializedViewInfo
@@ -57,6 +64,7 @@ type Schema struct {
 	Sinks   map[string]*SinkInfo
 }
 
+//go2proto:message
 type SourceInfo struct {
 	SchemaName string
 	Name       string
@@ -64,6 +72,7 @@ type SourceInfo struct {
 	TopicInfo  *TopicInfo
 }
 
+//go2proto:message
 type TopicInfo struct {
 	BrokerName string
 	TopicName  string
@@ -71,7 +80,8 @@ type TopicInfo struct {
 	Properties map[string]interface{}
 }
 
-type TopicEncoding int
+//go2proto:enum
+type TopicEncoding uint32
 
 const (
 	EncodingUnknown TopicEncoding = iota
@@ -80,6 +90,7 @@ const (
 	EncodingRaw
 )
 
+//go2proto:message
 type MaterializedViewInfo struct {
 	SchemaName string
 	Name       string
@@ -87,6 +98,7 @@ type MaterializedViewInfo struct {
 	TableInfo  *TableInfo
 }
 
+//go2proto:message
 type SinkInfo struct {
 	Name      string
 	Query     string
