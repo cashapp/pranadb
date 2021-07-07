@@ -77,6 +77,10 @@ func (p *PushEngine) Start() error {
 		return err
 	}
 	p.storage.SetRemoteWriteHandler(p)
+	err = p.checkForRowsToForward()
+	if err != nil {
+		return err
+	}
 	p.started = true
 	return nil
 }
@@ -206,4 +210,20 @@ func (p *PushEngine) getLocalShardRoundRobin() uint64 {
 		atomic.StoreInt64(&p.nextLocalShardIndex, 0)
 	}
 	return p.localShards[shardIndex]
+}
+
+func (p *PushEngine) checkForRowsToForward() error {
+	// If the node failed previously there may be un-forwarded rows in the forwarder table
+	// If there are we need to forwarded them
+	for _, scheduler := range p.schedulers {
+		ch := scheduler.CheckForRowsToForward()
+		err, ok := <-ch
+		if !ok {
+			return errors.New("channel was closed")
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

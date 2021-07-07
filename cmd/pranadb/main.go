@@ -28,7 +28,7 @@ func main() {
 	l, err := net.Listen("tcp", cli.Bind)
 	kctx.FatalIfErrorf(err)
 
-	psrv := server.NewServer(0)
+	psrv := server.NewServer(0, 10)
 	pgsrv := wire.New(psrv)
 
 	gsrv := grpc.NewServer()

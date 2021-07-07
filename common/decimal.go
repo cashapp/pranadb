@@ -30,18 +30,6 @@ func NewDecFromFloat64(f float64) (*Decimal, error) {
 	}, nil
 }
 
-func NewDecFromInt(i int64) *Decimal {
-	return &Decimal{
-		decimal: new(types.MyDecimal).FromInt(i),
-	}
-}
-
-func NewDecFromUint(i uint64) *Decimal {
-	return &Decimal{
-		decimal: new(types.MyDecimal).FromUint(i),
-	}
-}
-
 func (d *Decimal) Encode(buffer []byte, precision int, scale int) ([]byte, error) {
 	return d.decimal.WriteBin(precision, scale, buffer)
 }

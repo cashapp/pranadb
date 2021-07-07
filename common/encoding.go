@@ -65,7 +65,7 @@ func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byt
 func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byte) ([]byte, error) {
 	for i, val := range key {
 		var err error
-		buffer, err = EncodeElement(val, colTypes[keyColIndexes[i]], buffer)
+		buffer, err = EncodeElement(val, colTypes[keyColIndexes[i]], buffer, false)
 		if err != nil {
 			return nil, err
 		}
@@ -91,8 +91,8 @@ func EncodeString(value string, buffer []byte) []byte {
 	return buffPtr
 }
 
-func EncodeElement(value interface{}, colType ColumnType, data []byte) ([]byte, error) {
-	if value == nil {
+func EncodeElement(value interface{}, colType ColumnType, data []byte, nulls bool) ([]byte, error) {
+	if nulls && value == nil {
 		data = append(data, 0)
 	} else {
 		data = append(data, 1)
