@@ -1,9 +1,11 @@
 package exec
 
 import (
-	"github.com/squareup/pranadb/common"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/squareup/pranadb/common"
 )
 
 // Test utils for this package
@@ -12,22 +14,26 @@ var colNames = []string{"sensor_id", "location", "temperature", "cost"}
 var colTypes = []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType, common.NewDecimalColumnType(10, 2)}
 
 func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *common.Rows {
+	t.Helper()
 	rf, err := common.NewRowsFactory(colTypes)
 	require.Nil(t, err)
 	r := rf.NewRows(len(rows))
 	for _, row := range rows {
-		common.AppendRow(t, r, colTypes, row...)
+		err = common.AppendRow(t, r, colTypes, row...)
+		require.NoError(t, err)
 	}
 	return r
 }
 
 func colExpression(t *testing.T, colIndex int) *common.Expression {
+	t.Helper()
 	col, err := common.NewColumnExpression(colIndex, colTypes[colIndex])
 	require.Nil(t, err)
 	return col
 }
 
 func constDoubleExpression(t *testing.T, colIndex int, val float64) *common.Expression {
+	t.Helper()
 	con, err := common.NewConstantDouble(colTypes[colIndex], val)
 	require.Nil(t, err)
 	return con

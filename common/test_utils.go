@@ -1,15 +1,16 @@
 package common
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test utils
 
 func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...interface{}) error {
-
+	t.Helper()
 	require.Equal(t, len(colVals), len(colTypes))
 
 	for i, colType := range colTypes {
@@ -27,6 +28,8 @@ func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...inter
 				return err
 			}
 			rows.AppendDecimalToColumn(i, *dec)
+		default:
+			panic(colType.Type)
 		}
 	}
 	return nil
@@ -67,10 +70,12 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 type Predicate func() (bool, error)
 
 func WaitUntil(t *testing.T, predicate Predicate) {
+	t.Helper()
 	WaitUntilWithDur(t, predicate, 10*time.Second)
 }
 
 func WaitUntilWithDur(t *testing.T, predicate Predicate, timeout time.Duration) {
+	t.Helper()
 	start := time.Now()
 	for {
 		complete, err := predicate()

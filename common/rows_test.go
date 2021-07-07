@@ -2,8 +2,9 @@ package common
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRows(t *testing.T) {
@@ -115,6 +116,7 @@ func stringVal(rowIndex int) string {
 }
 
 func decVal(t *testing.T, rowIndex int) Decimal {
+	t.Helper()
 	dec, err := NewDecFromFloat64(10000 * floatVal(rowIndex))
 	require.Nil(t, err)
 	return *dec

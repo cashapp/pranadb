@@ -1,10 +1,12 @@
 package exec
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestProjectionOneCol(t *testing.T) {
@@ -48,9 +50,9 @@ func TestProjectionAllColsReverseOrder(t *testing.T) {
 		{"9.32", 35.1, "london", 2},
 		{"11.75", 20.6, "los angeles", 3},
 	}
-	colNames := []string{"temperature", "location", "sensor_id"}
-	colTypes := []common.ColumnType{common.NewDecimalColumnType(10, 2), common.DoubleColumnType, common.VarcharColumnType, common.BigIntColumnType}
-	testProject(t, inpRows, expectedRows, colNames, colTypes, colExpression(t, 3), colExpression(t, 2), colExpression(t, 1), colExpression(t, 0))
+	columnNames := []string{"temperature", "location", "sensor_id"}
+	columnTypes := []common.ColumnType{common.NewDecimalColumnType(10, 2), common.DoubleColumnType, common.VarcharColumnType, common.BigIntColumnType}
+	testProject(t, inpRows, expectedRows, columnNames, columnTypes, colExpression(t, 3), colExpression(t, 2), colExpression(t, 1), colExpression(t, 0))
 }
 
 func TestProjectionNonColExpression(t *testing.T) {
@@ -73,6 +75,7 @@ func TestProjectionNonColExpression(t *testing.T) {
 }
 
 func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, expectedColNames []string, expectedColTypes []common.ColumnType, projExprs ...*common.Expression) {
+	t.Helper()
 	proj, err := NewPushProjection(expectedColNames, expectedColTypes, projExprs)
 	require.Nil(t, err)
 	execCtx := &ExecutionContext{

@@ -1,0 +1,28 @@
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Init Hermit
+        run: ./bin/hermit env --raw >> $GITHUB_ENV
+      - name: Test
+        run: go test ./...
+      - name: Lint
+        run: golangci-lint run
