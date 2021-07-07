@@ -1,3 +1,6 @@
+// Package command contains the command parser.
+//
+//nolint:govet
 package command
 
 // A Ref to a view, table, column, etc.

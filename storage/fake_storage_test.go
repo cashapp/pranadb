@@ -2,9 +2,10 @@ package storage
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPutGet(t *testing.T) {
@@ -78,7 +79,7 @@ func TestScanBigLimit(t *testing.T) {
 }
 
 func testScan(t *testing.T, limit int, expected int) {
-
+	t.Helper()
 	storage := NewFakeStorage()
 
 	var kvPairs []KVPair

@@ -81,6 +81,7 @@ func TestEncodeDecodeRowWithNulls(t *testing.T) {
 }
 
 func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
+	t.Helper()
 	row := rows.GetRow(0)
 	var buffer []byte
 	buff, err := EncodeRow(&row, colTypes, buffer)
@@ -164,12 +165,14 @@ func TestEncodeDecodeUint64sBigEndianArch(t *testing.T) {
 }
 
 func testEncodeDecodeUint64s(t *testing.T, vals ...uint64) {
+	t.Helper()
 	for _, val := range vals {
 		testEncodeDecodeUint64(t, val)
 	}
 }
 
 func testEncodeDecodeUint64(t *testing.T, val uint64) {
+	t.Helper()
 	buff := make([]byte, 0, 8)
 	buff = AppendUint64ToBufferLittleEndian(buff, val)
 	valRead := ReadUint64FromBufferLittleEndian(buff, 0)
@@ -187,12 +190,14 @@ func TestEncodeDecodeUint32sBigEndianArch(t *testing.T) {
 }
 
 func testEncodeDecodeUint32s(t *testing.T, vals ...uint32) {
+	t.Helper()
 	for _, val := range vals {
 		testEncodeDecodeUint32(t, val)
 	}
 }
 
 func testEncodeDecodeUint32(t *testing.T, val uint32) {
+	t.Helper()
 	buff := make([]byte, 0, 4)
 	buff = AppendUint32ToBufferLittleEndian(buff, val)
 	valRead := ReadUint32FromBufferLittleEndian(buff, 0)

@@ -31,9 +31,12 @@ func TestCreateMaterializedView(t *testing.T) {
 
 	rows := rf.NewRows(10)
 
-	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
-	common.AppendRow(t, rows, colTypes, 2, "london", 28.1)
-	common.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	err = common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	require.NoError(t, err)
+	err = common.AppendRow(t, rows, colTypes, 2, "london", 28.1)
+	require.NoError(t, err)
+	err = common.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
+	require.NoError(t, err)
 
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
@@ -49,7 +52,8 @@ func TestCreateMaterializedView(t *testing.T) {
 	expectedRf, err := common.NewRowsFactory(expectedColTypes)
 	require.Nil(t, err)
 	expectedRows := expectedRf.NewRows(10)
-	common.AppendRow(t, expectedRows, expectedColTypes, 1, 25.5)
+	err = common.AppendRow(t, expectedRows, expectedColTypes, 1, 25.5)
+	require.NoError(t, err)
 	expectedRow := expectedRows.GetRow(0)
 
 	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetStorage())
@@ -73,7 +77,8 @@ func TestExecutePullQuery(t *testing.T) {
 	rf, err := common.NewRowsFactory(colTypes)
 	require.Nil(t, err)
 	rows := rf.NewRows(10)
-	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	err = common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
+	require.NoError(t, err)
 	// testutils.AppendRow(t, rows, colTypes, 2, "london", 28.1)
 	// testutils.AppendRow(t, rows, colTypes, 3, "los angeles", 35.6)
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
@@ -94,7 +99,8 @@ func TestExecutePullQuery(t *testing.T) {
 
 	expectedRows := rf.NewRows(10)
 
-	common.AppendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
+	err = common.AppendRow(t, expectedRows, colTypes, 1, "wincanton", 25.5)
+	require.NoError(t, err)
 	// testutils.AppendRow(t, expectedRows, colTypes, 2, "london", 28.1)
 	// testutils.AppendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
 

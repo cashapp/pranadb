@@ -207,18 +207,16 @@ func ReadUint32FromBufferLittleEndian(buffer []byte, offset int) uint32 {
 	if IsLittleEndian {
 		// nolint: gosec
 		return *(*uint32)(unsafe.Pointer(&buffer[offset]))
-	} else {
-		return littleEndian.Uint32(buffer[offset:])
 	}
+	return littleEndian.Uint32(buffer[offset:])
 }
 
 func ReadUint64FromBufferLittleEndian(buffer []byte, offset int) uint64 {
 	if IsLittleEndian {
 		// nolint: gosec
 		return *(*uint64)(unsafe.Pointer(&buffer[offset]))
-	} else {
-		return littleEndian.Uint64(buffer[offset:])
 	}
+	return littleEndian.Uint64(buffer[offset:])
 }
 
 var IsLittleEndian = isLittleEndian()
@@ -227,6 +225,6 @@ func isLittleEndian() bool {
 	val := uint64(123456)
 	buffer := make([]byte, 0, 8)
 	buffer = AppendUint64ToBufferLittleEndian(buffer, val)
-	valRead := *(*uint64)(unsafe.Pointer(&buffer[0]))
+	valRead := *(*uint64)(unsafe.Pointer(&buffer[0])) // nolint: gosec
 	return val == valRead
 }

@@ -39,7 +39,7 @@ func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *c
 
 // TODO instead of reading from storage, we can pass rows from QueueForRemoteSend to here via
 // a channel - this will avoid scan of storage
-func (p *PushEngine) transferData(localShardID uint64, delete bool) error {
+func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	keyStartPrefix := make([]byte, 0, 16)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
@@ -88,7 +88,7 @@ func (p *PushEngine) transferData(localShardID uint64, delete bool) error {
 		if err != nil {
 			return err
 		}
-		if delete {
+		if del {
 			// Delete locally
 			err = p.storage.WriteBatch(fBatch.deleteBatch, true)
 			if err != nil {

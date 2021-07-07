@@ -2,13 +2,15 @@ package push
 
 import (
 	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 // TODO write a test that hammers the mover with multiple receivers and senders different shards
@@ -51,6 +53,7 @@ func TestTransferData(t *testing.T) {
 
 	keyStartPrefix := createForwarderKey(localShardID)
 	kvPairs, err := stor.Scan(keyStartPrefix, keyStartPrefix, -1)
+	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
 	sched := pe.schedulers[localShardID]
@@ -63,12 +66,15 @@ func TestTransferData(t *testing.T) {
 
 	// Make sure data has been deleted from forwarder table
 	kvPairs, err = stor.Scan(keyStartPrefix, keyStartPrefix, -1)
+	require.NoError(t, err)
 	require.Equal(t, 0, len(kvPairs))
 
 	// All the rows should be in the receiver table - this happens async so we must wait
 	waitUntilRowsInReceiverTable(t, stor, numRows)
-	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
+
+	// TODO(tfox): Use this for something?
+	// remoteKeyPrefix := make([]byte, 0)
+	// remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
 
 	// Check individual receiver rows
 	for i, rowToSend := range rows {
@@ -248,7 +254,7 @@ func TestDedupOfForwards(t *testing.T) {
 	waitUntilRowsInReceiverTable(t, stor, numRows)
 
 	rowsHandled := 0
-	for remoteShardID, _ := range remoteShardsIds {
+	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
 		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
 		require.Nil(t, err)
@@ -277,7 +283,7 @@ func TestDedupOfForwards(t *testing.T) {
 
 	// Check receiver sequence
 	maxSeq := uint64(0)
-	for remoteShardID, _ := range remoteShardsIds {
+	for remoteShardID := range remoteShardsIds {
 		recSeqKey := make([]byte, 0, 24)
 		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, ReceiverSequenceTableID)
 		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, remoteShardID)
@@ -313,7 +319,7 @@ func TestDedupOfForwards(t *testing.T) {
 
 	// But they shouldn't be handled as they're seen before
 	rowsHandled = 0
-	for remoteShardID, _ := range remoteShardsIds {
+	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
 		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
 		require.Nil(t, err)
@@ -326,18 +332,20 @@ func TestDedupOfForwards(t *testing.T) {
 }
 
 func testQueueForRemoteSend(t *testing.T, startSequence int, store storage.Storage, shard *sharder.Sharder, pe *PushEngine) {
+	t.Helper()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
 	localShardID := uint64(1)
 
 	numRows := 10
 	rf, err := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, store, localShardID)
 
 	keyStartPrefix := createForwarderKey(localShardID)
 	kvPairs, err := store.Scan(keyStartPrefix, keyStartPrefix, -1)
+	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
 	for i, rowToSend := range rows {
@@ -365,6 +373,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store storage.Stora
 }
 
 func startup(t *testing.T) (storage.Storage, *sharder.Sharder, *PushEngine, cluster.Cluster) {
+	t.Helper()
 	store := storage.NewFakeStorage()
 	clus := cluster.NewFakeClusterManager(1, 10)
 	plan := parplan.NewPlanner()
@@ -383,6 +392,7 @@ func startup(t *testing.T) (storage.Storage, *sharder.Sharder, *PushEngine, clus
 
 func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row, store storage.Storage, colTypes []common.ColumnType, localShardID uint64,
 	rf *common.RowsFactory) {
+	t.Helper()
 	v, err := store.Get(localShardID, keyBytes, true)
 	require.Nil(t, err)
 	require.NotNil(t, v)
@@ -400,8 +410,10 @@ func createForwarderKey(localShardID uint64) []byte {
 	return common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 }
 
+// nolint: unparam
 func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *common.RowsFactory, shard *sharder.Sharder, pe *PushEngine,
 	localShardID uint64, store storage.Storage, sendingShardID uint64) []rowInfo {
+	t.Helper()
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
 	batch := storage.NewWriteBatch(sendingShardID)
 	for _, rowToSend := range rows {
@@ -414,6 +426,7 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 }
 
 func generateRows(t *testing.T, numRows int, colTypes []common.ColumnType, sh *sharder.Sharder, rf *common.RowsFactory, sendingShardID uint64) []rowInfo {
+	t.Helper()
 	var rowsToSend []rowInfo
 	rows := rf.NewRows(numRows)
 	for i := 0; i < numRows; i++ {
@@ -446,6 +459,7 @@ func generateRows(t *testing.T, numRows int, colTypes []common.ColumnType, sh *s
 }
 
 func waitUntilRowsInReceiverTable(t *testing.T, stor storage.Storage, numRows int) {
+	t.Helper()
 	remoteKeyPrefix := make([]byte, 0)
 	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
 	common.WaitUntil(t, func() (bool, error) {

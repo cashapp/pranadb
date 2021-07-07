@@ -1,10 +1,12 @@
 package exec
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestSelectOneRow(t *testing.T) {
@@ -44,6 +46,7 @@ func TestSelectNoRows(t *testing.T) {
 }
 
 func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, funcName string, funcArgs ...*common.Expression) {
+	t.Helper()
 	predicate, err := common.NewScalarFunctionExpression(colTypes[2], funcName, funcArgs...)
 	require.Nil(t, err)
 	sel, err := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})

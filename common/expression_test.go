@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestColumnExpressionTinyInt(t *testing.T) {
@@ -122,6 +123,7 @@ func TestColumnExpressionNullDecimal(t *testing.T) {
 }
 
 func createRow(t *testing.T) *Row {
+	t.Helper()
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
 	rf, err := NewRowsFactory(colTypes)
