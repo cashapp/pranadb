@@ -66,9 +66,9 @@ func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	if err != nil {
 		return err
 	}
-	return s.engine.transferData(s.shardID)
+	return s.engine.transferData(s.shardID, true)
 }
 
 func (s *shardScheduler) maybeForwardRows() error {
-	return s.engine.transferData(s.shardID)
+	return s.engine.transferData(s.shardID, true)
 }

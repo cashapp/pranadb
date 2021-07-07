@@ -8,13 +8,8 @@ import (
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/storage"
 	"github.com/stretchr/testify/require"
-	"log"
 	"testing"
 )
-
-// TODO test scenario where duplicate rows are resent
-// TODO test resending after server restart (we don't currently do this!)
-// TODO add server restart logic to resend after failure
 
 // TODO write a test that hammers the mover with multiple receivers and senders different shards
 // and verifies everything received ok and no duplicates
@@ -34,7 +29,6 @@ func startup(t *testing.T) (storage.Storage, *sharder.Sharder, *PushEngine, clus
 	require.Nil(t, err)
 	err = pe.Start()
 	require.Nil(t, err)
-
 	return store, shard, pe, clus
 }
 
@@ -94,7 +88,6 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store storage.Stora
 	require.Nil(t, err)
 	require.NotNil(t, seqBytes)
 
-	log.Printf("seq bytes is %v", seqBytes)
 	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
 	require.Equal(t, uint64(numRows+startSequence), lastSeq)
 }
@@ -120,18 +113,14 @@ func createForwarderKey(localShardID uint64) []byte {
 
 func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *common.RowsFactory, shard *sharder.Sharder, pe *PushEngine,
 	localShardID uint64, store storage.Storage, sendingShardID uint64) []forwardedRow {
-
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
-
 	batch := storage.NewWriteBatch(sendingShardID)
-
 	for _, rowToSend := range rows {
 		err := pe.QueueForRemoteSend(rowToSend.keyBuff, rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
 		require.Nil(t, err)
 	}
 	err := store.WriteBatch(batch, true)
 	require.Nil(t, err)
-
 	return rows
 }
 
@@ -187,7 +176,7 @@ func TestTransferData(t *testing.T) {
 	sched := pe.schedulers[localShardID]
 	err, ok := <-sched.ScheduleAction(func() error {
 		// This needs to be called on the scheduler goroutine
-		return pe.transferData(localShardID)
+		return pe.transferData(localShardID, true)
 	})
 	require.True(t, ok)
 	require.Nil(t, err)
@@ -221,7 +210,6 @@ func waitUntilRowsInReceiverTable(t *testing.T, stor storage.Storage, numRows in
 		if err != nil {
 			return false, err
 		}
-		log.Printf("Got %d rows in receiver table", len(remPairs))
 		return numRows == len(remPairs), nil
 	})
 }
@@ -253,7 +241,7 @@ func TestHandleReceivedRows(t *testing.T) {
 		sched := pe.schedulers[sendingShardID]
 		err, ok := <-sched.ScheduleAction(func() error {
 			// This needs to be called on the scheduler goroutine
-			return pe.transferData(sendingShardID)
+			return pe.transferData(sendingShardID, true)
 		})
 		require.True(t, ok)
 		require.Nil(t, err)
@@ -363,6 +351,110 @@ func TestHandleReceivedRows(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestDedupOfForwards(t *testing.T) {
+	stor, shard, pe, _ := startup(t)
+	stor.SetRemoteWriteHandler(nil)
+
+	// Queue some rows, forward them
+	numRows := 10
+	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
+	localShardID := uint64(1)
+	rf, err := common.NewRowsFactory(colTypes)
+	require.Nil(t, err)
+	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, stor, localShardID)
+	remoteShardsIds := make(map[uint64]bool)
+	for _, row := range rows {
+		remoteShardsIds[row.remoteShardID] = true
+	}
+
+	sched := pe.schedulers[localShardID]
+	err, ok := <-sched.ScheduleAction(func() error {
+		// We set delete so the transfer doesn't delete the rows from the forward table
+		return pe.transferData(localShardID, false)
+	})
+	require.True(t, ok)
+	require.Nil(t, err)
+
+	waitUntilRowsInReceiverTable(t, stor, numRows)
+
+	rowsHandled := 0
+	for remoteShardID, _ := range remoteShardsIds {
+		rawRowHandler := &rawRowHandler{}
+		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
+		require.Nil(t, err)
+		for _, rr := range rawRowHandler.rawRows {
+			rowsHandled += len(rr)
+		}
+	}
+
+	require.Equal(t, numRows, rowsHandled)
+
+	// Make sure rows still in forwarder table
+	keyStartPrefix := createForwarderKey(localShardID)
+	kvPairs, err := stor.Scan(keyStartPrefix, keyStartPrefix, -1)
+	require.Nil(t, err)
+	require.Equal(t, numRows, len(kvPairs))
+
+	// Check forwarder sequence
+	forSeqKey := make([]byte, 0, 16)
+	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, ForwarderSequenceTableID)
+	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, localShardID)
+	seqBytes, err := pe.storage.Get(localShardID, forSeqKey, true)
+	require.Nil(t, err)
+	require.NotNil(t, seqBytes)
+	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+	require.Equal(t, uint64(numRows+1), lastSeq)
+
+	// Check receiver sequence
+	maxSeq := uint64(0)
+	for remoteShardID, _ := range remoteShardsIds {
+		recSeqKey := make([]byte, 0, 24)
+		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, ReceiverSequenceTableID)
+		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, remoteShardID)
+		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, localShardID)
+
+		seqBytes, err := stor.Get(remoteShardID, recSeqKey, true)
+		require.Nil(t, err)
+		if seqBytes != nil {
+			lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+			if lastSeq > maxSeq {
+				maxSeq = lastSeq
+			}
+		}
+	}
+	require.Equal(t, uint64(numRows), maxSeq)
+
+	// Make sure rows deleted from receiver table
+	remoteKeyPrefix := make([]byte, 0)
+	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
+	kvPairs, err = stor.Scan(remoteKeyPrefix, remoteKeyPrefix, -1)
+	require.Nil(t, err)
+	require.Nil(t, kvPairs)
+
+	// Now try and forward them again
+	err, ok = <-sched.ScheduleAction(func() error {
+		return pe.transferData(localShardID, true)
+	})
+	require.True(t, ok)
+	require.Nil(t, err)
+
+	// Wait for rows to be forwarded
+	waitUntilRowsInReceiverTable(t, stor, numRows)
+
+	// But they shouldn't be handled as they're seen before
+	rowsHandled = 0
+	for remoteShardID, _ := range remoteShardsIds {
+		rawRowHandler := &rawRowHandler{}
+		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
+		require.Nil(t, err)
+		for _, rr := range rawRowHandler.rawRows {
+			rowsHandled += len(rr)
+		}
+	}
+
+	require.Equal(t, 0, rowsHandled)
 }
 
 type forwardedRow struct {
