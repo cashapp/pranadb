@@ -14,6 +14,8 @@ import (
 
 // TODO test scenario where duplicate rows are resent
 // TODO test resending after server restart (we don't currently do this!)
+// TODO add server restart logic to resend after failure
+
 // TODO write a test that hammers the mover with multiple receivers and senders different shards
 // and verifies everything received ok and no duplicates
 // TODO as above but inject failures at different points and test resend logic

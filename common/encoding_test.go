@@ -57,6 +57,29 @@ func TestEncodeDecodeRow(t *testing.T) {
 	testEncodeDecodeRow(t, rows, colTypes)
 }
 
+func TestEncodeDecodeRowWithNulls(t *testing.T) {
+	decType1 := NewDecimalColumnType(10, 2)
+	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
+	rf, err := NewRowsFactory(colTypes)
+	require.Nil(t, err)
+	rows := rf.NewRows(10)
+	rows.AppendInt64ToColumn(0, 255)
+	rows.AppendNullToColumn(1)
+	rows.AppendInt64ToColumn(2, math.MaxInt32)
+	rows.AppendNullToColumn(3)
+	rows.AppendInt64ToColumn(4, math.MaxInt64)
+	rows.AppendNullToColumn(5)
+	rows.AppendFloat64ToColumn(6, math.MaxFloat64)
+	rows.AppendNullToColumn(7)
+	rows.AppendStringToColumn(8, "somestringxyz")
+	rows.AppendNullToColumn(9)
+	dec, err := NewDecFromString("12345678.32")
+	require.Nil(t, err)
+	rows.AppendDecimalToColumn(10, *dec)
+	rows.AppendNullToColumn(11)
+	testEncodeDecodeRow(t, rows, colTypes)
+}
+
 func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
@@ -130,10 +153,13 @@ func TestIsLittleEndian(t *testing.T) {
 	require.True(t, IsLittleEndian)
 }
 
-// TODO test encode/decode rows with nulls!
-// TODO - don't need nulls in keys!!
+func TestEncodeDecodeUint64sLittleEndianArch(t *testing.T) {
+	IsLittleEndian = true
+	testEncodeDecodeUint64s(t, 0, 1, math.MaxUint64, 12345678)
+}
 
-func TestEncodeDecodeUint64s(t *testing.T) {
+func TestEncodeDecodeUint64sBigEndianArch(t *testing.T) {
+	IsLittleEndian = false
 	testEncodeDecodeUint64s(t, 0, 1, math.MaxUint64, 12345678)
 }
 
@@ -150,7 +176,13 @@ func testEncodeDecodeUint64(t *testing.T, val uint64) {
 	require.Equal(t, val, valRead)
 }
 
-func TestEncodeDecodeUint32s(t *testing.T) {
+func TestEncodeDecodeUint32sLittleEndianArch(t *testing.T) {
+	IsLittleEndian = true
+	testEncodeDecodeUint32s(t, 0, 1, math.MaxUint32, 12345678)
+}
+
+func TestEncodeDecodeUint32sBigEndianArch(t *testing.T) {
+	IsLittleEndian = false
 	testEncodeDecodeUint32s(t, 0, 1, math.MaxUint32, 12345678)
 }
 

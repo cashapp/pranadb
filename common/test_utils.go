@@ -36,25 +36,30 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
-		switch colType.Type {
-		case TypeTinyInt, TypeInt, TypeBigInt:
-			val1 := expected.GetInt64(colIndex)
-			val2 := actual.GetInt64(colIndex)
-			require.Equal(t, val1, val2)
-		case TypeDecimal:
-			val1 := expected.GetDecimal(colIndex)
-			val2 := actual.GetDecimal(colIndex)
-			require.Equal(t, val1.ToString(), val2.ToString())
-		case TypeDouble:
-			val1 := expected.GetFloat64(colIndex)
-			val2 := actual.GetFloat64(colIndex)
-			require.Equal(t, val1, val2)
-		case TypeVarchar:
-			val1 := expected.GetString(colIndex)
-			val2 := actual.GetString(colIndex)
-			require.Equal(t, val1, val2)
-		default:
-			t.Errorf("unexpected column type %d", colType)
+		expectedNull := expected.IsNull(colIndex)
+		actualNull := actual.IsNull(colIndex)
+		require.Equal(t, expectedNull, actualNull)
+		if !expectedNull {
+			switch colType.Type {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				val1 := expected.GetInt64(colIndex)
+				val2 := actual.GetInt64(colIndex)
+				require.Equal(t, val1, val2)
+			case TypeDecimal:
+				val1 := expected.GetDecimal(colIndex)
+				val2 := actual.GetDecimal(colIndex)
+				require.Equal(t, val1.ToString(), val2.ToString())
+			case TypeDouble:
+				val1 := expected.GetFloat64(colIndex)
+				val2 := actual.GetFloat64(colIndex)
+				require.Equal(t, val1, val2)
+			case TypeVarchar:
+				val1 := expected.GetString(colIndex)
+				val2 := actual.GetString(colIndex)
+				require.Equal(t, val1, val2)
+			default:
+				t.Errorf("unexpected column type %d", colType)
+			}
 		}
 	}
 }

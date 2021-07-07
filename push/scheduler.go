@@ -47,6 +47,10 @@ func (s *shardScheduler) CheckForRemoteBatch() {
 	s.ScheduleAction(s.maybeHandleRemoteBatch)
 }
 
+func (s *shardScheduler) CheckForRowsToForward() chan error {
+	return s.ScheduleAction(s.maybeForwardRows)
+}
+
 func (s *shardScheduler) ScheduleAction(action Action) chan error {
 	ch := make(chan error, 1)
 	s.actions <- &actionHolder{
@@ -62,5 +66,9 @@ func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	if err != nil {
 		return err
 	}
+	return s.engine.transferData(s.shardID)
+}
+
+func (s *shardScheduler) maybeForwardRows() error {
 	return s.engine.transferData(s.shardID)
 }
