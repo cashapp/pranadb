@@ -2,8 +2,6 @@ package push
 
 import (
 	"log"
-
-	"github.com/squareup/pranadb/storage"
 )
 
 type shardScheduler struct {
@@ -60,14 +58,9 @@ func (s *shardScheduler) ScheduleAction(action Action) chan error {
 
 func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
-	batch := storage.NewWriteBatch(s.shardID)
-	err := s.engine.handleReceivedRows(s.shardID, batch)
+	err := s.engine.handleReceivedRows(s.shardID, s.engine)
 	if err != nil {
 		return err
 	}
-	err = s.engine.storage.WriteBatch(batch, true)
-	if err != nil {
-		return err
-	}
-	return s.engine.pollForForwards(s.shardID)
+	return s.engine.transferData(s.shardID)
 }

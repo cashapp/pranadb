@@ -3,6 +3,7 @@ package common
 import (
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 // Test utils
@@ -55,5 +56,24 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 		default:
 			t.Errorf("unexpected column type %d", colType)
 		}
+	}
+}
+
+type Predicate func() (bool, error)
+
+func WaitUntil(t *testing.T, predicate Predicate) {
+	WaitUntilWithDur(t, predicate, 10*time.Second)
+}
+
+func WaitUntilWithDur(t *testing.T, predicate Predicate, timeout time.Duration) {
+	start := time.Now()
+	for {
+		complete, err := predicate()
+		require.Nil(t, err)
+		if complete {
+			return
+		}
+		time.Sleep(time.Millisecond)
+		require.Less(t, time.Now().Sub(start), timeout, "timed out waiting for predicate")
 	}
 }

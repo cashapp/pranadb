@@ -30,6 +30,9 @@ func ByteSliceToStringZeroCopy(buffer []byte) string {
 }
 
 func StringToByteSliceZeroCopy(str string) []byte {
+	if str == "" {
+		return nil
+	}
 	// see https://groups.google.com/g/golang-nuts/c/Zsfk-VMd_fU/m/nZoH4kExBgAJ
 	const max = 0x7fff0000
 	if len(str) > max {
