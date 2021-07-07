@@ -12,8 +12,8 @@ import (
 	"sync"
 )
 
-func NewServer(nodeID int) *Server {
-	cluster := cluster.NewFakeClusterManager(nodeID, 10)
+func NewServer(nodeID int, numShards int) *Server {
+	cluster := cluster.NewFakeClusterManager(nodeID, numShards)
 	store := storage.NewFakeStorage()
 	metaController := meta.NewController(store)
 	planner := parplan.NewPlanner()
@@ -120,4 +120,12 @@ func (s *Server) GetMetaController() *meta.Controller {
 
 func (s *Server) GetStorage() storage.Storage {
 	return s.storage
+}
+
+func (s *Server) GetSharder() *sharder.Sharder {
+	return s.shardr
+}
+
+func (s *Server) GetPushEngine() *push.PushEngine {
+	return s.pushEngine
 }

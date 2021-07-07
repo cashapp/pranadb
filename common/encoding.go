@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"unsafe"
 )
 
 var littleEndian = binary.LittleEndian
@@ -165,13 +166,13 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 }
 
 func decodeInt64(buffer []byte, offset int) (val int64, off int) {
-	val = int64(littleEndian.Uint64(buffer[offset:]))
+	val = int64(ReadUint64FromBufferLittleEndian(buffer, offset))
 	offset += 8
 	return val, offset
 }
 
 func decodeFloat64(buffer []byte, offset int) (val float64, off int) {
-	val = math.Float64frombits(littleEndian.Uint64(buffer[offset:]))
+	val = math.Float64frombits(ReadUint64FromBufferLittleEndian(buffer, offset))
 	offset += 8
 	return val, offset
 }
@@ -186,18 +187,46 @@ func decodeDecimal(buffer []byte, offset int, precision int, scale int) (val Dec
 }
 
 func decodeString(buffer []byte, offset int) (val string, off int) {
-	l := int(littleEndian.Uint32(buffer[offset:]))
+	l := int(ReadUint32FromBufferLittleEndian(buffer, offset))
 	offset += 4
 	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
 	offset += l
 	return str, offset
 }
 
-func AppendUint32ToBufferLittleEndian(data []byte, v uint32) []byte {
-	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+func AppendUint32ToBufferLittleEndian(buffer []byte, v uint32) []byte {
+	return append(buffer, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
-func AppendUint64ToBufferLittleEndian(data []byte, v uint64) []byte {
-	return append(data, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
+func AppendUint64ToBufferLittleEndian(buffer []byte, v uint64) []byte {
+	return append(buffer, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32),
 		byte(v>>40), byte(v>>48), byte(v>>56))
+}
+
+func ReadUint32FromBufferLittleEndian(buffer []byte, offset int) uint32 {
+	if IsLittleEndian {
+		// nolint: gosec
+		return *(*uint32)(unsafe.Pointer(&buffer[offset]))
+	} else {
+		return littleEndian.Uint32(buffer[offset:])
+	}
+}
+
+func ReadUint64FromBufferLittleEndian(buffer []byte, offset int) uint64 {
+	if IsLittleEndian {
+		// nolint: gosec
+		return *(*uint64)(unsafe.Pointer(&buffer[offset]))
+	} else {
+		return littleEndian.Uint64(buffer[offset:])
+	}
+}
+
+var IsLittleEndian = isLittleEndian()
+
+func isLittleEndian() bool {
+	val := uint64(123456)
+	buffer := make([]byte, 0, 8)
+	buffer = AppendUint64ToBufferLittleEndian(buffer, val)
+	valRead := *(*uint64)(unsafe.Pointer(&buffer[0]))
+	return val == valRead
 }

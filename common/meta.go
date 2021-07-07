@@ -16,7 +16,7 @@ const (
 var (
 	TinyIntColumnType   = ColumnType{Type: TypeTinyInt}
 	IntColumnType       = ColumnType{Type: TypeInt}
-	BigIntColumnType    = ColumnType{Type: TypeInt}
+	BigIntColumnType    = ColumnType{Type: TypeBigInt}
 	DoubleColumnType    = ColumnType{Type: TypeDouble}
 	VarcharColumnType   = ColumnType{Type: TypeVarchar}
 	TimestampColumnType = ColumnType{Type: TypeTimestamp}

@@ -111,5 +111,5 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 	if err != nil {
 		return err
 	}
-	return s.engine.pollForForwards(shardID)
+	return s.engine.transferData(shardID)
 }

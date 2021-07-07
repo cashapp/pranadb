@@ -23,6 +23,7 @@ type PushEngine struct {
 	sources             map[uint64]*source
 	materializedViews   map[uint64]*materializedView
 	remoteConsumers     map[uint64]*remoteConsumer
+	forwardSequences    map[uint64]uint64
 	localShards         []uint64
 	cluster             cluster.Cluster
 	planner             *parplan.Planner
@@ -36,6 +37,7 @@ func NewPushEngine(storage storage.Storage, cluster cluster.Cluster, planner *pa
 		sources:           make(map[uint64]*source),
 		materializedViews: make(map[uint64]*materializedView),
 		schedulers:        make(map[uint64]*shardScheduler),
+		forwardSequences:  make(map[uint64]uint64),
 		cluster:           cluster,
 		storage:           storage,
 		planner:           planner,
@@ -57,6 +59,10 @@ type remoteConsumer struct {
 // TODO do we even need these?
 type remoteRowsHandler interface {
 	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
+}
+
+type RawRowHandler interface {
+	HandleRawRows(rawRows map[uint64][][]byte, batch *storage.WriteBatch) error
 }
 
 func (p *PushEngine) Start() error {

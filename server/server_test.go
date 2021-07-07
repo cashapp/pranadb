@@ -12,7 +12,7 @@ import (
 
 func TestCreateMaterializedView(t *testing.T) {
 	nodeID := 1
-	server := NewServer(nodeID)
+	server := NewServer(nodeID, 10)
 	err := server.Start()
 	require.Nil(t, err)
 	ce := server.GetCommandExecutor()
@@ -60,7 +60,7 @@ func TestCreateMaterializedView(t *testing.T) {
 
 func TestExecutePullQuery(t *testing.T) {
 	nodeID := 1
-	server := NewServer(nodeID)
+	server := NewServer(nodeID, 10)
 	err := server.Start()
 	require.Nil(t, err)
 	ce := server.GetCommandExecutor()

@@ -125,3 +125,44 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 
 	RowsEqual(t, row1, row2, columnTypes)
 }
+
+func TestIsLittleEndian(t *testing.T) {
+	require.True(t, IsLittleEndian)
+}
+
+// TODO test encode/decode rows with nulls!
+// TODO - don't need nulls in keys!!
+
+func TestEncodeDecodeUint64s(t *testing.T) {
+	testEncodeDecodeUint64s(t, 0, 1, math.MaxUint64, 12345678)
+}
+
+func testEncodeDecodeUint64s(t *testing.T, vals ...uint64) {
+	for _, val := range vals {
+		testEncodeDecodeUint64(t, val)
+	}
+}
+
+func testEncodeDecodeUint64(t *testing.T, val uint64) {
+	buff := make([]byte, 0, 8)
+	buff = AppendUint64ToBufferLittleEndian(buff, val)
+	valRead := ReadUint64FromBufferLittleEndian(buff, 0)
+	require.Equal(t, val, valRead)
+}
+
+func TestEncodeDecodeUint32s(t *testing.T) {
+	testEncodeDecodeUint32s(t, 0, 1, math.MaxUint32, 12345678)
+}
+
+func testEncodeDecodeUint32s(t *testing.T, vals ...uint32) {
+	for _, val := range vals {
+		testEncodeDecodeUint32(t, val)
+	}
+}
+
+func testEncodeDecodeUint32(t *testing.T, val uint32) {
+	buff := make([]byte, 0, 4)
+	buff = AppendUint32ToBufferLittleEndian(buff, val)
+	valRead := ReadUint32FromBufferLittleEndian(buff, 0)
+	require.Equal(t, val, valRead)
+}
