@@ -2,8 +2,9 @@ package parplan
 
 import (
 	"context"
-	"github.com/squareup/pranadb/sessctx"
 	"math"
+
+	"github.com/squareup/pranadb/sessctx"
 
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/tidb/infoschema"
@@ -11,6 +12,7 @@ import (
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/util/hint"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -34,13 +36,13 @@ func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery boo
 	if err != nil {
 		return nil, err
 	}
-	is, err := schemaToInfoSchema(schema)
+	is := schemaToInfoSchema(schema)
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
 	sessCtx := sessctx.NewSessionContext(is, pullQuery)
-	//TODO doesn't seem to work if there are prepared statement markers
+	// TODO doesn't seem to work if there are prepared statement markers
 	err = core.Preprocess(sessCtx, stmt)
 	if err != nil {
 		return nil, err

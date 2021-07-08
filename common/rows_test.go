@@ -10,8 +10,7 @@ import (
 func TestRows(t *testing.T) {
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
-	rf, err := NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(1)
 	rowCount := 10
 	for i := 0; i < rowCount; i++ {

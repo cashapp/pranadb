@@ -8,8 +8,7 @@ import (
 
 func TestColumnExpressionTinyInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(0, TinyIntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(0, TinyIntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -18,8 +17,7 @@ func TestColumnExpressionTinyInt(t *testing.T) {
 
 func TestColumnExpressionNullTinyInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(1, TinyIntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(1, TinyIntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -27,8 +25,7 @@ func TestColumnExpressionNullTinyInt(t *testing.T) {
 
 func TestColumnExpressionInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(2, IntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(2, IntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -37,8 +34,7 @@ func TestColumnExpressionInt(t *testing.T) {
 
 func TestColumnExpressionNullInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(3, IntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(3, IntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -46,8 +42,7 @@ func TestColumnExpressionNullInt(t *testing.T) {
 
 func TestColumnExpressionBigInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(4, BigIntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(4, BigIntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -56,8 +51,7 @@ func TestColumnExpressionBigInt(t *testing.T) {
 
 func TestColumnExpressionNullBigInt(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(5, BigIntColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(5, BigIntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -65,8 +59,7 @@ func TestColumnExpressionNullBigInt(t *testing.T) {
 
 func TestColumnExpressionDouble(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(6, DoubleColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(6, DoubleColumnType)
 	val, null, err := colExpr.EvalFloat64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -75,8 +68,7 @@ func TestColumnExpressionDouble(t *testing.T) {
 
 func TestColumnExpressionNullDouble(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(7, DoubleColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(7, DoubleColumnType)
 	_, null, err := colExpr.EvalFloat64(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -84,8 +76,7 @@ func TestColumnExpressionNullDouble(t *testing.T) {
 
 func TestColumnExpressionVarchar(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(8, VarcharColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(8, VarcharColumnType)
 	val, null, err := colExpr.EvalString(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -94,8 +85,7 @@ func TestColumnExpressionVarchar(t *testing.T) {
 
 func TestColumnExpressionNullVarchar(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(9, VarcharColumnType)
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(9, VarcharColumnType)
 	_, null, err := colExpr.EvalString(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -103,8 +93,7 @@ func TestColumnExpressionNullVarchar(t *testing.T) {
 
 func TestColumnExpressionDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(10, NewDecimalColumnType(10, 2))
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(10, NewDecimalColumnType(10, 2))
 	val, null, err := colExpr.EvalDecimal(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -115,8 +104,7 @@ func TestColumnExpressionDecimal(t *testing.T) {
 
 func TestColumnExpressionNullDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr, err := NewColumnExpression(11, NewDecimalColumnType(10, 2))
-	require.Nil(t, err)
+	colExpr := NewColumnExpression(11, NewDecimalColumnType(10, 2))
 	_, null, err := colExpr.EvalDecimal(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -126,8 +114,7 @@ func createRow(t *testing.T) *Row {
 	t.Helper()
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
-	rf, err := NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(1)
 	rows.AppendInt64ToColumn(0, 1)
 	rows.AppendNullToColumn(1)
@@ -149,8 +136,7 @@ func createRow(t *testing.T) *Row {
 
 func TestConstantTinyIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr, err := NewConstantInt(TinyIntColumnType, 100)
-	require.Nil(t, err)
+	expr := NewConstantInt(TinyIntColumnType, 100)
 	val, null, err := expr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -159,8 +145,7 @@ func TestConstantTinyIntExpression(t *testing.T) {
 
 func TestConstantIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr, err := NewConstantInt(IntColumnType, 101)
-	require.Nil(t, err)
+	expr := NewConstantInt(IntColumnType, 101)
 	val, null, err := expr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -169,8 +154,7 @@ func TestConstantIntExpression(t *testing.T) {
 
 func TestConstantBigIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr, err := NewConstantInt(BigIntColumnType, 102)
-	require.Nil(t, err)
+	expr := NewConstantInt(BigIntColumnType, 102)
 	val, null, err := expr.EvalInt64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -179,8 +163,7 @@ func TestConstantBigIntExpression(t *testing.T) {
 
 func TestConstantDoubleExpression(t *testing.T) {
 	row := createRow(t)
-	expr, err := NewConstantDouble(DoubleColumnType, 1234.32)
-	require.Nil(t, err)
+	expr := NewConstantDouble(DoubleColumnType, 1234.32)
 	val, null, err := expr.EvalFloat64(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -189,8 +172,7 @@ func TestConstantDoubleExpression(t *testing.T) {
 
 func TestConstantStringExpression(t *testing.T) {
 	row := createRow(t)
-	expr, err := NewConstantVarchar(VarcharColumnType, "other-string")
-	require.Nil(t, err)
+	expr := NewConstantVarchar(VarcharColumnType, "other-string")
 	val, null, err := expr.EvalString(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -199,10 +181,8 @@ func TestConstantStringExpression(t *testing.T) {
 
 func TestScalarFunctionExpression(t *testing.T) {
 	row := createRow(t)
-	colExpr1, err := NewColumnExpression(0, TinyIntColumnType)
-	require.Nil(t, err)
-	colExpr2, err := NewColumnExpression(2, IntColumnType)
-	require.Nil(t, err)
+	colExpr1 := NewColumnExpression(0, TinyIntColumnType)
+	colExpr2 := NewColumnExpression(2, IntColumnType)
 	expr1, err := NewScalarFunctionExpression(BigIntColumnType, "gt", colExpr2, colExpr1)
 	require.Nil(t, err)
 	val, null, err := expr1.EvalInt64(row)

@@ -15,27 +15,22 @@ var colTypes = []common.ColumnType{common.BigIntColumnType, common.VarcharColumn
 
 func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *common.Rows {
 	t.Helper()
-	rf, err := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := common.NewRowsFactory(colTypes)
 	r := rf.NewRows(len(rows))
 	for _, row := range rows {
-		err = common.AppendRow(t, r, colTypes, row...)
+		err := common.AppendRow(t, r, colTypes, row...)
 		require.NoError(t, err)
 	}
 	return r
 }
 
-func colExpression(t *testing.T, colIndex int) *common.Expression {
-	t.Helper()
-	col, err := common.NewColumnExpression(colIndex, colTypes[colIndex])
-	require.Nil(t, err)
+func colExpression(colIndex int) *common.Expression {
+	col := common.NewColumnExpression(colIndex, colTypes[colIndex])
 	return col
 }
 
-func constDoubleExpression(t *testing.T, colIndex int, val float64) *common.Expression {
-	t.Helper()
-	con, err := common.NewConstantDouble(colTypes[colIndex], val)
-	require.Nil(t, err)
+func constDoubleExpression(colIndex int, val float64) *common.Expression {
+	con := common.NewConstantDouble(colTypes[colIndex], val)
 	return con
 }
 

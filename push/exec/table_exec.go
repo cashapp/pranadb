@@ -1,10 +1,11 @@
 package exec
 
 import (
+	"log"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
-	"log"
 )
 
 // TableExecutor updates the changes into the associated table - used to persist state
@@ -16,11 +17,8 @@ type TableExecutor struct {
 	store          storage.Storage
 }
 
-func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store storage.Storage) (*TableExecutor, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store storage.Storage) *TableExecutor {
+	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colTypes:    colTypes,
 		rowsFactory: rf,
@@ -29,7 +27,7 @@ func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo,
 		pushExecutorBase: pushBase,
 		tableInfo:        tableInfo,
 		store:            store,
-	}, nil
+	}
 }
 
 func (t *TableExecutor) ReCalcSchemaFromChildren() {

@@ -26,7 +26,7 @@ func TestCreateMaterializedView(t *testing.T) {
 	err = ce.CreateMaterializedView("test", "max_readings", query)
 	require.Nil(t, err)
 
-	rf, err := common.NewRowsFactory(colTypes)
+	rf := common.NewRowsFactory(colTypes)
 	require.Nil(t, err)
 
 	rows := rf.NewRows(10)
@@ -49,7 +49,7 @@ func TestCreateMaterializedView(t *testing.T) {
 	require.True(t, ok)
 
 	expectedColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType}
-	expectedRf, err := common.NewRowsFactory(expectedColTypes)
+	expectedRf := common.NewRowsFactory(expectedColTypes)
 	require.Nil(t, err)
 	expectedRows := expectedRf.NewRows(10)
 	err = common.AppendRow(t, expectedRows, expectedColTypes, 1, 25.5)
@@ -74,7 +74,7 @@ func TestExecutePullQuery(t *testing.T) {
 	err = ce.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
 	require.Nil(t, err)
 
-	rf, err := common.NewRowsFactory(colTypes)
+	rf := common.NewRowsFactory(colTypes)
 	require.Nil(t, err)
 	rows := rf.NewRows(10)
 	err = common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)

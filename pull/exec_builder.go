@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pingcap/tidb/planner/core"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/pull/exec"
 )
@@ -43,10 +44,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 	colNames := make([]string, 0, len(cols))
 	for _, col := range cols {
 		colType := col.GetType()
-		pranaType, err := common.ConvertTiDBTypeToPranaType(colType)
-		if err != nil {
-			return nil, err
-		}
+		pranaType := common.ConvertTiDBTypeToPranaType(colType)
 		colTypes = append(colTypes, pranaType)
 		colNames = append(colNames, col.OrigName)
 	}
@@ -67,7 +65,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor, err = exec.NewPullSelect(colNames, colTypes, exprs)
+		executor = exec.NewPullSelect(colNames, colTypes, exprs)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +90,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		for nodeID := range clusterInfo.NodeInfos {
 			nodeIDs = append(nodeIDs, nodeID)
 		}
-		executor, err = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, nodeIDs, p.cluster)
+		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, nodeIDs, p.cluster)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +107,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		} else {
 			t = mv.TableInfo
 		}
-		executor, err = exec.NewPullTableScan(colTypes, t, p.storage)
+		executor = exec.NewPullTableScan(colTypes, t, p.storage)
 		if err != nil {
 			return nil, err
 		}

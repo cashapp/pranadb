@@ -31,7 +31,7 @@ func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string
 		Query:      query,
 		TableInfo:  &tableInfo,
 	}
-	tableNode, err := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.storage)
+	tableNode := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.storage)
 	if err != nil {
 		return nil, err
 	}

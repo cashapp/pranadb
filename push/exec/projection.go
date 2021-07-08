@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -11,11 +12,8 @@ type PushProjection struct {
 	invisibleKeyColumns []int
 }
 
-func NewPushProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) (*PushProjection, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewPushProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) *PushProjection {
+	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colNames:    colNames,
 		colTypes:    colTypes,
@@ -24,7 +22,7 @@ func NewPushProjection(colNames []string, colTypes []common.ColumnType, projColu
 	return &PushProjection{
 		pushExecutorBase: pushBase,
 		projColumns:      projColumns,
-	}, nil
+	}
 }
 
 func (p *PushProjection) ReCalcSchemaFromChildren() {

@@ -19,10 +19,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes
 
-	tableExecutor, err := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.storage)
-	if err != nil {
-		return err
-	}
+	tableExecutor := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.storage)
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -33,10 +30,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 		engine:        p,
 	}
 
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return err
-	}
+	rf := common.NewRowsFactory(colTypes)
 	rc := &remoteConsumer{
 		RowsFactory: rf,
 		ColTypes:    colTypes,

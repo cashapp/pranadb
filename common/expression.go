@@ -3,6 +3,7 @@ package common
 import (
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
+
 	"github.com/squareup/pranadb/sessctx"
 )
 
@@ -10,48 +11,36 @@ type Expression struct {
 	expression expression.Expression
 }
 
-func NewColumnExpression(colIndex int, colType ColumnType) (*Expression, error) {
-	tiDBType, err := ConvertPranaTypeToTiDBType(colType)
-	if err != nil {
-		return nil, err
-	}
+func NewColumnExpression(colIndex int, colType ColumnType) *Expression {
+	tiDBType := ConvertPranaTypeToTiDBType(colType)
 	col := &expression.Column{RetType: tiDBType, Index: colIndex}
-	return &Expression{expression: col}, nil
+	return &Expression{expression: col}
 }
 
-func NewConstantInt(colType ColumnType, val int64) (*Expression, error) {
-	tiDBType, err := ConvertPranaTypeToTiDBType(colType)
-	if err != nil {
-		return nil, err
-	}
+func NewConstantInt(colType ColumnType, val int64) *Expression {
+	tiDBType := ConvertPranaTypeToTiDBType(colType)
 	datum := types.Datum{}
 	datum.SetInt64(val)
 	con := &expression.Constant{
 		Value:   datum,
 		RetType: tiDBType,
 	}
-	return &Expression{expression: con}, nil
+	return &Expression{expression: con}
 }
 
-func NewConstantDouble(colType ColumnType, val float64) (*Expression, error) {
-	tiDBType, err := ConvertPranaTypeToTiDBType(colType)
-	if err != nil {
-		return nil, err
-	}
+func NewConstantDouble(colType ColumnType, val float64) *Expression {
+	tiDBType := ConvertPranaTypeToTiDBType(colType)
 	datum := types.Datum{}
 	datum.SetFloat64(val)
 	con := &expression.Constant{
 		Value:   datum,
 		RetType: tiDBType,
 	}
-	return &Expression{expression: con}, nil
+	return &Expression{expression: con}
 }
 
-func NewConstantVarchar(colType ColumnType, val string) (*Expression, error) {
-	tiDBType, err := ConvertPranaTypeToTiDBType(colType)
-	if err != nil {
-		return nil, err
-	}
+func NewConstantVarchar(colType ColumnType, val string) *Expression {
+	tiDBType := ConvertPranaTypeToTiDBType(colType)
 	datum := types.Datum{}
 	// This is the default collation for UTF-8, not sure it matters for our usage
 	datum.SetString(val, "utf8mb4_0900_ai_ci")
@@ -59,14 +48,11 @@ func NewConstantVarchar(colType ColumnType, val string) (*Expression, error) {
 		Value:   datum,
 		RetType: tiDBType,
 	}
-	return &Expression{expression: con}, nil
+	return &Expression{expression: con}
 }
 
 func NewScalarFunctionExpression(colType ColumnType, funcName string, args ...*Expression) (*Expression, error) {
-	tiDBType, err := ConvertPranaTypeToTiDBType(colType)
-	if err != nil {
-		return nil, err
-	}
+	tiDBType := ConvertPranaTypeToTiDBType(colType)
 	tiDBArgs := make([]expression.Expression, len(args))
 	for i, ex := range args {
 		tiDBArgs[i] = ex.expression
