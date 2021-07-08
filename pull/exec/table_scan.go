@@ -12,6 +12,8 @@ type PullTableScan struct {
 	storage   storage.Storage
 }
 
+var _ PullExecutor = &PullTableScan{}
+
 func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) *PullTableScan {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{

@@ -1,16 +1,55 @@
 package common
 
 import (
+	"time"
+
+	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 )
 
 type Row struct {
-	tRow *chunk.Row
+	tRow        chunk.Row
+	columnTypes []ColumnType
 }
 
 type Rows struct {
-	chunk *chunk.Chunk
+	chunk       *chunk.Chunk
+	columnTypes []ColumnType
+}
+
+// InferRow is a convenience function for one-off row results.
+func InferRow(values ...interface{}) Row {
+	columnTypes := make([]ColumnType, 0, len(values))
+	for _, value := range values {
+		columnTypes = append(columnTypes, InferColumnType(value))
+	}
+	rows := NewRows(columnTypes, 1)
+	for i, value := range values {
+		switch value := value.(type) {
+		case string:
+			rows.AppendStringToColumn(i, value)
+		case int64:
+			rows.AppendInt64ToColumn(i, value)
+		case int:
+			rows.AppendInt64ToColumn(i, int64(value))
+		case int32:
+			rows.AppendInt64ToColumn(i, int64(value))
+		case int16:
+			rows.AppendInt64ToColumn(i, int64(value))
+		case float64:
+			rows.AppendFloat64ToColumn(i, value)
+		case time.Time:
+			rows.AppendTimeToColumn(i, value)
+		}
+	}
+	return rows.GetRow(0)
+}
+
+func NewRows(columnTypes []ColumnType, capacity int) *Rows {
+	astFieldTypes := toAstFieldTypes(columnTypes)
+	ch := chunk.NewChunkWithCapacity(astFieldTypes, capacity)
+	return &Rows{chunk: ch, columnTypes: columnTypes}
 }
 
 type Key []interface{}
@@ -29,7 +68,7 @@ func NewRowsFactory(columnTypes []ColumnType) *RowsFactory {
 
 func (rf *RowsFactory) NewRows(capacity int) *Rows {
 	ch := chunk.NewChunkWithCapacity(rf.astFieldTypes, capacity)
-	return &Rows{chunk: ch}
+	return &Rows{chunk: ch, columnTypes: rf.ColumnTypes}
 }
 
 func toAstFieldTypes(columnTypes []ColumnType) []*types.FieldType {
@@ -41,9 +80,13 @@ func toAstFieldTypes(columnTypes []ColumnType) []*types.FieldType {
 	return astFieldTypes
 }
 
+func (r *Rows) ColumnTypes() []ColumnType {
+	return r.columnTypes
+}
+
 func (r *Rows) GetRow(rowIndex int) Row {
 	row := r.chunk.GetRow(rowIndex)
-	return Row{tRow: &row}
+	return Row{tRow: row, columnTypes: r.columnTypes}
 }
 
 func (r *Rows) RowCount() int {
@@ -51,7 +94,7 @@ func (r *Rows) RowCount() int {
 }
 
 func (r *Rows) AppendRow(row Row) {
-	r.chunk.AppendRow(*row.tRow)
+	r.chunk.AppendRow(row.tRow)
 }
 
 func (r *Rows) AppendInt64ToColumn(colIndex int, val int64) {
@@ -72,6 +115,10 @@ func (r *Rows) AppendDecimalToColumn(colIndex int, val Decimal) {
 func (r *Rows) AppendStringToColumn(colIndex int, val string) {
 	col := r.chunk.Column(colIndex)
 	col.AppendString(val)
+}
+
+func (r *Rows) AppendTimeToColumn(colIndex int, val time.Time) {
+	r.chunk.AppendTime(colIndex, types.NewTime(types.FromGoTime(val), mysql.TypeTimestamp, types.MaxFsp))
 }
 
 func (r *Rows) AppendNullToColumn(colIndex int) {
@@ -109,4 +156,8 @@ func (r *Row) GetString(colIndex int) string {
 
 func (r *Row) ColCount() int {
 	return r.tRow.Len()
+}
+
+func (r *Row) ColumnTypes() []ColumnType {
+	return r.columnTypes
 }
