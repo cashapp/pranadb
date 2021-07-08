@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 )
 
 func TestProjectionOneCol(t *testing.T) {
@@ -77,7 +77,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	t.Helper()
 	proj := NewPushProjection(expectedColNames, expectedColTypes, projExprs)
 	execCtx := &ExecutionContext{
-		WriteBatch: storage.NewWriteBatch(1),
+		WriteBatch: cluster.NewWriteBatch(1, false),
 	}
 	rg := &rowGatherer{}
 	proj.SetParent(rg)

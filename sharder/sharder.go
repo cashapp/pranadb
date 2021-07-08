@@ -59,18 +59,8 @@ func (s *Sharder) setShardIDs(shardIds []uint64) {
 }
 
 func (s *Sharder) loadAllShards() error {
-	clusterInfo, err := s.cluster.GetClusterInfo()
-	if err != nil {
-		return err
-	}
-	var shardIDs []uint64
-	// TODO is this really necessary? If shard ids form a contiguous sequence then it's not
-	for _, nodeInfo := range clusterInfo.NodeInfos {
-		for _, leader := range nodeInfo.Leaders {
-			shardIDs = append(shardIDs, leader)
-		}
-	}
-	s.setShardIDs(shardIDs)
+	allShards := s.cluster.GetAllShardIDs()
+	s.setShardIDs(allShards)
 	return nil
 }
 

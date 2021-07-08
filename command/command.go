@@ -11,11 +11,9 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
-	"github.com/squareup/pranadb/storage"
 )
 
 type Executor struct {
-	store          storage.Storage
 	cluster        cluster.Cluster
 	metaController *meta.Controller
 	pushEngine     *push.PushEngine
@@ -23,14 +21,12 @@ type Executor struct {
 }
 
 func NewCommandExecutor(
-	store storage.Storage,
 	metaController *meta.Controller,
 	pushEngine *push.PushEngine,
 	pullEngine *pull.PullEngine,
 	cluster cluster.Cluster,
 ) *Executor {
 	return &Executor{
-		store:          store,
 		cluster:        cluster,
 		metaController: metaController,
 		pushEngine:     pushEngine,

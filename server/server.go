@@ -8,23 +8,23 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-	"github.com/squareup/pranadb/storage"
 	"sync"
 )
 
 func NewServer(nodeID int, numShards int) *Server {
-	cluster := cluster.NewFakeClusterManager(nodeID, numShards)
-	store := storage.NewFakeStorage()
-	metaController := meta.NewController(store)
+	clus := cluster.NewFakeCluster(nodeID, numShards)
+	metaController := meta.NewController(clus)
 	planner := parplan.NewPlanner()
-	shardr := sharder.NewSharder(cluster)
-	pushEngine := push.NewPushEngine(store, cluster, planner, shardr)
-	pullEngine := pull.NewPullEngine(planner, store, cluster, metaController)
-	commandExecutor := command.NewCommandExecutor(store, metaController, pushEngine, pullEngine, cluster)
+	shardr := sharder.NewSharder(clus)
+	pushEngine := push.NewPushEngine(clus, planner, shardr)
+	clus.SetLeaderChangedCallback(pushEngine)
+	clus.SetRemoteWriteHandler(pushEngine)
+	pullEngine := pull.NewPullEngine(planner, clus, metaController)
+	clus.SetRemoteQueryExecutionCallback(pullEngine)
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	server := Server{
 		nodeID:          nodeID,
-		storage:         store,
-		cluster:         cluster,
+		cluster:         clus,
 		shardr:          shardr,
 		metaController:  metaController,
 		pushEngine:      pushEngine,
@@ -37,7 +37,6 @@ func NewServer(nodeID int, numShards int) *Server {
 type Server struct {
 	lock            sync.RWMutex
 	nodeID          int
-	storage         storage.Storage
 	cluster         cluster.Cluster
 	shardr          *sharder.Sharder
 	metaController  *meta.Controller
@@ -53,11 +52,7 @@ func (s *Server) Start() error {
 	if s.started {
 		return nil
 	}
-	err := s.storage.Start()
-	if err != nil {
-		return err
-	}
-	err = s.metaController.Start()
+	err := s.metaController.Start()
 	if err != nil {
 		return err
 	}
@@ -98,10 +93,6 @@ func (s *Server) Stop() error {
 	if err != nil {
 		return err
 	}
-	err = s.storage.Stop()
-	if err != nil {
-		return err
-	}
 	if !s.started {
 		return nil
 	}
@@ -118,14 +109,14 @@ func (s *Server) GetMetaController() *meta.Controller {
 	return s.metaController
 }
 
-func (s *Server) GetStorage() storage.Storage {
-	return s.storage
-}
-
 func (s *Server) GetSharder() *sharder.Sharder {
 	return s.shardr
 }
 
 func (s *Server) GetPushEngine() *push.PushEngine {
 	return s.pushEngine
+}
+
+func (s *Server) GetCluster() cluster.Cluster {
+	return s.cluster
 }

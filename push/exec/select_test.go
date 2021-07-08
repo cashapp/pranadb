@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 )
 
 func TestSelectOneRow(t *testing.T) {
@@ -52,7 +52,7 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	sel := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})
 	require.Nil(t, err)
 	execCtx := &ExecutionContext{
-		WriteBatch: storage.NewWriteBatch(1),
+		WriteBatch: cluster.NewWriteBatch(1, false),
 	}
 	rg := &rowGatherer{}
 	sel.SetParent(rg)

@@ -4,34 +4,33 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
-	"sync/atomic"
+	"time"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
-	"github.com/squareup/pranadb/storage"
 )
 
 type PushEngine struct {
-	lock                sync.RWMutex
-	started             bool
-	storage             storage.Storage
-	schedulers          map[uint64]*shardScheduler
-	sources             map[uint64]*source
-	materializedViews   map[uint64]*materializedView
-	remoteConsumers     map[uint64]*remoteConsumer
-	forwardSequences    map[uint64]uint64
-	localShards         []uint64
-	cluster             cluster.Cluster
-	planner             *parplan.Planner
-	sharder             *sharder.Sharder
-	nextLocalShardIndex int64
+	lock              sync.RWMutex
+	started           bool
+	schedulers        map[uint64]*shardScheduler
+	sources           map[uint64]*source
+	materializedViews map[uint64]*materializedView
+	remoteConsumers   map[uint64]*remoteConsumer
+	forwardSequences  map[uint64]uint64
+	localLeaderShards []uint64
+	cluster           cluster.Cluster
+	planner           *parplan.Planner
+	sharder           *sharder.Sharder
+	rnd               *rand.Rand
 }
 
-func NewPushEngine(storage storage.Storage, cluster cluster.Cluster, planner *parplan.Planner, sharder *sharder.Sharder) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, planner *parplan.Planner, sharder *sharder.Sharder) *PushEngine {
 	engine := PushEngine{
 		remoteConsumers:   make(map[uint64]*remoteConsumer),
 		sources:           make(map[uint64]*source),
@@ -39,9 +38,9 @@ func NewPushEngine(storage storage.Storage, cluster cluster.Cluster, planner *pa
 		schedulers:        make(map[uint64]*shardScheduler),
 		forwardSequences:  make(map[uint64]uint64),
 		cluster:           cluster,
-		storage:           storage,
 		planner:           planner,
 		sharder:           sharder,
+		rnd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
 	}
 	return &engine
 }
@@ -62,7 +61,7 @@ type remoteRowsHandler interface {
 }
 
 type RawRowHandler interface {
-	HandleRawRows(rawRows map[uint64][][]byte, batch *storage.WriteBatch) error
+	HandleRawRows(rawRows map[uint64][][]byte, batch *cluster.WriteBatch) error
 }
 
 func (p *PushEngine) Start() error {
@@ -71,13 +70,7 @@ func (p *PushEngine) Start() error {
 	if p.started {
 		return nil
 	}
-	p.cluster.SetLeaderChangedCallback(p)
-	err := p.loadAndStartSchedulers()
-	if err != nil {
-		return err
-	}
-	p.storage.SetRemoteWriteHandler(p)
-	err = p.checkForRowsToForward()
+	err := p.checkForRowsToForward()
 	if err != nil {
 		return err
 	}
@@ -91,7 +84,6 @@ func (p *PushEngine) Stop() {
 	if !p.started {
 		return
 	}
-	p.cluster.SetLeaderChangedCallback(nil)
 	for _, scheduler := range p.schedulers {
 		scheduler.Stop()
 	}
@@ -99,31 +91,36 @@ func (p *PushEngine) Stop() {
 }
 
 func (p *PushEngine) LeaderChanged(shardID uint64, added bool) {
-	// TODO
-	// This will be called from the cluster manager when the local node becomes the leader
-	// for a shard. This can happen if another node leaves the cluster.
-	// TODO - do we really need this? If a remote write comes in for a shard and we don't
-	// already have a shard scheduler we can lazily create one. In fact we don't have
-	// to create shard schedulers at all at startup - they can all be created lazily
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if added {
+		_, ok := p.schedulers[shardID]
+		if ok {
+			panic("leader added but already leader")
+		}
+		sched := newShardScheduler(shardID, p)
+		sched.Start()
+		p.schedulers[shardID] = sched
+		p.localLeaderShards = append(p.localLeaderShards, shardID)
+	} else {
+		sched := p.schedulers[shardID]
+		sched.Stop()
+		delete(p.schedulers, shardID)
+		locShards := make([]uint64, len(p.localLeaderShards)-1)
+		index := 0
+		for _, sid := range p.localLeaderShards {
+			if sid != shardID {
+				locShards[index] = sid
+				index++
+			}
+		}
+		p.localLeaderShards = locShards
+	}
+	log.Printf("Calling leader changed, num local shards is now %d", len(p.localLeaderShards))
 }
 
-// Load and start a scheduler for every shard for which we are a leader
-// These are used to deliver any incoming rows for that shard
-func (p *PushEngine) loadAndStartSchedulers() error {
-	nodeInfo, err := p.cluster.GetNodeInfo(p.cluster.GetNodeID())
-	if err != nil {
-		return err
-	}
-	for _, shardID := range nodeInfo.Leaders {
-		scheduler := newShardScheduler(shardID, p)
-		p.schedulers[shardID] = scheduler
-		scheduler.Start()
-		p.localShards = append(p.localShards, shardID)
-	}
-	return nil
-}
-
-func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *storage.WriteBatch) error {
+func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
 	log.Println("Handling remote rows")
 
 	// TODO use copy on write and atomic references to entities to avoid read lock
@@ -171,11 +168,28 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 	return p.ingest(rows, source)
 }
 
+// NumLocalLeaders is only used in tests
+func (p *PushEngine) NumLocalLeaders() int {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	return len(p.localLeaderShards)
+}
+
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
-	// We choose a local shard to handle this batch - rows are written into forwarder queue
-	// and forwarded to dest shards
-	shardID := p.getLocalShardRoundRobin()
+	p.lock.Lock()
+
+	var shardID uint64
+	// Choose a shard, preferably local for storing this ingest
+	numLocal := len(p.localLeaderShards)
+	if numLocal > 0 {
+		r := p.rnd.Int31n(int32(numLocal))
+		shardID = p.localLeaderShards[r]
+	} else {
+		panic("no local shards")
+	}
+
 	scheduler := p.schedulers[shardID]
+	p.lock.Unlock()
 
 	errChan := scheduler.ScheduleAction(func() error {
 		return source.ingestRows(rows, shardID)
@@ -197,19 +211,16 @@ func (p *PushEngine) remoteBatchArrived(shardID uint64) error {
 	// granularity of parallelism
 	scheduler, ok := p.schedulers[shardID]
 	if !ok {
+		scheduler = newShardScheduler(shardID, p)
+		p.schedulers[shardID] = scheduler
+		p.localLeaderShards = append(p.localLeaderShards, shardID)
+		scheduler.Start()
+	}
+	if !ok {
 		return fmt.Errorf("no scheduler for shard %d", shardID)
 	}
 	scheduler.CheckForRemoteBatch()
 	return nil
-}
-
-func (p *PushEngine) getLocalShardRoundRobin() uint64 {
-	shardIndex := atomic.AddInt64(&p.nextLocalShardIndex, 1)
-	if shardIndex < 0 {
-		// Doesn't matter if race here, this is best effort
-		atomic.StoreInt64(&p.nextLocalShardIndex, 0)
-	}
-	return p.localShards[shardIndex]
 }
 
 func (p *PushEngine) checkForRowsToForward() error {

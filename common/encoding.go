@@ -155,7 +155,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 				rows.AppendFloat64ToColumn(colIndex, val)
 			case TypeVarchar:
 				var val string
-				val, offset = decodeString(buffer, offset)
+				val, offset = DecodeString(buffer, offset)
 				rows.AppendStringToColumn(colIndex, val)
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
@@ -186,7 +186,7 @@ func decodeDecimal(buffer []byte, offset int, precision int, scale int) (val Dec
 	return dec, offset, nil
 }
 
-func decodeString(buffer []byte, offset int) (val string, off int) {
+func DecodeString(buffer []byte, offset int) (val string, off int) {
 	l := int(ReadUint32FromBufferLittleEndian(buffer, offset))
 	offset += 4
 	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])

@@ -1,8 +1,8 @@
 package push
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 )
 
 // Don't use iota here as these must not change
@@ -13,7 +13,7 @@ const (
 	ReceiverSequenceTableID  = 4
 )
 
-func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *storage.WriteBatch) error {
+func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
 	sequence, err := p.nextForwardSequence(localShardID)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 
 	// TODO make limit configurable
-	kvPairs, err := p.storage.Scan(keyStartPrefix, keyStartPrefix, 100)
+	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 100)
 	if err != nil {
 		return err
 	}
@@ -59,8 +59,8 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 		key := kvPair.Key
 		currRemoteShardID := common.ReadUint64FromBufferLittleEndian(key, 16)
 		if first || remoteShardID != currRemoteShardID {
-			addBatch := storage.NewWriteBatch(currRemoteShardID)
-			deleteBatch := storage.NewWriteBatch(localShardID)
+			addBatch := cluster.NewWriteBatch(currRemoteShardID, true)
+			deleteBatch := cluster.NewWriteBatch(localShardID, false)
 			batch = &forwardBatch{
 				addBatch:    addBatch,
 				deleteBatch: deleteBatch,
@@ -84,13 +84,13 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 
 	for _, fBatch := range batches {
 		// Write to the remote shard
-		err := p.storage.WriteBatch(fBatch.addBatch, false)
+		err := p.cluster.WriteBatch(fBatch.addBatch)
 		if err != nil {
 			return err
 		}
 		if del {
 			// Delete locally
-			err = p.storage.WriteBatch(fBatch.deleteBatch, true)
+			err = p.cluster.WriteBatch(fBatch.deleteBatch)
 			if err != nil {
 				return err
 			}
@@ -100,18 +100,18 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 }
 
 type forwardBatch struct {
-	addBatch    *storage.WriteBatch
-	deleteBatch *storage.WriteBatch
+	addBatch    *cluster.WriteBatch
+	deleteBatch *cluster.WriteBatch
 }
 
 func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) error {
-	batch := storage.NewWriteBatch(receivingShardID)
+	batch := cluster.NewWriteBatch(receivingShardID, false)
 	keyStartPrefix := make([]byte, 0, 16)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ReceiverTableID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, receivingShardID)
 
 	// TODO make limit configurable
-	kvPairs, err := p.storage.Scan(keyStartPrefix, keyStartPrefix, 100)
+	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 100)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 			return err
 		}
 	}
-	return p.storage.WriteBatch(batch, true)
+	return p.cluster.WriteBatch(batch)
 }
 
 // TODO consider caching sequences in memory to avoid reading from storage each time
@@ -171,7 +171,7 @@ func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
 	lastSeq, ok := p.forwardSequences[localShardID]
 	if !ok {
 		seqKey := p.genForwardSequenceKey(localShardID)
-		seqBytes, err := p.storage.Get(localShardID, seqKey, true)
+		seqBytes, err := p.cluster.LocalGet(seqKey)
 		if err != nil {
 			return 0, err
 		}
@@ -185,11 +185,12 @@ func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
 	return lastSeq, nil
 }
 
-func (p *PushEngine) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *storage.WriteBatch) error {
+func (p *PushEngine) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
 	seqKey := p.genForwardSequenceKey(localShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
+	// TODO remove this lock!
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	p.forwardSequences[localShardID] = sequence
@@ -199,7 +200,7 @@ func (p *PushEngine) updateNextForwardSequence(localShardID uint64, sequence uin
 // TODO consider caching sequences in memory to avoid reading from storage each time
 func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShardID uint64) (uint64, error) {
 	seqKey := p.genReceivingSequenceKey(receivingShardID, sendingShardID)
-	seqBytes, err := p.storage.Get(receivingShardID, seqKey, true)
+	seqBytes, err := p.cluster.LocalGet(seqKey)
 	if err != nil {
 		return 0, err
 	}
@@ -209,7 +210,7 @@ func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShard
 	return common.ReadUint64FromBufferLittleEndian(seqBytes, 0), nil
 }
 
-func (p *PushEngine) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *storage.WriteBatch) error {
+func (p *PushEngine) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
 	seqKey := p.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)

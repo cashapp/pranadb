@@ -1,20 +1,20 @@
 package exec
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
 )
 
 type PullTableScan struct {
 	pullExecutorBase
 	tableInfo *common.TableInfo
-	storage   storage.Storage
+	storage   cluster.Cluster
 }
 
 var _ PullExecutor = &PullTableScan{}
 
-func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) *PullTableScan {
+func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage cluster.Cluster) *PullTableScan {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colTypes:    colTypes,

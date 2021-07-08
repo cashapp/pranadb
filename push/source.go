@@ -3,10 +3,10 @@ package push
 import (
 	"log"
 
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
-	"github.com/squareup/pranadb/storage"
 )
 
 type source struct {
@@ -19,7 +19,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes
 
-	tableExecutor := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.storage)
+	tableExecutor := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.cluster)
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -81,7 +81,7 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 	pkCols := info.PrimaryKeyCols
 	colTypes := info.ColumnTypes
 	tableID := info.ID
-	batch := storage.NewWriteBatch(shardID)
+	batch := cluster.NewWriteBatch(shardID, false)
 
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -101,7 +101,7 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 		}
 	}
 
-	err := s.engine.storage.WriteBatch(batch, true)
+	err := s.engine.cluster.WriteBatch(batch)
 	if err != nil {
 		return err
 	}

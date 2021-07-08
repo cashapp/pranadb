@@ -3,8 +3,9 @@ package exec
 import (
 	"log"
 
+	"github.com/squareup/pranadb/cluster"
+
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -14,10 +15,10 @@ type TableExecutor struct {
 	pushExecutorBase
 	tableInfo      *common.TableInfo
 	consumingNodes []PushExecutor
-	store          storage.Storage
+	store          cluster.Cluster
 }
 
-func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store storage.Storage) *TableExecutor {
+func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colTypes:    colTypes,

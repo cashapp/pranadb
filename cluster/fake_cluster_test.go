@@ -1,4 +1,4 @@
-package storage
+package cluster
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 func TestPutGet(t *testing.T) {
 
-	storage := NewFakeStorage()
+	clust := NewFakeCluster(0, 10)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -23,10 +23,10 @@ func TestPutGet(t *testing.T) {
 	shardID := uint64(123545)
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	err := storage.WriteBatch(&writeBatch, false)
+	err := clust.WriteBatch(&writeBatch)
 	require.Nil(t, err)
 
-	res, err := storage.Get(shardID, key, true)
+	res, err := clust.LocalGet(key)
 	require.Nil(t, err)
 	require.NotNil(t, res)
 
@@ -36,7 +36,7 @@ func TestPutGet(t *testing.T) {
 
 func TestPutDelete(t *testing.T) {
 
-	storage := NewFakeStorage()
+	clust := NewFakeCluster(0, 10)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -49,19 +49,19 @@ func TestPutDelete(t *testing.T) {
 	shardID := uint64(123545)
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	err := storage.WriteBatch(&writeBatch, false)
+	err := clust.WriteBatch(&writeBatch)
 	require.Nil(t, err)
 
-	res, err := storage.Get(shardID, key, true)
+	res, err := clust.LocalGet(key)
 	require.Nil(t, err)
 	require.NotNil(t, res)
 
 	deleteBatch := createWriteBatchWithDeletes(shardID, key)
 
-	err = storage.WriteBatch(&deleteBatch, false)
+	err = clust.WriteBatch(&deleteBatch)
 	require.Nil(t, err)
 
-	res, err = storage.Get(shardID, key, true)
+	res, err = clust.LocalGet(key)
 	require.Nil(t, err)
 	require.Nil(t, res)
 }
@@ -80,7 +80,7 @@ func TestScanBigLimit(t *testing.T) {
 
 func testScan(t *testing.T, limit int, expected int) {
 	t.Helper()
-	storage := NewFakeStorage()
+	clust := NewFakeCluster(0, 10)
 
 	var kvPairs []KVPair
 	for i := 0; i < 10; i++ {
@@ -95,19 +95,19 @@ func testScan(t *testing.T, limit int, expected int) {
 	})
 	shardID := uint64(123545)
 
-	wb := NewWriteBatch(shardID)
+	wb := NewWriteBatch(shardID, false)
 	for _, kvPair := range kvPairs {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 
-	err := storage.WriteBatch(wb, false)
+	err := clust.WriteBatch(wb)
 	require.Nil(t, err)
 
 	keyStart := []byte("foo-06")
 	keyWhile := []byte("foo-06")
 
 	var res []KVPair
-	res, err = storage.Scan(keyStart, keyWhile, limit)
+	res, err = clust.LocalScan(keyStart, keyWhile, limit)
 	require.Nil(t, err)
 
 	require.Equal(t, expected, len(res))
@@ -120,7 +120,7 @@ func testScan(t *testing.T, limit int, expected int) {
 }
 
 func createWriteBatchWithPuts(shardID uint64, puts ...KVPair) WriteBatch {
-	wb := NewWriteBatch(shardID)
+	wb := NewWriteBatch(shardID, false)
 	for _, kvPair := range puts {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
@@ -128,7 +128,7 @@ func createWriteBatchWithPuts(shardID uint64, puts ...KVPair) WriteBatch {
 }
 
 func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
-	wb := NewWriteBatch(shardID)
+	wb := NewWriteBatch(shardID, false)
 	for _, delete := range deletes {
 		wb.AddDelete(delete)
 	}

@@ -82,18 +82,11 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		if err != nil {
 			return nil, err
 		}
-		var nodeIDs []int
-		clusterInfo, err := p.cluster.GetClusterInfo()
-		if err != nil {
-			return nil, err
-		}
-		for nodeID := range clusterInfo.NodeInfos {
-			nodeIDs = append(nodeIDs, nodeID)
-		}
-		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, nodeIDs, p.cluster)
-		if err != nil {
-			return nil, err
-		}
+		// TODO do we really want to fanout to all nodes? Unlikely - if we gather from all nodes
+		// then we're going to gather much more data than needed (3 times!) as each node will have leader
+		// and followers for multiple shards. Instead we want to fanout to shards, not nodes
+		// and let dragon figure out which nodes to talk to
+		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, p.cluster.GetAllNodeIDs(), p.cluster)
 	case *core.PhysicalTableScan:
 		tableName := op.Table.Name.L
 		var t *common.TableInfo
@@ -107,10 +100,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		} else {
 			t = mv.TableInfo
 		}
-		executor = exec.NewPullTableScan(colTypes, t, p.storage)
-		if err != nil {
-			return nil, err
-		}
+		executor = exec.NewPullTableScan(colTypes, t, p.cluster)
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}

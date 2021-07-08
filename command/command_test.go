@@ -12,18 +12,16 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-	"github.com/squareup/pranadb/storage"
 )
 
 func TestCommandExecutorExecutePullQuery(t *testing.T) {
-	cluster := cluster.NewFakeClusterManager(1, 1)
-	store := storage.NewFakeStorage()
-	metaController := meta.NewController(store)
+	cluster := cluster.NewFakeCluster(1, 1)
+	metaController := meta.NewController(cluster)
 	planner := parplan.NewPlanner()
 	shardr := sharder.NewSharder(cluster)
-	pushEngine := push.NewPushEngine(store, cluster, planner, shardr)
-	pullEngine := pull.NewPullEngine(planner, store, cluster, metaController)
-	ce := NewCommandExecutor(store, metaController, pushEngine, pullEngine, cluster)
+	pushEngine := push.NewPushEngine(cluster, planner, shardr)
+	pullEngine := pull.NewPullEngine(planner, cluster, metaController)
+	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, cluster)
 
 	tests := []struct {
 		name  string

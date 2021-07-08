@@ -5,9 +5,9 @@ import (
 	"log"
 
 	"github.com/squareup/pranadb/aggfuncs"
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/sharder"
-	"github.com/squareup/pranadb/storage"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -16,7 +16,7 @@ type Aggregator struct {
 	aggFuncs     []aggfuncs.AggregateFunction
 	AggTableInfo *common.TableInfo
 	groupByCols  []int
-	storage      storage.Storage
+	storage      cluster.Cluster
 	sharder      *sharder.Sharder
 }
 
@@ -27,7 +27,7 @@ type AggregateFunctionInfo struct {
 }
 
 func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo, groupByCols []int,
-	storage storage.Storage, sharder *sharder.Sharder) (*Aggregator, error) {
+	storage cluster.Cluster, sharder *sharder.Sharder) (*Aggregator, error) {
 	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colNames:    colNames,

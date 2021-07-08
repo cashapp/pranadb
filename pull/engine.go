@@ -11,14 +11,12 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull/exec"
-	"github.com/squareup/pranadb/storage"
 )
 
 type PullEngine struct {
 	lock            sync.RWMutex
 	started         bool
 	planner         *parplan.Planner
-	storage         storage.Storage
 	remoteQueries   map[string]exec.PullExecutor
 	cluster         cluster.Cluster
 	metaController  *meta.Controller
@@ -26,10 +24,9 @@ type PullEngine struct {
 	queryIDSequence int64
 }
 
-func NewPullEngine(planner *parplan.Planner, storage storage.Storage, cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
+func NewPullEngine(planner *parplan.Planner, cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
 	engine := PullEngine{
 		planner:        planner,
-		storage:        storage,
 		remoteQueries:  make(map[string]exec.PullExecutor),
 		cluster:        cluster,
 		metaController: metaController,
@@ -44,7 +41,6 @@ func (p *PullEngine) Start() error {
 	if p.started {
 		return nil
 	}
-	p.cluster.SetRemoteQueryExecutionCallback(p)
 	p.started = true
 	return nil
 }
@@ -55,7 +51,6 @@ func (p *PullEngine) Stop() {
 	if !p.started {
 		return
 	}
-	p.cluster.SetRemoteQueryExecutionCallback(nil)
 	p.started = false
 }
 
