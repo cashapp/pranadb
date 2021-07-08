@@ -12,8 +12,7 @@ var singleIntColumn = []ColumnType{IntColumnType}
 var singleFloatColumn = []ColumnType{DoubleColumnType}
 
 func TestEncodeDecodeInt(t *testing.T) {
-	rf, err := NewRowsFactory(singleIntColumn)
-	require.Nil(t, err)
+	rf := NewRowsFactory(singleIntColumn)
 	encodeDecodeInt(t, rf, 0)
 	encodeDecodeInt(t, rf, math.MinInt64)
 	encodeDecodeInt(t, rf, math.MaxInt64)
@@ -24,16 +23,14 @@ func TestEncodeDecodeInt(t *testing.T) {
 }
 
 func TestEncodeDecodeString(t *testing.T) {
-	rf, err := NewRowsFactory(singleVarcharColumn)
-	require.Nil(t, err)
+	rf := NewRowsFactory(singleVarcharColumn)
 	encodeDecodeString(t, rf, "")
 	encodeDecodeString(t, rf, "zxy123")
 	encodeDecodeString(t, rf, "\u2318")
 }
 
 func TestEncodeDecodeFloat(t *testing.T) {
-	rf, err := NewRowsFactory(singleFloatColumn)
-	require.Nil(t, err)
+	rf := NewRowsFactory(singleFloatColumn)
 	encodeDecodeFloat(t, rf, 0)
 	encodeDecodeFloat(t, rf, -1234.5678)
 	encodeDecodeFloat(t, rf, 1234.5678)
@@ -43,8 +40,7 @@ func TestEncodeDecodeFloat(t *testing.T) {
 func TestEncodeDecodeRow(t *testing.T) {
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
-	rf, err := NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(10)
 	rows.AppendInt64ToColumn(0, 255)
 	rows.AppendInt64ToColumn(1, math.MaxInt32)
@@ -60,8 +56,7 @@ func TestEncodeDecodeRow(t *testing.T) {
 func TestEncodeDecodeRowWithNulls(t *testing.T) {
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
-	rf, err := NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(10)
 	rows.AppendInt64ToColumn(0, 255)
 	rows.AppendNullToColumn(1)
@@ -94,8 +89,7 @@ func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
 
 func TestEncodeDecodeDecimal(t *testing.T) {
 	colTypes := []ColumnType{NewDecimalColumnType(10, 2)}
-	rf, err := NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := NewRowsFactory(colTypes)
 	dec, err := NewDecFromString("0.00")
 	require.Nil(t, err)
 	encodeDecodeDecimal(t, rf, *dec, colTypes)

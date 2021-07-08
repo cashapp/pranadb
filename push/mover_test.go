@@ -47,8 +47,7 @@ func TestTransferData(t *testing.T) {
 	numRows := 10
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
 	localShardID := uint64(1)
-	rf, err := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := common.NewRowsFactory(colTypes)
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, stor, localShardID)
 
 	keyStartPrefix := createForwarderKey(localShardID)
@@ -96,8 +95,7 @@ func TestHandleReceivedRows(t *testing.T) {
 	numRows := 10
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
 
-	rf, err := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := common.NewRowsFactory(colTypes)
 
 	clustInfo, err := clus.GetClusterInfo()
 	require.Nil(t, err)
@@ -235,8 +233,7 @@ func TestDedupOfForwards(t *testing.T) {
 	numRows := 10
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
 	localShardID := uint64(1)
-	rf, err := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	rf := common.NewRowsFactory(colTypes)
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, stor, localShardID)
 	remoteShardsIds := make(map[uint64]bool)
 	for _, row := range rows {
@@ -338,8 +335,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store storage.Stora
 	localShardID := uint64(1)
 
 	numRows := 10
-	rf, err := common.NewRowsFactory(colTypes)
-	require.NoError(t, err)
+	rf := common.NewRowsFactory(colTypes)
 
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, store, localShardID)
 

@@ -14,6 +14,7 @@ import (
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	tidbTable "github.com/pingcap/tidb/table"
 	tidbTypes "github.com/pingcap/tidb/types"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -34,7 +35,7 @@ type iSSchemaInfo struct {
 	TablesInfos map[string]*common.TableInfo
 }
 
-func schemaToInfoSchema(schema *common.Schema) (infoschema.InfoSchema, error) {
+func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 
 	tableInfos := make(map[string]*common.TableInfo)
 	for mvName, mv := range schema.Mvs {
@@ -58,10 +59,7 @@ func schemaToInfoSchema(schema *common.Schema) (infoschema.InfoSchema, error) {
 		var columns []*model.ColumnInfo
 		for columnIndex, columnType := range tableInfo.ColumnTypes {
 
-			colType, err := common.ConvertPranaTypeToTiDBType(columnType)
-			if err != nil {
-				return nil, err
-			}
+			colType := common.ConvertPranaTypeToTiDBType(columnType)
 
 			col := &model.ColumnInfo{
 				State:     model.StatePublic,
@@ -132,7 +130,7 @@ func schemaToInfoSchema(schema *common.Schema) (infoschema.InfoSchema, error) {
 	}
 	result.schemaMap[schemaInfo.SchemaName] = tableNames
 
-	return result, nil
+	return result
 }
 
 func (pis *pranaInfoSchema) SchemaByName(schema model.CIStr) (val *model.DBInfo, ok bool) {

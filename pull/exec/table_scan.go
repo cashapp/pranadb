@@ -12,11 +12,8 @@ type PullTableScan struct {
 	storage   storage.Storage
 }
 
-func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) (*PullTableScan, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage storage.Storage) *PullTableScan {
+	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colTypes:    colTypes,
 		rowsFactory: rf,
@@ -25,7 +22,7 @@ func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo,
 		pullExecutorBase: base,
 		tableInfo:        tableInfo,
 		storage:          storage,
-	}, nil
+	}
 }
 
 func (t *PullTableScan) SetSchema(colNames []string, colTypes []common.ColumnType, keyCols []int) {

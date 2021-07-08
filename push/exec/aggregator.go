@@ -28,10 +28,7 @@ type AggregateFunctionInfo struct {
 
 func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo, groupByCols []int,
 	storage storage.Storage, sharder *sharder.Sharder) (*Aggregator, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colNames:    colNames,
 		colTypes:    colTypes,

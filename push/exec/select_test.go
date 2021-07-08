@@ -18,7 +18,7 @@ func TestSelectOneRow(t *testing.T) {
 	expectedRows := [][]interface{}{
 		{2, "london", 35.1, "9.32"},
 	}
-	testSelect(t, inpRows, expectedRows, "gt", colExpression(t, 2), constDoubleExpression(t, 2, 28.0))
+	testSelect(t, inpRows, expectedRows, "gt", colExpression(2), constDoubleExpression(2, 28.0))
 }
 
 func TestSelectAllRows(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSelectAllRows(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	testSelect(t, inpRows, expectedRows, "gt", colExpression(t, 2), constDoubleExpression(t, 2, 15.0))
+	testSelect(t, inpRows, expectedRows, "gt", colExpression(2), constDoubleExpression(2, 15.0))
 }
 
 func TestSelectNoRows(t *testing.T) {
@@ -42,14 +42,14 @@ func TestSelectNoRows(t *testing.T) {
 		{3, "los angeles", 20.6, "11.75"},
 	}
 	var expectedRows [][]interface{}
-	testSelect(t, inpRows, expectedRows, "gt", colExpression(t, 2), constDoubleExpression(t, 2, 40.0))
+	testSelect(t, inpRows, expectedRows, "gt", colExpression(2), constDoubleExpression(2, 40.0))
 }
 
 func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, funcName string, funcArgs ...*common.Expression) {
 	t.Helper()
 	predicate, err := common.NewScalarFunctionExpression(colTypes[2], funcName, funcArgs...)
 	require.Nil(t, err)
-	sel, err := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})
+	sel := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})
 	require.Nil(t, err)
 	execCtx := &ExecutionContext{
 		WriteBatch: storage.NewWriteBatch(1),

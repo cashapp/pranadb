@@ -12,10 +12,7 @@ type PullProjection struct {
 }
 
 func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) (*PullProjection, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:    colNames,
 		colTypes:    colTypes,

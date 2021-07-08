@@ -6,6 +6,7 @@ import (
 
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
+
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
@@ -38,10 +39,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 	colNames := make([]string, 0, len(cols))
 	for _, col := range cols {
 		colType := col.GetType()
-		pranaType, err := common.ConvertTiDBTypeToPranaType(colType)
-		if err != nil {
-			return nil, err
-		}
+		pranaType := common.ConvertTiDBTypeToPranaType(colType)
 		colTypes = append(colTypes, pranaType)
 		colNames = append(colNames, col.OrigName)
 	}
@@ -53,7 +51,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor, err = exec.NewPushProjection(colNames, colTypes, exprs)
+		executor = exec.NewPushProjection(colNames, colTypes, exprs)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +60,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor, err = exec.NewPushSelect(colNames, colTypes, exprs)
+		executor = exec.NewPushSelect(colNames, colTypes, exprs)
 		if err != nil {
 			return nil, err
 		}
@@ -206,10 +204,7 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
 		colTypes := op.GetChildren()[0].ColTypes()
-		rf, err := common.NewRowsFactory(colTypes)
-		if err != nil {
-			return err
-		}
+		rf := common.NewRowsFactory(colTypes)
 		rc := &remoteConsumer{
 			RowsFactory: rf,
 			ColTypes:    colTypes,

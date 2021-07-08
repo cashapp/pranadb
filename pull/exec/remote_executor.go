@@ -17,11 +17,8 @@ type RemoteExecutor struct {
 	RemoteDag      PullExecutor
 }
 
-func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, schemaName string, query string, queryID string, nodeIDs []int, cluster cluster.Cluster) (*RemoteExecutor, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, schemaName string, query string, queryID string, nodeIDs []int, cluster cluster.Cluster) *RemoteExecutor {
+	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colTypes:    colTypes,
 		rowsFactory: rf,
@@ -35,7 +32,7 @@ func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, sch
 		RemoteDag:        remoteDag,
 	}
 	pg.clusterGetters = createGetters(nodeIDs, &pg)
-	return &pg, nil
+	return &pg
 }
 
 func createGetters(nodeIDs []int, gatherer *RemoteExecutor) []*clusterGetter {

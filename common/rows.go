@@ -22,12 +22,9 @@ type RowsFactory struct {
 	ColumnTypes   []ColumnType
 }
 
-func NewRowsFactory(columnTypes []ColumnType) (*RowsFactory, error) {
-	astFieldTypes, err := toAstFieldTypes(columnTypes)
-	if err != nil {
-		return nil, err
-	}
-	return &RowsFactory{astFieldTypes: astFieldTypes, ColumnTypes: columnTypes}, nil
+func NewRowsFactory(columnTypes []ColumnType) *RowsFactory {
+	astFieldTypes := toAstFieldTypes(columnTypes)
+	return &RowsFactory{astFieldTypes: astFieldTypes, ColumnTypes: columnTypes}
 }
 
 func (rf *RowsFactory) NewRows(capacity int) *Rows {
@@ -35,16 +32,13 @@ func (rf *RowsFactory) NewRows(capacity int) *Rows {
 	return &Rows{chunk: ch}
 }
 
-func toAstFieldTypes(columnTypes []ColumnType) ([]*types.FieldType, error) {
+func toAstFieldTypes(columnTypes []ColumnType) []*types.FieldType {
 	var astFieldTypes []*types.FieldType
 	for _, colType := range columnTypes {
-		astColType, err := ConvertPranaTypeToTiDBType(colType)
-		if err != nil {
-			return nil, err
-		}
+		astColType := ConvertPranaTypeToTiDBType(colType)
 		astFieldTypes = append(astFieldTypes, astColType)
 	}
-	return astFieldTypes, nil
+	return astFieldTypes
 }
 
 func (r *Rows) GetRow(rowIndex int) Row {

@@ -2,6 +2,7 @@ package exec
 
 import (
 	"errors"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -10,11 +11,8 @@ type PullSelect struct {
 	predicates []*common.Expression
 }
 
-func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) (*PullSelect, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) *PullSelect {
+	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:    colNames,
 		colTypes:    colTypes,
@@ -23,7 +21,7 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 	return &PullSelect{
 		pullExecutorBase: base,
 		predicates:       predicates,
-	}, nil
+	}
 }
 
 func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {

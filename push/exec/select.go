@@ -2,6 +2,7 @@ package exec
 
 import (
 	"errors"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -10,11 +11,8 @@ type PushSelect struct {
 	predicates []*common.Expression
 }
 
-func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) (*PushSelect, error) {
-	rf, err := common.NewRowsFactory(colTypes)
-	if err != nil {
-		return nil, err
-	}
+func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) *PushSelect {
+	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colNames:    colNames,
 		colTypes:    colTypes,
@@ -23,7 +21,7 @@ func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates [
 	return &PushSelect{
 		pushExecutorBase: pushBase,
 		predicates:       predicates,
-	}, nil
+	}
 }
 
 func (p *PushSelect) ReCalcSchemaFromChildren() {
