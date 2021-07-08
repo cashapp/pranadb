@@ -16,6 +16,7 @@ require (
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
 	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf
 	github.com/pingcap/tipb v0.0.0-20210525032549-b80be13ddf6c
+	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tikv/pd v1.1.0-beta.0.20210323123936-c8fa72502f16 // indirect

@@ -3,8 +3,6 @@ package exec
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/squareup/pranadb/common"
 )
 
@@ -18,8 +16,7 @@ func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *c
 	rf := common.NewRowsFactory(colTypes)
 	r := rf.NewRows(len(rows))
 	for _, row := range rows {
-		err := common.AppendRow(t, r, colTypes, row...)
-		require.NoError(t, err)
+		common.AppendRow(t, r, colTypes, row...)
 	}
 	return r
 }

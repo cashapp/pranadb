@@ -1,5 +1,13 @@
 package common
 
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/pkg/errors"
+)
+
 type Type int
 
 const (
@@ -13,6 +21,29 @@ const (
 	TypeTimestamp
 )
 
+func (t *Type) Capture(tokens []string) error {
+	text := strings.ToUpper(strings.Join(tokens, " "))
+	switch text {
+	case "TINY INT":
+		*t = TypeTinyInt
+	case "INT":
+		*t = TypeInt
+	case "BIG INT":
+		*t = TypeBigInt
+	case "VARCHAR":
+		*t = TypeVarchar
+	case "DECIMAL":
+		*t = TypeDecimal
+	case "DOUBLE":
+		*t = TypeDouble
+	case "TIMESTAMP":
+		*t = TypeTimestamp
+	default:
+		return errors.Errorf("unknown column type %s", text)
+	}
+	return nil
+}
+
 var (
 	TinyIntColumnType   = ColumnType{Type: TypeTinyInt}
 	IntColumnType       = ColumnType{Type: TypeInt}
@@ -20,7 +51,37 @@ var (
 	DoubleColumnType    = ColumnType{Type: TypeDouble}
 	VarcharColumnType   = ColumnType{Type: TypeVarchar}
 	TimestampColumnType = ColumnType{Type: TypeTimestamp}
+
+	// ColumnTypesByType allows lookup of non-parameterised ColumnType by Type.
+	ColumnTypesByType = map[Type]ColumnType{
+		TypeTinyInt:   TinyIntColumnType,
+		TypeInt:       IntColumnType,
+		TypeBigInt:    BigIntColumnType,
+		TypeDouble:    DoubleColumnType,
+		TypeVarchar:   VarcharColumnType,
+		TypeTimestamp: TimestampColumnType,
+	}
 )
+
+// InferColumnType from Go type.
+func InferColumnType(value interface{}) ColumnType {
+	switch value.(type) {
+	case string:
+		return VarcharColumnType
+	case int, int64:
+		return BigIntColumnType
+	case int16, int32:
+		return IntColumnType
+	case int8:
+		return TinyIntColumnType
+	case float64:
+		return DoubleColumnType
+	case time.Time:
+		return TimestampColumnType
+	default:
+		panic(fmt.Sprintf("can't infer column of type %T", value))
+	}
+}
 
 func NewDecimalColumnType(precision int, scale int) ColumnType {
 	return ColumnType{
@@ -28,6 +89,11 @@ func NewDecimalColumnType(precision int, scale int) ColumnType {
 		DecPrecision: precision,
 		DecScale:     scale,
 	}
+}
+
+type ColumnInfo struct {
+	Name string
+	ColumnType
 }
 
 type ColumnType struct {

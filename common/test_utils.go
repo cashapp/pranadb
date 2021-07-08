@@ -9,7 +9,7 @@ import (
 
 // Test utils
 
-func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...interface{}) error {
+func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...interface{}) {
 	t.Helper()
 	require.Equal(t, len(colVals), len(colTypes))
 
@@ -24,15 +24,12 @@ func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...inter
 			rows.AppendStringToColumn(i, colVal.(string))
 		case TypeDecimal:
 			dec, err := NewDecFromString(colVal.(string))
-			if err != nil {
-				return err
-			}
+			require.NoError(t, err)
 			rows.AppendDecimalToColumn(i, *dec)
 		default:
 			panic(colType.Type)
 		}
 	}
-	return nil
 }
 
 func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
