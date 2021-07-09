@@ -56,6 +56,7 @@ func TestTransferData(t *testing.T) {
 	require.Equal(t, numRows, len(kvPairs))
 
 	sched := pe.schedulers[localShardID]
+
 	err, ok := <-sched.ScheduleAction(func() error {
 		// This needs to be called on the scheduler goroutine
 		return pe.transferData(localShardID, true)
@@ -381,6 +382,9 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	require.Nil(t, err)
 	err = pe.Start()
 	require.Nil(t, err)
+	common.WaitUntil(t, func() (bool, error) {
+		return pe.NumLocalLeaders() == 10, nil
+	})
 	return clus, shard, pe
 }
 
