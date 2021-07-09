@@ -89,7 +89,7 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 		return 0, err
 	}
 	if proposeRes.Value != seqStateMachineUpdatedOK {
-		return 0, fmt.Errorf("unexpected return value from writing to shard %d", proposeRes.Value)
+		return 0, fmt.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
 	}
 	seqBuff := proposeRes.Data
 	seqVal := common.ReadUint64FromBufferLittleEndian(seqBuff, 0)
@@ -215,7 +215,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 		return err
 	}
 	if proposeRes.Value != shardStateMachineUpdatedOK {
-		return fmt.Errorf("unexpected return value from writing to shard %d", proposeRes.Value)
+		return fmt.Errorf("unexpected return value from writing batch: %d", proposeRes.Value)
 	}
 
 	return nil
