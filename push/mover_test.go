@@ -376,8 +376,6 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	clus.SetRemoteWriteHandler(pe)
 	err := clus.Start()
 	require.Nil(t, err)
-	err = clus.Start()
-	require.Nil(t, err)
 	err = shard.Start()
 	require.Nil(t, err)
 	err = pe.Start()
