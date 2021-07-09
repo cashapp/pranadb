@@ -58,7 +58,7 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 				val2 := actual.GetString(colIndex)
 				require.Equal(t, val1, val2)
 			default:
-				t.Errorf("unexpected column type %d", colType)
+				t.Errorf("unexpected column type %d", colType.Type)
 			}
 		}
 	}

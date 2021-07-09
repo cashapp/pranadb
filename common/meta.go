@@ -45,22 +45,18 @@ func (t *Type) Capture(tokens []string) error {
 }
 
 var (
-	TinyIntColumnType   = ColumnType{Type: TypeTinyInt}
-	IntColumnType       = ColumnType{Type: TypeInt}
-	BigIntColumnType    = ColumnType{Type: TypeBigInt}
-	DoubleColumnType    = ColumnType{Type: TypeDouble}
-	VarcharColumnType   = ColumnType{Type: TypeVarchar}
-	TimestampColumnType = ColumnType{Type: TypeTimestamp}
-
-	// ColumnTypesByType allows lookup of non-parameterised ColumnType by Type.
-	ColumnTypesByType = map[Type]ColumnType{
-		TypeTinyInt:   TinyIntColumnType,
-		TypeInt:       IntColumnType,
-		TypeBigInt:    BigIntColumnType,
-		TypeDouble:    DoubleColumnType,
-		TypeVarchar:   VarcharColumnType,
-		TypeTimestamp: TimestampColumnType,
-	}
+	TinyIntColumnType           = ColumnType{Type: TypeTinyInt, NotNullable: true}
+	NullableTinyIntColumnType   = ColumnType{Type: TypeTinyInt}
+	IntColumnType               = ColumnType{Type: TypeInt, NotNullable: true}
+	NullableIntColumnType       = ColumnType{Type: TypeInt}
+	BigIntColumnType            = ColumnType{Type: TypeBigInt, NotNullable: true}
+	NullableBigIntColumnType    = ColumnType{Type: TypeBigInt}
+	DoubleColumnType            = ColumnType{Type: TypeDouble, NotNullable: true}
+	NullableDoubleColumnType    = ColumnType{Type: TypeDouble}
+	VarcharColumnType           = ColumnType{Type: TypeVarchar, NotNullable: true}
+	NullableVarcharColumnType   = ColumnType{Type: TypeVarchar}
+	TimestampColumnType         = ColumnType{Type: TypeTimestamp, NotNullable: true}
+	NullableTimestampColumnType = ColumnType{Type: TypeTimestamp}
 )
 
 // InferColumnType from Go type.
@@ -83,11 +79,20 @@ func InferColumnType(value interface{}) ColumnType {
 	}
 }
 
-func NewDecimalColumnType(precision int, scale int) ColumnType {
+func NewDecimalColumnType(nullable bool, precision int, scale int) ColumnType {
 	return ColumnType{
-		Type:         TypeDecimal,
-		DecPrecision: precision,
-		DecScale:     scale,
+		Type:        TypeDecimal,
+		NotNullable: !nullable,
+		param0:      precision,
+		param1:      scale,
+	}
+}
+
+func NewVarcharColumnType(nullable bool, size int) ColumnType {
+	return ColumnType{
+		Type:        TypeVarchar,
+		NotNullable: !nullable,
+		param0:      size,
 	}
 }
 
@@ -97,9 +102,21 @@ type ColumnInfo struct {
 }
 
 type ColumnType struct {
-	Type         Type
-	DecPrecision int
-	DecScale     int
+	Type        Type
+	NotNullable bool
+	// General purpose type parameters.
+	param0 int
+	param1 int
+}
+
+// DecimalParameters returns the precision and scale for a decimal column.
+func (c *ColumnType) DecimalParameters() (precision, scale int) {
+	return c.param0, c.param1
+}
+
+// VarcharParameters returns the length of a varchar column.
+func (c *ColumnType) VarcharParameters() (length int) {
+	return c.param0
 }
 
 type TableInfo struct {

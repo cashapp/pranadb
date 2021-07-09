@@ -122,7 +122,7 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 					strPtr := aggState.GetString(i)
 					resultRows.AppendStringToColumn(i, *strPtr)
 				default:
-					return fmt.Errorf("unexpected column type %d", colType)
+					return fmt.Errorf("unexpected column type %d", colType.Type)
 				}
 			}
 		}
@@ -168,7 +168,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 			case common.TypeVarchar:
 				val = row.GetString(groupByCol)
 			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+				return fmt.Errorf("unexpected column type %d", colType.Type)
 			}
 			groupByVals[i] = val
 		}
@@ -210,7 +210,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 						strVal := currRow.GetString(i)
 						aggState.SetString(i, &strVal)
 					default:
-						return fmt.Errorf("unexpected column type %d", colType)
+						return fmt.Errorf("unexpected column type %d", colType.Type)
 					}
 				}
 			}
@@ -249,7 +249,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 				return err
 			}
 		default:
-			return fmt.Errorf("unexpected column type %d", aggFunc.ValueType())
+			return fmt.Errorf("unexpected column type %d", aggFunc.ValueType().Type)
 		}
 	}
 

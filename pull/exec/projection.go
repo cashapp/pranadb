@@ -81,7 +81,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 					result.AppendFloat64ToColumn(j, val)
 				}
 			default:
-				return nil, fmt.Errorf("unexpected column type %d", colType)
+				return nil, fmt.Errorf("unexpected column type %d", colType.Type)
 			}
 		}
 

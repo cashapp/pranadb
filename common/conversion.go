@@ -18,13 +18,17 @@ func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
 	case TypeDouble:
 		return types.NewFieldType(mysql.TypeDouble)
 	case TypeDecimal:
-		return types.NewFieldType(mysql.TypeNewDecimal)
+		ft := types.NewFieldType(mysql.TypeNewDecimal)
+		ft.Flen, ft.Decimal = columnType.DecimalParameters()
+		return ft
 	case TypeVarchar:
-		return types.NewFieldType(mysql.TypeVarchar)
+		ft := types.NewFieldType(mysql.TypeVarchar)
+		ft.Flen = columnType.VarcharParameters()
+		return ft
 	case TypeTimestamp:
 		return types.NewFieldType(mysql.TypeTimestamp)
 	default:
-		panic(fmt.Sprintf("unknown column type %d", columnType))
+		panic(fmt.Sprintf("unknown column type %d", columnType.Type))
 	}
 }
 
@@ -41,9 +45,9 @@ func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {
 	case mysql.TypeNewDecimal:
 		precision := columnType.Flen
 		scale := columnType.Decimal
-		return NewDecimalColumnType(precision, scale)
+		return NewDecimalColumnType(false, precision, scale)
 	case mysql.TypeVarchar:
-		return VarcharColumnType
+		return NewVarcharColumnType(false, columnType.Flen)
 	case mysql.TypeTimestamp:
 		return TimestampColumnType
 	default:

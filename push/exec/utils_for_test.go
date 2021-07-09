@@ -9,7 +9,7 @@ import (
 // Test utils for this package
 
 var colNames = []string{"sensor_id", "location", "temperature", "cost"}
-var colTypes = []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType, common.NewDecimalColumnType(10, 2)}
+var colTypes = []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType, common.NewDecimalColumnType(false, 10, 2)}
 
 func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *common.Rows {
 	t.Helper()

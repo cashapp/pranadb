@@ -51,7 +51,7 @@ func TestProjectionAllColsReverseOrder(t *testing.T) {
 		{"11.75", 20.6, "los angeles", 3},
 	}
 	columnNames := []string{"temperature", "location", "sensor_id"}
-	columnTypes := []common.ColumnType{common.NewDecimalColumnType(10, 2), common.DoubleColumnType, common.VarcharColumnType, common.BigIntColumnType}
+	columnTypes := []common.ColumnType{common.NewDecimalColumnType(false, 10, 2), common.DoubleColumnType, common.VarcharColumnType, common.BigIntColumnType}
 	testProject(t, inpRows, expectedRows, columnNames, columnTypes, colExpression(3), colExpression(2), colExpression(1), colExpression(0))
 }
 

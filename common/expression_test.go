@@ -93,7 +93,7 @@ func TestColumnExpressionNullVarchar(t *testing.T) {
 
 func TestColumnExpressionDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(10, NewDecimalColumnType(10, 2))
+	colExpr := NewColumnExpression(10, NewDecimalColumnType(false, 10, 2))
 	val, null, err := colExpr.EvalDecimal(row)
 	require.Nil(t, err)
 	require.False(t, null)
@@ -104,7 +104,7 @@ func TestColumnExpressionDecimal(t *testing.T) {
 
 func TestColumnExpressionNullDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(11, NewDecimalColumnType(10, 2))
+	colExpr := NewColumnExpression(11, NewDecimalColumnType(false, 10, 2))
 	_, null, err := colExpr.EvalDecimal(row)
 	require.Nil(t, err)
 	require.True(t, null)
@@ -112,7 +112,7 @@ func TestColumnExpressionNullDecimal(t *testing.T) {
 
 func createRow(t *testing.T) *Row {
 	t.Helper()
-	decType1 := NewDecimalColumnType(10, 2)
+	decType1 := NewDecimalColumnType(false, 10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
 	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(1)

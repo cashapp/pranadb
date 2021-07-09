@@ -8,7 +8,7 @@ import (
 )
 
 func TestRows(t *testing.T) {
-	decType1 := NewDecimalColumnType(10, 2)
+	decType1 := NewDecimalColumnType(false, 10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
 	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(1)

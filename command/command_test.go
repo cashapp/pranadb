@@ -33,7 +33,7 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 		{name: "CreateSource", query: `
 			create source sensor_readings(
 				sensor_id big int,
-				location varchar,
+				location varchar(255),
 				temperature double,
 				primary key (sensor_id)
 			)

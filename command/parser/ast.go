@@ -46,25 +46,29 @@ type ColumnDef struct {
 	Name       string      `@Ident`
 	Type       common.Type `@(("TINY"|"BIG")? ("VARCHAR"|"INT"|"TIMESTAMP"|"DOUBLE"))` // Conversion done by common.Type.Capture()
 	Parameters []int       `("(" @Number ("," @Number)* ")")?`                         // Optional parameters to the type(x [, x, ...])
+	NotNull    bool        `("NULL" | @("NOT" "NULL"))?`                               // Null if omitted.
 }
 
 func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
-	ct, ok := common.ColumnTypesByType[c.Type]
-	if ok {
-		if len(c.Parameters) != 0 {
-			return common.ColumnType{}, participle.Errorf(c.Pos, "")
-		}
-		return ct, nil
-	}
 	switch c.Type {
 	case common.TypeDecimal:
 		if len(c.Parameters) != 2 {
 			return common.ColumnType{}, participle.Errorf(c.Pos, "expected DECIMAL(precision, scale)")
 		}
-		return common.NewDecimalColumnType(c.Parameters[0], c.Parameters[1]), nil
+		// TODO: Some validation on precision and scale.
+		return common.NewDecimalColumnType(!c.NotNull, c.Parameters[0], c.Parameters[1]), nil
+
+	case common.TypeVarchar:
+		if len(c.Parameters) != 1 {
+			return common.ColumnType{}, participle.Errorf(c.Pos, "expected VARCHAR(length)")
+		}
+		if c.Parameters[0] < 1 || c.Parameters[0] > 255 {
+			return common.ColumnType{}, participle.Errorf(c.Pos, "length of VARCHAR must be between 1 and 255 not %d", c.Parameters[0])
+		}
+		return common.NewVarcharColumnType(!c.NotNull, c.Parameters[0]), nil
 
 	default:
-		panic(c.Type) // If this happens there's something wrong with the parser and/or validation.
+		return common.ColumnType{Type: c.Type, NotNullable: c.NotNull}, nil
 	}
 }
 

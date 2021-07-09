@@ -108,7 +108,7 @@ func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) er
 					result.AppendFloat64ToColumn(j, val)
 				}
 			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+				return fmt.Errorf("unexpected column type %d", colType.Type)
 			}
 		}
 
@@ -133,7 +133,7 @@ func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) er
 				val := row.GetFloat64(colNumber)
 				result.AppendFloat64ToColumn(j, val)
 			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+				return fmt.Errorf("unexpected column type %d", colType.Type)
 			}
 		}
 	}

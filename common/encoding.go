@@ -45,7 +45,8 @@ func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byt
 		case TypeDecimal:
 			valDec := row.GetDecimal(colIndex)
 			var err error
-			buffer, err = valDec.Encode(buffer, colType.DecPrecision, colType.DecScale)
+			precision, scale := colType.DecimalParameters()
+			buffer, err = valDec.Encode(buffer, precision, scale)
 			if err != nil {
 				return nil, err
 			}
@@ -56,7 +57,7 @@ func EncodeCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byt
 			valString := row.GetString(colIndex)
 			buffer = EncodeString(valString, buffer)
 		default:
-			return nil, fmt.Errorf("unexpected column type %d", colType)
+			return nil, fmt.Errorf("unexpected column type %d", colType.Type)
 		}
 	}
 	return buffer, nil
@@ -108,7 +109,8 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte, nulls boo
 			if !ok {
 				return nil, fmt.Errorf("expected %v to be Decimal", value)
 			}
-			return valDec.Encode(data, colType.DecPrecision, colType.DecScale)
+			precision, scale := colType.DecimalParameters()
+			return valDec.Encode(data, precision, scale)
 		case TypeDouble:
 			valFloat64, ok := value.(float64)
 			if !ok {
@@ -122,7 +124,7 @@ func EncodeElement(value interface{}, colType ColumnType, data []byte, nulls boo
 			}
 			data = EncodeString(valString, data)
 		default:
-			return nil, fmt.Errorf("unexpected column type %d", colType)
+			return nil, fmt.Errorf("unexpected column type %d", colType.Type)
 		}
 	}
 	return data, nil
@@ -144,7 +146,8 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 			case TypeDecimal:
 				var val Decimal
 				var err error
-				val, offset, err = decodeDecimal(buffer, offset, colType.DecPrecision, colType.DecScale)
+				precision, scale := colType.DecimalParameters()
+				val, offset, err = decodeDecimal(buffer, offset, precision, scale)
 				if err != nil {
 					return err
 				}
@@ -158,7 +161,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 				val, offset = decodeString(buffer, offset)
 				rows.AppendStringToColumn(colIndex, val)
 			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+				return fmt.Errorf("unexpected column type %d", colType.Type)
 			}
 		}
 	}

@@ -38,7 +38,7 @@ func TestEncodeDecodeFloat(t *testing.T) {
 }
 
 func TestEncodeDecodeRow(t *testing.T) {
-	decType1 := NewDecimalColumnType(10, 2)
+	decType1 := NewDecimalColumnType(false, 10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
 	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(10)
@@ -54,7 +54,7 @@ func TestEncodeDecodeRow(t *testing.T) {
 }
 
 func TestEncodeDecodeRowWithNulls(t *testing.T) {
-	decType1 := NewDecimalColumnType(10, 2)
+	decType1 := NewDecimalColumnType(false, 10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
 	rf := NewRowsFactory(colTypes)
 	rows := rf.NewRows(10)
@@ -88,7 +88,7 @@ func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
 }
 
 func TestEncodeDecodeDecimal(t *testing.T) {
-	colTypes := []ColumnType{NewDecimalColumnType(10, 2)}
+	colTypes := []ColumnType{NewDecimalColumnType(false, 10, 2)}
 	rf := NewRowsFactory(colTypes)
 	dec, err := NewDecFromString("0.00")
 	require.Nil(t, err)
