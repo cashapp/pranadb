@@ -90,34 +90,44 @@ func (p *PushEngine) Stop() {
 	p.started = false
 }
 
-func (p *PushEngine) LeaderChanged(shardID uint64, added bool) {
+func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-
-	if added {
-		_, ok := p.schedulers[shardID]
-		if ok {
-			panic("leader added but already leader")
-		}
-		sched := newShardScheduler(shardID, p)
-		sched.Start()
-		p.schedulers[shardID] = sched
-		p.localLeaderShards = append(p.localLeaderShards, shardID)
-	} else {
-		sched := p.schedulers[shardID]
-		sched.Stop()
-		delete(p.schedulers, shardID)
-		locShards := make([]uint64, len(p.localLeaderShards)-1)
-		index := 0
-		for _, sid := range p.localLeaderShards {
-			if sid != shardID {
-				locShards[index] = sid
-				index++
-			}
-		}
-		p.localLeaderShards = locShards
+	sched := newShardScheduler(shardID, p)
+	sched.Start()
+	p.schedulers[shardID] = sched
+	p.localLeaderShards = append(p.localLeaderShards, shardID)
+	return &shardListener{
+		shardID: shardID,
+		p:       p,
+		sched:   sched,
 	}
-	log.Printf("Calling leader changed, num local shards is now %d", len(p.localLeaderShards))
+}
+
+type shardListener struct {
+	shardID uint64
+	p       *PushEngine
+	sched   *shardScheduler
+}
+
+func (s shardListener) RemoteWriteOccurred() {
+	s.sched.CheckForRemoteBatch()
+}
+
+func (s shardListener) Close() {
+	s.p.lock.Lock()
+	defer s.p.lock.Unlock()
+	s.sched.Stop()
+	delete(s.p.schedulers, s.shardID)
+	locShards := make([]uint64, len(s.p.localLeaderShards)-1)
+	index := 0
+	for _, sid := range s.p.localLeaderShards {
+		if sid != s.shardID {
+			locShards[index] = sid
+			index++
+		}
+	}
+	s.p.localLeaderShards = locShards
 }
 
 func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
@@ -152,13 +162,6 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 	return nil
 }
 
-func (p *PushEngine) RemoteWriteOccurred(shardID uint64) {
-	err := p.remoteBatchArrived(shardID)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
 // IngestRows is only used in testing to inject rows
 func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 	source, ok := p.sources[sourceID]
@@ -166,13 +169,6 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 		return errors.New("no such source")
 	}
 	return p.ingest(rows, source)
-}
-
-// NumLocalLeaders is only used in tests
-func (p *PushEngine) NumLocalLeaders() int {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	return len(p.localLeaderShards)
 }
 
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
@@ -200,27 +196,6 @@ func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
 		return errors.New("channel closed")
 	}
 	return err
-}
-
-// Triggered when some data is written into the forward queue of a shard for which this node
-// is a leader. In this case we want to deliver that remote batch to any interested parties
-func (p *PushEngine) remoteBatchArrived(shardID uint64) error {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	// We maintain one goroutine for processing of data per shard - the shard defines the
-	// granularity of parallelism
-	scheduler, ok := p.schedulers[shardID]
-	if !ok {
-		scheduler = newShardScheduler(shardID, p)
-		p.schedulers[shardID] = scheduler
-		p.localLeaderShards = append(p.localLeaderShards, shardID)
-		scheduler.Start()
-	}
-	if !ok {
-		return fmt.Errorf("no scheduler for shard %d", shardID)
-	}
-	scheduler.CheckForRemoteBatch()
-	return nil
 }
 
 func (p *PushEngine) checkForRowsToForward() error {

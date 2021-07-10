@@ -9,12 +9,11 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"sync"
 	"testing"
 	"time"
 )
 
-var dragonCluster []clusterNode
+var dragonCluster []cluster.Cluster
 
 const (
 	numShards = 10
@@ -42,6 +41,12 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func getLocalNodeAndLocalShard() (cluster.Cluster, uint64) {
+	clust := dragonCluster[0]
+	shardID := clust.GetLocalShardIDs()[0]
+	return clust, shardID
+}
+
 func TestLocalPutGet(t *testing.T) {
 	node, localShard := getLocalNodeAndLocalShard()
 
@@ -55,10 +60,10 @@ func TestLocalPutGet(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.clust.WriteBatch(&writeBatch)
+	err := node.WriteBatch(&writeBatch)
 	require.Nil(t, err)
 
-	res, err := node.clust.LocalGet(key)
+	res, err := node.LocalGet(key)
 	require.Nil(t, err)
 	require.NotNil(t, res)
 
@@ -78,19 +83,19 @@ func TestLocalPutDelete(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.clust.WriteBatch(&writeBatch)
+	err := node.WriteBatch(&writeBatch)
 	require.Nil(t, err)
 
-	res, err := node.clust.LocalGet(key)
+	res, err := node.LocalGet(key)
 	require.Nil(t, err)
 	require.NotNil(t, res)
 
 	deleteBatch := createWriteBatchWithDeletes(localShard, key)
 
-	err = node.clust.WriteBatch(&deleteBatch)
+	err = node.WriteBatch(&deleteBatch)
 	require.Nil(t, err)
 
-	res, err = node.clust.LocalGet(key)
+	res, err = node.LocalGet(key)
 	require.Nil(t, err)
 	require.Nil(t, res)
 }
@@ -128,14 +133,14 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 
-	err := node.clust.WriteBatch(wb)
+	err := node.WriteBatch(wb)
 	require.Nil(t, err)
 
 	keyStart := []byte("foo-06")
 	keyWhile := []byte("foo-06")
 
 	var res []cluster.KVPair
-	res, err = node.clust.LocalScan(keyStart, keyWhile, limit)
+	res, err = node.LocalScan(keyStart, keyWhile, limit)
 	require.Nil(t, err)
 
 	require.Equal(t, expected, len(res))
@@ -150,7 +155,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 
 func TestGenerateTableID(t *testing.T) {
 	for i := 0; i < 10; i++ {
-		id, err := dragonCluster[i%len(dragonCluster)].clust.GenerateTableID()
+		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
 		require.Nil(t, err)
 		require.Equal(t, uint64(i), id)
 	}
@@ -158,13 +163,13 @@ func TestGenerateTableID(t *testing.T) {
 
 func TestGetNodeID(t *testing.T) {
 	for i := 0; i < len(dragonCluster); i++ {
-		require.Equal(t, i, dragonCluster[i].clust.GetNodeID())
+		require.Equal(t, i, dragonCluster[i].GetNodeID())
 	}
 }
 
 func TestGetAllNodeIDs(t *testing.T) {
 	for i := 0; i < len(dragonCluster); i++ {
-		allNodeIds := dragonCluster[i].clust.GetAllNodeIDs()
+		allNodeIds := dragonCluster[i].GetAllNodeIDs()
 		require.Equal(t, len(dragonCluster), len(allNodeIds))
 		nids := map[int]struct{}{}
 		for _, nid := range allNodeIds {
@@ -180,26 +185,21 @@ func TestGetAllNodeIDs(t *testing.T) {
 
 func TestGetAllShardIDs(t *testing.T) {
 	for i := 0; i < len(dragonCluster); i++ {
-		allShardIds := dragonCluster[i].clust.GetAllShardIDs()
+		allShardIds := dragonCluster[i].GetAllShardIDs()
 		require.Equal(t, numShards, len(allShardIds))
 	}
 }
 
 func stopDragonCluster() {
 	for _, dragon := range dragonCluster {
-		err := dragon.clust.Stop()
+		err := dragon.Stop()
 		if err != nil {
 			panic(fmt.Sprintf("failed to stop dragon cluster %v", err))
 		}
 	}
 }
 
-type clusterNode struct {
-	clust       cluster.Cluster
-	leaderState *leaderState
-}
-
-func startDragonCluster(dataDir string) ([]clusterNode, error) {
+func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 
 	nodeAddresses := []string{
 		"localhost:63001",
@@ -208,22 +208,16 @@ func startDragonCluster(dataDir string) ([]clusterNode, error) {
 	}
 
 	chans := make([]chan error, len(nodeAddresses))
-	clusterNodes := make([]clusterNode, len(nodeAddresses))
+	clusterNodes := make([]cluster.Cluster, len(nodeAddresses))
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error, 1)
 		chans[i] = ch
-
 		dragon, err := NewDragon(i, nodeAddresses, numShards, dataDir, 3)
 		if err != nil {
 			return nil, err
 		}
-
-		leaderState := newLeaderState()
-		dragon.SetLeaderChangedCallback(leaderState)
-		clusterNodes[i] = clusterNode{
-			clust:       dragon,
-			leaderState: leaderState,
-		}
+		clusterNodes[i] = dragon
+		dragon.RegisterShardListenerFactory(&dummyShardListenerFactory{})
 
 		go startDragonNode(dragon, ch)
 	}
@@ -247,40 +241,6 @@ func startDragonNode(dragon cluster.Cluster, ch chan error) {
 	ch <- err
 }
 
-type leaderState struct {
-	lock  sync.Mutex
-	state map[uint64]struct{}
-}
-
-func newLeaderState() *leaderState {
-	return &leaderState{state: make(map[uint64]struct{})}
-}
-
-func (l *leaderState) getState() map[uint64]struct{} {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	return l.state
-}
-
-func (l *leaderState) dumpState() {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	log.Printf("Number of leaders %d", len(l.state))
-	for shardID := range l.state {
-		log.Printf("leader for: %d", shardID)
-	}
-}
-
-func (l *leaderState) LeaderChanged(shardID uint64, added bool) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	if added {
-		l.state[shardID] = struct{}{}
-	} else {
-		delete(l.state, shardID)
-	}
-}
-
 func createWriteBatchWithPuts(shardID uint64, puts ...cluster.KVPair) cluster.WriteBatch {
 	wb := cluster.NewWriteBatch(shardID, false)
 	for _, kvPair := range puts {
@@ -297,12 +257,18 @@ func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) cluster.Writ
 	return *wb
 }
 
-func getLocalNodeAndLocalShard() (clusterNode, uint64) {
-	node := dragonCluster[0]
-	var localShard uint64
-	// Get the first key
-	for k := range node.leaderState.getState() {
-		localShard = k
-	}
-	return node, localShard
+type dummyShardListenerFactory struct {
+}
+
+func (d *dummyShardListenerFactory) CreateShardListener(shardID uint64) cluster.ShardListener {
+	return &dummyShardListener{}
+}
+
+type dummyShardListener struct {
+}
+
+func (d *dummyShardListener) RemoteWriteOccurred() {
+}
+
+func (d *dummyShardListener) Close() {
 }

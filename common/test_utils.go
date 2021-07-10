@@ -73,14 +73,24 @@ func WaitUntil(t *testing.T, predicate Predicate) {
 
 func WaitUntilWithDur(t *testing.T, predicate Predicate, timeout time.Duration) {
 	t.Helper()
+	complete, err := WaitUntilWithError(predicate, timeout)
+	require.Nil(t, err)
+	require.True(t, complete, "timed out waiting for predicate")
+}
+
+func WaitUntilWithError(predicate Predicate, timeout time.Duration) (bool, error) {
 	start := time.Now()
 	for {
 		complete, err := predicate()
-		require.Nil(t, err)
+		if err != nil {
+			return false, err
+		}
 		if complete {
-			return
+			return true, nil
 		}
 		time.Sleep(time.Millisecond)
-		require.Less(t, time.Now().Sub(start), timeout, "timed out waiting for predicate")
+		if time.Now().Sub(start) >= timeout {
+			return false, nil
+		}
 	}
 }

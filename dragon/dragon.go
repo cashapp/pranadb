@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/raftio"
+	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"log"
@@ -22,63 +22,63 @@ const (
 	// The shard raft groups start from this value
 	shardClusterIDBase uint64 = 1000
 
-	// The dragon cluster id for the shard allocation information (i.e. which shards on which nodes)
-	shardAllocationClusterID uint64 = 0
-
 	// The dragon cluster id for the table sequence
 	tableSequenceClusterID uint64 = 1
+
+	// Timeout on dragon calls
+	dragonCallTimeout = time.Second * 5
 )
 
 func NewDragon(nodeID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int) (cluster.Cluster, error) {
 	if len(nodeAddresses) < 3 {
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
-	return &Dragon{
-		nodeID:            nodeID,
-		nodeAddresses:     nodeAddresses,
-		totShards:         totShards,
-		dataDir:           dataDir,
-		replicationFactor: replicationFactor,
-		leaderShards:      make(map[uint64]bool),
-		allShards:         genAllShardIds(totShards),
-		allNodes:          genAllNodes(len(nodeAddresses)),
-	}, nil
+	dragon := Dragon{
+		nodeID:        nodeID,
+		nodeAddresses: nodeAddresses,
+		totShards:     totShards,
+		dataDir:       dataDir,
+	}
+	dragon.generateNodesAndShards(totShards, replicationFactor)
+	return &dragon, nil
 }
 
 type Dragon struct {
-	lock                  sync.RWMutex
-	nodeID                int
-	nodeAddresses         []string
-	totShards             int
-	dataDir               string
-	pebble                *pebble.DB
-	replicationFactor     int
-	nh                    *dragonboat.NodeHost
-	shardAllocations      *shardAllocation
-	leaderChangedCallback cluster.LeaderChangeCallback
-	leaderShards          map[uint64]bool
-	remoteWriteHandler    cluster.RemoteWriteHandler
-	allShards             []uint64
-	allNodes              []int // TODO probably don't need this
-	started               bool
+	lock                 sync.RWMutex
+	nodeID               int
+	nodeAddresses        []string
+	totShards            int
+	dataDir              string
+	pebble               *pebble.DB
+	nh                   *dragonboat.NodeHost
+	shardAllocs          map[uint64][]int
+	allShards            []uint64
+	localShards          []uint64
+	allNodes             []int // TODO probably don't need this
+	started              bool
+	shardListenerFactory cluster.ShardListenerFactory
 }
 
-type shardAllocation struct {
-	allocations map[int][]uint64
+func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
+	d.shardListenerFactory = factory
 }
 
 func (d *Dragon) GetNodeID() int {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	return d.nodeID
 }
 
 func (d *Dragon) GetAllNodeIDs() []int {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	return d.allNodes
 }
 
 func (d *Dragon) GenerateTableID() (uint64, error) {
 	cs := d.nh.GetNoOPSession(tableSequenceClusterID)
-	// TODO configurable timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
 
 	var buff []byte
 	buff = common.EncodeString("table", buff)
@@ -96,26 +96,25 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 	return seqVal, nil
 }
 
-func (d *Dragon) SetLeaderChangedCallback(callback cluster.LeaderChangeCallback) {
+func (d *Dragon) GetAllShardIDs() []uint64 {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	if d.started {
-		// Must be set before starting or can miss state changes
-		panic("Cannot set leader change callback after dragon is started")
-	}
-	d.leaderChangedCallback = callback
-}
-
-func (d *Dragon) GetAllShardIDs() []uint64 {
 	return d.allShards
 }
 
+func (d *Dragon) GetLocalShardIDs() []uint64 {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	return d.localShards
+}
+
 func (d *Dragon) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan cluster.RemoteQueryResult {
-	panic("implement me")
+	// TODO
+	return nil
 }
 
 func (d *Dragon) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
-	panic("implement me")
+	// TODO
 }
 
 func (d *Dragon) Start() error {
@@ -142,11 +141,10 @@ func (d *Dragon) Start() error {
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
-		WALDir:            dragonBoatDir,
-		NodeHostDir:       dragonBoatDir,
-		RTTMillisecond:    200,
-		RaftAddress:       nodeAddress,
-		RaftEventListener: d,
+		WALDir:         dragonBoatDir,
+		NodeHostDir:    dragonBoatDir,
+		RTTMillisecond: 200,
+		RaftAddress:    nodeAddress,
 	}
 
 	log.Printf("Attempting to create node host for node %d", d.nodeID)
@@ -156,12 +154,6 @@ func (d *Dragon) Start() error {
 	}
 	log.Printf("Node host for node %d created ok", d.nodeID)
 	d.nh = nh
-
-	allocation, err := d.syncShardAllocations()
-	if err != nil {
-		return err
-	}
-	d.shardAllocations = allocation
 
 	err = d.joinSequenceGroup()
 	if err != nil {
@@ -174,8 +166,7 @@ func (d *Dragon) Start() error {
 	}
 
 	// We now sleep for a while as leader election can continue some time after start as nodes
-	// are started which causes a lot of churn in what nodes have what leaders and subsequently
-	// what schedulers are started on each node
+	// are started which causes a lot of churn
 	// TODO think of a better way of doing this
 	time.Sleep(5 * time.Second)
 
@@ -199,14 +190,43 @@ func (d *Dragon) Stop() error {
 }
 
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
+	if batch.ShardID < shardClusterIDBase {
+		panic("invalid shard cluster id")
+	}
 
-	// TODO is it right to get NOOP session?
-	// TODO should we get a new client each time - or reuse them?
+	/*
+		We use a NOOP session as we do not need duplicate detection at the Raft level
+
+		Batches are written in two cases:
+		1. A batch that handles some rows which have arrived in the receiver queue for a shard.
+		In this case the batch contains
+		   a) any writes made during processing of the rows
+		   b) update of last received sequence for the rows
+		   c) deletes from the receiver table
+		If the call to write this batch fails, the batch may or may not have been committed reliably to raft.
+		In the case it was not committed then the rows will stil be in the receiver table and last sequence not updated
+		so they will be retried with no adverse effects.
+		In the case they were committed, then last received sequence will have been updated and rows deleted from
+		receiver table so retry won't reprocess them
+		2. A batch that involves writing some rows into the forwarder queue after they have been received by a Kafka consumer
+		(source). In this case if the call to write fails, the batch may actually have been committed and forwarded.
+		If the Kafka offset has not been committed then on recover the same rows can be written again.
+		To avoid this we will implement idempotency at the source level, and keep track, persistently of [partition_id, offset]
+		for each partition received at each shard, and ignore rows if seen before when ingesting.
+
+		So we don't need idempotent client sessions. Moreover, idempotency of client sessions in Raft times out after an hour(?)
+		and does not survive restarts of the whole cluster.
+	*/
 	cs := d.nh.GetNoOPSession(batch.ShardID)
-	// TODO configurable timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
 
 	var buff []byte
+	if batch.NotifyRemote {
+		buff = append(buff, shardStateMachineCommandForwardWrite)
+	} else {
+		buff = append(buff, shardStateMachineCommandWrite)
+	}
 	buff = serializeWriteBatch(batch, buff)
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
@@ -214,8 +234,8 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	if err != nil {
 		return err
 	}
-	if proposeRes.Value != shardStateMachineUpdatedOK {
-		return fmt.Errorf("unexpected return value from writing batch: %d", proposeRes.Value)
+	if proposeRes.Value != shardStateMachineResponseOK {
+		return fmt.Errorf("unexpected return value from writing batch: %d to shard %d", proposeRes.Value, batch.ShardID)
 	}
 
 	return nil
@@ -248,7 +268,6 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 			}
 			v := iter.Value()
 			pairs = append(pairs, cluster.KVPair{
-				// TODO we might be able to optimise away the copies
 				Key:   copySlice(k),
 				Value: copySlice(v),
 			})
@@ -262,37 +281,6 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 		return nil, err
 	}
 	return pairs, nil
-}
-
-func (d *Dragon) SetRemoteWriteHandler(handler cluster.RemoteWriteHandler) {
-	// TODO atomic reference
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	d.remoteWriteHandler = handler
-}
-
-func (d *Dragon) LeaderUpdated(info raftio.LeaderInfo) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if info.ClusterID >= shardClusterIDBase {
-		log.Printf("leader updated node id %d shard id %d this node id %d leader id is %d", info.NodeID, info.ClusterID, d.nodeID+1, info.LeaderID)
-		if d.nodeID+1 == int(info.LeaderID) {
-			// This node became leader
-			d.leaderShards[info.ClusterID] = true
-			if d.leaderChangedCallback != nil {
-				d.leaderChangedCallback.LeaderChanged(info.ClusterID, true)
-			}
-		} else {
-			// Another node became leader
-			_, wasLeader := d.leaderShards[info.ClusterID]
-			if wasLeader {
-				delete(d.leaderShards, info.ClusterID)
-				if d.leaderChangedCallback != nil {
-					d.leaderChangedCallback.LeaderChanged(info.ClusterID, false)
-				}
-			}
-		}
-	}
 }
 
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
@@ -318,69 +306,10 @@ func copySlice(buff []byte) []byte {
 	return res
 }
 
-func genAllShardIds(numShards int) []uint64 {
-	allShards := make([]uint64, numShards)
-	for i := 0; i < numShards; i++ {
-		allShards[i] = shardClusterIDBase + uint64(i)
-	}
-	return allShards
-}
-
-func genAllNodes(numNodes int) []int {
-	allNodes := make([]int, numNodes)
-	for i := 0; i < numNodes; i++ {
-		allNodes[i] = i
-	}
-	return allNodes
-}
-
-func (sa *shardAllocation) serialize(buff []byte) []byte {
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(sa.allocations)))
-	for nodeID, shardIDs := range sa.allocations {
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(nodeID))
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(shardIDs)))
-		for _, shardID := range shardIDs {
-			buff = common.AppendUint64ToBufferLittleEndian(buff, shardID)
-		}
-	}
-	return buff
-}
-
-func (sa *shardAllocation) deserialize(buff []byte) {
-	offset := 0
-	numAllocations := common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
-	sa.allocations = make(map[int][]uint64, numAllocations)
-	for i := 0; i < int(numAllocations); i++ {
-		nodeID := common.ReadUint32FromBufferLittleEndian(buff, offset)
-		offset += 4
-		numShards := common.ReadUint32FromBufferLittleEndian(buff, offset)
-		offset += 4
-		shards := make([]uint64, numShards)
-		for j := 0; j < int(numShards); j++ {
-			shardID := common.ReadUint64FromBufferLittleEndian(buff, offset)
-			offset += 8
-			shards[j] = shardID
-		}
-		sa.allocations[int(nodeID)] = shards
-	}
-}
-
 func (d *Dragon) joinShardGroups() error {
-	shardMap := make(map[uint64][]int)
-	for nodeID, shardIDs := range d.shardAllocations.allocations {
-		for _, shardID := range shardIDs {
-			nodeIDs, ok := shardMap[shardID]
-			if !ok {
-				nodeIDs = make([]int, 0)
-			}
-			nodeIDs = append(nodeIDs, nodeID)
-			shardMap[shardID] = nodeIDs
-		}
-	}
-	chans := make([]chan error, len(shardMap))
+	chans := make([]chan error, len(d.shardAllocs))
 	index := 0
-	for shardID, nodeIDs := range shardMap {
+	for shardID, nodeIDs := range d.shardAllocs {
 		ch := make(chan error, 1)
 		// We join them in parallel - not that it makes much difference to time
 		go d.joinShardGroup(shardID, nodeIDs, ch)
@@ -416,7 +345,11 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	}
 
 	log.Printf("Node %d attempting to join shard cluster %d", d.nodeID, shardID)
-	if err := d.nh.StartCluster(initialMembers, false, d.newShardStateMachine, rc); err != nil {
+
+	createSMFunc := func(_ uint64, _ uint64) statemachine.IStateMachine {
+		return newShardStateMachine(d, shardID, d.nodeID, nodeIDs)
+	}
+	if err := d.nh.StartCluster(initialMembers, false, createSMFunc, rc); err != nil {
 		ch <- fmt.Errorf("failed to start shard dragonboat cluster %v", err)
 		return
 	}
@@ -449,132 +382,34 @@ func (d *Dragon) joinSequenceGroup() error {
 	return nil
 }
 
-func (d *Dragon) syncShardAllocations() (*shardAllocation, error) {
-
-	rc := config.Config{
-		NodeID:             uint64(d.nodeID + 1),
-		ElectionRTT:        5,
-		HeartbeatRTT:       1,
-		CheckQuorum:        true,
-		SnapshotEntries:    10,
-		CompactionOverhead: 5,
-		ClusterID:          shardAllocationClusterID,
-	}
-
-	initialMembers := make(map[uint64]string)
-	// Dragonboat nodes must start at 1, zero is not allowed
-	// We take the first 3 nodes
-	for i := 0; i < 3; i++ {
-		initialMembers[uint64(i+1)] = d.nodeAddresses[i]
-	}
-
-	log.Printf("Node %d attempting to join shard allocation cluster", d.nodeID)
-	if err := d.nh.StartCluster(initialMembers, false, d.newShardAllocationStateMachine, rc); err != nil {
-		return nil, fmt.Errorf("failed to start cluster info dragonboat cluster %v", err)
-	}
-	log.Printf("Node %d successfully joined shard allocation cluster", d.nodeID)
-
-	var allocation *shardAllocation
-
-	for allocation == nil {
-		// Try and get shard allocations
-		var res interface{}
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			var err error
-			res, err = d.nh.SyncRead(ctx, shardAllocationClusterID, "")
-			cancel()
-			if err == nil {
-				break
-			}
-			// It's expected to get an error until the cluster is ready - we retry
-			// TODO add timeout
-			time.Sleep(250 * time.Millisecond)
-		}
-		bytes, ok := res.([]byte)
-		if !ok {
-			return nil, fmt.Errorf("invalid clusterinfo %v", res)
-		}
-		allocation = &shardAllocation{}
-		allocation.deserialize(bytes)
-
-		if len(allocation.allocations) > 0 {
-			break
-		}
-
-		// Try and initialise cluster allocations
-		var err error
-		allocation, err = d.initialiseShardAllocations(d.replicationFactor)
-		if err != nil {
-			return nil, err
-		}
-		var serialized []byte
-		serialized = allocation.serialize(serialized)
-		cs := d.nh.GetNoOPSession(shardAllocationClusterID)
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		proposeRes, err := d.nh.SyncPropose(ctx, cs, serialized)
-		cancel()
-		if err != nil {
-			return nil, err
-		}
-		if proposeRes.Value == shardAllocationUpdateSucceeded {
-			// Update succeeded
-			break
-		}
-
-		// Retry after delay
-		time.Sleep(time.Millisecond * 250)
-	}
-
-	log.Printf("node %d got shard allocation ok %d", d.nodeID, len(allocation.allocations))
-	return allocation, nil
-}
-
-// Distributes shards evenly across the cluster
-func (d *Dragon) initialiseShardAllocations(replicationFactor int) (*shardAllocation, error) {
+// For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
+// on each node
+func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 	numNodes := len(d.nodeAddresses)
-	if replicationFactor > numNodes {
-		return nil, errors.New("replication factor must be <= number of nodes in cluster")
+	d.allNodes = make([]int, numNodes)
+	for i := 0; i < numNodes; i++ {
+		d.allNodes[i] = i
 	}
-	allocation := &shardAllocation{}
-	allocation.allocations = make(map[int][]uint64, numNodes)
-
-	fAdd := func(nodeID int, shardID uint64) {
-		shards, ok := allocation.allocations[nodeID]
-		if !ok {
-			shards = make([]uint64, 0)
-		}
-		shards = append(shards, shardID)
-		allocation.allocations[nodeID] = shards
-	}
-
-	fGetNodeID := func(shardID uint64) int {
-		return int(shardID-1) % numNodes
-	}
-
-	for shardID := shardClusterIDBase; shardID < uint64(d.totShards)+shardClusterIDBase; shardID++ {
+	d.localShards = make([]uint64, 0)
+	d.allShards = make([]uint64, numShards)
+	d.shardAllocs = make(map[uint64][]int)
+	for i := 0; i < numShards; i++ {
+		shardID := shardClusterIDBase + uint64(i)
+		d.allShards[i] = shardID
+		nids := make([]int, replicationFactor)
 		for j := 0; j < replicationFactor; j++ {
-			fAdd(fGetNodeID(shardID+uint64(j)), shardID)
+			nids[j] = d.allNodes[(i+j)%numNodes]
+			if nids[j] == d.nodeID {
+				d.localShards = append(d.localShards, shardID)
+			}
 		}
+		d.shardAllocs[shardID] = nids
 	}
-
-	return allocation, nil
 }
 
-func (d *Dragon) isLeader(shardID uint64) bool {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
-	_, ok := d.leaderShards[shardID]
-	return ok
-}
-
-// TODO atomic refs
-func (d *Dragon) callRemoteWriteHandler(shardID uint64) {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
-	if d.remoteWriteHandler != nil {
-		d.remoteWriteHandler.RemoteWriteOccurred(shardID)
-	}
+// A node in the cluster died, we need to tell all relevant shard state machines to remove the node
+func (d *Dragon) nodeDied(nodeID int) {
+	// TODO
 }
 
 func serializeWriteBatch(wb *cluster.WriteBatch, buff []byte) []byte {

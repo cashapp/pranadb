@@ -12,23 +12,22 @@ type Cluster interface {
 	// LocalScan scans the local store
 	LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error)
 
-	SetRemoteWriteHandler(handler RemoteWriteHandler)
-
 	GetNodeID() int
 
 	GetAllNodeIDs() []int
 
 	GetAllShardIDs() []uint64
 
+	GetLocalShardIDs() []uint64
+
 	// GenerateTableID generates a table using a cluster wide persistent counter
 	GenerateTableID() (uint64, error)
-
-	// SetLeaderChangedCallback - LeaderChangeCallback is called when this node becomes leader / stops being a leader for a shard
-	SetLeaderChangedCallback(callback LeaderChangeCallback)
 
 	ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan RemoteQueryResult
 
 	SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback)
+
+	RegisterShardListenerFactory(factory ShardListenerFactory)
 
 	Start() error
 
@@ -60,4 +59,14 @@ type ShardCallback interface {
 type KVPair struct {
 	Key   []byte
 	Value []byte
+}
+
+type ShardListenerFactory interface {
+	CreateShardListener(shardID uint64) ShardListener
+}
+
+type ShardListener interface {
+	RemoteWriteOccurred()
+
+	Close()
 }

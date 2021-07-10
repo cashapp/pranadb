@@ -14,9 +14,6 @@ func TestCreateMaterializedView(t *testing.T) {
 	server := NewServer(nodeID, 10)
 	err := server.Start()
 	require.Nil(t, err)
-	common.WaitUntil(t, func() (bool, error) {
-		return server.pushEngine.NumLocalLeaders() > 0, nil
-	})
 	ce := server.GetCommandExecutor()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
@@ -64,9 +61,6 @@ func TestExecutePullQuery(t *testing.T) {
 	server := NewServer(nodeID, 10)
 	err := server.Start()
 	require.Nil(t, err)
-	common.WaitUntil(t, func() (bool, error) {
-		return server.pushEngine.NumLocalLeaders() > 0, nil
-	})
 	ce := server.GetCommandExecutor()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}

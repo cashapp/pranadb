@@ -83,6 +83,19 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 	tableID := info.ID
 	batch := cluster.NewWriteBatch(shardID, false)
 
+	/*
+		TODO idempotency
+		If a batch of rows is committed to the forwarder queue for a shard, it's possible the call to write the batch
+		returned an error but the batch was actually committed successfully across all replicas.
+		In this case the Kafka offset won't have been committed, and when retried the same batch of rows would be
+		forwarded again.
+		To prevent this, we will need to store the [kafka_partition_id, kafka_offset] in the same write batch as the
+		one to commit the rows to the forward queue.
+		We will load this mapping on startup and maintain it in memory too, as rows come in we will check against
+		last seen offset for a partition and if seen before we do not forward the row, but still commit the Kafka
+		offset
+	*/
+
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)

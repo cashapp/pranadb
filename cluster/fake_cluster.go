@@ -6,7 +6,6 @@ import (
 	"github.com/google/btree"
 	"github.com/squareup/pranadb/common"
 	"log"
-	"math/rand"
 	"sync"
 )
 
@@ -14,22 +13,23 @@ type fakeCluster struct {
 	nodeID                       int
 	mu                           sync.RWMutex
 	tableSequence                uint64
-	leaderChangeCallback         LeaderChangeCallback
 	remoteQueryExecutionCallback RemoteQueryExecutionCallback
 	allShardIds                  []uint64
 	allNodes                     []int
 	started                      bool
 	btree                        *btree.BTree
-	remoteWriteHandler           RemoteWriteHandler
+	shardListenerFactory         ShardListenerFactory
+	shardListeners               map[uint64]ShardListener
 }
 
 func NewFakeCluster(nodeID int, numShards int) Cluster {
 	return &fakeCluster{
-		nodeID:        nodeID,
-		tableSequence: uint64(100), // First 100 reserved for system tables
-		allShardIds:   genAllShardIds(numShards),
-		allNodes:      genAllNodes(1),
-		btree:         btree.New(3),
+		nodeID:         nodeID,
+		tableSequence:  uint64(100), // First 100 reserved for system tables
+		allShardIds:    genAllShardIds(numShards),
+		allNodes:       genAllNodes(1),
+		btree:          btree.New(3),
+		shardListeners: make(map[uint64]ShardListener),
 	}
 }
 
@@ -63,14 +63,10 @@ func (f *fakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecut
 	f.remoteQueryExecutionCallback = callback
 }
 
-func (f *fakeCluster) SetLeaderChangedCallback(callback LeaderChangeCallback) {
+func (f *fakeCluster) RegisterShardListenerFactory(factory ShardListenerFactory) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.started {
-		// Must be set before starting or can miss state changes
-		panic("Cannot set leader change callback after cluster is started")
-	}
-	f.leaderChangeCallback = callback
+	f.shardListenerFactory = factory
 }
 
 func (f *fakeCluster) GetNodeID() int {
@@ -82,6 +78,10 @@ func (f *fakeCluster) GetAllNodeIDs() []int {
 }
 
 func (f *fakeCluster) GetAllShardIDs() []uint64 {
+	return f.allShardIds
+}
+
+func (f *fakeCluster) GetLocalShardIDs() []uint64 {
 	return f.allShardIds
 }
 
@@ -99,36 +99,9 @@ func (f *fakeCluster) Start() error {
 	if f.started {
 		return nil
 	}
+	f.startShardListeners()
 	f.started = true
-
-	if f.leaderChangeCallback != nil {
-		// Execute async as this is what real dragon would do
-		go f.sendLeaderChanges()
-	}
-
 	return nil
-}
-
-func (f *fakeCluster) sendLeaderChanges() {
-
-	// Make a copy and shuffle shard ids
-	cop := make([]uint64, len(f.allShardIds))
-	copy(cop, f.allShardIds)
-	rand.Shuffle(len(cop), func(i, j int) {
-		cop[i], cop[j] = cop[j], cop[i]
-	})
-
-	for i := 0; i < len(cop); i++ {
-		f.leaderChangeCallback.LeaderChanged(cop[i], true)
-	}
-	// And some random deletes
-	for i := 0; i < len(cop)/2; i++ {
-		f.leaderChangeCallback.LeaderChanged(cop[i], false)
-	}
-	// And back again
-	for i := 0; i < len(cop)/2; i++ {
-		f.leaderChangeCallback.LeaderChanged(cop[i], true)
-	}
 }
 
 func (f *fakeCluster) Stop() error {
@@ -137,14 +110,9 @@ func (f *fakeCluster) Stop() error {
 	if !f.started {
 		return nil
 	}
+	f.stopShardListeners()
 	f.started = false
 	return nil
-}
-
-func (f *fakeCluster) SetRemoteWriteHandler(handler RemoteWriteHandler) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.remoteWriteHandler = handler
 }
 
 func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
@@ -170,8 +138,9 @@ func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
 			return err
 		}
 	}
-	if f.remoteWriteHandler != nil && batch.NotifyRemote {
-		go f.remoteWriteHandler.RemoteWriteOccurred(batch.ShardID)
+	if batch.NotifyRemote {
+		shardListener := f.shardListeners[batch.ShardID]
+		shardListener.RemoteWriteOccurred()
 	}
 	return nil
 }
@@ -208,6 +177,22 @@ func (f *fakeCluster) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, li
 	}
 	f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
 	return result, nil
+}
+
+func (f *fakeCluster) startShardListeners() {
+	if f.shardListenerFactory == nil {
+		return
+	}
+	for _, shardID := range f.allShardIds {
+		shardListener := f.shardListenerFactory.CreateShardListener(shardID)
+		f.shardListeners[shardID] = shardListener
+	}
+}
+
+func (f *fakeCluster) stopShardListeners() {
+	for _, shardListener := range f.shardListeners {
+		shardListener.Close()
+	}
 }
 
 func genAllShardIds(numShards int) []uint64 {

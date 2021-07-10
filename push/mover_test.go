@@ -39,8 +39,6 @@ func TestQueueForRemoteSendWithPersistedSequence(t *testing.T) {
 
 func TestTransferData(t *testing.T) {
 	clus, shard, pe := startup(t)
-	// We need to disable the remote write handler as we don't want rows removed from the Receiver table
-	clus.SetRemoteWriteHandler(nil)
 
 	// First get some rows in the forwarder table
 	numRows := 10
@@ -90,7 +88,6 @@ func TestTransferData(t *testing.T) {
 
 func TestHandleReceivedRows(t *testing.T) {
 	clus, shard, pe := startup(t)
-	clus.SetRemoteWriteHandler(nil)
 
 	// First get some expectedRowsAtReceivingShard in the forwarder table
 	numRows := 10
@@ -225,7 +222,6 @@ func TestHandleReceivedRows(t *testing.T) {
 
 func TestDedupOfForwards(t *testing.T) {
 	clus, shard, pe := startup(t)
-	clus.SetRemoteWriteHandler(nil)
 
 	// Queue some rows, forward them
 	numRows := 10
@@ -372,18 +368,34 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	plan := parplan.NewPlanner()
 	shard := sharder.NewSharder(clus)
 	pe := NewPushEngine(clus, plan, shard)
-	clus.SetLeaderChangedCallback(pe)
-	clus.SetRemoteWriteHandler(pe)
+	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	err := clus.Start()
 	require.Nil(t, err)
 	err = shard.Start()
 	require.Nil(t, err)
 	err = pe.Start()
 	require.Nil(t, err)
-	common.WaitUntil(t, func() (bool, error) {
-		return pe.NumLocalLeaders() == 10, nil
-	})
 	return clus, shard, pe
+}
+
+type delegatingShardListenerFactory struct {
+	delegate cluster.ShardListenerFactory
+}
+
+func (d delegatingShardListenerFactory) CreateShardListener(shardID uint64) cluster.ShardListener {
+	return &delegatingShardListener{delegate: d.delegate.CreateShardListener(shardID)}
+}
+
+type delegatingShardListener struct {
+	delegate cluster.ShardListener
+}
+
+func (d delegatingShardListener) RemoteWriteOccurred() {
+	// Do nothing - we do not want to trigger remote writes in these tests
+}
+
+func (d delegatingShardListener) Close() {
+	d.delegate.Close()
 }
 
 func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row, store cluster.Cluster, colTypes []common.ColumnType, rf *common.RowsFactory) {
