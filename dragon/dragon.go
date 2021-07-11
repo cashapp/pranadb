@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
+	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -79,12 +80,12 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 	cs := d.nh.GetNoOPSession(tableSequenceClusterID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
 
 	var buff []byte
 	buff = common.EncodeString("table", buff)
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
-	cancel()
 	if err != nil {
 		return 0, err
 	}
@@ -137,14 +138,15 @@ func (d *Dragon) Start() error {
 	d.pebble = pebble
 
 	nodeAddress := d.nodeAddresses[d.nodeID]
-	
+
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
-		WALDir:         dragonBoatDir,
-		NodeHostDir:    dragonBoatDir,
-		RTTMillisecond: 200,
-		RaftAddress:    nodeAddress,
+		WALDir:              dragonBoatDir,
+		NodeHostDir:         dragonBoatDir,
+		RTTMillisecond:      200,
+		RaftAddress:         nodeAddress,
+		SystemEventListener: d,
 	}
 
 	log.Printf("Attempting to create node host for node %d", d.nodeID)
@@ -220,6 +222,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	cs := d.nh.GetNoOPSession(batch.ShardID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
 
 	var buff []byte
 	if batch.NotifyRemote {
@@ -230,7 +233,6 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	buff = serializeWriteBatch(batch, buff)
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
-	cancel()
 	if err != nil {
 		return err
 	}
@@ -459,4 +461,80 @@ func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, dele
 		deletes[i] = k
 	}
 	return
+}
+
+func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
+	if shardID < shardClusterIDBase {
+		// Ignore - these are not writing nodes
+		return nil
+	}
+
+	cs := d.nh.GetNoOPSession(shardID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
+	var buff []byte
+	buff = append(buff, shardStateMachineCommandRemoveNode)
+	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(nodeID))
+
+	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+
+	if err != nil {
+		return err
+	}
+	if proposeRes.Value != shardStateMachineResponseOK {
+		return fmt.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
+	}
+	return nil
+}
+
+func (d *Dragon) NodeHostShuttingDown() {
+}
+
+func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
+	go func() {
+		err := d.nodeRemovedFromCluster(int(info.NodeID-1), info.ClusterID)
+		if err != nil {
+			log.Printf("failed to remove node from cluster %v", err)
+		}
+	}()
+}
+
+func (d *Dragon) NodeReady(info raftio.NodeInfo) {
+}
+
+func (d *Dragon) MembershipChanged(info raftio.NodeInfo) {
+}
+
+func (d *Dragon) ConnectionEstablished(info raftio.ConnectionInfo) {
+}
+
+func (d *Dragon) ConnectionFailed(info raftio.ConnectionInfo) {
+}
+
+func (d *Dragon) SendSnapshotStarted(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SendSnapshotCompleted(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SendSnapshotAborted(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SnapshotReceived(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SnapshotRecovered(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SnapshotCreated(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) SnapshotCompacted(info raftio.SnapshotInfo) {
+}
+
+func (d *Dragon) LogCompacted(info raftio.EntryInfo) {
+}
+
+func (d *Dragon) LogDBCompacted(info raftio.EntryInfo) {
 }

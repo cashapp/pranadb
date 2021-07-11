@@ -1,7 +1,6 @@
 package dragon
 
 import (
-	"errors"
 	"fmt"
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
@@ -19,15 +18,15 @@ const (
 )
 
 func newShardStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) statemachine.IStateMachine {
-	leader := calcLeader(nodeIDs, shardID, nodeID)
+	processor := calcProcessingNode(nodeIDs, shardID, nodeID)
 	ssm := shardStateMachine{
-		nodeID:  nodeID,
-		nodeIDs: nodeIDs,
-		shardID: shardID,
-		dragon:  d,
-		leader:  leader,
+		nodeID:    nodeID,
+		nodeIDs:   nodeIDs,
+		shardID:   shardID,
+		dragon:    d,
+		processor: processor,
 	}
-	if leader {
+	if processor {
 		if d.shardListenerFactory == nil {
 			panic("no shard listener")
 		}
@@ -41,7 +40,7 @@ type shardStateMachine struct {
 	shardID       uint64
 	dragon        *Dragon
 	nodeIDs       []int
-	leader        bool
+	processor     bool
 	shardListener cluster.ShardListener
 }
 
@@ -66,8 +65,8 @@ func (s *shardStateMachine) handleWrite(bytes []byte, forward bool) (statemachin
 		return statemachine.Result{}, err
 	}
 	// A forward write is a write which forwards a batch of rows from one shard to another
-	// In this case we want to trigger processing of those rows, if we're the leader
-	if forward && s.leader {
+	// In this case we want to trigger processing of those rows, if we're the processor
+	if forward && s.processor {
 		s.shardListener.RemoteWriteOccurred()
 	}
 	return statemachine.Result{
@@ -77,25 +76,41 @@ func (s *shardStateMachine) handleWrite(bytes []byte, forward bool) (statemachin
 
 func (s *shardStateMachine) handleRemoveNode(bytes []byte) (statemachine.Result, error) {
 	n := int(common.ReadUint32FromBufferLittleEndian(bytes, 1))
+	found := false
+	for _, nid := range s.nodeIDs {
+		if n == nid {
+			found = true
+			break
+		}
+	}
+	if !found {
+		// This is OK - when a membership change occurs, every node in the cluster will get the notification about the change
+		// and the state machine will be updated from every node, so it may already have been updated
+		return statemachine.Result{
+			Value: shardStateMachineResponseOK,
+		}, nil
+	}
 	var newNodes []int
 	for _, nid := range s.nodeIDs {
 		if n != nid {
 			newNodes = append(newNodes, nid)
 		}
 	}
-	if len(newNodes) == len(s.nodeIDs) {
-		return statemachine.Result{}, errors.New("cannot find node to remove")
-	}
 	s.nodeIDs = newNodes
-	s.leader = calcLeader(s.nodeIDs, s.shardID, s.nodeID)
-	if s.leader {
-		// We're a leader and weren't before
-		s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(s.shardID)
-	} else {
-		// We're not a leader any more, close the listener
-		s.shardListener.Close()
+	newProcessor := calcProcessingNode(s.nodeIDs, s.shardID, s.nodeID)
+	if newProcessor != s.processor {
+		s.processor = newProcessor
+		if s.shardListener != nil {
+			s.shardListener.Close()
+		}
+		if s.processor {
+			// We're the processor
+			s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(s.shardID)
+		}
 	}
-	return statemachine.Result{}, nil
+	return statemachine.Result{
+		Value: shardStateMachineResponseOK,
+	}, nil
 }
 
 func writeBatchLocal(peb *pebble.DB, puts []cluster.KVPair, deletes [][]byte) error {
@@ -133,7 +148,11 @@ func (s *shardStateMachine) Close() error {
 	return nil
 }
 
-func calcLeader(nodeIDs []int, shardID uint64, nodeID int) bool {
+// One of the replicas is chosen in a deterministic way to do the processing for the shard - i.e. to handle any
+// incoming rows. It doesn't matter whether this replica is the raft leader or not, but every raft replica needs
+// to come to the same decision as to who is the processor - that is why we handle the remove node event through
+// the same state machine as processing writes.
+func calcProcessingNode(nodeIDs []int, shardID uint64, nodeID int) bool {
 	leaderNode := nodeIDs[shardID%uint64(len(nodeIDs))]
 	return nodeID == leaderNode
 }
