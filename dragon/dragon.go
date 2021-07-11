@@ -137,7 +137,7 @@ func (d *Dragon) Start() error {
 	d.pebble = pebble
 
 	nodeAddress := d.nodeAddresses[d.nodeID]
-
+	
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{

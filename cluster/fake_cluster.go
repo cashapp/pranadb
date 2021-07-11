@@ -140,7 +140,7 @@ func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
 	}
 	if batch.NotifyRemote {
 		shardListener := f.shardListeners[batch.ShardID]
-		shardListener.RemoteWriteOccurred()
+		go shardListener.RemoteWriteOccurred()
 	}
 	return nil
 }

@@ -21,7 +21,7 @@ func newShardScheduler(shardID uint64, mover *PushEngine) *shardScheduler {
 	return &shardScheduler{
 		shardID: shardID,
 		engine:  mover,
-		actions: make(chan *actionHolder),
+		actions: make(chan *actionHolder, 100), // TODO make configurable
 	}
 }
 
