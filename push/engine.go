@@ -172,20 +172,7 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 }
 
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
-	p.lock.Lock()
-
-	var shardID uint64
-	// Choose a shard, preferably local for storing this ingest
-	numLocal := len(p.localLeaderShards)
-	if numLocal > 0 {
-		r := p.rnd.Int31n(int32(numLocal))
-		shardID = p.localLeaderShards[r]
-	} else {
-		panic("no local shards")
-	}
-
-	scheduler := p.schedulers[shardID]
-	p.lock.Unlock()
+	scheduler, shardID := p.chooseScheduler()
 
 	errChan := scheduler.ScheduleAction(func() error {
 		return source.ingestRows(rows, shardID)
@@ -196,6 +183,22 @@ func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
 		return errors.New("channel closed")
 	}
 	return err
+}
+
+func (p *PushEngine) chooseScheduler() (*shardScheduler, uint64) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	var shardID uint64
+	// Choose a shard, preferably local for storing this ingest
+	numLocal := len(p.localLeaderShards)
+	if numLocal > 0 {
+		r := p.rnd.Int31n(int32(numLocal))
+		shardID = p.localLeaderShards[r]
+	} else {
+		panic("no local shards")
+	}
+	return p.schedulers[shardID], shardID
 }
 
 func (p *PushEngine) checkForRowsToForward() error {

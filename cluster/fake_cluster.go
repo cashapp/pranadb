@@ -119,8 +119,8 @@ func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	log.Printf("Write batch for shard %d", batch.ShardID)
-	log.Printf("Writing batch, Puts %d, Deletes %d", len(batch.Puts.TheMap), len(batch.Deletes.TheMap))
-	for k, v := range batch.Puts.TheMap {
+	log.Printf("Writing batch, puts %d, Deletes %d", len(batch.puts.TheMap), len(batch.Deletes.TheMap))
+	for k, v := range batch.puts.TheMap {
 		kBytes := common.StringToByteSliceZeroCopy(k)
 		log.Printf("Putting key %v value %v", kBytes, v)
 		f.putInternal(&kvWrapper{

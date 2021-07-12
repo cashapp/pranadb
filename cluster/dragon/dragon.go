@@ -230,7 +230,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	} else {
 		buff = append(buff, shardStateMachineCommandWrite)
 	}
-	buff = serializeWriteBatch(batch, buff)
+	buff = batch.Serialize(buff)
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
@@ -414,24 +414,8 @@ func (d *Dragon) nodeDied(nodeID int) {
 	// TODO
 }
 
-func serializeWriteBatch(wb *cluster.WriteBatch, buff []byte) []byte {
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(wb.Puts.TheMap)))
-	for k, v := range wb.Puts.TheMap {
-		kb := common.StringToByteSliceZeroCopy(k)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(kb)))
-		buff = append(buff, kb...)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(v)))
-		buff = append(buff, v...)
-	}
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(wb.Deletes.TheMap)))
-	for k := range wb.Deletes.TheMap {
-		kb := common.StringToByteSliceZeroCopy(k)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(kb)))
-		buff = append(buff, kb...)
-	}
-	return buff
-}
-
+// We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
+// state machine
 func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, deletes [][]byte) {
 	numPuts := common.ReadUint32FromBufferLittleEndian(buff, offset)
 	offset += 4
