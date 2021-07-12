@@ -21,7 +21,7 @@ func newShardScheduler(shardID uint64, mover *PushEngine) *shardScheduler {
 	return &shardScheduler{
 		shardID: shardID,
 		engine:  mover,
-		actions: make(chan *actionHolder),
+		actions: make(chan *actionHolder, 100), // TODO make configurable
 	}
 }
 
@@ -64,6 +64,11 @@ func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
 	err := s.engine.handleReceivedRows(s.shardID, s.engine)
 	if err != nil {
+		/*
+			If we get an error, e.g. the reliable write to raft failed, this does not mean the request did not
+			update the shard state machine correctly.
+			In this case we retry the operation
+		*/
 		return err
 	}
 	return s.engine.transferData(s.shardID, true)

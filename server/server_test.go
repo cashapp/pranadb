@@ -1,10 +1,9 @@
 package server
 
 import (
-	"testing"
-	"time"
-
+	"github.com/squareup/pranadb/cluster"
 	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
@@ -40,8 +39,6 @@ func TestCreateMaterializedView(t *testing.T) {
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
 	require.Nil(t, err)
 
-	time.Sleep(5 * time.Second)
-
 	mvInfo, ok := server.GetMetaController().GetMaterializedView("test", "max_readings")
 	require.True(t, ok)
 
@@ -51,8 +48,10 @@ func TestCreateMaterializedView(t *testing.T) {
 	common.AppendRow(t, expectedRows, expectedColTypes, 1, 25.5)
 	expectedRow := expectedRows.GetRow(0)
 
-	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetStorage())
-	require.NoError(t, err)
+	waitUntilRowsInTable(t, server.GetCluster(), mvInfo.TableInfo.ID, 1)
+
+	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetCluster())
+	require.Nil(t, err)
 	require.NotNil(t, row)
 	common.RowsEqual(t, expectedRow, *row, expectedColTypes)
 }
@@ -80,7 +79,7 @@ func TestExecutePullQuery(t *testing.T) {
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
 	require.Nil(t, err)
 
-	time.Sleep(5 * time.Second)
+	waitUntilRowsInTable(t, server.GetCluster(), source.TableInfo.ID, 1)
 
 	// query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
 	// query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
@@ -102,4 +101,17 @@ func TestExecutePullQuery(t *testing.T) {
 	actualRow := rows.GetRow(0)
 
 	common.RowsEqual(t, expectedRow, actualRow, colTypes)
+}
+
+func waitUntilRowsInTable(t *testing.T, stor cluster.Cluster, tableID uint64, numRows int) {
+	t.Helper()
+	remoteKeyPrefix := make([]byte, 0)
+	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, tableID)
+	common.WaitUntil(t, func() (bool, error) {
+		remPairs, err := stor.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
+		if err != nil {
+			return false, err
+		}
+		return numRows == len(remPairs), nil
+	})
 }

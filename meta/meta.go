@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/storage"
 )
 
 type Controller struct {
 	lock    sync.RWMutex
 	schemas map[string]*common.Schema
 	started bool
-	store   storage.Storage
+	store   cluster.Cluster
 }
 
-func NewController(store storage.Storage) *Controller {
+func NewController(store cluster.Cluster) *Controller {
 	return &Controller{
 		lock:    sync.RWMutex{},
 		schemas: make(map[string]*common.Schema),

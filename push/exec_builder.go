@@ -133,7 +133,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			ColumnTypes:    colTypes,
 			IndexInfos:     nil, // TODO
 		}
-		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.storage, p.sharder)
+		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.cluster, p.sharder)
 		if err != nil {
 			return nil, err
 		}

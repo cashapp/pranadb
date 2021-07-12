@@ -1,15 +1,15 @@
 package push
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
-	"github.com/squareup/pranadb/storage"
 )
 
 type materializedView struct {
 	Info          *common.MaterializedViewInfo
 	tableExecutor *exec.TableExecutor
-	store         storage.Storage
+	store         cluster.Cluster
 }
 
 func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64) (*common.MaterializedViewInfo, error) {
@@ -31,14 +31,13 @@ func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string
 		Query:      query,
 		TableInfo:  &tableInfo,
 	}
-	tableNode := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.storage)
-	if err != nil {
-		return nil, err
-	}
+
+	tableNode := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.cluster)
+
 	mv := materializedView{
 		Info:          &mvInfo,
 		tableExecutor: tableNode,
-		store:         p.storage,
+		store:         p.cluster,
 	}
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, tableNode)
 	p.materializedViews[mvInfo.TableInfo.ID] = &mv
