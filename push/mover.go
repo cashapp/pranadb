@@ -58,10 +58,6 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	}
 	// TODO if num rows returned = limit async schedule another batch
 
-	if len(kvPairs) == 0 {
-		log.Println("No rows to forward")
-	}
-
 	var batches []*forwardBatch
 	var batch *forwardBatch
 	var remoteShardID uint64
@@ -69,11 +65,6 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	for _, kvPair := range kvPairs {
 		key := kvPair.Key
 		currRemoteShardID := common.ReadUint64FromBufferLittleEndian(key, 16)
-		log.Printf("Transferring to remote shard %d", currRemoteShardID)
-		log.Printf("k:%v v:%v", key, kvPair.Value)
-		if currRemoteShardID == 257 {
-			log.Printf("foo")
-		}
 		if first || remoteShardID != currRemoteShardID {
 			addBatch := cluster.NewWriteBatch(currRemoteShardID, true)
 			deleteBatch := cluster.NewWriteBatch(localShardID, false)

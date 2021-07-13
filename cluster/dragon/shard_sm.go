@@ -134,6 +134,9 @@ func (s *shardStateMachine) writeBatchLocal(puts []cluster.KVPair, deletes [][]b
 }
 
 func (s *shardStateMachine) checkKey(key []byte) {
+	if s.dragon.testDragon {
+		return
+	}
 	// Sanity check
 	sid := common.ReadUint64FromBufferLittleEndian(key, 8)
 	if s.shardID != sid {
@@ -151,7 +154,8 @@ func (s *shardStateMachine) Lookup(i interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return rows.Serialize(), nil
+	buff = rows.Serialize()
+	return buff, nil
 }
 
 func (s *shardStateMachine) SaveSnapshot(writer io.Writer, collection statemachine.ISnapshotFileCollection, i <-chan struct{}) error {

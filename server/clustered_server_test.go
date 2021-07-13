@@ -3,7 +3,7 @@ package server
 import (
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
-	"log"
+	"sort"
 	"testing"
 	"time"
 
@@ -15,52 +15,12 @@ const (
 	testReplicationFactor = 3
 )
 
-func startCluster(t *testing.T) []*Server {
-	numServers := 3
-	servers := make([]*Server, numServers)
-	nodeAddresses := []string{
-		"localhost:63001",
-		"localhost:63002",
-		"localhost:63003",
-	}
-	dataDir, err := ioutil.TempDir("", "dragon-test")
-	// TODO remove datadir on test stop
-	require.NoError(t, err)
-	for i := 0; i < numServers; i++ {
-		config := Config{
-			NodeID:            i,
-			NodeAddresses:     nodeAddresses,
-			NumShards:         10,
-			ReplicationFactor: testReplicationFactor,
-			DataDir:           dataDir,
-			TestServer:        false,
-		}
-		s, err := NewServer(config)
-		require.NoError(t, err)
-		err = s.Start()
-		require.NoError(t, err)
-		servers[i] = s
-		require.NoError(t, err)
-	}
-	time.Sleep(5 * time.Second)
-	return servers
-}
-
-func stopCluster(t *testing.T, servers []*Server) {
-	for _, server := range servers {
-		err := server.Stop()
-		require.NoError(t, err)
-	}
-}
-
 func TestCreateMaterializedViewClustered(t *testing.T) {
 
 	servers := startCluster(t)
-
+	defer stopCluster(t, servers)
 	server := servers[0]
-
 	ce := server.GetCommandExecutor()
-
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
 
 	_, err := ce.ExecuteSQLStatement("test", `
@@ -111,67 +71,14 @@ func TestCreateMaterializedViewClustered(t *testing.T) {
 	common.RowsEqual(t, expectedRow, *row, expectedColTypes)
 }
 
-func waitUntilRowsInTableClustered(t *testing.T, servers []*Server, tableID uint64, numRows int) {
-	t.Helper()
-	keyPrefix := make([]byte, 0)
-	keyPrefix = common.AppendUint64ToBufferLittleEndian(keyPrefix, tableID)
-	log.Printf("Waiting until there are %d rows in table %d", numRows, tableID)
-
-	common.WaitUntil(t, func() (bool, error) {
-		totRows := 0
-		for _, server := range servers {
-			log.Printf("Scanning in server with node id %d", server.GetCluster().GetNodeID())
-			remPairs, err := server.cluster.LocalScan(keyPrefix, keyPrefix, -1)
-			if err != nil {
-				return false, err
-			}
-			log.Printf("Found %d rows", len(remPairs))
-			totRows += len(remPairs)
-		}
-		log.Printf("Num rows is %d tot rows is %d num servers is %d", numRows, totRows, len(servers))
-
-		// The rows will be replicated across all nodes
-		return numRows*testReplicationFactor == totRows, nil
-	})
-}
-
-func lookupInAllShards(t *testing.T, key []interface{}, servers []*Server, tableInfo *common.TableInfo, factory *common.RowsFactory) *common.Row {
-	var foundRow *common.Row
-	foundCount := 0
-	for _, server := range servers {
-		found := false
-		// Row should only exist max once in each server
-		for _, shardID := range server.GetCluster().GetAllShardIDs() {
-			row, err := table.LookupInPk(tableInfo, key, tableInfo.PrimaryKeyCols, shardID, factory, server.GetCluster())
-			require.NoError(t, err)
-			if row != nil {
-				require.False(t, found, "row already exists in server")
-				if foundRow != nil {
-					common.RowsEqual(t, *foundRow, *row, factory.ColumnTypes)
-				} else {
-					foundRow = row
-				}
-				found = true
-				foundCount++
-			}
-		}
-	}
-	// Row should be in <replication_factor> servers
-	require.Equal(t, testReplicationFactor, foundCount)
-	return foundRow
-}
-
 func TestExecutePullQueryClustered(t *testing.T) {
 
 	servers := startCluster(t)
-
+	defer stopCluster(t, servers)
 	server := servers[0]
-
 	err := server.Start()
 	require.NoError(t, err)
-
 	ce := server.GetCommandExecutor()
-
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
 
 	_, err = ce.ExecuteSQLStatement("test", `
@@ -196,7 +103,6 @@ func TestExecutePullQueryClustered(t *testing.T) {
 	require.NoError(t, err)
 
 	waitUntilRowsInTable(t, server.GetCluster(), source.TableInfo.ID, 3)
-	log.Printf("There are %d rows in table %d", 1, source.TableInfo.ID)
 
 	query := "select sensor_id, location, temperature from test.latest_sensor_readings"
 	exec, err := ce.ExecuteSQLStatement("test", query)
@@ -211,10 +117,114 @@ func TestExecutePullQueryClustered(t *testing.T) {
 	common.AppendRow(t, expectedRows, colTypes, 2, "london", 28.1)
 	common.AppendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
 
-	for i := 0; i < expectedRows.RowCount(); i++ {
-		expected := expectedRows.GetRow(0)
-		actual := rows.GetRow(0)
-		common.RowsEqual(t, expected, actual, rf.ColumnTypes)
-	}
+	rExpected := sortRows(rowsToSlice(expectedRows))
+	rActual := sortRows(rowsToSlice(rows))
 
+	for i := 0; i < len(rExpected); i++ {
+		expected := rExpected[i]
+		actual := rActual[i]
+		common.RowsEqual(t, *expected, *actual, rf.ColumnTypes)
+	}
+}
+
+func sortRows(rows []*common.Row) []*common.Row {
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].GetInt64(0) > rows[j].GetInt64(0)
+	})
+	return rows
+}
+
+func rowsToSlice(rows *common.Rows) []*common.Row {
+	slice := make([]*common.Row, rows.RowCount())
+	for i := 0; i < rows.RowCount(); i++ {
+		row := rows.GetRow(i)
+		slice[i] = &row
+	}
+	return slice
+}
+
+func startCluster(t *testing.T) []*Server {
+	t.Helper()
+	numServers := 3
+	servers := make([]*Server, numServers)
+	nodeAddresses := []string{
+		"localhost:63001",
+		"localhost:63002",
+		"localhost:63003",
+	}
+	dataDir, err := ioutil.TempDir("", "dragon-test")
+	// TODO remove datadir on test stop
+	require.NoError(t, err)
+	for i := 0; i < numServers; i++ {
+		config := Config{
+			NodeID:            i,
+			NodeAddresses:     nodeAddresses,
+			NumShards:         10,
+			ReplicationFactor: testReplicationFactor,
+			DataDir:           dataDir,
+			TestServer:        false,
+		}
+		s, err := NewServer(config)
+		require.NoError(t, err)
+		err = s.Start()
+		require.NoError(t, err)
+		servers[i] = s
+		require.NoError(t, err)
+	}
+	time.Sleep(5 * time.Second)
+	return servers
+}
+
+func stopCluster(t *testing.T, servers []*Server) {
+	t.Helper()
+	for _, server := range servers {
+		err := server.Stop()
+		require.NoError(t, err)
+	}
+}
+
+func waitUntilRowsInTableClustered(t *testing.T, servers []*Server, tableID uint64, numRows int) {
+	t.Helper()
+	keyPrefix := make([]byte, 0)
+	keyPrefix = common.AppendUint64ToBufferLittleEndian(keyPrefix, tableID)
+
+	common.WaitUntil(t, func() (bool, error) {
+		totRows := 0
+		for _, server := range servers {
+			remPairs, err := server.cluster.LocalScan(keyPrefix, keyPrefix, -1)
+			if err != nil {
+				return false, err
+			}
+			totRows += len(remPairs)
+		}
+		// The rows will be replicated across all nodes
+		return numRows*testReplicationFactor == totRows, nil
+	})
+}
+
+func lookupInAllShards(t *testing.T, key []interface{}, servers []*Server, tableInfo *common.TableInfo, factory *common.RowsFactory) *common.Row {
+	t.Helper()
+	var foundRow *common.Row
+	foundCount := 0
+	for _, server := range servers {
+		found := false
+		// Row should only exist max once in each server
+		for _, shardID := range server.GetCluster().GetAllShardIDs() {
+			row, err := table.LookupInPk(tableInfo, key, tableInfo.PrimaryKeyCols, shardID, factory, server.GetCluster())
+			require.NoError(t, err)
+			if row != nil {
+				require.False(t, found, "row already exists in server")
+				if foundRow != nil {
+					common.RowsEqual(t, *foundRow, *row, factory.ColumnTypes)
+				} else {
+					foundRow = row
+				}
+				found = true
+				foundCount++
+			}
+		}
+	}
+	// Row should be in <replication_factor> servers
+	require.Equal(t, testReplicationFactor, foundCount)
+	return foundRow
 }

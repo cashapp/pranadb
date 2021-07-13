@@ -94,6 +94,7 @@ func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, que
 		// TODO query timeouts
 		p.deleteQuery(queryID)
 	}
+	log.Printf("Pull query %s on node %d and shard %d returning %d rows", query, p.cluster.GetNodeID(), shardID, rows.RowCount())
 	return rows, err
 }
 

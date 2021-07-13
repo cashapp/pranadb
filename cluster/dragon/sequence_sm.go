@@ -42,7 +42,8 @@ func (s *sequenceStateMachine) Update(buff []byte) (statemachine.Result, error) 
 		seqBuff = v
 	} else {
 		seqVal = cluster.UserTableIDBase
-		seqBuff = make([]byte, 8)
+		seqBuff = make([]byte, 0)
+		seqBuff = common.AppendUint64ToBufferLittleEndian(seqBuff, seqVal)
 	}
 	vBuff := make([]byte, 0, 8)
 	vBuff = common.AppendUint64ToBufferLittleEndian(vBuff, seqVal+1)

@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	NodeID            int
+	ClusterID         int // All nodes in a Prana cluster must share the same ClusterID
 	NodeAddresses     []string
 	NumShards         int
 	ReplicationFactor int
@@ -28,7 +29,7 @@ func NewServer(config Config) (*Server, error) {
 	} else {
 		// TODO make replication factor configurable
 		var err error
-		clus, err = dragon.NewDragon(config.NodeID, config.NodeAddresses, config.NumShards, config.DataDir, config.ReplicationFactor)
+		clus, err = dragon.NewDragon(config.NodeID, config.ClusterID, config.NodeAddresses, config.NumShards, config.DataDir, config.ReplicationFactor, false)
 		if err != nil {
 			return nil, err
 		}
