@@ -48,9 +48,9 @@ func TestSelectNoRows(t *testing.T) {
 func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, funcName string, funcArgs ...*common.Expression) {
 	t.Helper()
 	predicate, err := common.NewScalarFunctionExpression(colTypes[2], funcName, funcArgs...)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	sel := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})
-	require.Nil(t, err)
+	require.NoError(t, err)
 	execCtx := &ExecutionContext{
 		WriteBatch: cluster.NewWriteBatch(1, false),
 	}
@@ -59,7 +59,7 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 
 	inpRows := toRows(t, inputRows, colTypes)
 	err = sel.HandleRows(inpRows, execCtx)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	gathered := rg.Rows
 	require.NotNil(t, gathered)

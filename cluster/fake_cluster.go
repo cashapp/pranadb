@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"github.com/google/btree"
 	"github.com/squareup/pranadb/common"
 	"log"
@@ -15,66 +16,65 @@ type fakeCluster struct {
 	tableSequence                uint64
 	remoteQueryExecutionCallback RemoteQueryExecutionCallback
 	allShardIds                  []uint64
-	allNodes                     []int
 	started                      bool
 	btree                        *btree.BTree
 	shardListenerFactory         ShardListenerFactory
 	shardListeners               map[uint64]ShardListener
+	notifListeners               map[int]NotificationListener
 }
 
 func NewFakeCluster(nodeID int, numShards int) Cluster {
 	return &fakeCluster{
 		nodeID:         nodeID,
-		tableSequence:  uint64(100), // First 100 reserved for system tables
+		tableSequence:  uint64(UserTableIDBase), // First 100 reserved for system tables
 		allShardIds:    genAllShardIds(numShards),
-		allNodes:       genAllNodes(1),
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),
+		notifListeners: make(map[int]NotificationListener),
 	}
 }
 
-func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan RemoteQueryResult {
+func (f *fakeCluster) BroadcastNotification(notification *Notification) error {
+	listener := f.lookupNotificationListener(notification.Type)
+	listener.HandleNotification(notification)
+	return nil
+}
+
+func (f *fakeCluster) lookupNotificationListener(notificationListenerType int) NotificationListener {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	listener, ok := f.notifListeners[notificationListenerType]
+	if !ok {
+		panic(fmt.Sprintf("no notification listener for type %d", notificationListenerType))
+	}
+	return listener
+}
+
+func (f *fakeCluster) RegisterNotificationListener(notificationType int, listener NotificationListener) {
 	f.mu.Lock()
-	callback := f.remoteQueryExecutionCallback
-	f.mu.Unlock()
-	ch := make(chan RemoteQueryResult, 1)
-	if callback != nil {
-		go func() {
-			rows, err := callback.ExecuteRemotePullQuery(schemaName, query, queryID, limit)
-			ch <- RemoteQueryResult{
-				Rows: rows,
-				Err:  err,
-			}
-		}()
-		return ch
+	defer f.mu.Unlock()
+	_, ok := f.notifListeners[notificationType]
+	if ok {
+		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
 	}
-	ch <- RemoteQueryResult{
-		Err: errors.New("no remote query callback registered"),
-	}
-	return ch
+	f.notifListeners[notificationType] = listener
+}
+
+func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+	log.Printf("Executing remote query on shardID %d", shardID)
+	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(schemaName, query, queryID, limit, shardID)
 }
 
 func (f *fakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.started {
-		panic("Cannot set remote query execution callback after cluster is started")
-	}
 	f.remoteQueryExecutionCallback = callback
 }
 
 func (f *fakeCluster) RegisterShardListenerFactory(factory ShardListenerFactory) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.shardListenerFactory = factory
 }
 
 func (f *fakeCluster) GetNodeID() int {
 	return f.nodeID
-}
-
-func (f *fakeCluster) GetAllNodeIDs() []int {
-	return f.allNodes
 }
 
 func (f *fakeCluster) GetAllShardIDs() []uint64 {
@@ -96,6 +96,12 @@ func (f *fakeCluster) GenerateTableID() (uint64, error) {
 func (f *fakeCluster) Start() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.remoteQueryExecutionCallback == nil {
+		panic("remote query execution callback must be set before start")
+	}
+	if f.shardListenerFactory == nil {
+		panic("shard listener factory must be set before start")
+	}
 	if f.started {
 		return nil
 	}
@@ -201,14 +207,6 @@ func genAllShardIds(numShards int) []uint64 {
 		allShards[i] = uint64(i)
 	}
 	return allShards
-}
-
-func genAllNodes(numNodes int) []int {
-	allNodes := make([]int, numNodes)
-	for i := 0; i < numNodes; i++ {
-		allNodes[i] = i
-	}
-	return allNodes
 }
 
 type kvWrapper struct {

@@ -12,8 +12,8 @@ type materializedView struct {
 	store         cluster.Cluster
 }
 
-func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64) (*common.MaterializedViewInfo, error) {
-	dag, err := p.buildPushQueryExecution(schema, query, schema.Name+"."+mvName)
+func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64, seqGenerator common.SeqGenerator) (*common.MaterializedViewInfo, error) {
+	dag, err := p.buildPushQueryExecution(schema, query, schema.Name+"."+mvName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}

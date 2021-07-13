@@ -2,6 +2,7 @@ package exec
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -12,12 +13,11 @@ type RemoteExecutor struct {
 	clusterGetters []*clusterGetter
 	schemaName     string
 	query          string
-	queryID        string
 	cluster        cluster.Cluster
 	RemoteDag      PullExecutor
 }
 
-func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, schemaName string, query string, queryID string, nodeIDs []int, cluster cluster.Cluster) *RemoteExecutor {
+func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, schemaName string, query string, queryID string, cluster cluster.Cluster) *RemoteExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colTypes:    colTypes,
@@ -27,32 +27,44 @@ func NewRemoteExecutor(colTypes []common.ColumnType, remoteDag PullExecutor, sch
 		pullExecutorBase: base,
 		schemaName:       schemaName,
 		query:            query,
-		queryID:          queryID,
 		cluster:          cluster,
 		RemoteDag:        remoteDag,
 	}
-	pg.clusterGetters = createGetters(nodeIDs, &pg)
+	shardIDs := cluster.GetAllShardIDs()
+	pg.clusterGetters = createGetters(queryID, shardIDs, &pg)
 	return &pg
 }
 
-func createGetters(nodeIDs []int, gatherer *RemoteExecutor) []*clusterGetter {
-	getters := make([]*clusterGetter, len(nodeIDs))
-	for i, nodeID := range nodeIDs {
+func createGetters(queryIDBase string, shardIDs []uint64, gatherer *RemoteExecutor) []*clusterGetter {
+	getters := make([]*clusterGetter, len(shardIDs))
+	for i, shardID := range shardIDs {
 		getters[i] = &clusterGetter{
-			nodeID:   nodeID,
+			shardID:  shardID,
 			gatherer: gatherer,
+			// We append the shardID to the query ID as, at the remote end, we need a unique query DAG for each
+			// shard
+			queryID: fmt.Sprintf("%s-%d", queryIDBase, shardID),
 		}
 	}
 	return getters
 }
 
 type clusterGetter struct {
-	nodeID   int
+	shardID  uint64
 	gatherer *RemoteExecutor
+	queryID  string
 }
 
 func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryResult) {
-	return c.gatherer.cluster.ExecuteRemotePullQuery(c.gatherer.schemaName, c.gatherer.query, c.gatherer.queryID, limit, c.nodeID)
+	ch := make(chan cluster.RemoteQueryResult)
+	go func() {
+		rows, err := c.gatherer.cluster.ExecuteRemotePullQuery(c.gatherer.schemaName, c.gatherer.query, c.queryID, limit, c.shardID, c.gatherer.rowsFactory)
+		ch <- cluster.RemoteQueryResult{
+			Rows: rows,
+			Err:  err,
+		}
+	}()
+	return ch
 }
 
 func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
@@ -66,6 +78,7 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 	completeCount := 0
 
+	// We execute these in parallel
 	for completeCount < numGetters {
 		toGet := (limit - rows.RowCount()) / (numGetters - completeCount)
 		for i, getter := range p.clusterGetters {

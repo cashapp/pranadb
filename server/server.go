@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
@@ -11,8 +12,28 @@ import (
 	"sync"
 )
 
-func NewServer(nodeID int, numShards int) *Server {
-	clus := cluster.NewFakeCluster(nodeID, numShards)
+type Config struct {
+	NodeID            int
+	NodeAddresses     []string
+	NumShards         int
+	ReplicationFactor int
+	DataDir           string
+	TestServer        bool
+}
+
+func NewServer(config Config) (*Server, error) {
+	var clus cluster.Cluster
+	if config.TestServer {
+		clus = cluster.NewFakeCluster(config.NodeID, config.NumShards)
+	} else {
+		// TODO make replication factor configurable
+		var err error
+		clus, err = dragon.NewDragon(config.NodeID, config.NodeAddresses, config.NumShards, config.DataDir, config.ReplicationFactor)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	metaController := meta.NewController(clus)
 	planner := parplan.NewPlanner()
 	shardr := sharder.NewSharder(clus)
@@ -21,8 +42,9 @@ func NewServer(nodeID int, numShards int) *Server {
 	pullEngine := pull.NewPullEngine(planner, clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
+	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, commandExecutor)
 	server := Server{
-		nodeID:          nodeID,
+		nodeID:          config.NodeID,
 		cluster:         clus,
 		shardr:          shardr,
 		metaController:  metaController,
@@ -30,7 +52,7 @@ func NewServer(nodeID int, numShards int) *Server {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 	}
-	return &server
+	return &server, nil
 }
 
 type Server struct {

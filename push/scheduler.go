@@ -39,12 +39,17 @@ func (s *shardScheduler) runLoop() {
 		if !ok {
 			break
 		}
-		holder.errChan <- holder.action()
+		err := holder.action()
+		if holder.errChan != nil {
+			holder.errChan <- err
+		} else if err != nil {
+			log.Printf("Failed to execute action: %v", err)
+		}
 	}
 }
 
 func (s *shardScheduler) CheckForRemoteBatch() {
-	s.ScheduleAction(s.maybeHandleRemoteBatch)
+	s.ScheduleActionFireAndForget(s.maybeHandleRemoteBatch)
 }
 
 func (s *shardScheduler) CheckForRowsToForward() chan error {
@@ -52,7 +57,7 @@ func (s *shardScheduler) CheckForRowsToForward() chan error {
 }
 
 func (s *shardScheduler) ScheduleAction(action Action) chan error {
-	ch := make(chan error, 1)
+	ch := make(chan error)
 	s.actions <- &actionHolder{
 		action:  action,
 		errChan: ch,
@@ -60,15 +65,16 @@ func (s *shardScheduler) ScheduleAction(action Action) chan error {
 	return ch
 }
 
+func (s *shardScheduler) ScheduleActionFireAndForget(action Action) {
+	s.actions <- &actionHolder{
+		action: action,
+	}
+}
+
 func (s *shardScheduler) maybeHandleRemoteBatch() error {
 	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
 	err := s.engine.handleReceivedRows(s.shardID, s.engine)
 	if err != nil {
-		/*
-			If we get an error, e.g. the reliable write to raft failed, this does not mean the request did not
-			update the shard state machine correctly.
-			In this case we retry the operation
-		*/
 		return err
 	}
 	return s.engine.transferData(s.shardID, true)

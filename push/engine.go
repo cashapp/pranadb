@@ -137,11 +137,15 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
+	log.Println("Got lock")
+
 	for entityID, rawRows := range entityValues {
+		log.Printf("Looking up consumer")
 		rc, ok := p.remoteConsumers[entityID]
 		if !ok {
 			return fmt.Errorf("entity with id %d not registered", entityID)
 		}
+		log.Println("Got remote consumer")
 		rows := rc.RowsFactory.NewRows(len(rawRows))
 		for _, row := range rawRows {
 			err := common.DecodeRow(row, rc.ColTypes, rows)
@@ -149,6 +153,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 				return err
 			}
 		}
+		log.Println("decoded rows")
 		execContext := &exec.ExecutionContext{
 			WriteBatch: batch,
 			Forwarder:  p,
@@ -164,6 +169,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 
 // IngestRows is only used in testing to inject rows
 func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
+	log.Printf("Ingesting %d rows", rows.RowCount())
 	source, ok := p.sources[sourceID]
 	if !ok {
 		return errors.New("no such source")
@@ -173,6 +179,10 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
 	scheduler, shardID := p.chooseScheduler()
+
+	log.Printf("Chose shard to forward to on ingest %d", shardID)
+
+	log.Printf("Ingesting on shard %d", shardID)
 
 	errChan := scheduler.ScheduleAction(func() error {
 		return source.ingestRows(rows, shardID)

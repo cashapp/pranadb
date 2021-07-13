@@ -3,6 +3,7 @@ package push
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"log"
 )
 
 // Don't use iota here as these must not change
@@ -21,11 +22,15 @@ func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *c
 
 	queueKeyBytes := make([]byte, 0, 40)
 
+	log.Printf("Queueing data for transfer for remote shard %d", remoteShardID)
+
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, ForwarderTableID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, localShardID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, remoteShardID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, sequence)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, remoteConsumerID)
+
+	log.Printf("Queued key %v", queueKeyBytes)
 
 	valueBuff := make([]byte, 0, 32)
 	valueBuff, err = common.EncodeRow(row, colTypes, valueBuff)
@@ -44,12 +49,18 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 
+	log.Printf("Transferring data from shard %d on node %d", localShardID, p.cluster.GetNodeID())
+
 	// TODO make limit configurable
 	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 100)
 	if err != nil {
 		return err
 	}
 	// TODO if num rows returned = limit async schedule another batch
+
+	if len(kvPairs) == 0 {
+		log.Println("No rows to forward")
+	}
 
 	var batches []*forwardBatch
 	var batch *forwardBatch
@@ -58,6 +69,11 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	for _, kvPair := range kvPairs {
 		key := kvPair.Key
 		currRemoteShardID := common.ReadUint64FromBufferLittleEndian(key, 16)
+		log.Printf("Transferring to remote shard %d", currRemoteShardID)
+		log.Printf("k:%v v:%v", key, kvPair.Value)
+		if currRemoteShardID == 257 {
+			log.Printf("foo")
+		}
 		if first || remoteShardID != currRemoteShardID {
 			addBatch := cluster.NewWriteBatch(currRemoteShardID, true)
 			deleteBatch := cluster.NewWriteBatch(localShardID, false)
@@ -118,6 +134,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 	// TODO if num rows returned = limit async schedule another batch
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
+	log.Printf("In handleReceivedRows on shard %d and node %d, Got %d rows", receivingShardID, p.cluster.GetNodeID(), len(kvPairs))
 	for _, kvPair := range kvPairs {
 		sendingShardID := common.ReadUint64FromBufferLittleEndian(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
@@ -145,10 +162,12 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 		}
 		batch.AddDelete(kvPair.Key)
 	}
-
-	err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
-	if err != nil {
-		return err
+	log.Printf("Calling HandleRawRows with %d rows", len(remoteConsumerRows))
+	if len(remoteConsumerRows) > 0 {
+		err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
+		if err != nil {
+			return err
+		}
 	}
 	for sendingShardID, lastReceivedSequence := range receivingSequences {
 		err = p.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)

@@ -60,7 +60,7 @@ func (s *shardStateMachine) Update(bytes []byte) (statemachine.Result, error) {
 
 func (s *shardStateMachine) handleWrite(bytes []byte, forward bool) (statemachine.Result, error) {
 	puts, deletes := deserializeWriteBatch(bytes, 1)
-	err := writeBatchLocal(s.dragon.pebble, puts, deletes)
+	err := s.writeBatchLocal(puts, deletes)
 	if err != nil {
 		return statemachine.Result{}, err
 	}
@@ -113,25 +113,45 @@ func (s *shardStateMachine) handleRemoveNode(bytes []byte) (statemachine.Result,
 	}, nil
 }
 
-func writeBatchLocal(peb *pebble.DB, puts []cluster.KVPair, deletes [][]byte) error {
-	batch := peb.NewBatch()
+func (s *shardStateMachine) writeBatchLocal(puts []cluster.KVPair, deletes [][]byte) error {
+	batch := s.dragon.pebble.NewBatch()
 	for _, kvPair := range puts {
+		s.checkKey(kvPair.Key)
+		//log.Printf("Writing into pebble k:%v v:%v", kvPair.Key, kvPair.Value)
 		err := batch.Set(kvPair.Key, kvPair.Value, nil)
 		if err != nil {
 			return err
 		}
 	}
 	for _, k := range deletes {
+		s.checkKey(k)
 		err := batch.Delete(k, nil)
 		if err != nil {
 			return err
 		}
 	}
-	return peb.Apply(batch, &pebble.WriteOptions{Sync: false})
+	return s.dragon.pebble.Apply(batch, &pebble.WriteOptions{Sync: false})
+}
+
+func (s *shardStateMachine) checkKey(key []byte) {
+	// Sanity check
+	sid := common.ReadUint64FromBufferLittleEndian(key, 8)
+	if s.shardID != sid {
+		panic(fmt.Sprintf("invalid key in sm write, expected %d actual %d", s.shardID, sid))
+	}
 }
 
 func (s *shardStateMachine) Lookup(i interface{}) (interface{}, error) {
-	panic("should not be called")
+	buff, ok := i.([]byte)
+	if !ok {
+		panic("expected []byte")
+	}
+	schemaName, query, queryID, limit := deserializeRemoteQueryInfo(buff)
+	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(schemaName, query, queryID, limit, s.shardID)
+	if err != nil {
+		return nil, err
+	}
+	return rows.Serialize(), nil
 }
 
 func (s *shardStateMachine) SaveSnapshot(writer io.Writer, collection statemachine.ISnapshotFileCollection, i <-chan struct{}) error {
@@ -155,4 +175,22 @@ func (s *shardStateMachine) Close() error {
 func calcProcessingNode(nodeIDs []int, shardID uint64, nodeID int) bool {
 	leaderNode := nodeIDs[shardID%uint64(len(nodeIDs))]
 	return nodeID == leaderNode
+}
+
+func serializeRemoteQueryInfo(schemaName string, query string, queryID string, limit int) []byte {
+	var buff []byte
+	buff = common.EncodeString(schemaName, buff)
+	buff = common.EncodeString(query, buff)
+	buff = common.EncodeString(queryID, buff)
+	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(limit))
+	return buff
+}
+
+func deserializeRemoteQueryInfo(buff []byte) (schemaName string, query string, queryID string, limit int) {
+	offset := 0
+	schemaName, offset = common.DecodeString(buff, offset)
+	query, offset = common.DecodeString(buff, offset)
+	queryID, offset = common.DecodeString(buff, offset)
+	limit = int(common.ReadUint32FromBufferLittleEndian(buff, offset))
+	return
 }

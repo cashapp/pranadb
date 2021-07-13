@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/pingcap/tidb/planner/core"
 
@@ -9,14 +10,21 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string, queryID string) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string, queryID string, remote bool, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+	// TODO The parser is not thread safe so we lock exclusively
+	// Instead, we should maintain a separate parser/planner per client session
+	p.queryLock.Lock()
+	defer p.queryLock.Unlock()
+
 	// Build the physical plan
+	log.Printf("Executing query %s", query)
 	physicalPlan, err := p.planner.QueryToPlan(schema, query, true)
 	if err != nil {
+		log.Printf("Query got error %v", err)
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(physicalPlan, schema, query, queryID)
+	dag, err := p.buildPullDAG(physicalPlan, schema, query, queryID, remote, shardID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +46,8 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string) (exec.PullExecutor, error) {
+func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string,
+	remote bool, shardID uint64) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -76,18 +85,20 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		// The Physical tab reader may have a a list of plans which can be sent to remote nodes
 		// So we need to take each one of those and assemble into a dag, then add the dag to
 		// RemoteExecutor pull executor
-		// This is the part of the plan that needs to be executed remotely
-		remotePlan := op.GetTablePlan()
-		remoteDag, err := p.buildPullDAG(remotePlan, schema, query, queryID)
-		if err != nil {
-			return nil, err
+		// We only do this when executing a remote query
+		var remoteDag exec.PullExecutor
+		if remote {
+			remotePlan := op.GetTablePlan()
+			remoteDag, err = p.buildPullDAG(remotePlan, schema, query, queryID, remote, shardID)
+			if err != nil {
+				return nil, err
+			}
 		}
-		// TODO do we really want to fanout to all nodes? Unlikely - if we gather from all nodes
-		// then we're going to gather much more data than needed (3 times!) as each node will have leader
-		// and followers for multiple shards. Instead we want to fanout to shards, not nodes
-		// and let dragon figure out which nodes to talk to
-		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, p.cluster.GetAllNodeIDs(), p.cluster)
+		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, p.cluster)
 	case *core.PhysicalTableScan:
+		if !remote {
+			panic("table scans only used on remote queries")
+		}
 		tableName := op.Table.Name.L
 		var t *common.TableInfo
 		mv, ok := schema.Mvs[tableName]
@@ -100,14 +111,14 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		} else {
 			t = mv.TableInfo
 		}
-		executor = exec.NewPullTableScan(colTypes, t, p.cluster)
+		executor = exec.NewPullTableScan(colTypes, t, p.cluster, shardID)
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(child, schema, query, queryID)
+		childExecutor, err := p.buildPullDAG(child, schema, query, queryID, remote, shardID)
 		if err != nil {
 			return nil, err
 		}
