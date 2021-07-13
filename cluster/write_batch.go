@@ -32,10 +32,6 @@ func (wb *WriteBatch) HasWrites() bool {
 	return len(wb.puts.TheMap) > 0 || len(wb.Deletes.TheMap) > 0
 }
 
-func (wb *WriteBatch) Puts() {
-
-}
-
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(wb.puts.TheMap)))
 	for k, v := range wb.puts.TheMap {

@@ -117,6 +117,6 @@ func stringVal(rowIndex int) string {
 func decVal(t *testing.T, rowIndex int) Decimal {
 	t.Helper()
 	dec, err := NewDecFromFloat64(10000 * floatVal(rowIndex))
-	require.Nil(t, err)
+	require.NoError(t, err)
 	return *dec
 }

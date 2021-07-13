@@ -24,10 +24,10 @@ func TestPutGet(t *testing.T) {
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
 	err := clust.WriteBatch(&writeBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err := clust.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, res)
 
 	require.Equal(t, string(value), string(res))
@@ -50,19 +50,19 @@ func TestPutDelete(t *testing.T) {
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
 	err := clust.WriteBatch(&writeBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err := clust.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, res)
 
 	deleteBatch := createWriteBatchWithDeletes(shardID, key)
 
 	err = clust.WriteBatch(&deleteBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err = clust.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Nil(t, res)
 }
 
@@ -101,14 +101,14 @@ func testScan(t *testing.T, limit int, expected int) {
 	}
 
 	err := clust.WriteBatch(wb)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")
 	keyWhile := []byte("foo-06")
 
 	var res []KVPair
 	res, err = clust.LocalScan(keyStart, keyWhile, limit)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	require.Equal(t, expected, len(res))
 	for i, kvPair := range res {

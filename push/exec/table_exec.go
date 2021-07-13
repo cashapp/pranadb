@@ -52,7 +52,7 @@ func (t *TableExecutor) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContex
 }
 
 func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
-	log.Printf("Table executor writing %d rows into table state", rows.RowCount())
+	log.Printf("Table executor %s id %d writing %d rows into table state for shard %d", t.tableInfo.TableName, t.tableInfo.ID, rows.RowCount(), ctx.WriteBatch.ShardID)
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		err := table.Upsert(t.tableInfo, &row, ctx.WriteBatch)

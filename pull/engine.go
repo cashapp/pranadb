@@ -3,6 +3,7 @@ package pull
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -22,6 +23,7 @@ type PullEngine struct {
 	metaController  *meta.Controller
 	nodeID          int
 	queryIDSequence int64
+	queryLock       sync.Mutex
 }
 
 func NewPullEngine(planner *parplan.Planner, cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
@@ -54,13 +56,17 @@ func (p *PullEngine) Stop() {
 	p.started = false
 }
 
-func (p *PullEngine) ExecutePullQuery(schema *common.Schema, query string) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) BuildPullQuery(schema *common.Schema, query string) (queryDAG exec.PullExecutor, err error) {
 	seq := atomic.AddInt64(&p.queryIDSequence, 1)
 	queryID := fmt.Sprintf("%d-%d", p.nodeID, seq)
-	return p.buildPullQueryExecution(schema, query, queryID)
+	return p.buildPullQueryExecution(schema, query, queryID, false, 0)
 }
 
-func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int) (*common.Rows, error) {
+func (p *PullEngine) BuildRemotePullQuery(schema *common.Schema, query string, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+	return p.buildPullQueryExecution(schema, query, "", true, shardID)
+}
+
+func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
 	// TODO one-shot optimisation - no need to register query
 
 	p.lock.RLock()
@@ -68,13 +74,16 @@ func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, que
 
 	// TODO prepared statements - we will need this for efficient point lookups etc
 
+	log.Printf("Executing remote query in engine %s query id %s shardID %d", query, queryID, shardID)
 	dag, ok := p.remoteQueries[queryID]
 	if !ok {
+		log.Println("Didn't find query in map, so creating a new dag")
 		var err error
-		dag, err = p.getDagForRemoteQuery(schemaName, query)
+		dag, err = p.getDagForRemoteQuery(schemaName, query, shardID)
 		if err != nil {
 			return nil, err
 		}
+		p.remoteQueries[queryID] = dag
 	}
 
 	rows, err := dag.GetRows(limit)
@@ -95,12 +104,12 @@ func (p *PullEngine) deleteQuery(queryID string) {
 	delete(p.remoteQueries, queryID)
 }
 
-func (p *PullEngine) getDagForRemoteQuery(schemaName string, query string) (exec.PullExecutor, error) {
+func (p *PullEngine) getDagForRemoteQuery(schemaName string, query string, shardID uint64) (exec.PullExecutor, error) {
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
 		return nil, fmt.Errorf("no such schema %s", schemaName)
 	}
-	dag, err := p.ExecutePullQuery(schema, query)
+	dag, err := p.BuildRemotePullQuery(schema, query, shardID)
 	if err != nil {
 		return nil, err
 	}

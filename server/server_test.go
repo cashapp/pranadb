@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/stretchr/testify/require"
+	"log"
 	"testing"
 
 	"github.com/squareup/pranadb/common"
@@ -10,19 +11,35 @@ import (
 )
 
 func TestCreateMaterializedView(t *testing.T) {
-	nodeID := 1
-	server := NewServer(nodeID, 10)
-	err := server.Start()
-	require.Nil(t, err)
+	config := Config{
+		NodeID:     1,
+		NumShards:  10,
+		TestServer: true,
+	}
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	err = server.Start()
+	require.NoError(t, err)
 	ce := server.GetCommandExecutor()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
 	pkCols := []int{0}
-	err = ce.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, pkCols, nil)
-	require.Nil(t, err)
+	_, err = ce.ExecuteSQLStatement("test", `
+		create source sensor_readings(
+			sensor_id big int,
+			location varchar,
+			temperature double,
+			primary key (sensor_id)
+		)
+    `)
+	require.NoError(t, err)
 
-	query := "select sensor_id, max(temperature) from test.sensor_readings where location='wincanton' group by sensor_id"
-	err = ce.CreateMaterializedView("test", "max_readings", query)
+	_, err = ce.ExecuteSQLStatement("test", `
+		create materialized view max_readings
+            select sensor_id, max(temperature)
+            from test.sensor_readings
+			where location='wincanton' group by sensor_id
+    `)
 	require.NoError(t, err)
 
 	rf := common.NewRowsFactory(colTypes)
@@ -37,7 +54,7 @@ func TestCreateMaterializedView(t *testing.T) {
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	mvInfo, ok := server.GetMetaController().GetMaterializedView("test", "max_readings")
 	require.True(t, ok)
@@ -51,25 +68,38 @@ func TestCreateMaterializedView(t *testing.T) {
 	waitUntilRowsInTable(t, server.GetCluster(), mvInfo.TableInfo.ID, 1)
 
 	row, err := table.LookupInPk(mvInfo.TableInfo, []interface{}{int64(1)}, pkCols, 9, expectedRf, server.GetCluster())
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, row)
 	common.RowsEqual(t, expectedRow, *row, expectedColTypes)
 }
 
 func TestExecutePullQuery(t *testing.T) {
-	nodeID := 1
-	server := NewServer(nodeID, 10)
-	err := server.Start()
-	require.Nil(t, err)
+	config := Config{
+		NodeID:     1,
+		NumShards:  10,
+		TestServer: true,
+	}
+	server, err := NewServer(config)
+	require.NoError(t, err)
+	err = server.Start()
+	require.NoError(t, err)
 	ce := server.GetCommandExecutor()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
 
-	err = ce.CreateSource("test", "sensor_readings", []string{"sensor_id", "location", "temperature"}, colTypes, []int{0}, nil)
+	statement := `
+		create source sensor_readings(
+			sensor_id big int,
+			location varchar,
+			temperature double,
+			primary key (sensor_id)
+		)
+    `
+	_, err = ce.ExecuteSQLStatement("test", statement)
 	require.NoError(t, err)
 
 	rf := common.NewRowsFactory(colTypes)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	rows := rf.NewRows(10)
 	common.AppendRow(t, rows, colTypes, 1, "wincanton", 25.5)
 	// testutils.AppendRow(t, rows, colTypes, 2, "london", 28.1)
@@ -77,17 +107,18 @@ func TestExecutePullQuery(t *testing.T) {
 	source, ok := server.GetMetaController().GetSource("test", "sensor_readings")
 	require.True(t, ok)
 	err = ce.GetPushEngine().IngestRows(rows, source.TableInfo.ID)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	waitUntilRowsInTable(t, server.GetCluster(), source.TableInfo.ID, 1)
+	log.Printf("There are %d rows in table %d", 1, source.TableInfo.ID)
 
 	// query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
 	// query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
 	exec, err := ce.ExecuteSQLStatement("test", query)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	rows, err = exec.GetRows(100)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, 1, rows.RowCount())
 
 	expectedRows := rf.NewRows(10)
@@ -105,10 +136,10 @@ func TestExecutePullQuery(t *testing.T) {
 
 func waitUntilRowsInTable(t *testing.T, stor cluster.Cluster, tableID uint64, numRows int) {
 	t.Helper()
-	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, tableID)
+	keyPrefix := make([]byte, 0)
+	keyPrefix = common.AppendUint64ToBufferLittleEndian(keyPrefix, tableID)
 	common.WaitUntil(t, func() (bool, error) {
-		remPairs, err := stor.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
+		remPairs, err := stor.LocalScan(keyPrefix, keyPrefix, -1)
 		if err != nil {
 			return false, err
 		}

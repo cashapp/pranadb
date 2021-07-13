@@ -15,6 +15,13 @@ type source struct {
 	engine        *PushEngine
 }
 
+/*
+When a source is created, need to also make sure it is created on all nodes - it must be on all nodes before it is
+activated. Same with MV
+We can do this by storing the source/mv in a system table.
+Then when
+*/
+
 func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes

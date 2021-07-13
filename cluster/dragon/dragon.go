@@ -23,11 +23,17 @@ const (
 	// The shard raft groups start from this value
 	shardClusterIDBase uint64 = 1000
 
-	// The dragon cluster id for the table sequence
+	// The dragon cluster id for the table sequence group
 	tableSequenceClusterID uint64 = 1
+
+	// The dragon cluster id for the notification group
+	notificationsClusterID uint64 = 2
 
 	// Timeout on dragon calls
 	dragonCallTimeout = time.Second * 5
+
+	// Timeout on remote queries
+	remoteQueryTimeout = time.Second * 30
 )
 
 func NewDragon(nodeID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int) (cluster.Cluster, error) {
@@ -35,29 +41,33 @@ func NewDragon(nodeID int, nodeAddresses []string, totShards int, dataDir string
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
 	dragon := Dragon{
-		nodeID:        nodeID,
-		nodeAddresses: nodeAddresses,
-		totShards:     totShards,
-		dataDir:       dataDir,
+		nodeID:         nodeID,
+		nodeAddresses:  nodeAddresses,
+		totShards:      totShards,
+		dataDir:        dataDir,
+		notifListeners: make(map[int]cluster.NotificationListener),
 	}
+	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
 	dragon.generateNodesAndShards(totShards, replicationFactor)
 	return &dragon, nil
 }
 
 type Dragon struct {
-	lock                 sync.RWMutex
-	nodeID               int
-	nodeAddresses        []string
-	totShards            int
-	dataDir              string
-	pebble               *pebble.DB
-	nh                   *dragonboat.NodeHost
-	shardAllocs          map[uint64][]int
-	allShards            []uint64
-	localShards          []uint64
-	allNodes             []int // TODO probably don't need this
-	started              bool
-	shardListenerFactory cluster.ShardListenerFactory
+	lock                         sync.RWMutex
+	nodeID                       int
+	nodeAddresses                []string
+	totShards                    int
+	dataDir                      string
+	pebble                       *pebble.DB
+	nh                           *dragonboat.NodeHost
+	shardAllocs                  map[uint64][]int
+	allShards                    []uint64
+	localShards                  []uint64
+	started                      bool
+	shardListenerFactory         cluster.ShardListenerFactory
+	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
+	notifListeners               map[int]cluster.NotificationListener
+	notifDispatcher              *notificationDispatcher
 }
 
 func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
@@ -68,12 +78,6 @@ func (d *Dragon) GetNodeID() int {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	return d.nodeID
-}
-
-func (d *Dragon) GetAllNodeIDs() []int {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	return d.allNodes
 }
 
 func (d *Dragon) GenerateTableID() (uint64, error) {
@@ -87,6 +91,7 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
+		log.Println("table sequence write failed")
 		return 0, err
 	}
 	if proposeRes.Value != seqStateMachineUpdatedOK {
@@ -109,13 +114,37 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 	return d.localShards
 }
 
-func (d *Dragon) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, nodeID int) chan cluster.RemoteQueryResult {
-	// TODO
-	return nil
+// ExecuteRemotePullQuery For now we are executing pull queries through raft. however going ahead we should probably fanout ourselves
+// rather than going through raft as going through raft will prevent any writes in same shard at the same time
+// and we don't need linearizability for pull queries
+func (d *Dragon) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+
+	if shardID < shardClusterIDBase {
+		panic("invalid shard cluster id")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), remoteQueryTimeout)
+	defer cancel()
+
+	queryRequest := serializeRemoteQueryInfo(schemaName, query, queryID, limit)
+	res, err := d.nh.SyncRead(ctx, shardID, queryRequest)
+	if err != nil {
+		log.Println("Exec remote pull query failed")
+		return nil, err
+	}
+	bytes, ok := res.([]byte)
+	if !ok {
+		panic("expected []byte")
+	}
+
+	rows := rowsFactory.NewRows(1)
+	rows.Deserialize(bytes)
+
+	return rows, nil
 }
 
 func (d *Dragon) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
-	// TODO
+	d.remoteQueryExecutionCallback = callback
 }
 
 func (d *Dragon) Start() error {
@@ -125,11 +154,21 @@ func (d *Dragon) Start() error {
 		return nil
 	}
 
+	if d.remoteQueryExecutionCallback == nil {
+		panic("remote query execution callback must be set before start")
+	}
+	if d.shardListenerFactory == nil {
+		panic("shard listener factory must be set before start")
+	}
+
 	log.Printf("attempting to start dragon node %d", d.nodeID)
 
 	datadir := filepath.Join(d.dataDir, fmt.Sprintf("node-%d", d.nodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 
+	log.Printf("Server %d has pebble dir %s", d.nodeID, pebbleDir)
+
+	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}
 	pebble, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
@@ -162,10 +201,17 @@ func (d *Dragon) Start() error {
 		return err
 	}
 
+	err = d.joinNotificationGroup()
+	if err != nil {
+		return err
+	}
+
 	err = d.joinShardGroups()
 	if err != nil {
 		return err
 	}
+
+	d.notifDispatcher.Start()
 
 	// We now sleep for a while as leader election can continue some time after start as nodes
 	// are started which causes a lot of churn
@@ -188,12 +234,13 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
+	d.notifDispatcher.Stop()
 	return err
 }
 
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	if batch.ShardID < shardClusterIDBase {
-		panic("invalid shard cluster id")
+		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 
 	/*
@@ -234,6 +281,8 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
+		log.Println("Batch write failed")
+
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
@@ -249,10 +298,6 @@ func (d *Dragon) LocalGet(key []byte) ([]byte, error) {
 
 func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 
-	s1 := string(startKeyPrefix)
-	s2 := string(whileKeyPrefix)
-	log.Printf("start:%s while:%s", s1, s2)
-
 	iterOptions := &pebble.IterOptions{}
 	iter := d.pebble.NewIter(iterOptions)
 	iter.SeekGE(startKeyPrefix)
@@ -262,10 +307,7 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 	if iter.Valid() {
 		for limit == -1 || count < limit {
 			k := iter.Key()
-			sk := string(k)
-			log.Printf("key is:%s", sk)
 			if bytes.Compare(k[0:whilePrefixLen], whileKeyPrefix) > 0 {
-				log.Println("not adding that one!")
 				break
 			}
 			v := iter.Value()
@@ -283,6 +325,38 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 		return nil, err
 	}
 	return pairs, nil
+}
+
+func (d *Dragon) BroadcastNotification(notification *cluster.Notification) error {
+	cs := d.nh.GetNoOPSession(notificationsClusterID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
+
+	var buff []byte
+	buff = notification.Serialize(buff)
+	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+	if err != nil {
+		return err
+	}
+	if proposeRes.Value != notificationsStateMachineUpdatedOK {
+		return fmt.Errorf("unexpected return value from sending notification: %d", proposeRes.Value)
+	}
+	return nil
+}
+
+func (d *Dragon) RegisterNotificationListener(notificationType int, listener cluster.NotificationListener) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	_, ok := d.notifListeners[notificationType]
+	if ok {
+		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
+	}
+	d.notifListeners[notificationType] = listener
+}
+
+func (d *Dragon) handleNotification(notification *cluster.Notification) {
+	d.notifDispatcher.queueNotification(notification)
 }
 
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
@@ -312,7 +386,7 @@ func (d *Dragon) joinShardGroups() error {
 	chans := make([]chan error, len(d.shardAllocs))
 	index := 0
 	for shardID, nodeIDs := range d.shardAllocs {
-		ch := make(chan error, 1)
+		ch := make(chan error)
 		// We join them in parallel - not that it makes much difference to time
 		go d.joinShardGroup(shardID, nodeIDs, ch)
 		chans[index] = ch
@@ -384,13 +458,36 @@ func (d *Dragon) joinSequenceGroup() error {
 	return nil
 }
 
+func (d *Dragon) joinNotificationGroup() error {
+	rc := config.Config{
+		NodeID:             uint64(d.nodeID + 1),
+		ElectionRTT:        5,
+		HeartbeatRTT:       1,
+		CheckQuorum:        true,
+		SnapshotEntries:    10,
+		CompactionOverhead: 5,
+		ClusterID:          notificationsClusterID,
+	}
+
+	initialMembers := make(map[uint64]string)
+	// All the nodes are in the group
+	for i, nodeAddress := range d.nodeAddresses {
+		initialMembers[uint64(i+1)] = nodeAddress
+	}
+	if err := d.nh.StartCluster(initialMembers, false, d.newNotificationsStateMachine, rc); err != nil {
+		return fmt.Errorf("failed to start notifications dragonboat cluster %v", err)
+	}
+	log.Printf("Node %d successfully joined notifications cluster", d.nodeID)
+	return nil
+}
+
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 	numNodes := len(d.nodeAddresses)
-	d.allNodes = make([]int, numNodes)
+	allNodes := make([]int, numNodes)
 	for i := 0; i < numNodes; i++ {
-		d.allNodes[i] = i
+		allNodes[i] = i
 	}
 	d.localShards = make([]uint64, 0)
 	d.allShards = make([]uint64, numShards)
@@ -400,7 +497,7 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 		d.allShards[i] = shardID
 		nids := make([]int, replicationFactor)
 		for j := 0; j < replicationFactor; j++ {
-			nids[j] = d.allNodes[(i+j)%numNodes]
+			nids[j] = allNodes[(i+j)%numNodes]
 			if nids[j] == d.nodeID {
 				d.localShards = append(d.localShards, shardID)
 			}
@@ -447,6 +544,53 @@ func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, dele
 	return
 }
 
+func newNotificationDispatcher(d *Dragon) *notificationDispatcher {
+	return &notificationDispatcher{
+		d:          d,
+		notifQueue: make(chan *cluster.Notification, 100), // TODO make chan size configurable
+	}
+}
+
+// We dispatch notifications on a dedicated goroutine as we do not want to stall the Dragonboat goroutine
+// Using a single goroutine maintains order
+type notificationDispatcher struct {
+	d          *Dragon
+	notifQueue chan *cluster.Notification
+}
+
+func (n *notificationDispatcher) queueNotification(notification *cluster.Notification) {
+	n.notifQueue <- notification
+}
+
+func (n *notificationDispatcher) runLoop() {
+	for {
+		notification, ok := <-n.notifQueue
+		if !ok {
+			break
+		}
+		listener := n.d.lookupNotificationListener(notification.Type)
+		listener.HandleNotification(notification)
+	}
+}
+
+func (n *notificationDispatcher) Start() {
+	go n.runLoop()
+}
+
+func (n *notificationDispatcher) Stop() {
+	close(n.notifQueue)
+}
+
+func (d *Dragon) lookupNotificationListener(notificationListenerType int) cluster.NotificationListener {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	listener, ok := d.notifListeners[notificationListenerType]
+	if !ok {
+		panic(fmt.Sprintf("no notification listener for type %d", notificationListenerType))
+	}
+	return listener
+}
+
 func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	if shardID < shardClusterIDBase {
 		// Ignore - these are not writing nodes
@@ -471,6 +615,8 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	}
 	return nil
 }
+
+// ISystemEventListener implementation
 
 func (d *Dragon) NodeHostShuttingDown() {
 }

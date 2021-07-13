@@ -74,7 +74,7 @@ func WaitUntil(t *testing.T, predicate Predicate) {
 func WaitUntilWithDur(t *testing.T, predicate Predicate, timeout time.Duration) {
 	t.Helper()
 	complete, err := WaitUntilWithError(predicate, timeout)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.True(t, complete, "timed out waiting for predicate")
 }
 

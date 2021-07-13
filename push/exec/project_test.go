@@ -69,7 +69,7 @@ func TestProjectionNonColExpression(t *testing.T) {
 	con := common.NewConstantInt(common.BigIntColumnType, 1)
 	// Add one to column 2
 	f, err := common.NewScalarFunctionExpression(colTypes[2], "plus", colExpression(2), con)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	testProject(t, inpRows, expectedRows, colNames, colTypes, colExpression(0), colExpression(1), f, colExpression(3))
 }
 
@@ -84,7 +84,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 
 	inpRows := toRows(t, inputRows, colTypes)
 	err := proj.HandleRows(inpRows, execCtx)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	gathered := rg.Rows
 	require.NotNil(t, gathered)

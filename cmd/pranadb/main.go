@@ -28,7 +28,13 @@ func main() {
 	l, err := net.Listen("tcp", cli.Bind)
 	kctx.FatalIfErrorf(err)
 
-	psrv := server.NewServer(0, 10)
+	// TODO parse conf file into Config
+	psrv, err := server.NewServer(server.Config{
+		NodeID:     0,
+		NumShards:  10,
+		TestServer: true,
+	})
+	kctx.FatalIfErrorf(err)
 	pgsrv := wire.New(psrv)
 
 	gsrv := grpc.NewServer()

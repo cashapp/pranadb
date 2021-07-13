@@ -3,6 +3,7 @@ package dragon
 import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
+	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
 	"io"
@@ -40,7 +41,7 @@ func (s *sequenceStateMachine) Update(buff []byte) (statemachine.Result, error) 
 		seqVal = common.ReadUint64FromBufferLittleEndian(v, 0)
 		seqBuff = v
 	} else {
-		seqVal = 0
+		seqVal = cluster.UserTableIDBase
 		seqBuff = make([]byte, 8)
 	}
 	vBuff := make([]byte, 0, 8)

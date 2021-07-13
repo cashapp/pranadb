@@ -32,7 +32,7 @@ func TestQueueForRemoteSendWithPersistedSequence(t *testing.T) {
 	batch := cluster.NewWriteBatch(1, false)
 	batch.AddPut(seqKey, seqValueBytes)
 	err := clus.WriteBatch(batch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	testQueueForRemoteSend(t, 333, clus, shard, pe)
 }
@@ -60,7 +60,7 @@ func TestTransferData(t *testing.T) {
 		return pe.transferData(localShardID, true)
 	})
 	require.True(t, ok)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	// Make sure data has been deleted from forwarder table
 	kvPairs, err = clus.LocalScan(keyStartPrefix, keyStartPrefix, -1)
@@ -111,7 +111,7 @@ func TestHandleReceivedRows(t *testing.T) {
 			return pe.transferData(sendingShardID, true)
 		})
 		require.True(t, ok)
-		require.Nil(t, err)
+		require.NoError(t, err)
 	}
 
 	waitUntilRowsInReceiverTable(t, clus, len(rows))
@@ -138,7 +138,7 @@ func TestHandleReceivedRows(t *testing.T) {
 
 		rawRowHandler := &rawRowHandler{}
 		err := pe.handleReceivedRows(receivingShardID, rawRowHandler)
-		require.Nil(t, err)
+		require.NoError(t, err)
 
 		actualRowsByRemoteConsumer := make(map[uint64][]rowInfo)
 		rawRows := rawRowHandler.rawRows
@@ -149,7 +149,7 @@ func TestHandleReceivedRows(t *testing.T) {
 			actualRowsByRemoteConsumer[remoteConsumerID] = consumerRows
 			for i, rrr := range rr {
 				err := common.DecodeRow(rrr, colTypes, receivedRows)
-				require.Nil(t, err)
+				require.NoError(t, err)
 				actRow := receivedRows.GetRow(rowCount)
 				receivedRowInfo := rowInfo{
 					row:              &actRow,
@@ -192,7 +192,7 @@ func TestHandleReceivedRows(t *testing.T) {
 		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
 		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, receivingShardID)
 		recPairs, err := clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.Nil(t, recPairs)
 
 		expectedSequences, ok := receivedSequences[receivingShardID]
@@ -206,7 +206,7 @@ func TestHandleReceivedRows(t *testing.T) {
 			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, sendingShardID)
 
 			seqBytes, err := clus.LocalGet(seqKey)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			if seqBytes != nil {
 				lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
 				expectedSeq, ok := expectedSequences[sendingShardID]
@@ -240,7 +240,7 @@ func TestDedupOfForwards(t *testing.T) {
 		return pe.transferData(localShardID, false)
 	})
 	require.True(t, ok)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	waitUntilRowsInReceiverTable(t, clus, numRows)
 
@@ -248,7 +248,7 @@ func TestDedupOfForwards(t *testing.T) {
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
 		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
 		}
@@ -259,7 +259,7 @@ func TestDedupOfForwards(t *testing.T) {
 	// Make sure rows still in forwarder table
 	keyStartPrefix := createForwarderKey(localShardID)
 	kvPairs, err := clus.LocalScan(keyStartPrefix, keyStartPrefix, -1)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
 	// Check forwarder sequence
@@ -267,7 +267,7 @@ func TestDedupOfForwards(t *testing.T) {
 	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, ForwarderSequenceTableID)
 	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, localShardID)
 	seqBytes, err := pe.cluster.LocalGet(forSeqKey)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
 	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
 	require.Equal(t, uint64(numRows+1), lastSeq)
@@ -281,7 +281,7 @@ func TestDedupOfForwards(t *testing.T) {
 		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, localShardID)
 
 		seqBytes, err := clus.LocalGet(recSeqKey)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		if seqBytes != nil {
 			lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
 			if lastSeq > maxSeq {
@@ -295,7 +295,7 @@ func TestDedupOfForwards(t *testing.T) {
 	remoteKeyPrefix := make([]byte, 0)
 	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
 	kvPairs, err = clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Nil(t, kvPairs)
 
 	// Now try and forward them again
@@ -303,7 +303,7 @@ func TestDedupOfForwards(t *testing.T) {
 		return pe.transferData(localShardID, true)
 	})
 	require.True(t, ok)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	// Wait for rows to be forwarded
 	waitUntilRowsInReceiverTable(t, clus, numRows)
@@ -313,7 +313,7 @@ func TestDedupOfForwards(t *testing.T) {
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
 		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
 		}
@@ -355,7 +355,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
 	seqBytes, err := pe.cluster.LocalGet(seqKey)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
 
 	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
@@ -369,12 +369,13 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	shard := sharder.NewSharder(clus)
 	pe := NewPushEngine(clus, plan, shard)
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
+	clus.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
 	err := clus.Start()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	err = shard.Start()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	err = pe.Start()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	return clus, shard, pe
 }
 
@@ -390,6 +391,13 @@ type delegatingShardListener struct {
 	delegate cluster.ShardListener
 }
 
+type dummyRemoteQueryExecutionCallback struct {
+}
+
+func (d dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+	return nil, nil
+}
+
 func (d delegatingShardListener) RemoteWriteOccurred() {
 	// Do nothing - we do not want to trigger remote writes in these tests
 }
@@ -401,12 +409,12 @@ func (d delegatingShardListener) Close() {
 func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row, store cluster.Cluster, colTypes []common.ColumnType, rf *common.RowsFactory) {
 	t.Helper()
 	v, err := store.LocalGet(keyBytes)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, v)
 	fRows := rf.NewRows(1)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	err = common.DecodeRow(v, colTypes, fRows)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	row := fRows.GetRow(0)
 	common.RowsEqual(t, *expectedRow, row, colTypes)
 }
@@ -425,10 +433,10 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 	batch := cluster.NewWriteBatch(sendingShardID, false)
 	for _, rowToSend := range rows {
 		err := pe.QueueForRemoteSend(rowToSend.keyBuff, rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
-		require.Nil(t, err)
+		require.NoError(t, err)
 	}
 	err := store.WriteBatch(batch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	return rows
 }
 
@@ -446,10 +454,10 @@ func generateRows(t *testing.T, numRows int, colTypes []common.ColumnType, sh *s
 		key := []interface{}{keyVal}
 		var keyBuff []byte
 		keyBuff, err := common.EncodeKey(key, colTypes, []int{0}, keyBuff)
-		require.Nil(t, err)
+		require.NoError(t, err)
 
 		remoteShardID, err := sh.CalculateShard(sharder.ShardTypeHash, keyBuff)
-		require.Nil(t, err)
+		require.NoError(t, err)
 
 		remoteConsumerID := uint64(i % 3)
 

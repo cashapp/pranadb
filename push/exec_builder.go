@@ -3,7 +3,6 @@ package push
 import (
 	"errors"
 	"fmt"
-
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 
@@ -12,14 +11,14 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 )
 
-func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string, queryName string) (queryDAG exec.PushExecutor, err error) {
+func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
 	physicalPlan, err := p.planner.QueryToPlan(schema, query, false)
 	if err != nil {
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPushDAG(physicalPlan, 0, queryName)
+	dag, err := p.buildPushDAG(physicalPlan, 0, queryName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +32,7 @@ func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string) (exec.PushExecutor, error) {
+func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, seqGenerator common.SeqGenerator) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -117,10 +116,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			pkCols[i] = col.Index + nonFirstRowFuncs
 		}
 
-		tableID, err := p.cluster.GenerateTableID()
-		if err != nil {
-			return nil, err
-		}
+		tableID := seqGenerator.GenerateSequence()
 
 		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
 		aggSequence++
@@ -157,7 +153,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPushDAG(child, aggSequence, queryName)
+		childExecutor, err := p.buildPushDAG(child, aggSequence, queryName, seqGenerator)
 		if err != nil {
 			return nil, err
 		}

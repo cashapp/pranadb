@@ -48,7 +48,7 @@ func TestEncodeDecodeRow(t *testing.T) {
 	rows.AppendFloat64ToColumn(3, math.MaxFloat64)
 	rows.AppendStringToColumn(4, "somestringxyz")
 	dec, err := NewDecFromString("12345678.32")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	rows.AppendDecimalToColumn(5, *dec)
 	testEncodeDecodeRow(t, rows, colTypes)
 }
@@ -69,7 +69,7 @@ func TestEncodeDecodeRowWithNulls(t *testing.T) {
 	rows.AppendStringToColumn(8, "somestringxyz")
 	rows.AppendNullToColumn(9)
 	dec, err := NewDecFromString("12345678.32")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	rows.AppendDecimalToColumn(10, *dec)
 	rows.AppendNullToColumn(11)
 	testEncodeDecodeRow(t, rows, colTypes)
@@ -80,9 +80,9 @@ func testEncodeDecodeRow(t *testing.T, rows *Rows, colTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
 	buff, err := EncodeRow(&row, colTypes, buffer)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	err = DecodeRow(buff, colTypes, rows)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	actualRow := rows.GetRow(1)
 	RowsEqual(t, row, actualRow, colTypes)
 }
@@ -91,13 +91,13 @@ func TestEncodeDecodeDecimal(t *testing.T) {
 	colTypes := []ColumnType{NewDecimalColumnType(10, 2)}
 	rf := NewRowsFactory(colTypes)
 	dec, err := NewDecFromString("0.00")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	encodeDecodeDecimal(t, rf, *dec, colTypes)
 	dec, err = NewDecFromString("-12345678.12")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	encodeDecodeDecimal(t, rf, *dec, colTypes)
 	dec, err = NewDecFromString("12345678.12")
-	require.Nil(t, err)
+	require.NoError(t, err)
 	encodeDecodeDecimal(t, rf, *dec, colTypes)
 }
 
@@ -134,9 +134,9 @@ func encodeDecode(t *testing.T, rows *Rows, columnTypes []ColumnType) {
 	row := rows.GetRow(0)
 	var buffer []byte
 	buffer, err := EncodeRow(&row, columnTypes, buffer)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	err = DecodeRow(buffer, columnTypes, rows)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	row1 := rows.GetRow(0)
 	row2 := rows.GetRow(1)

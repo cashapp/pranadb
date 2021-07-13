@@ -14,8 +14,10 @@ type Row struct {
 }
 
 type Rows struct {
-	chunk       *chunk.Chunk
-	columnTypes []ColumnType
+	tidbFieldTypes []*types.FieldType
+	chunk          *chunk.Chunk
+	columnTypes    []ColumnType
+	codec          *chunk.Codec
 }
 
 // InferRow is a convenience function for one-off row results.
@@ -47,9 +49,9 @@ func InferRow(values ...interface{}) Row {
 }
 
 func NewRows(columnTypes []ColumnType, capacity int) *Rows {
-	astFieldTypes := toAstFieldTypes(columnTypes)
-	ch := chunk.NewChunkWithCapacity(astFieldTypes, capacity)
-	return &Rows{chunk: ch, columnTypes: columnTypes}
+	tidbFieldTypes := toTidbFieldTypes(columnTypes)
+	ch := chunk.NewChunkWithCapacity(tidbFieldTypes, capacity)
+	return &Rows{chunk: ch, columnTypes: columnTypes, tidbFieldTypes: tidbFieldTypes}
 }
 
 type Key []interface{}
@@ -62,8 +64,8 @@ type RowsFactory struct {
 }
 
 func NewRowsFactory(columnTypes []ColumnType) *RowsFactory {
-	astFieldTypes := toAstFieldTypes(columnTypes)
-	return &RowsFactory{astFieldTypes: astFieldTypes, ColumnTypes: columnTypes}
+	tidbFieldTypes := toTidbFieldTypes(columnTypes)
+	return &RowsFactory{astFieldTypes: tidbFieldTypes, ColumnTypes: columnTypes}
 }
 
 func (rf *RowsFactory) NewRows(capacity int) *Rows {
@@ -71,7 +73,7 @@ func (rf *RowsFactory) NewRows(capacity int) *Rows {
 	return &Rows{chunk: ch, columnTypes: rf.ColumnTypes}
 }
 
-func toAstFieldTypes(columnTypes []ColumnType) []*types.FieldType {
+func toTidbFieldTypes(columnTypes []ColumnType) []*types.FieldType {
 	var astFieldTypes []*types.FieldType
 	for _, colType := range columnTypes {
 		astColType := ConvertPranaTypeToTiDBType(colType)
@@ -126,6 +128,19 @@ func (r *Rows) AppendNullToColumn(colIndex int) {
 	col.AppendNull()
 }
 
+func (r *Rows) Serialize() []byte {
+	r.checkCodec()
+	if r.codec == nil {
+		r.codec = chunk.NewCodec(r.tidbFieldTypes)
+	}
+	return r.codec.Encode(r.chunk)
+}
+
+func (r *Rows) Deserialize(buff []byte) {
+	r.checkCodec()
+	r.codec.DecodeToChunk(buff, r.chunk)
+}
+
 func (r *Row) IsNull(colIndex int) bool {
 	return r.tRow.IsNull(colIndex)
 }
@@ -160,4 +175,10 @@ func (r *Row) ColCount() int {
 
 func (r *Row) ColumnTypes() []ColumnType {
 	return r.columnTypes
+}
+
+func (r *Rows) checkCodec() {
+	if r.codec == nil {
+		r.codec = chunk.NewCodec(r.tidbFieldTypes)
+	}
 }

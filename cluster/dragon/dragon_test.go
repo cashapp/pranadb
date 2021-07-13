@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
@@ -61,10 +62,10 @@ func TestLocalPutGet(t *testing.T) {
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
 	err := node.WriteBatch(&writeBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, res)
 
 	require.Equal(t, string(value), string(res))
@@ -84,19 +85,19 @@ func TestLocalPutDelete(t *testing.T) {
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
 	err := node.WriteBatch(&writeBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, res)
 
 	deleteBatch := createWriteBatchWithDeletes(localShard, key)
 
 	err = node.WriteBatch(&deleteBatch)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	res, err = node.LocalGet(key)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Nil(t, res)
 }
 
@@ -134,14 +135,14 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 	}
 
 	err := node.WriteBatch(wb)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")
 	keyWhile := []byte("foo-06")
 
 	var res []cluster.KVPair
 	res, err = node.LocalScan(keyStart, keyWhile, limit)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	require.Equal(t, expected, len(res))
 	for i, kvPair := range res {
@@ -156,7 +157,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 func TestGenerateTableID(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.Equal(t, uint64(i), id)
 	}
 }
@@ -164,22 +165,6 @@ func TestGenerateTableID(t *testing.T) {
 func TestGetNodeID(t *testing.T) {
 	for i := 0; i < len(dragonCluster); i++ {
 		require.Equal(t, i, dragonCluster[i].GetNodeID())
-	}
-}
-
-func TestGetAllNodeIDs(t *testing.T) {
-	for i := 0; i < len(dragonCluster); i++ {
-		allNodeIds := dragonCluster[i].GetAllNodeIDs()
-		require.Equal(t, len(dragonCluster), len(allNodeIds))
-		nids := map[int]struct{}{}
-		for _, nid := range allNodeIds {
-			nids[nid] = struct{}{}
-		}
-		require.Equal(t, len(dragonCluster), len(nids))
-		for i := 0; i < len(dragonCluster); i++ {
-			_, ok := nids[i]
-			require.True(t, ok)
-		}
 	}
 }
 
@@ -210,7 +195,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	chans := make([]chan error, len(nodeAddresses))
 	clusterNodes := make([]cluster.Cluster, len(nodeAddresses))
 	for i := 0; i < len(chans); i++ {
-		ch := make(chan error, 1)
+		ch := make(chan error)
 		chans[i] = ch
 		dragon, err := NewDragon(i, nodeAddresses, numShards, dataDir, 3)
 		if err != nil {
@@ -218,6 +203,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		}
 		clusterNodes[i] = dragon
 		dragon.RegisterShardListenerFactory(&dummyShardListenerFactory{})
+		dragon.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
 
 		go startDragonNode(dragon, ch)
 	}
@@ -271,4 +257,11 @@ func (d *dummyShardListener) RemoteWriteOccurred() {
 }
 
 func (d *dummyShardListener) Close() {
+}
+
+type dummyRemoteQueryExecutionCallback struct {
+}
+
+func (d dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+	return nil, nil
 }
