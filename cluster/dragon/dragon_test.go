@@ -158,7 +158,7 @@ func TestGenerateTableID(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
 		require.NoError(t, err)
-		require.Equal(t, uint64(i), id)
+		require.Equal(t, uint64(i)+cluster.UserTableIDBase, id)
 	}
 }
 
@@ -187,9 +187,9 @@ func stopDragonCluster() {
 func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 
 	nodeAddresses := []string{
-		"localhost:63001",
-		"localhost:63002",
-		"localhost:63003",
+		"localhost:63101",
+		"localhost:63102",
+		"localhost:63103",
 	}
 
 	chans := make([]chan error, len(nodeAddresses))
@@ -197,7 +197,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
-		dragon, err := NewDragon(i, nodeAddresses, numShards, dataDir, 3)
+		dragon, err := NewDragon(i, 123, nodeAddresses, numShards, dataDir, 3, true)
 		if err != nil {
 			return nil, err
 		}

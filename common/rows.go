@@ -59,18 +59,18 @@ type Key []interface{}
 // RowsFactory caches the field types so we don't have to calculate them each time
 // we create a new Rows
 type RowsFactory struct {
-	astFieldTypes []*types.FieldType
-	ColumnTypes   []ColumnType
+	tidbFieldTypes []*types.FieldType
+	ColumnTypes    []ColumnType
 }
 
 func NewRowsFactory(columnTypes []ColumnType) *RowsFactory {
 	tidbFieldTypes := toTidbFieldTypes(columnTypes)
-	return &RowsFactory{astFieldTypes: tidbFieldTypes, ColumnTypes: columnTypes}
+	return &RowsFactory{tidbFieldTypes: tidbFieldTypes, ColumnTypes: columnTypes}
 }
 
 func (rf *RowsFactory) NewRows(capacity int) *Rows {
-	ch := chunk.NewChunkWithCapacity(rf.astFieldTypes, capacity)
-	return &Rows{chunk: ch, columnTypes: rf.ColumnTypes}
+	ch := chunk.NewChunkWithCapacity(rf.tidbFieldTypes, capacity)
+	return &Rows{chunk: ch, columnTypes: rf.ColumnTypes, tidbFieldTypes: rf.tidbFieldTypes}
 }
 
 func toTidbFieldTypes(columnTypes []ColumnType) []*types.FieldType {

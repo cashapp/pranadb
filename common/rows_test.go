@@ -11,40 +11,8 @@ func TestRows(t *testing.T) {
 	decType1 := NewDecimalColumnType(10, 2)
 	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
 	rf := NewRowsFactory(colTypes)
-	rows := rf.NewRows(1)
 	rowCount := 10
-	for i := 0; i < rowCount; i++ {
-		if useNull(i, 0) {
-			rows.AppendNullToColumn(0)
-		} else {
-			rows.AppendInt64ToColumn(0, tinyIntVal(i))
-		}
-		if useNull(i, 1) {
-			rows.AppendNullToColumn(1)
-		} else {
-			rows.AppendInt64ToColumn(1, intVal(i))
-		}
-		if useNull(i, 2) {
-			rows.AppendNullToColumn(2)
-		} else {
-			rows.AppendInt64ToColumn(2, bigIntVal(i))
-		}
-		if useNull(i, 3) {
-			rows.AppendNullToColumn(3)
-		} else {
-			rows.AppendFloat64ToColumn(3, floatVal(i))
-		}
-		if useNull(i, 4) {
-			rows.AppendNullToColumn(4)
-		} else {
-			rows.AppendStringToColumn(4, stringVal(i))
-		}
-		if useNull(i, 5) {
-			rows.AppendNullToColumn(5)
-		} else {
-			rows.AppendDecimalToColumn(5, decVal(t, i))
-		}
-	}
+	rows := createRows(t, rowCount, rf)
 	require.Equal(t, rowCount, rows.RowCount())
 	for i := 0; i < 10; i++ {
 		row := rows.GetRow(i)
@@ -119,4 +87,60 @@ func decVal(t *testing.T, rowIndex int) Decimal {
 	dec, err := NewDecFromFloat64(10000 * floatVal(rowIndex))
 	require.NoError(t, err)
 	return *dec
+}
+
+func createRows(t *testing.T, rowCount int, rf *RowsFactory) *Rows {
+	t.Helper()
+	rows := rf.NewRows(1)
+	for i := 0; i < rowCount; i++ {
+		if useNull(i, 0) {
+			rows.AppendNullToColumn(0)
+		} else {
+			rows.AppendInt64ToColumn(0, tinyIntVal(i))
+		}
+		if useNull(i, 1) {
+			rows.AppendNullToColumn(1)
+		} else {
+			rows.AppendInt64ToColumn(1, intVal(i))
+		}
+		if useNull(i, 2) {
+			rows.AppendNullToColumn(2)
+		} else {
+			rows.AppendInt64ToColumn(2, bigIntVal(i))
+		}
+		if useNull(i, 3) {
+			rows.AppendNullToColumn(3)
+		} else {
+			rows.AppendFloat64ToColumn(3, floatVal(i))
+		}
+		if useNull(i, 4) {
+			rows.AppendNullToColumn(4)
+		} else {
+			rows.AppendStringToColumn(4, stringVal(i))
+		}
+		if useNull(i, 5) {
+			rows.AppendNullToColumn(5)
+		} else {
+			rows.AppendDecimalToColumn(5, decVal(t, i))
+		}
+	}
+	return rows
+}
+
+func TestRowsSerializeDeserialize(t *testing.T) {
+	decType1 := NewDecimalColumnType(10, 2)
+	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
+	rf := NewRowsFactory(colTypes)
+	rows := createRows(t, 10, rf)
+
+	buff := rows.Serialize()
+
+	rowsActual := rf.NewRows(10)
+	rowsActual.Deserialize(buff)
+
+	for i := 0; i < 10; i++ {
+		expectedRow := rows.GetRow(i)
+		actualRow := rowsActual.GetRow(i)
+		RowsEqual(t, expectedRow, actualRow, colTypes)
+	}
 }

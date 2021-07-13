@@ -36,16 +36,19 @@ const (
 	remoteQueryTimeout = time.Second * 30
 )
 
-func NewDragon(nodeID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int) (cluster.Cluster, error) {
+func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int,
+	testDragon bool) (cluster.Cluster, error) {
 	if len(nodeAddresses) < 3 {
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
 	dragon := Dragon{
 		nodeID:         nodeID,
+		clusterID:      clusterID,
 		nodeAddresses:  nodeAddresses,
 		totShards:      totShards,
 		dataDir:        dataDir,
 		notifListeners: make(map[int]cluster.NotificationListener),
+		testDragon:     testDragon,
 	}
 	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
 	dragon.generateNodesAndShards(totShards, replicationFactor)
@@ -55,6 +58,7 @@ func NewDragon(nodeID int, nodeAddresses []string, totShards int, dataDir string
 type Dragon struct {
 	lock                         sync.RWMutex
 	nodeID                       int
+	clusterID                    int
 	nodeAddresses                []string
 	totShards                    int
 	dataDir                      string
@@ -68,6 +72,7 @@ type Dragon struct {
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	notifListeners               map[int]cluster.NotificationListener
 	notifDispatcher              *notificationDispatcher
+	testDragon                   bool
 }
 
 func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
@@ -91,7 +96,6 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
-		log.Println("table sequence write failed")
 		return 0, err
 	}
 	if proposeRes.Value != seqStateMachineUpdatedOK {
@@ -181,6 +185,7 @@ func (d *Dragon) Start() error {
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
+		DeploymentID:        uint64(d.clusterID),
 		WALDir:              dragonBoatDir,
 		NodeHostDir:         dragonBoatDir,
 		RTTMillisecond:      200,

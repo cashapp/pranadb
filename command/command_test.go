@@ -15,13 +15,14 @@ import (
 )
 
 func TestCommandExecutorExecutePullQuery(t *testing.T) {
-	cluster := cluster.NewFakeCluster(1, 1)
-	metaController := meta.NewController(cluster)
+	clus := cluster.NewFakeCluster(1, 1)
+	metaController := meta.NewController(clus)
 	planner := parplan.NewPlanner()
-	shardr := sharder.NewSharder(cluster)
-	pushEngine := push.NewPushEngine(cluster, planner, shardr)
-	pullEngine := pull.NewPullEngine(planner, cluster, metaController)
-	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, cluster)
+	shardr := sharder.NewSharder(clus)
+	pushEngine := push.NewPushEngine(clus, planner, shardr)
+	pullEngine := pull.NewPullEngine(planner, clus, metaController)
+	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
+	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
 
 	tests := []struct {
 		name  string
