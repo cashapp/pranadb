@@ -1,9 +1,12 @@
 package dragon
 
 import (
-	"github.com/lni/dragonboat/v3/statemachine"
-	"github.com/squareup/pranadb/cluster"
 	"io"
+
+	"github.com/lni/dragonboat/v3/statemachine"
+	"github.com/pkg/errors"
+
+	"github.com/squareup/pranadb/cluster"
 )
 
 const (
@@ -21,9 +24,11 @@ type notificationsStateMachine struct {
 }
 
 func (s *notificationsStateMachine) Update(buff []byte) (statemachine.Result, error) {
-	notification := cluster.Notification{}
-	notification.Deserialize(buff, 0)
-	s.dragon.handleNotification(&notification)
+	notification, err := cluster.DeserializeNotification(buff)
+	if err != nil {
+		return statemachine.Result{}, errors.WithStack(err)
+	}
+	s.dragon.handleNotification(notification)
 	return statemachine.Result{Value: notificationsStateMachineUpdatedOK, Data: nil}, nil
 }
 

@@ -10,7 +10,9 @@ clean:
 	rm -f $(GENERATED)
 
 %.pb.go: %.proto Makefile
-	protoc --go_out=plugins=grpc,paths=source_relative:. $<
+	protoc --go_out=plugins=grpc:. $<
+	rsync -rv --remove-source-files ./github.com/squareup/pranadb/protos/ ./
+	rm -rf ./github.com
 
 # Ensure the Go protoc generators are installed.
 .PHONY: generators

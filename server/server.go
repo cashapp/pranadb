@@ -1,6 +1,8 @@
 package server
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
@@ -9,7 +11,6 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-	"sync"
 )
 
 type Config struct {

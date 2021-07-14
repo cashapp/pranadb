@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.notifications;
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications";
+
+message DDLStatementInfo {
+  int64 originating_node_id = 1;
+  int64 sequence = 2;
+  string schema_name = 3;
+  string sql = 4;
+  repeated uint64 table_sequences = 5;
+}
