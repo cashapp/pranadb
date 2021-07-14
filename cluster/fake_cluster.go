@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/google/btree"
-	"github.com/squareup/pranadb/common"
 	"log"
 	"sync"
+
+	"github.com/google/btree"
+
+	"github.com/squareup/pranadb/common"
 )
 
 type fakeCluster struct {
@@ -20,7 +22,7 @@ type fakeCluster struct {
 	btree                        *btree.BTree
 	shardListenerFactory         ShardListenerFactory
 	shardListeners               map[uint64]ShardListener
-	notifListeners               map[int]NotificationListener
+	notifListeners               map[NotificationType]NotificationListener
 }
 
 func NewFakeCluster(nodeID int, numShards int) Cluster {
@@ -30,27 +32,27 @@ func NewFakeCluster(nodeID int, numShards int) Cluster {
 		allShardIds:    genAllShardIds(numShards),
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),
-		notifListeners: make(map[int]NotificationListener),
+		notifListeners: make(map[NotificationType]NotificationListener),
 	}
 }
 
-func (f *fakeCluster) BroadcastNotification(notification *Notification) error {
-	listener := f.lookupNotificationListener(notification.Type)
+func (f *fakeCluster) BroadcastNotification(notification Notification) error {
+	listener := f.lookupNotificationListener(notification)
 	listener.HandleNotification(notification)
 	return nil
 }
 
-func (f *fakeCluster) lookupNotificationListener(notificationListenerType int) NotificationListener {
+func (f *fakeCluster) lookupNotificationListener(notification Notification) NotificationListener {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	listener, ok := f.notifListeners[notificationListenerType]
+	listener, ok := f.notifListeners[TypeForNotification(notification)]
 	if !ok {
-		panic(fmt.Sprintf("no notification listener for type %d", notificationListenerType))
+		panic(fmt.Sprintf("no notification listener for type %d", TypeForNotification(notification)))
 	}
 	return listener
 }
 
-func (f *fakeCluster) RegisterNotificationListener(notificationType int, listener NotificationListener) {
+func (f *fakeCluster) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, ok := f.notifListeners[notificationType]

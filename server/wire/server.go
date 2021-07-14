@@ -4,7 +4,7 @@ package wire
 import (
 	"context"
 
-	pranaproto "github.com/squareup/pranadb/protos/squareup/cash/pranadb"
+	pranaproto "github.com/squareup/pranadb/protos/squareup/cash/pranadb/service"
 	"github.com/squareup/pranadb/server"
 )
 

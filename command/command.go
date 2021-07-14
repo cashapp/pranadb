@@ -1,15 +1,17 @@
 package command
 
 import (
-	"github.com/alecthomas/repr"
-	"github.com/pkg/errors"
 	"log"
 	"sync/atomic"
+
+	"github.com/alecthomas/repr"
+	"github.com/pkg/errors"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
@@ -240,23 +242,18 @@ func (p *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 // ordering and we don't process the command locally until we receive it from the cluster.
 func (p *Executor) executeInGlobalOrder(schemaName string, sql string, sequences []uint64) (exec.PullExecutor, error) {
 	nextSeq := atomic.AddInt64(&p.ddlStatementSeq, 1)
-	statementInfo := ddlStatementInfo{
-		originatingNodeID: p.cluster.GetNodeID(),
-		sequence:          nextSeq,
-		schemaName:        schemaName,
-		sql:               sql,
-		tableSequences:    sequences,
-	}
-	var buff []byte
-	notif := cluster.Notification{
-		Type: cluster.NotificationTypeDDLStatement,
-		Data: statementInfo.Serialize(buff),
+	statementInfo := &notifications.DDLStatementInfo{
+		OriginatingNodeId: int64(p.cluster.GetNodeID()),
+		Sequence:          nextSeq,
+		SchemaName:        schemaName,
+		Sql:               sql,
+		TableSequences:    sequences,
 	}
 	ch := make(chan statementExecutionResult)
 	p.notifActions[nextSeq] = ch
 
 	go func() {
-		err := p.cluster.BroadcastNotification(&notif)
+		err := p.cluster.BroadcastNotification(statementInfo)
 		if err != nil {
 			ch <- statementExecutionResult{err: err}
 		}
@@ -269,25 +266,24 @@ func (p *Executor) executeInGlobalOrder(schemaName string, sql string, sequences
 	return res.exec, res.err
 }
 
-func (p *Executor) HandleNotification(notification *cluster.Notification) {
-	ddlStmt := ddlStatementInfo{}
-	ddlStmt.Deserialize(notification.Data, 0)
-	seqGenerator := &preallocSeqGen{sequences: ddlStmt.tableSequences}
-	if ddlStmt.originatingNodeID == p.cluster.GetNodeID() {
-		ch, ok := p.notifActions[ddlStmt.sequence]
+func (p *Executor) HandleNotification(notification cluster.Notification) {
+	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
+	seqGenerator := &preallocSeqGen{sequences: ddlStmt.TableSequences}
+	if ddlStmt.OriginatingNodeId == int64(p.cluster.GetNodeID()) {
+		ch, ok := p.notifActions[ddlStmt.Sequence]
 		if !ok {
 			panic("cannot find notification")
 		}
-		ex, err := p.executeSQLStatementInternal(ddlStmt.schemaName, ddlStmt.sql, false, seqGenerator)
+		ex, err := p.executeSQLStatementInternal(ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
 		res := statementExecutionResult{
 			exec: ex,
 			err:  err,
 		}
 		ch <- res
 	} else {
-		_, err := p.executeSQLStatementInternal(ddlStmt.schemaName, ddlStmt.sql, false, seqGenerator)
+		_, err := p.executeSQLStatementInternal(ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
 		if err != nil {
-			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.sql, ddlStmt.schemaName, err)
+			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
 		}
 	}
 }
@@ -295,41 +291,4 @@ func (p *Executor) HandleNotification(notification *cluster.Notification) {
 type statementExecutionResult struct {
 	exec exec.PullExecutor
 	err  error
-}
-
-type ddlStatementInfo struct {
-	originatingNodeID int
-	sequence          int64
-	schemaName        string
-	sql               string
-	tableSequences    []uint64
-}
-
-func (d *ddlStatementInfo) Serialize(buff []byte) []byte {
-	buff = common.AppendUint64ToBufferLittleEndian(buff, uint64(d.originatingNodeID))
-	buff = common.AppendUint64ToBufferLittleEndian(buff, uint64(d.sequence))
-	buff = common.EncodeString(d.schemaName, buff)
-	buff = common.EncodeString(d.sql, buff)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(d.tableSequences)))
-	for _, seq := range d.tableSequences {
-		buff = common.AppendUint64ToBufferLittleEndian(buff, seq)
-	}
-	return buff
-}
-
-func (d *ddlStatementInfo) Deserialize(buff []byte, offset int) int {
-	d.originatingNodeID = int(common.ReadUint64FromBufferLittleEndian(buff, offset))
-	offset += 8
-	d.sequence = int64(common.ReadUint64FromBufferLittleEndian(buff, offset))
-	offset += 8
-	d.schemaName, offset = common.DecodeString(buff, offset)
-	d.sql, offset = common.DecodeString(buff, offset)
-	sqlLen := common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
-	d.tableSequences = make([]uint64, sqlLen)
-	for i := 0; i < int(sqlLen); i++ {
-		d.tableSequences[i] = common.ReadUint64FromBufferLittleEndian(buff, offset)
-		offset += 8
-	}
-	return offset
 }

@@ -3,19 +3,21 @@ package dragon
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"log"
+	"path/filepath"
+	"sync"
+	"time"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
+	"github.com/pkg/errors"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"log"
-	"path/filepath"
-	"sync"
-	"time"
 )
 
 const (
@@ -47,7 +49,7 @@ func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int,
 		nodeAddresses:  nodeAddresses,
 		totShards:      totShards,
 		dataDir:        dataDir,
-		notifListeners: make(map[int]cluster.NotificationListener),
+		notifListeners: make(map[cluster.NotificationType]cluster.NotificationListener),
 		testDragon:     testDragon,
 	}
 	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
@@ -70,7 +72,7 @@ type Dragon struct {
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
-	notifListeners               map[int]cluster.NotificationListener
+	notifListeners               map[cluster.NotificationType]cluster.NotificationListener
 	notifDispatcher              *notificationDispatcher
 	testDragon                   bool
 }
@@ -332,14 +334,16 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 	return pairs, nil
 }
 
-func (d *Dragon) BroadcastNotification(notification *cluster.Notification) error {
+func (d *Dragon) BroadcastNotification(notification cluster.Notification) error {
 	cs := d.nh.GetNoOPSession(notificationsClusterID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
 	defer cancel()
 
-	var buff []byte
-	buff = notification.Serialize(buff)
+	buff, err := cluster.SerializeNotification(notification)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
 		return err
@@ -350,7 +354,7 @@ func (d *Dragon) BroadcastNotification(notification *cluster.Notification) error
 	return nil
 }
 
-func (d *Dragon) RegisterNotificationListener(notificationType int, listener cluster.NotificationListener) {
+func (d *Dragon) RegisterNotificationListener(notificationType cluster.NotificationType, listener cluster.NotificationListener) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	_, ok := d.notifListeners[notificationType]
@@ -360,7 +364,7 @@ func (d *Dragon) RegisterNotificationListener(notificationType int, listener clu
 	d.notifListeners[notificationType] = listener
 }
 
-func (d *Dragon) handleNotification(notification *cluster.Notification) {
+func (d *Dragon) handleNotification(notification cluster.Notification) {
 	d.notifDispatcher.queueNotification(notification)
 }
 
@@ -552,7 +556,7 @@ func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, dele
 func newNotificationDispatcher(d *Dragon) *notificationDispatcher {
 	return &notificationDispatcher{
 		d:          d,
-		notifQueue: make(chan *cluster.Notification, 100), // TODO make chan size configurable
+		notifQueue: make(chan cluster.Notification, 100), // TODO make chan size configurable
 	}
 }
 
@@ -560,20 +564,16 @@ func newNotificationDispatcher(d *Dragon) *notificationDispatcher {
 // Using a single goroutine maintains order
 type notificationDispatcher struct {
 	d          *Dragon
-	notifQueue chan *cluster.Notification
+	notifQueue chan cluster.Notification
 }
 
-func (n *notificationDispatcher) queueNotification(notification *cluster.Notification) {
+func (n *notificationDispatcher) queueNotification(notification cluster.Notification) {
 	n.notifQueue <- notification
 }
 
 func (n *notificationDispatcher) runLoop() {
-	for {
-		notification, ok := <-n.notifQueue
-		if !ok {
-			break
-		}
-		listener := n.d.lookupNotificationListener(notification.Type)
+	for notification := range n.notifQueue {
+		listener := n.d.lookupNotificationListener(notification)
 		listener.HandleNotification(notification)
 	}
 }
@@ -586,12 +586,12 @@ func (n *notificationDispatcher) Stop() {
 	close(n.notifQueue)
 }
 
-func (d *Dragon) lookupNotificationListener(notificationListenerType int) cluster.NotificationListener {
+func (d *Dragon) lookupNotificationListener(notification cluster.Notification) cluster.NotificationListener {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
-	listener, ok := d.notifListeners[notificationListenerType]
+	listener, ok := d.notifListeners[cluster.TypeForNotification(notification)]
 	if !ok {
-		panic(fmt.Sprintf("no notification listener for type %d", notificationListenerType))
+		panic(fmt.Sprintf("no notification listener for type %d", cluster.TypeForNotification(notification)))
 	}
 	return listener
 }

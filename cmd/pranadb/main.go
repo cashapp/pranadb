@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/service"
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/server/wire"
 )
@@ -39,7 +39,7 @@ func main() {
 
 	gsrv := grpc.NewServer()
 	reflection.Register(gsrv)
-	pranadb.RegisterPranaDBServer(gsrv, pgsrv)
+	service.RegisterPranaDBServer(gsrv, pgsrv)
 	err = gsrv.Serve(l)
 	kctx.FatalIfErrorf(err)
 }

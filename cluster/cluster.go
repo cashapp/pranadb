@@ -1,10 +1,11 @@
 package cluster
 
-import "github.com/squareup/pranadb/common"
+import (
+	"github.com/squareup/pranadb/common"
+)
 
 const (
-	NotificationTypeDDLStatement int = 1
-	UserTableIDBase                  = 100
+	UserTableIDBase = 100
 )
 
 type Cluster interface {
@@ -32,9 +33,9 @@ type Cluster interface {
 
 	RegisterShardListenerFactory(factory ShardListenerFactory)
 
-	BroadcastNotification(notification *Notification) error
+	BroadcastNotification(notification Notification) error
 
-	RegisterNotificationListener(notificationType int, listener NotificationListener)
+	RegisterNotificationListener(notificationType NotificationType, listener NotificationListener)
 
 	Start() error
 
@@ -76,30 +77,4 @@ type ShardListener interface {
 	RemoteWriteOccurred()
 
 	Close()
-}
-
-type Notification struct {
-	Type int
-	Data []byte
-}
-
-type NotificationListener interface {
-	HandleNotification(notification *Notification)
-}
-
-func (n *Notification) Serialize(buff []byte) []byte {
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(n.Type))
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(n.Data)))
-	buff = append(buff, n.Data...)
-	return buff
-}
-
-func (n *Notification) Deserialize(buff []byte, offset int) int {
-	n.Type = int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-	offset += 4
-	dataLen := int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-	offset += 4
-	n.Data = buff[offset : offset+dataLen]
-	offset += dataLen
-	return offset
 }
