@@ -2,15 +2,38 @@ package cluster
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"math/rand"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
+func startFakeCluster(t *testing.T) Cluster {
+	t.Helper()
+	clust := NewFakeCluster(0, 10)
+	clust.RegisterShardListenerFactory(&dummyShardListenerFactory{})
+	clust.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
+	err := clust.Start()
+	require.NoError(t, err)
+	return clust
+}
+
+// nolint: unparam
+func stopClustFunc(t *testing.T, clust Cluster) func() {
+	t.Helper()
+	return func() {
+		err := clust.Stop()
+		require.NoError(t, err)
+	}
+}
+
 func TestPutGet(t *testing.T) {
 
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -36,7 +59,8 @@ func TestPutGet(t *testing.T) {
 
 func TestPutDelete(t *testing.T) {
 
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -80,7 +104,8 @@ func TestScanBigLimit(t *testing.T) {
 
 func testScan(t *testing.T, limit int, expected int) {
 	t.Helper()
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	var kvPairs []KVPair
 	for i := 0; i < 10; i++ {
@@ -133,4 +158,85 @@ func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
 		wb.AddDelete(delete)
 	}
 	return *wb
+}
+
+func TestNotifications(t *testing.T) {
+
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
+
+	notifListener := testNotificationListener{notifs: []Notification{}}
+	clust.RegisterNotificationListener(NotificationTypeDDLStatement, &notifListener)
+	sequences := []uint64{100, 101}
+	numNotifs := 10
+
+	for i := 0; i < numNotifs; i++ {
+		notif := &notifications.DDLStatementInfo{
+			OriginatingNodeId: int64(clust.GetNodeID()),
+			Sequence:          int64(i),
+			SchemaName:        "some-schema",
+			Sql:               fmt.Sprintf("sql-%d-%d", clust.GetNodeID(), i),
+			TableSequences:    sequences,
+		}
+		err := clust.BroadcastNotification(notif)
+		require.NoError(t, err)
+	}
+
+	common.WaitUntil(t, func() (bool, error) {
+		lNotifs := len(notifListener.getNotifs())
+		return lNotifs == numNotifs, nil
+	})
+	for i := 0; i < numNotifs; i++ {
+		notif := notifListener.getNotifs()[i]
+		ddlStmt, ok := notif.(*notifications.DDLStatementInfo)
+		require.True(t, ok)
+		require.Equal(t, clust.GetNodeID(), int(ddlStmt.OriginatingNodeId))
+		require.Equal(t, int64(i), ddlStmt.Sequence)
+		require.Equal(t, "some-schema", ddlStmt.SchemaName)
+		require.Equal(t, fmt.Sprintf("sql-%d-%d", clust.GetNodeID(), i), ddlStmt.Sql)
+		require.Equal(t, len(sequences), len(ddlStmt.TableSequences))
+		for l := 0; l < len(sequences); l++ {
+			require.Equal(t, sequences[l], ddlStmt.TableSequences[l])
+		}
+	}
+}
+
+type testNotificationListener struct {
+	lock   sync.Mutex
+	notifs []Notification
+}
+
+func (t *testNotificationListener) HandleNotification(notification Notification) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.notifs = append(t.notifs, notification)
+}
+
+func (t *testNotificationListener) getNotifs() []Notification {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.notifs
+}
+
+type dummyShardListenerFactory struct {
+}
+
+func (d *dummyShardListenerFactory) CreateShardListener(shardID uint64) ShardListener {
+	return &dummyShardListener{}
+}
+
+type dummyShardListener struct {
+}
+
+func (d *dummyShardListener) RemoteWriteOccurred() {
+}
+
+func (d *dummyShardListener) Close() {
+}
+
+type dummyRemoteQueryExecutionCallback struct {
+}
+
+func (d *dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+	return nil, nil
 }
