@@ -94,7 +94,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 				return nil, err
 			}
 		}
-		executor = exec.NewRemoteExecutor(colTypes, remoteDag, schema.Name, query, queryID, p.cluster)
+		executor = exec.NewRemoteExecutor(remoteDag, colTypes, schema.Name, query, queryID, p.cluster)
 	case *core.PhysicalTableScan:
 		if !remote {
 			panic("table scans only used on remote queries")
@@ -111,7 +111,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		} else {
 			t = mv.TableInfo
 		}
-		executor = exec.NewPullTableScan(colTypes, t, p.cluster, shardID)
+		executor = exec.NewPullTableScan(t, p.cluster, shardID)
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}

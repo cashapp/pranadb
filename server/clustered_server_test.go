@@ -3,7 +3,6 @@ package server
 import (
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
-	"sort"
 	"testing"
 	"time"
 
@@ -117,30 +116,14 @@ func TestExecutePullQueryClustered(t *testing.T) {
 	common.AppendRow(t, expectedRows, colTypes, 2, "london", 28.1)
 	common.AppendRow(t, expectedRows, colTypes, 3, "los angeles", 35.6)
 
-	rExpected := sortRows(rowsToSlice(expectedRows))
-	rActual := sortRows(rowsToSlice(rows))
+	rExpected := common.SortRows(common.RowsToSlice(expectedRows))
+	rActual := common.SortRows(common.RowsToSlice(rows))
 
 	for i := 0; i < len(rExpected); i++ {
 		expected := rExpected[i]
 		actual := rActual[i]
 		common.RowsEqual(t, *expected, *actual, rf.ColumnTypes)
 	}
-}
-
-func sortRows(rows []*common.Row) []*common.Row {
-	sort.SliceStable(rows, func(i, j int) bool {
-		return rows[i].GetInt64(0) > rows[j].GetInt64(0)
-	})
-	return rows
-}
-
-func rowsToSlice(rows *common.Rows) []*common.Row {
-	slice := make([]*common.Row, rows.RowCount())
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		slice[i] = &row
-	}
-	return slice
 }
 
 func startCluster(t *testing.T) []*Server {

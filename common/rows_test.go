@@ -138,9 +138,5 @@ func TestRowsSerializeDeserialize(t *testing.T) {
 	rowsActual := rf.NewRows(10)
 	rowsActual.Deserialize(buff)
 
-	for i := 0; i < 10; i++ {
-		expectedRow := rows.GetRow(i)
-		actualRow := rowsActual.GetRow(i)
-		RowsEqual(t, expectedRow, actualRow, colTypes)
-	}
+	AllRowsEqual(t, rows, rowsActual, colTypes)
 }

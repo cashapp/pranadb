@@ -5,7 +5,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"math/rand"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,20 +13,18 @@ import (
 func startFakeCluster(t *testing.T) Cluster {
 	t.Helper()
 	clust := NewFakeCluster(0, 10)
-	clust.RegisterShardListenerFactory(&dummyShardListenerFactory{})
-	clust.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
+	clust.RegisterShardListenerFactory(&DummyShardListenerFactory{})
+	clust.SetRemoteQueryExecutionCallback(&DummyRemoteQueryExecutionCallback{})
 	err := clust.Start()
 	require.NoError(t, err)
 	return clust
 }
 
 // nolint: unparam
-func stopClustFunc(t *testing.T, clust Cluster) func() {
+func stopClustFunc(t *testing.T, clust Cluster) {
 	t.Helper()
-	return func() {
-		err := clust.Stop()
-		require.NoError(t, err)
-	}
+	err := clust.Stop()
+	require.NoError(t, err)
 }
 
 func TestPutGet(t *testing.T) {
@@ -165,7 +162,7 @@ func TestNotifications(t *testing.T) {
 	clust := startFakeCluster(t)
 	defer stopClustFunc(t, clust)
 
-	notifListener := testNotificationListener{notifs: []Notification{}}
+	notifListener := TestNotificationListener{notifs: []Notification{}}
 	clust.RegisterNotificationListener(NotificationTypeDDLStatement, &notifListener)
 	sequences := []uint64{100, 101}
 	numNotifs := 10
@@ -199,44 +196,4 @@ func TestNotifications(t *testing.T) {
 			require.Equal(t, sequences[l], ddlStmt.TableSequences[l])
 		}
 	}
-}
-
-type testNotificationListener struct {
-	lock   sync.Mutex
-	notifs []Notification
-}
-
-func (t *testNotificationListener) HandleNotification(notification Notification) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	t.notifs = append(t.notifs, notification)
-}
-
-func (t *testNotificationListener) getNotifs() []Notification {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	return t.notifs
-}
-
-type dummyShardListenerFactory struct {
-}
-
-func (d *dummyShardListenerFactory) CreateShardListener(shardID uint64) ShardListener {
-	return &dummyShardListener{}
-}
-
-type dummyShardListener struct {
-}
-
-func (d *dummyShardListener) RemoteWriteOccurred() {
-}
-
-func (d *dummyShardListener) Close() {
-}
-
-type dummyRemoteQueryExecutionCallback struct {
-}
-
-func (d *dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
-	return nil, nil
 }

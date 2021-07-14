@@ -273,8 +273,8 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 			return nil, err
 		}
 		clusterNodes[i] = dragon
-		dragon.RegisterShardListenerFactory(&dummyShardListenerFactory{})
-		dragon.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
+		dragon.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
+		dragon.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 
 		go startDragonNode(dragon, ch)
 	}
@@ -312,27 +312,4 @@ func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) cluster.Writ
 		wb.AddDelete(del)
 	}
 	return *wb
-}
-
-type dummyShardListenerFactory struct {
-}
-
-func (d *dummyShardListenerFactory) CreateShardListener(shardID uint64) cluster.ShardListener {
-	return &dummyShardListener{}
-}
-
-type dummyShardListener struct {
-}
-
-func (d *dummyShardListener) RemoteWriteOccurred() {
-}
-
-func (d *dummyShardListener) Close() {
-}
-
-type dummyRemoteQueryExecutionCallback struct {
-}
-
-func (d *dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
-	return nil, nil
 }
