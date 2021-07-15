@@ -27,6 +27,10 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 // GetRows returns the projected columns.
 func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 
+	if limit == 0 || limit < -1 {
+		return nil, fmt.Errorf("invalid limit %d", limit)
+	}
+
 	rows, err = p.GetChildren()[0].GetRows(limit)
 	if err != nil {
 		return nil, err
@@ -87,5 +91,5 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 
 	}
 
-	return rows, nil
+	return result, nil
 }

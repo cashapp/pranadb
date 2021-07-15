@@ -90,8 +90,5 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	require.NotNil(t, gathered)
 
 	exp := toRows(t, expectedRows, expectedColTypes)
-	require.Equal(t, exp.RowCount(), gathered.RowCount())
-	for i := 0; i < exp.RowCount(); i++ {
-		common.RowsEqual(t, exp.GetRow(i), gathered.GetRow(i), expectedColTypes)
-	}
+	common.AllRowsEqual(t, exp, gathered, expectedColTypes)
 }

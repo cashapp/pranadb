@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"log"
@@ -16,10 +17,10 @@ type PullTableScan struct {
 
 var _ PullExecutor = &PullTableScan{}
 
-func NewPullTableScan(colTypes []common.ColumnType, tableInfo *common.TableInfo, storage cluster.Cluster, shardID uint64) *PullTableScan {
-	rf := common.NewRowsFactory(colTypes)
+func NewPullTableScan(tableInfo *common.TableInfo, storage cluster.Cluster, shardID uint64) *PullTableScan {
+	rf := common.NewRowsFactory(tableInfo.ColumnTypes)
 	base := pullExecutorBase{
-		colTypes:    colTypes,
+		colTypes:    tableInfo.ColumnTypes,
 		rowsFactory: rf,
 	}
 	return &PullTableScan{
@@ -37,19 +38,29 @@ func (t *PullTableScan) SetSchema(colNames []string, colTypes []common.ColumnTyp
 }
 
 func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
+	if limit == 0 || limit < -1 {
+		return nil, fmt.Errorf("invalid limit %d", limit)
+	}
 
-	var prefix []byte
+	var tableShardPrefix = make([]byte, 0, 8)
+	tableShardPrefix = common.AppendUint64ToBufferLittleEndian(tableShardPrefix, t.tableInfo.ID)
+	tableShardPrefix = common.AppendUint64ToBufferLittleEndian(tableShardPrefix, t.shardID)
+
 	var skipFirst bool
+	var startPrefix []byte
 	if t.lastRowPrefix == nil {
-		prefix = make([]byte, 0, 8)
-		prefix = common.AppendUint64ToBufferLittleEndian(prefix, t.tableInfo.ID)
-		prefix = common.AppendUint64ToBufferLittleEndian(prefix, t.shardID)
+		startPrefix = tableShardPrefix
 	} else {
-		prefix = t.lastRowPrefix
+		startPrefix = t.lastRowPrefix
 		skipFirst = true
 	}
 
-	kvPairs, err := t.storage.LocalScan(prefix, prefix, limit)
+	limitToUse := limit
+	if limit != -1 && skipFirst {
+		// We read one extra row as we'll skip the first
+		limitToUse++
+	}
+	kvPairs, err := t.storage.LocalScan(startPrefix, tableShardPrefix, limitToUse)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +68,7 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 	log.Printf("Got %d rows from table %d and shard %d", numRows, t.tableInfo.ID, t.shardID)
 	rows = t.rowsFactory.NewRows(numRows)
 	for i, kvPair := range kvPairs {
+		log.Printf("Read row with key %v from table", kvPair.Key)
 		if i == 0 && skipFirst {
 			continue
 		}

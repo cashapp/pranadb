@@ -65,8 +65,5 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	require.NotNil(t, gathered)
 
 	exp := toRows(t, expectedRows, colTypes)
-	require.Equal(t, exp.RowCount(), gathered.RowCount())
-	for i := 0; i < exp.RowCount(); i++ {
-		common.RowsEqual(t, exp.GetRow(i), gathered.GetRow(i), colTypes)
-	}
+	common.AllRowsEqual(t, exp, gathered, colTypes)
 }

@@ -2,15 +2,35 @@ package cluster
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
+func startFakeCluster(t *testing.T) Cluster {
+	t.Helper()
+	clust := NewFakeCluster(0, 10)
+	clust.RegisterShardListenerFactory(&DummyShardListenerFactory{})
+	clust.SetRemoteQueryExecutionCallback(&DummyRemoteQueryExecutionCallback{})
+	err := clust.Start()
+	require.NoError(t, err)
+	return clust
+}
+
+// nolint: unparam
+func stopClustFunc(t *testing.T, clust Cluster) {
+	t.Helper()
+	err := clust.Stop()
+	require.NoError(t, err)
+}
+
 func TestPutGet(t *testing.T) {
 
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -36,7 +56,8 @@ func TestPutGet(t *testing.T) {
 
 func TestPutDelete(t *testing.T) {
 
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	key := []byte("somekey")
 	value := []byte("somevalue")
@@ -80,7 +101,8 @@ func TestScanBigLimit(t *testing.T) {
 
 func testScan(t *testing.T, limit int, expected int) {
 	t.Helper()
-	clust := NewFakeCluster(0, 10)
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
 
 	var kvPairs []KVPair
 	for i := 0; i < 10; i++ {
@@ -133,4 +155,45 @@ func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
 		wb.AddDelete(delete)
 	}
 	return *wb
+}
+
+func TestNotifications(t *testing.T) {
+
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
+
+	notifListener := TestNotificationListener{notifs: []Notification{}}
+	clust.RegisterNotificationListener(NotificationTypeDDLStatement, &notifListener)
+	sequences := []uint64{100, 101}
+	numNotifs := 10
+
+	for i := 0; i < numNotifs; i++ {
+		notif := &notifications.DDLStatementInfo{
+			OriginatingNodeId: int64(clust.GetNodeID()),
+			Sequence:          int64(i),
+			SchemaName:        "some-schema",
+			Sql:               fmt.Sprintf("sql-%d-%d", clust.GetNodeID(), i),
+			TableSequences:    sequences,
+		}
+		err := clust.BroadcastNotification(notif)
+		require.NoError(t, err)
+	}
+
+	common.WaitUntil(t, func() (bool, error) {
+		lNotifs := len(notifListener.getNotifs())
+		return lNotifs == numNotifs, nil
+	})
+	for i := 0; i < numNotifs; i++ {
+		notif := notifListener.getNotifs()[i]
+		ddlStmt, ok := notif.(*notifications.DDLStatementInfo)
+		require.True(t, ok)
+		require.Equal(t, clust.GetNodeID(), int(ddlStmt.OriginatingNodeId))
+		require.Equal(t, int64(i), ddlStmt.Sequence)
+		require.Equal(t, "some-schema", ddlStmt.SchemaName)
+		require.Equal(t, fmt.Sprintf("sql-%d-%d", clust.GetNodeID(), i), ddlStmt.Sql)
+		require.Equal(t, len(sequences), len(ddlStmt.TableSequences))
+		for l := 0; l < len(sequences); l++ {
+			require.Equal(t, sequences[l], ddlStmt.TableSequences[l])
+		}
+	}
 }
