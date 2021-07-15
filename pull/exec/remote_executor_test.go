@@ -70,9 +70,7 @@ func TestRemoteExecutorGetInBatches(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, provided)
 		require.Equal(t, rowsToGet, provided.RowCount())
-		for j := 0; j < rowsToGet; j++ {
-			allReceived.AppendRow(provided.GetRow(j))
-		}
+		allReceived.AppendAll(provided)
 	}
 	require.Equal(t, numRows, allReceived.RowCount())
 	arrRows := common.RowsToSlice(allReceived)

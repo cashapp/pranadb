@@ -14,6 +14,11 @@ const (
 	ExecutorTypeTableScan
 )
 
+const (
+	DefaultPullBatchSize = 1000
+	OrderByMaxRows       = 10000
+)
+
 func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
 	switch executorType {
 	case ExecutorTypeSelect:

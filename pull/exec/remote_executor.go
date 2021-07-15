@@ -16,6 +16,7 @@ type RemoteExecutor struct {
 	query          string
 	cluster        cluster.Cluster
 	RemoteDag      PullExecutor
+	completeCount  int
 }
 
 func NewRemoteExecutor(remoteDag PullExecutor, colTypes []common.ColumnType, schemaName string, query string, queryID string, cluster cluster.Cluster) *RemoteExecutor {
@@ -94,14 +95,16 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 	}
 	rows = p.rowsFactory.NewRows(limit)
 
-	completeCount := 0
+	if p.completeCount == numGetters {
+		return rows, nil
+	}
 
 	// TODO this algorithm can be improved
 	// We execute these in parallel
-	for completeCount < numGetters {
+	for p.completeCount < numGetters {
 
 		totToGet := limit - rows.RowCount()
-		toGet := totToGet / (numGetters - completeCount)
+		toGet := totToGet / (numGetters - p.completeCount)
 		if toGet == 0 {
 			toGet = 1
 		}
@@ -132,11 +135,9 @@ func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 			if res.Rows.RowCount() > toGet {
 				panic("returned too many rows")
 			}
-			for i := 0; i < res.Rows.RowCount(); i++ {
-				rows.AppendRow(res.Rows.GetRow(i))
-			}
+			rows.AppendAll(res.Rows)
 			if getter.isComplete() {
-				completeCount++
+				p.completeCount++
 			}
 		}
 		if rows.RowCount() > limit {

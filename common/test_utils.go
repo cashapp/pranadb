@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// Test utils
+// I would like these to live in a xxx_test.go file so they're not compiled into the executable however I haven't
+// been able to figure out how to do that and still be able to include them in tests from other packages
+
 func SortRows(rows []*Row) []*Row {
 	sort.SliceStable(rows, func(i, j int) bool {
 		return rows[i].GetInt64(0) < rows[j].GetInt64(0)
@@ -47,7 +51,7 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 			case TypeDecimal:
 				val1 := expected.GetDecimal(colIndex)
 				val2 := actual.GetDecimal(colIndex)
-				require.Equal(t, val1.ToString(), val2.ToString())
+				require.Equal(t, val1.String(), val2.String())
 			case TypeDouble:
 				val1 := expected.GetFloat64(colIndex)
 				val2 := actual.GetFloat64(colIndex)
@@ -69,19 +73,23 @@ func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...inter
 
 	for i, colType := range colTypes {
 		colVal := colVals[i]
-		switch colType.Type {
-		case TypeTinyInt, TypeInt, TypeBigInt:
-			rows.AppendInt64ToColumn(i, int64(colVal.(int)))
-		case TypeDouble:
-			rows.AppendFloat64ToColumn(i, colVal.(float64))
-		case TypeVarchar:
-			rows.AppendStringToColumn(i, colVal.(string))
-		case TypeDecimal:
-			dec, err := NewDecFromString(colVal.(string))
-			require.NoError(t, err)
-			rows.AppendDecimalToColumn(i, *dec)
-		default:
-			panic(colType.Type)
+		if colVal == nil {
+			rows.AppendNullToColumn(i)
+		} else {
+			switch colType.Type {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				rows.AppendInt64ToColumn(i, int64(colVal.(int)))
+			case TypeDouble:
+				rows.AppendFloat64ToColumn(i, colVal.(float64))
+			case TypeVarchar:
+				rows.AppendStringToColumn(i, colVal.(string))
+			case TypeDecimal:
+				dec, err := NewDecFromString(colVal.(string))
+				require.NoError(t, err)
+				rows.AppendDecimalToColumn(i, *dec)
+			default:
+				panic(colType.Type)
+			}
 		}
 	}
 }

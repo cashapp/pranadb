@@ -8,13 +8,13 @@ import (
 func TestDecimalFromString(t *testing.T) {
 	dec, err := NewDecFromString("12345678.87654321")
 	require.NoError(t, err)
-	require.Equal(t, "12345678.87654321", dec.ToString())
+	require.Equal(t, "12345678.87654321", dec.String())
 }
 
 func TestDecimalFromFloat64(t *testing.T) {
 	dec, err := NewDecFromFloat64(1.23e10)
 	require.NoError(t, err)
-	require.Equal(t, "12300000000", dec.ToString())
+	require.Equal(t, "12300000000", dec.String())
 }
 
 func TestEncodeDecode(t *testing.T) {
@@ -29,5 +29,5 @@ func TestEncodeDecode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(buff), off)
 
-	require.Equal(t, "12345678.87654321", dec2.ToString())
+	require.Equal(t, "12345678.87654321", dec2.String())
 }

@@ -319,8 +319,8 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 			}
 			v := iter.Value()
 			pairs = append(pairs, cluster.KVPair{
-				Key:   copySlice(k),
-				Value: copySlice(v),
+				Key:   copyByteSlice(k),
+				Value: copyByteSlice(v),
 			})
 			count++
 			if !iter.Next() {
@@ -373,7 +373,7 @@ func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 	if err == pebble.ErrNotFound {
 		return nil, nil
 	}
-	res := copySlice(v)
+	res := copyByteSlice(v)
 	if closer != nil {
 		err = closer.Close()
 		if err != nil {
@@ -385,7 +385,7 @@ func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 
 // Pebble tends to reuse buffers so we generally have to copy them before using them elsewhere
 // or the underlying bytes can change
-func copySlice(buff []byte) []byte {
+func copyByteSlice(buff []byte) []byte {
 	res := make([]byte, len(buff))
 	copy(res, buff)
 	return res

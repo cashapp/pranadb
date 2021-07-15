@@ -112,6 +112,15 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 			t = mv.TableInfo
 		}
 		executor = exec.NewPullTableScan(t, p.cluster, shardID)
+	case *core.PhysicalSort:
+		desc := make([]bool, len(op.ByItems))
+		sortByExprs := make([]*common.Expression, len(op.ByItems))
+		for i, byitem := range op.ByItems {
+			desc[i] = byitem.Desc
+			sortByExprs[i] = common.NewExpression(byitem.Expr)
+		}
+		// TODO What about descending order by?
+		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}

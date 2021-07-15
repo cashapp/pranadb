@@ -114,7 +114,7 @@ func TestExecutePullQuery(t *testing.T) {
 
 	// query := "select location, max(temperature) from test.sensor_readings group by location having location='wincanton'"
 	// query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
-	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton'"
+	query := "select sensor_id, location, temperature from test.sensor_readings where location='wincanton' order by temperature"
 	exec, err := ce.ExecuteSQLStatement("test", query)
 	require.NoError(t, err)
 	rows, err = exec.GetRows(100)

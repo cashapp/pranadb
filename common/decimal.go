@@ -30,6 +30,10 @@ func NewDecFromFloat64(f float64) (*Decimal, error) {
 	}, nil
 }
 
+func (d *Decimal) CompareTo(dec *Decimal) int {
+	return d.decimal.Compare(dec.decimal)
+}
+
 func (d *Decimal) Encode(buffer []byte, precision int, scale int) ([]byte, error) {
 	return d.decimal.WriteBin(precision, scale, buffer)
 }
@@ -44,6 +48,6 @@ func (d *Decimal) Decode(buffer []byte, offset int, precision int, scale int) (i
 	return offset + binSize, nil
 }
 
-func (d *Decimal) ToString() string {
+func (d *Decimal) String() string {
 	return string(d.decimal.ToString())
 }

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
 
@@ -9,6 +10,26 @@ import (
 
 type Expression struct {
 	expression expression.Expression
+	returnType *ColumnType
+}
+
+func (e *Expression) ReturnType(colTypes []ColumnType) (*ColumnType, error) {
+	if e.returnType == nil {
+		switch op := e.expression.(type) {
+		case *expression.Column:
+			colIndex := op.Index
+			e.returnType = &colTypes[colIndex]
+		case *expression.Constant:
+			colType := ConvertTiDBTypeToPranaType(op.RetType)
+			e.returnType = &colType
+		case *expression.ScalarFunction:
+			colType := ConvertTiDBTypeToPranaType(op.RetType)
+			e.returnType = &colType
+		default:
+			return nil, fmt.Errorf("unexpected expr type %v", op)
+		}
+	}
+	return e.returnType, nil
 }
 
 func NewColumnExpression(colIndex int, colType ColumnType) *Expression {

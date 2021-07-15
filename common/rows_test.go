@@ -53,7 +53,7 @@ func TestRows(t *testing.T) {
 			require.False(t, row.IsNull(5))
 			expectedDec := decVal(t, i)
 			actualDec := row.GetDecimal(5)
-			require.Equal(t, expectedDec.ToString(), actualDec.ToString())
+			require.Equal(t, expectedDec.String(), actualDec.String())
 		}
 	}
 }

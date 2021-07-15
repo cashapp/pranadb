@@ -99,7 +99,7 @@ func TestColumnExpressionDecimal(t *testing.T) {
 	require.False(t, null)
 	dec, err := NewDecFromString("12345.54321")
 	require.NoError(t, err)
-	require.Equal(t, dec.ToString(), val.ToString())
+	require.Equal(t, dec.String(), val.String())
 }
 
 func TestColumnExpressionNullDecimal(t *testing.T) {
