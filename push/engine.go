@@ -177,6 +177,64 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 	return p.ingest(rows, source)
 }
 
+// WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
+func (p *PushEngine) WaitForProcessingToComplete() error {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	// Wait for schedulers to complete processing anything they're doing
+	chans := make([]chan struct{}, 0, len(p.schedulers))
+	for _, sched := range p.schedulers {
+		ch := make(chan struct{})
+		chans = append(chans, ch)
+		sched.ScheduleAction(func() error {
+			ch <- struct{}{}
+			return nil
+		})
+	}
+	for _, ch := range chans {
+		_, ok := <- ch
+		if !ok {
+			return errors.New("chan was closed")
+		}
+	}
+
+	// Wait for no rows in the forwarder table
+	ok, err := common.WaitUntilWithError(func() (bool, error) {
+		keyStartPrefix := make([]byte, 0, 16)
+		keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
+		kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 1)
+		if err != nil {
+			return false, err
+		}
+		return len(kvPairs) == 0, nil
+	}, 5 * time.Second)
+	if !ok {
+		return errors.New("timed out waiting for condition")
+	}
+	if err != nil {
+		return err
+	}
+
+	// Wait for no rows in the receiver table
+	ok, err = common.WaitUntilWithError(func() (bool, error) {
+		keyStartPrefix := make([]byte, 0, 16)
+		keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ReceiverTableID)
+		kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 1)
+		if err != nil {
+			return false, err
+		}
+		return len(kvPairs) == 0, nil
+	}, 5 * time.Second)
+	if !ok {
+		return errors.New("timed out waiting for condition")
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
 	scheduler, shardID := p.chooseScheduler()
 

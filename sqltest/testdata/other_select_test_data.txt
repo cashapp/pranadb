@@ -1,0 +1,6 @@
+dataset:sensor_readings_1 sensor_readings
+1,"wincanton",23.2
+2,"london",27.6
+3,"san francisco",29.4
+4,"melbourne",33.2
+4,"sydney",35.7

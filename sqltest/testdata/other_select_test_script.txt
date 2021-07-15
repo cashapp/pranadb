@@ -1,0 +1,19 @@
+-- Test script;
+
+create source sensor_readings(
+    sensor_id big int,
+    location varchar,
+    temperature double,
+    primary key (sensor_id)
+);
+
+create materialized view wincanton_readings
+    select sensor_id, location, temperature
+    from test.sensor_readings
+    where location='wincanton';
+
+--load data sensor_readings_1;
+
+select * from test.sensor_readings order by sensor_id;
+
+select * from test.wincanton_readings;
