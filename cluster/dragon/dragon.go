@@ -75,6 +75,7 @@ type Dragon struct {
 	notifListeners               map[cluster.NotificationType]cluster.NotificationListener
 	notifDispatcher              *notificationDispatcher
 	testDragon                   bool
+	shuttingDown                 bool
 }
 
 func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
@@ -169,6 +170,8 @@ func (d *Dragon) Start() error {
 
 	log.Printf("attempting to start dragon node %d", d.nodeID)
 
+	d.shuttingDown = false
+
 	datadir := filepath.Join(d.dataDir, fmt.Sprintf("node-%d", d.nodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 
@@ -236,6 +239,7 @@ func (d *Dragon) Stop() error {
 	if !d.started {
 		return nil
 	}
+	d.shuttingDown = true
 	d.nh.Stop()
 	err := d.pebble.Close()
 	if err == nil {
@@ -627,6 +631,9 @@ func (d *Dragon) NodeHostShuttingDown() {
 }
 
 func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
+	if d.shuttingDown {
+		return
+	}
 	go func() {
 		err := d.nodeRemovedFromCluster(int(info.NodeID-1), info.ClusterID)
 		if err != nil {
