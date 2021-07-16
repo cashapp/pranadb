@@ -160,7 +160,7 @@ func TestGenerateTableID(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
 		require.NoError(t, err)
-		require.Equal(t, uint64(i)+cluster.UserTableIDBase, id)
+		require.Equal(t, uint64(i)+common.UserTableIDBase, id)
 	}
 }
 

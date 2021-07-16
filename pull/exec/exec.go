@@ -38,7 +38,7 @@ type PullExecutor interface {
 	AddChild(child PullExecutor)
 	GetParent() PullExecutor
 	GetChildren() []PullExecutor
-    ColNames() []string
+	ColNames() []string
 	ColTypes() []common.ColumnType
 }
 

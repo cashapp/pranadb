@@ -51,7 +51,6 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 	return dag, nil
 }
 
-
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
 func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string,

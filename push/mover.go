@@ -6,14 +6,6 @@ import (
 	"log"
 )
 
-// Don't use iota here as these must not change
-const (
-	ForwarderTableID         = 1
-	ForwarderSequenceTableID = 2
-	ReceiverTableID          = 3
-	ReceiverSequenceTableID  = 4
-)
-
 func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
 	sequence, err := p.nextForwardSequence(localShardID)
 	if err != nil {
@@ -22,9 +14,9 @@ func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *c
 
 	queueKeyBytes := make([]byte, 0, 40)
 
-	log.Printf("Queueing data for transfer for remote shard %d", remoteShardID)
+	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID, p.cluster.GetNodeID(), remoteShardID)
 
-	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, ForwarderTableID)
+	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, common.ForwarderTableID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, localShardID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, remoteShardID)
 	queueKeyBytes = common.AppendUint64ToBufferLittleEndian(queueKeyBytes, sequence)
@@ -46,17 +38,15 @@ func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *c
 // a channel - this will avoid scan of storage
 func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	keyStartPrefix := make([]byte, 0, 16)
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
+	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, common.ForwarderTableID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
-
-	log.Printf("Transferring data from shard %d on node %d", localShardID, p.cluster.GetNodeID())
 
 	// TODO make limit configurable
 	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 100)
 	if err != nil {
 		return err
 	}
-	// TODO if num rows returned = limit async schedule another batch
+	// FIXME if num rows returned = limit async schedule another batch
 
 	var batches []*forwardBatch
 	var batch *forwardBatch
@@ -78,7 +68,7 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 		}
 
 		remoteKey := make([]byte, 0, 40)
-		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, ReceiverTableID)
+		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, common.ReceiverTableID)
 		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, remoteShardID)
 		remoteKey = common.AppendUint64ToBufferLittleEndian(remoteKey, localShardID)
 
@@ -91,12 +81,14 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 
 	for _, fBatch := range batches {
 		// Write to the remote shard
+		log.Printf("Remote writing data from shard %d on node %d to remote shard %d", localShardID, p.cluster.GetNodeID(), fBatch.addBatch.ShardID)
 		err := p.cluster.WriteBatch(fBatch.addBatch)
 		if err != nil {
 			return err
 		}
 		if del {
 			// Delete locally
+			log.Printf("Deleting keys from forwarder queue for shard %d on node %d", localShardID, p.cluster.GetNodeID())
 			err = p.cluster.WriteBatch(fBatch.deleteBatch)
 			if err != nil {
 				return err
@@ -114,7 +106,7 @@ type forwardBatch struct {
 func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) error {
 	batch := cluster.NewWriteBatch(receivingShardID, false)
 	keyStartPrefix := make([]byte, 0, 16)
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ReceiverTableID)
+	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, common.ReceiverTableID)
 	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, receivingShardID)
 
 	// TODO make limit configurable
@@ -125,7 +117,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 	// TODO if num rows returned = limit async schedule another batch
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
-	log.Printf("In handleReceivedRows on shard %d and node %d, Got %d rows", receivingShardID, p.cluster.GetNodeID(), len(kvPairs))
+	log.Printf("In handleReceivedRows on shard %d and node %d, Got %d rows in receiver table", receivingShardID, p.cluster.GetNodeID(), len(kvPairs))
 	for _, kvPair := range kvPairs {
 		sendingShardID := common.ReadUint64FromBufferLittleEndian(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
@@ -153,7 +145,6 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 		}
 		batch.AddDelete(kvPair.Key)
 	}
-	log.Printf("Calling HandleRawRows with %d rows", len(remoteConsumerRows))
 	if len(remoteConsumerRows) > 0 {
 		err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
 		if err != nil {
@@ -230,13 +221,13 @@ func (p *PushEngine) updateLastReceivingSequence(receivingShardID uint64, sendin
 
 func (p *PushEngine) genForwardSequenceKey(localShardID uint64) []byte {
 	seqKey := make([]byte, 0, 16)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ForwarderSequenceTableID)
 	return common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
 }
 
 func (p *PushEngine) genReceivingSequenceKey(receivingShardID uint64, sendingShardID uint64) []byte {
 	seqKey := make([]byte, 0, 24)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ReceiverSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ReceiverSequenceTableID)
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, receivingShardID)
 	return common.AppendUint64ToBufferLittleEndian(seqKey, sendingShardID)
 }

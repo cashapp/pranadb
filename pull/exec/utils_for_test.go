@@ -37,6 +37,14 @@ type rowProvider struct {
 	rows        *common.Rows
 }
 
+func (r *rowProvider) ColNames() []string {
+	return nil
+}
+
+func (r *rowProvider) ColTypes() []common.ColumnType {
+	return nil
+}
+
 func (r *rowProvider) GetRows(limit int) (rows *common.Rows, err error) {
 	rows = r.rowsFactory.NewRows(1)
 	rowsRemaining := r.rowsFactory.NewRows(1)

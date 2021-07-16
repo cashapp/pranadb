@@ -25,7 +25,7 @@ func TestQueueForRemoteSendWithPersistedSequence(t *testing.T) {
 	clus, shard, pe := startup(t)
 	// Update the sequence
 	seqKey := make([]byte, 0, 16)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ForwarderSequenceTableID)
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, 1)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, 333)
@@ -77,7 +77,7 @@ func TestTransferData(t *testing.T) {
 	// Check individual receiver rows
 	for i, rowToSend := range rows {
 		keyBytes := make([]byte, 0, 40)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, ReceiverTableID)
+		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, common.ReceiverTableID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteShardID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, localShardID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, uint64(i+1))
@@ -189,7 +189,7 @@ func TestHandleReceivedRows(t *testing.T) {
 
 		// Make sure rows have been deleted from receiver table
 		remoteKeyPrefix := make([]byte, 0)
-		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
+		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
 		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, receivingShardID)
 		recPairs, err := clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
 		require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestHandleReceivedRows(t *testing.T) {
 		// Check the receiving sequences have been updated ok
 		for _, sendingShardID := range shardIds {
 			seqKey := make([]byte, 0, 24)
-			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ReceiverSequenceTableID)
+			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ReceiverSequenceTableID)
 			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, receivingShardID)
 			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, sendingShardID)
 
@@ -264,7 +264,7 @@ func TestDedupOfForwards(t *testing.T) {
 
 	// Check forwarder sequence
 	forSeqKey := make([]byte, 0, 16)
-	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, ForwarderSequenceTableID)
+	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, common.ForwarderSequenceTableID)
 	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, localShardID)
 	seqBytes, err := pe.cluster.LocalGet(forSeqKey)
 	require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestDedupOfForwards(t *testing.T) {
 	maxSeq := uint64(0)
 	for remoteShardID := range remoteShardsIds {
 		recSeqKey := make([]byte, 0, 24)
-		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, ReceiverSequenceTableID)
+		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, common.ReceiverSequenceTableID)
 		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, remoteShardID)
 		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, localShardID)
 
@@ -293,7 +293,7 @@ func TestDedupOfForwards(t *testing.T) {
 
 	// Make sure rows deleted from receiver table
 	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
+	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
 	kvPairs, err = clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
 	require.NoError(t, err)
 	require.Nil(t, kvPairs)
@@ -341,7 +341,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	for i, rowToSend := range rows {
 
 		var keyBytes []byte
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, ForwarderTableID)
+		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, common.ForwarderTableID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, localShardID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteShardID)
 		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, uint64(i+startSequence))
@@ -352,7 +352,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 
 	// Check forward sequence has been updated ok
 	seqKey := make([]byte, 0, 16)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, ForwarderSequenceTableID)
+	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ForwarderSequenceTableID)
 	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
 	seqBytes, err := pe.cluster.LocalGet(seqKey)
 	require.NoError(t, err)
@@ -421,7 +421,7 @@ func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row
 
 func createForwarderKey(localShardID uint64) []byte {
 	keyStartPrefix := make([]byte, 0, 16)
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, ForwarderTableID)
+	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, common.ForwarderTableID)
 	return common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
 }
 
@@ -476,7 +476,7 @@ func generateRows(t *testing.T, numRows int, colTypes []common.ColumnType, sh *s
 func waitUntilRowsInReceiverTable(t *testing.T, stor cluster.Cluster, numRows int) {
 	t.Helper()
 	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
+	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
 	common.WaitUntil(t, func() (bool, error) {
 		remPairs, err := stor.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
 		if err != nil {
