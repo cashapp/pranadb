@@ -317,7 +317,7 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	exec, err := st.choosePrana().GetCommandExecutor().ExecuteSQLStatement("test", statement)
+	exec, err := st.choosePrana().CreateSession("test").ExecuteSQLStatement(statement)
 	require.NoError(err)
 	rows, err := exec.GetRows(100000)
 	require.NoError(err)

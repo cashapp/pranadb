@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
@@ -37,11 +36,10 @@ func NewServer(config Config) (*Server, error) {
 	}
 
 	metaController := meta.NewController(clus)
-	planner := parplan.NewPlanner()
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, planner, shardr)
+	pushEngine := push.NewPushEngine(clus, shardr)
 	clus.RegisterShardListenerFactory(pushEngine)
-	pullEngine := pull.NewPullEngine(planner, clus, metaController)
+	pullEngine := pull.NewPullEngine(clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, commandExecutor)
@@ -123,11 +121,6 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-// GetCommandExecutor is for testing
-func (s *Server) GetCommandExecutor() *command.Executor {
-	return s.commandExecutor
-}
-
 func (s *Server) GetMetaController() *meta.Controller {
 	return s.metaController
 }
@@ -142,4 +135,9 @@ func (s *Server) GetPushEngine() *push.PushEngine {
 
 func (s *Server) GetCluster() cluster.Cluster {
 	return s.cluster
+}
+
+func (s *Server) CreateSession(schemaName string) *command.Session {
+	schema := s.metaController.GetOrCreateSchema(schemaName)
+	return command.NewSession(s.commandExecutor, schema)
 }

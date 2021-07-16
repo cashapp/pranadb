@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/parplan"
 	"log"
 	"sync"
 
@@ -64,7 +65,8 @@ func (f *fakeCluster) RegisterNotificationListener(notificationType Notification
 
 func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	log.Printf("Executing remote query on shardID %d", shardID)
-	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(schemaName, query, queryID, limit, shardID)
+	pl := parplan.NewPlanner()
+	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(pl, schemaName, query, queryID, limit, shardID)
 }
 
 func (f *fakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {

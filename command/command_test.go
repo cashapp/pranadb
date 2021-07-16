@@ -19,8 +19,8 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 	metaController := meta.NewController(clus)
 	planner := parplan.NewPlanner()
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, planner, shardr)
-	pullEngine := pull.NewPullEngine(planner, clus, metaController)
+	pushEngine := push.NewPushEngine(clus, shardr)
+	pullEngine := pull.NewPullEngine(clus, metaController)
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
 
@@ -44,9 +44,11 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 				where location='wincanton' group by sensor_id
 		`, rows: exec.Empty},
 	}
+	schema := metaController.GetOrCreateSchema("test")
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			executor, err := ce.ExecuteSQLStatement("test", test.query)
+			seqGenerator := &preallocSeqGen{sequences: []uint64{1, 2}}
+			executor, err := ce.executeSQLStatementInternal(planner, schema, test.query, true, seqGenerator)
 			require.NoError(t, err)
 			actual, err := executor.GetRows(999)
 			require.NoError(t, err)

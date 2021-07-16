@@ -3,6 +3,7 @@ package push
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 )
 
@@ -12,8 +13,8 @@ type materializedView struct {
 	store         cluster.Cluster
 }
 
-func (p *PushEngine) CreateMaterializedView(schema *common.Schema, mvName string, query string, tableID uint64, seqGenerator common.SeqGenerator) (*common.MaterializedViewInfo, error) {
-	dag, err := p.buildPushQueryExecution(schema, query, schema.Name+"."+mvName, seqGenerator)
+func (p *PushEngine) CreateMaterializedView(pl *parplan.Planner, schema *common.Schema, mvName string, query string, tableID uint64, seqGenerator common.SeqGenerator) (*common.MaterializedViewInfo, error) {
+	dag, err := p.buildPushQueryExecution(pl, schema, query, schema.Name+"."+mvName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}

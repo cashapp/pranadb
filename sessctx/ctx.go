@@ -20,7 +20,7 @@ import (
 	"github.com/pingcap/tipb/go-binlog"
 )
 
-func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Context {
+func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string) sessionctx.Context {
 	kvClient := fakeKVClient{pullQuery: pullQuery}
 	storage := fakeStorage{client: kvClient}
 	d := domain.NewDomain(storage, 0, 0, 0, nil)
@@ -30,6 +30,8 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Cont
 	// plan
 	sessVars.StmtCtx.UseCache = true
 	sessVars.StmtCtx.MemTracker = memory.NewTracker(0, -1)
+	sessVars.CurrentDB = database
+
 	ctx := sessCtx{
 		is:          is,
 		store:       storage,
@@ -41,7 +43,7 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Cont
 }
 
 func NewDummySessionContext() sessionctx.Context {
-	return NewSessionContext(nil, false)
+	return NewSessionContext(nil, false, "test")
 }
 
 type sessCtx struct {

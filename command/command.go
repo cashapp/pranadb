@@ -1,7 +1,9 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/parplan"
 	"log"
+	"sync"
 	"sync/atomic"
 
 	"github.com/alecthomas/repr"
@@ -24,6 +26,8 @@ type Executor struct {
 	pullEngine      *pull.PullEngine
 	ddlStatementSeq int64
 	notifActions    map[int64]chan statementExecutionResult
+	ddlExecPlanner  *parplan.Planner // Only used for executing DDL
+	ddlExecLock     sync.Mutex
 }
 
 func NewCommandExecutor(
@@ -38,6 +42,7 @@ func NewCommandExecutor(
 		pushEngine:     pushEngine,
 		pullEngine:     pullEngine,
 		notifActions:   make(map[int64]chan statementExecutionResult),
+		ddlExecPlanner: parplan.NewPlanner(),
 	}
 }
 
@@ -74,11 +79,10 @@ func (p *Executor) createSource(
 	return p.pushEngine.CreateSource(&sourceInfo)
 }
 
-func (p *Executor) createMaterializedView(schemaName string, name string, query string, seqGenerator common.SeqGenerator) error {
+func (p *Executor) createMaterializedView(pl *parplan.Planner, schema *common.Schema, name string, query string, seqGenerator common.SeqGenerator) error {
 	log.Printf("creating mv %s on node %d", name, p.cluster.GetNodeID())
 	id := seqGenerator.GenerateSequence()
-	schema := p.metaController.GetOrCreateSchema(schemaName)
-	mvInfo, err := p.pushEngine.CreateMaterializedView(schema, name, query, id, seqGenerator)
+	mvInfo, err := p.pushEngine.CreateMaterializedView(pl, schema, name, query, id, seqGenerator)
 	if err != nil {
 		return err
 	}
@@ -89,44 +93,24 @@ func (p *Executor) createMaterializedView(schemaName string, name string, query 
 	return nil
 }
 
-func (p *Executor) CreateSink(schemaName string, sinkInfo *common.SinkInfo) error {
-	panic("implement me")
-}
-
-func (p *Executor) DropSource(schemaName string, name string) error {
-	panic("implement me")
-}
-
-func (p *Executor) DropMaterializedView(schemaName string, name string) error {
-	panic("implement me")
-}
-
-func (p *Executor) DropSink(schemaName string, name string) error {
-	panic("implement me")
-}
-
-func (p *Executor) CreatePushQuery(sql string) error {
-	panic("implement me")
-}
-
 // GetPushEngine is only used in testing
 func (p *Executor) GetPushEngine() *push.PushEngine {
 	return p.pushEngine
 }
 
-// ExecuteSQLStatement executes a synchronous SQL statement.
-func (p *Executor) ExecuteSQLStatement(schemaName string, sql string) (exec.PullExecutor, error) {
-	return p.executeSQLStatementInternal(schemaName, sql, true, nil)
+func (p *Executor) executeSQLStatementFromNotification(pl *parplan.Planner, schemaName string, sql string, local bool, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+	schema := p.metaController.GetOrCreateSchema(schemaName)
+	return p.executeSQLStatementInternal(pl, schema, sql, local, seqGenerator)
 }
 
-func (p *Executor) executeSQLStatementInternal(schemaName string, sql string, local bool, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+func (p *Executor) executeSQLStatementInternal(pl *parplan.Planner, schema *common.Schema, sql string, local bool, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	switch {
 	case ast.Select != "":
-		return p.execSelect(schemaName, ast.Select)
+		return p.execSelect(pl, schema, ast.Select)
 
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
 		if local {
@@ -135,9 +119,9 @@ func (p *Executor) executeSQLStatementInternal(schemaName string, sql string, lo
 			if err != nil {
 				return nil, err
 			}
-			return p.executeInGlobalOrder(schemaName, sql, sequences)
+			return p.executeInGlobalOrder(schema.Name, sql, sequences)
 		}
-		return p.execCreateMaterializedView(schemaName, ast.Create.MaterializedView, seqGenerator)
+		return p.execCreateMaterializedView(pl, schema, ast.Create.MaterializedView, seqGenerator)
 
 	case ast.Create != nil && ast.Create.Source != nil:
 		if local {
@@ -146,9 +130,9 @@ func (p *Executor) executeSQLStatementInternal(schemaName string, sql string, lo
 			if err != nil {
 				return nil, err
 			}
-			return p.executeInGlobalOrder(schemaName, sql, sequences)
+			return p.executeInGlobalOrder(schema.Name, sql, sequences)
 		}
-		return p.execCreateSource(schemaName, ast.Create.Source, seqGenerator)
+		return p.execCreateSource(schema.Name, ast.Create.Source, seqGenerator)
 
 	default:
 		panic("unsupported query " + sql)
@@ -184,17 +168,13 @@ func (p preallocSeqGen) GenerateSequence() uint64 {
 	return res
 }
 
-func (p *Executor) execSelect(schemaName string, sql string) (exec.PullExecutor, error) {
-	schema, ok := p.metaController.GetSchema(schemaName)
-	if !ok {
-		return nil, errors.Errorf("unknown schema %s", schemaName)
-	}
-	dag, err := p.pullEngine.BuildPullQuery(schema, sql)
+func (p *Executor) execSelect(pl *parplan.Planner, schema *common.Schema, sql string) (exec.PullExecutor, error) {
+	dag, err := p.pullEngine.BuildPullQuery(pl, schema, sql)
 	return dag, errors.WithStack(err)
 }
 
-func (p *Executor) execCreateMaterializedView(schemaName string, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
-	err := p.createMaterializedView(schemaName, mv.Name.String(), mv.Query.String(), seqGenerator)
+func (p *Executor) execCreateMaterializedView(pl *parplan.Planner, schema *common.Schema, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+	err := p.createMaterializedView(pl, schema, mv.Name.String(), mv.Query.String(), seqGenerator)
 	return exec.Empty, errors.WithStack(err)
 }
 
@@ -267,6 +247,8 @@ func (p *Executor) executeInGlobalOrder(schemaName string, sql string, sequences
 }
 
 func (p *Executor) HandleNotification(notification cluster.Notification) {
+	p.ddlExecLock.Lock()
+	defer p.ddlExecLock.Unlock()
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
 	seqGenerator := &preallocSeqGen{sequences: ddlStmt.TableSequences}
 	if ddlStmt.OriginatingNodeId == int64(p.cluster.GetNodeID()) {
@@ -274,14 +256,14 @@ func (p *Executor) HandleNotification(notification cluster.Notification) {
 		if !ok {
 			panic("cannot find notification")
 		}
-		ex, err := p.executeSQLStatementInternal(ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
+		ex, err := p.executeSQLStatementFromNotification(p.ddlExecPlanner, ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
 		res := statementExecutionResult{
 			exec: ex,
 			err:  err,
 		}
 		ch <- res
 	} else {
-		_, err := p.executeSQLStatementInternal(ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
+		_, err := p.executeSQLStatementFromNotification(p.ddlExecPlanner, ddlStmt.SchemaName, ddlStmt.Sql, false, seqGenerator)
 		if err != nil {
 			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
 		}
