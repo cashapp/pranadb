@@ -10,11 +10,13 @@ create materialized view wincanton_readings
     from test.sensor_readings
     where location='wincanton';
 Ok
-select * from test.sensor_readings order by sensor_id;
-|3|"san francisco"|29.400000|
-|2|"london"|27.600000|
-|4|"sydney"|35.700000|
-|1|"wincanton"|23.200000|
-4 rows returned
+select * from test.sensor_readings order by location;
+|2|london|55.600000|
+|4|melbourne|33.200000|
+|3|san francisco|29.400000|
+|5|sydney|35.700000|
+|1|wincanton|23.200000|
+5 rows returned
 select * from test.wincanton_readings;
-0 rows returned
+|1|wincanton|23.200000|
+1 rows returned

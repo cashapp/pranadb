@@ -14,6 +14,6 @@ create materialized view wincanton_readings
 
 --load data sensor_readings_1;
 
-select * from test.sensor_readings order by sensor_id;
+select * from test.sensor_readings order by location;
 
 select * from test.wincanton_readings;

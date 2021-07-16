@@ -38,6 +38,8 @@ type PullExecutor interface {
 	AddChild(child PullExecutor)
 	GetParent() PullExecutor
 	GetChildren() []PullExecutor
+    ColNames() []string
+	ColTypes() []common.ColumnType
 }
 
 type pullExecutorBase struct {

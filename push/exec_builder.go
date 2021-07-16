@@ -13,7 +13,7 @@ import (
 
 func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
-	physicalPlan, err := p.planner.QueryToPlan(schema, query, false)
+	physicalPlan, _, err := p.planner.QueryToPlan(schema, query, false)
 	if err != nil {
 		return nil, err
 	}

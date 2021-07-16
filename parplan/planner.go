@@ -31,27 +31,37 @@ func NewPlanner() *Planner {
 	}
 }
 
-func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery bool) (core.PhysicalPlan, error) {
+func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery bool) (core.PhysicalPlan, *core.LogicalSort, error) {
 	stmt, err := p.parser.Parse(query)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	is := schemaToInfoSchema(schema)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ctx := context.TODO()
 	sessCtx := sessctx.NewSessionContext(is, pullQuery)
 	// TODO doesn't seem to work if there are prepared statement markers
 	err = core.Preprocess(sessCtx, stmt)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	logicalPlan, err := p.createLogicalPlan(ctx, sessCtx, stmt, is)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return p.createPhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
+
+	var logicalSort *core.LogicalSort
+	if pullQuery {
+		logicalSort, _ = logicalPlan.(*core.LogicalSort)
+	}
+
+	phys, err := p.createPhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	return phys, logicalSort, nil
 }
 
 func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error) {
