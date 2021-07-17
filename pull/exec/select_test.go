@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -22,7 +23,7 @@ func TestSelectOneRow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 
-	common.AllRowsEqual(t, exp, provided, colTypes)
+	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
 	provided, err = sel.GetRows(-1)
 	require.NoError(t, err)
@@ -49,7 +50,7 @@ func TestSelectAllRows(t *testing.T) {
 	require.NotNil(t, provided)
 	expectedCount := len(expectedRows)
 	require.Equal(t, expectedCount, provided.RowCount())
-	common.AllRowsEqual(t, exp, provided, colTypes)
+	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
 	provided, err = sel.GetRows(-1)
 	require.NoError(t, err)
@@ -108,7 +109,7 @@ func TestSelectWithLimit2(t *testing.T) {
 	provided, err := sel.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp1, provided, colTypes)
+	commontest.AllRowsEqual(t, exp1, provided, colTypes)
 
 	expectedRows2 := [][]interface{}{
 		{3, "los angeles", 20.6, "11.75"},
@@ -118,7 +119,7 @@ func TestSelectWithLimit2(t *testing.T) {
 	provided, err = sel.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp2, provided, colTypes)
+	commontest.AllRowsEqual(t, exp2, provided, colTypes)
 
 	expectedRows3 := [][]interface{}{
 		{5, "tokyo", 28.9, "999.99"},
@@ -127,7 +128,7 @@ func TestSelectWithLimit2(t *testing.T) {
 	provided, err = sel.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp3, provided, colTypes)
+	commontest.AllRowsEqual(t, exp3, provided, colTypes)
 
 	provided, err = sel.GetRows(2)
 	require.NoError(t, err)

@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -183,7 +184,7 @@ func TestHandleReceivedRows(t *testing.T) {
 			for i := 0; i < len(expectedConsumerRows); i++ {
 				expectedRow := expectedConsumerRows[i]
 				actualRow := actualConsumerRows[i]
-				common.RowsEqual(t, *expectedRow.row, *actualRow.row, colTypes)
+				commontest.RowsEqual(t, *expectedRow.row, *actualRow.row, colTypes)
 			}
 		}
 
@@ -416,7 +417,7 @@ func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row
 	err = common.DecodeRow(v, colTypes, fRows)
 	require.NoError(t, err)
 	row := fRows.GetRow(0)
-	common.RowsEqual(t, *expectedRow, row, colTypes)
+	commontest.RowsEqual(t, *expectedRow, row, colTypes)
 }
 
 func createForwarderKey(localShardID uint64) []byte {
@@ -477,7 +478,7 @@ func waitUntilRowsInReceiverTable(t *testing.T, stor cluster.Cluster, numRows in
 	t.Helper()
 	remoteKeyPrefix := make([]byte, 0)
 	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
-	common.WaitUntil(t, func() (bool, error) {
+	commontest.WaitUntil(t, func() (bool, error) {
 		remPairs, err := stor.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
 		if err != nil {
 			return false, err

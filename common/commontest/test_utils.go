@@ -1,6 +1,7 @@
-package common
+package commontest
 
 import (
+	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
 	"sort"
 	"testing"
@@ -11,15 +12,15 @@ import (
 // I would like these to live in a xxx_test.go file so they're not compiled into the executable however I haven't
 // been able to figure out how to do that and still be able to include them in tests from other packages
 
-func SortRows(rows []*Row) []*Row {
+func SortRows(rows []*common.Row) []*common.Row {
 	sort.SliceStable(rows, func(i, j int) bool {
 		return rows[i].GetInt64(0) < rows[j].GetInt64(0)
 	})
 	return rows
 }
 
-func RowsToSlice(rows *Rows) []*Row {
-	slice := make([]*Row, rows.RowCount())
+func RowsToSlice(rows *common.Rows) []*common.Row {
+	slice := make([]*common.Row, rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		slice[i] = &row
@@ -27,7 +28,7 @@ func RowsToSlice(rows *Rows) []*Row {
 	return slice
 }
 
-func AllRowsEqual(t *testing.T, expected *Rows, actual *Rows, colTypes []ColumnType) {
+func AllRowsEqual(t *testing.T, expected *common.Rows, actual *common.Rows, colTypes []common.ColumnType) {
 	t.Helper()
 	require.Equal(t, expected.RowCount(), actual.RowCount())
 	for i := 0; i < expected.RowCount(); i++ {
@@ -35,7 +36,7 @@ func AllRowsEqual(t *testing.T, expected *Rows, actual *Rows, colTypes []ColumnT
 	}
 }
 
-func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
+func RowsEqual(t *testing.T, expected common.Row, actual common.Row, colTypes []common.ColumnType) {
 	t.Helper()
 	require.Equal(t, expected.ColCount(), actual.ColCount())
 	for colIndex, colType := range colTypes {
@@ -44,19 +45,19 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 		require.Equal(t, expectedNull, actualNull)
 		if !expectedNull {
 			switch colType.Type {
-			case TypeTinyInt, TypeInt, TypeBigInt:
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val1 := expected.GetInt64(colIndex)
 				val2 := actual.GetInt64(colIndex)
 				require.Equal(t, val1, val2)
-			case TypeDecimal:
+			case common.TypeDecimal:
 				val1 := expected.GetDecimal(colIndex)
 				val2 := actual.GetDecimal(colIndex)
 				require.Equal(t, val1.String(), val2.String())
-			case TypeDouble:
+			case common.TypeDouble:
 				val1 := expected.GetFloat64(colIndex)
 				val2 := actual.GetFloat64(colIndex)
 				require.Equal(t, val1, val2)
-			case TypeVarchar:
+			case common.TypeVarchar:
 				val1 := expected.GetString(colIndex)
 				val2 := actual.GetString(colIndex)
 				require.Equal(t, val1, val2)
@@ -67,7 +68,7 @@ func RowsEqual(t *testing.T, expected Row, actual Row, colTypes []ColumnType) {
 	}
 }
 
-func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...interface{}) {
+func AppendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, colVals ...interface{}) {
 	t.Helper()
 	require.Equal(t, len(colVals), len(colTypes))
 
@@ -77,14 +78,14 @@ func AppendRow(t *testing.T, rows *Rows, colTypes []ColumnType, colVals ...inter
 			rows.AppendNullToColumn(i)
 		} else {
 			switch colType.Type {
-			case TypeTinyInt, TypeInt, TypeBigInt:
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				rows.AppendInt64ToColumn(i, int64(colVal.(int)))
-			case TypeDouble:
+			case common.TypeDouble:
 				rows.AppendFloat64ToColumn(i, colVal.(float64))
-			case TypeVarchar:
+			case common.TypeVarchar:
 				rows.AppendStringToColumn(i, colVal.(string))
-			case TypeDecimal:
-				dec, err := NewDecFromString(colVal.(string))
+			case common.TypeDecimal:
+				dec, err := common.NewDecFromString(colVal.(string))
 				require.NoError(t, err)
 				rows.AppendDecimalToColumn(i, *dec)
 			default:

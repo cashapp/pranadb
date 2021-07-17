@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
 	"log"
 	"math/rand"
 	"sync"
@@ -264,7 +265,7 @@ func (p *PushEngine) waitForSchedulers() error {
 }
 
 func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
-	ok, err := common.WaitUntilWithError(func() (bool, error) {
+	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		keyStartPrefix := make([]byte, 0, 16)
 		keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, tableID)
 		kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 1)

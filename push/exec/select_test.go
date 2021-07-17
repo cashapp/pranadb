@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"github.com/squareup/pranadb/common/commontest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,5 +66,5 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	require.NotNil(t, gathered)
 
 	exp := toRows(t, expectedRows, colTypes)
-	common.AllRowsEqual(t, exp, gathered, colTypes)
+	commontest.AllRowsEqual(t, exp, gathered, colTypes)
 }

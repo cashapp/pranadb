@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -450,7 +451,7 @@ func testSort(t *testing.T, inpRows [][]interface{}, expRows [][]interface{}, so
 	require.NoError(t, err)
 	require.Equal(t, len(expRows), rows.RowCount())
 	expected := toRows(t, expRows, sortColTypes)
-	common.AllRowsEqual(t, expected, rows, sortColTypes)
+	commontest.AllRowsEqual(t, expected, rows, sortColTypes)
 }
 
 func setupSort(t *testing.T, inputRows [][]interface{}, colNames []string, colTypes []common.ColumnType, descending []bool, sortByExprs ...*common.Expression) PullExecutor {

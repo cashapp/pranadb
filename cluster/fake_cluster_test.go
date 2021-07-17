@@ -2,7 +2,7 @@ package cluster
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"math/rand"
 	"testing"
@@ -179,7 +179,7 @@ func TestNotifications(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	common.WaitUntil(t, func() (bool, error) {
+	commontest.WaitUntil(t, func() (bool, error) {
 		lNotifs := len(notifListener.getNotifs())
 		return lNotifs == numNotifs, nil
 	})

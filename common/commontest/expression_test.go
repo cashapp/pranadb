@@ -1,6 +1,7 @@
-package common
+package commontest
 
 import (
+	"github.com/squareup/pranadb/common"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -8,7 +9,7 @@ import (
 
 func TestColumnExpressionTinyInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(0, TinyIntColumnType)
+	colExpr := common.NewColumnExpression(0, common.TinyIntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -17,7 +18,7 @@ func TestColumnExpressionTinyInt(t *testing.T) {
 
 func TestColumnExpressionNullTinyInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(1, TinyIntColumnType)
+	colExpr := common.NewColumnExpression(1, common.TinyIntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.True(t, null)
@@ -25,7 +26,7 @@ func TestColumnExpressionNullTinyInt(t *testing.T) {
 
 func TestColumnExpressionInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(2, IntColumnType)
+	colExpr := common.NewColumnExpression(2, common.IntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -34,7 +35,7 @@ func TestColumnExpressionInt(t *testing.T) {
 
 func TestColumnExpressionNullInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(3, IntColumnType)
+	colExpr := common.NewColumnExpression(3, common.IntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.True(t, null)
@@ -42,7 +43,7 @@ func TestColumnExpressionNullInt(t *testing.T) {
 
 func TestColumnExpressionBigInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(4, BigIntColumnType)
+	colExpr := common.NewColumnExpression(4, common.BigIntColumnType)
 	val, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -51,7 +52,7 @@ func TestColumnExpressionBigInt(t *testing.T) {
 
 func TestColumnExpressionNullBigInt(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(5, BigIntColumnType)
+	colExpr := common.NewColumnExpression(5, common.BigIntColumnType)
 	_, null, err := colExpr.EvalInt64(row)
 	require.NoError(t, err)
 	require.True(t, null)
@@ -59,7 +60,7 @@ func TestColumnExpressionNullBigInt(t *testing.T) {
 
 func TestColumnExpressionDouble(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(6, DoubleColumnType)
+	colExpr := common.NewColumnExpression(6, common.DoubleColumnType)
 	val, null, err := colExpr.EvalFloat64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -68,7 +69,7 @@ func TestColumnExpressionDouble(t *testing.T) {
 
 func TestColumnExpressionNullDouble(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(7, DoubleColumnType)
+	colExpr := common.NewColumnExpression(7, common.DoubleColumnType)
 	_, null, err := colExpr.EvalFloat64(row)
 	require.NoError(t, err)
 	require.True(t, null)
@@ -76,7 +77,7 @@ func TestColumnExpressionNullDouble(t *testing.T) {
 
 func TestColumnExpressionVarchar(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(8, VarcharColumnType)
+	colExpr := common.NewColumnExpression(8, common.VarcharColumnType)
 	val, null, err := colExpr.EvalString(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -85,7 +86,7 @@ func TestColumnExpressionVarchar(t *testing.T) {
 
 func TestColumnExpressionNullVarchar(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(9, VarcharColumnType)
+	colExpr := common.NewColumnExpression(9, common.VarcharColumnType)
 	_, null, err := colExpr.EvalString(row)
 	require.NoError(t, err)
 	require.True(t, null)
@@ -93,28 +94,28 @@ func TestColumnExpressionNullVarchar(t *testing.T) {
 
 func TestColumnExpressionDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(10, NewDecimalColumnType(10, 2))
+	colExpr := common.NewColumnExpression(10, common.NewDecimalColumnType(10, 2))
 	val, null, err := colExpr.EvalDecimal(row)
 	require.NoError(t, err)
 	require.False(t, null)
-	dec, err := NewDecFromString("12345.54321")
+	dec, err := common.NewDecFromString("12345.54321")
 	require.NoError(t, err)
 	require.Equal(t, dec.String(), val.String())
 }
 
 func TestColumnExpressionNullDecimal(t *testing.T) {
 	row := createRow(t)
-	colExpr := NewColumnExpression(11, NewDecimalColumnType(10, 2))
+	colExpr := common.NewColumnExpression(11, common.NewDecimalColumnType(10, 2))
 	_, null, err := colExpr.EvalDecimal(row)
 	require.NoError(t, err)
 	require.True(t, null)
 }
 
-func createRow(t *testing.T) *Row {
+func createRow(t *testing.T) *common.Row {
 	t.Helper()
-	decType1 := NewDecimalColumnType(10, 2)
-	colTypes := []ColumnType{TinyIntColumnType, TinyIntColumnType, IntColumnType, IntColumnType, BigIntColumnType, BigIntColumnType, DoubleColumnType, DoubleColumnType, VarcharColumnType, VarcharColumnType, decType1, decType1}
-	rf := NewRowsFactory(colTypes)
+	decType1 := common.NewDecimalColumnType(10, 2)
+	colTypes := []common.ColumnType{common.TinyIntColumnType, common.TinyIntColumnType, common.IntColumnType, common.IntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.DoubleColumnType, common.VarcharColumnType, common.VarcharColumnType, decType1, decType1}
+	rf := common.NewRowsFactory(colTypes)
 	rows := rf.NewRows(1)
 	rows.AppendInt64ToColumn(0, 1)
 	rows.AppendNullToColumn(1)
@@ -126,7 +127,7 @@ func createRow(t *testing.T) *Row {
 	rows.AppendNullToColumn(7)
 	rows.AppendStringToColumn(8, "some-string")
 	rows.AppendNullToColumn(9)
-	dec, err := NewDecFromString("12345.54321")
+	dec, err := common.NewDecFromString("12345.54321")
 	require.NoError(t, err)
 	rows.AppendDecimalToColumn(10, *dec)
 	rows.AppendNullToColumn(11)
@@ -136,7 +137,7 @@ func createRow(t *testing.T) *Row {
 
 func TestConstantTinyIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr := NewConstantInt(TinyIntColumnType, 100)
+	expr := common.NewConstantInt(common.TinyIntColumnType, 100)
 	val, null, err := expr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -145,7 +146,7 @@ func TestConstantTinyIntExpression(t *testing.T) {
 
 func TestConstantIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr := NewConstantInt(IntColumnType, 101)
+	expr := common.NewConstantInt(common.IntColumnType, 101)
 	val, null, err := expr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -154,7 +155,7 @@ func TestConstantIntExpression(t *testing.T) {
 
 func TestConstantBigIntExpression(t *testing.T) {
 	row := createRow(t)
-	expr := NewConstantInt(BigIntColumnType, 102)
+	expr := common.NewConstantInt(common.BigIntColumnType, 102)
 	val, null, err := expr.EvalInt64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -163,7 +164,7 @@ func TestConstantBigIntExpression(t *testing.T) {
 
 func TestConstantDoubleExpression(t *testing.T) {
 	row := createRow(t)
-	expr := NewConstantDouble(DoubleColumnType, 1234.32)
+	expr := common.NewConstantDouble(common.DoubleColumnType, 1234.32)
 	val, null, err := expr.EvalFloat64(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -172,7 +173,7 @@ func TestConstantDoubleExpression(t *testing.T) {
 
 func TestConstantStringExpression(t *testing.T) {
 	row := createRow(t)
-	expr := NewConstantVarchar(VarcharColumnType, "other-string")
+	expr := common.NewConstantVarchar(common.VarcharColumnType, "other-string")
 	val, null, err := expr.EvalString(row)
 	require.NoError(t, err)
 	require.False(t, null)
@@ -181,9 +182,9 @@ func TestConstantStringExpression(t *testing.T) {
 
 func TestScalarFunctionExpression(t *testing.T) {
 	row := createRow(t)
-	colExpr1 := NewColumnExpression(0, TinyIntColumnType)
-	colExpr2 := NewColumnExpression(2, IntColumnType)
-	expr1, err := NewScalarFunctionExpression(BigIntColumnType, "gt", colExpr2, colExpr1)
+	colExpr1 := common.NewColumnExpression(0, common.TinyIntColumnType)
+	colExpr2 := common.NewColumnExpression(2, common.IntColumnType)
+	expr1, err := common.NewScalarFunctionExpression(common.BigIntColumnType, "gt", colExpr2, colExpr1)
 	require.NoError(t, err)
 	val, null, err := expr1.EvalInt64(row)
 	require.NoError(t, err)

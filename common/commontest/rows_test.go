@@ -1,16 +1,17 @@
-package common
+package commontest
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/common"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestRows(t *testing.T) {
-	decType1 := NewDecimalColumnType(10, 2)
-	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
-	rf := NewRowsFactory(colTypes)
+	decType1 := common.NewDecimalColumnType(10, 2)
+	colTypes := []common.ColumnType{common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, decType1}
+	rf := common.NewRowsFactory(colTypes)
 	rowCount := 10
 	rows := createRows(t, rowCount, rf)
 	require.Equal(t, rowCount, rows.RowCount())
@@ -82,14 +83,14 @@ func stringVal(rowIndex int) string {
 	return fmt.Sprintf("aardvarks-%d", rowIndex)
 }
 
-func decVal(t *testing.T, rowIndex int) Decimal {
+func decVal(t *testing.T, rowIndex int) common.Decimal {
 	t.Helper()
-	dec, err := NewDecFromFloat64(10000 * floatVal(rowIndex))
+	dec, err := common.NewDecFromFloat64(10000 * floatVal(rowIndex))
 	require.NoError(t, err)
 	return *dec
 }
 
-func createRows(t *testing.T, rowCount int, rf *RowsFactory) *Rows {
+func createRows(t *testing.T, rowCount int, rf *common.RowsFactory) *common.Rows {
 	t.Helper()
 	rows := rf.NewRows(1)
 	for i := 0; i < rowCount; i++ {
@@ -128,9 +129,9 @@ func createRows(t *testing.T, rowCount int, rf *RowsFactory) *Rows {
 }
 
 func TestRowsSerializeDeserialize(t *testing.T) {
-	decType1 := NewDecimalColumnType(10, 2)
-	colTypes := []ColumnType{TinyIntColumnType, IntColumnType, BigIntColumnType, DoubleColumnType, VarcharColumnType, decType1}
-	rf := NewRowsFactory(colTypes)
+	decType1 := common.NewDecimalColumnType(10, 2)
+	colTypes := []common.ColumnType{common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, decType1}
+	rf := common.NewRowsFactory(colTypes)
 	rows := createRows(t, 10, rf)
 
 	buff := rows.Serialize()
