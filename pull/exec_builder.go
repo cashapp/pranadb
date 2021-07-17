@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	"github.com/pingcap/tidb/planner/util"
 	"log"
 
 	"github.com/pingcap/tidb/planner/core"
@@ -18,7 +19,7 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 
 	// Build the physical plan
 	log.Printf("Executing query %s", query)
-	physicalPlan, err := p.planner.QueryToPlan(schema, query, true)
+	physicalPlan, logicalSort, err := p.planner.QueryToPlan(schema, query, true)
 	if err != nil {
 		log.Printf("Query got error %v", err)
 		return nil, err
@@ -28,18 +29,24 @@ func (p *PullEngine) buildPullQueryExecution(schema *common.Schema, query string
 	if err != nil {
 		return nil, err
 	}
+	if logicalSort != nil {
+		_, hasPhysicalSort := dag.(*exec.PullSort)
+		if !hasPhysicalSort {
+			// The TiDB planner assumes range partitioning and therefore sometimes elides the physical sort operator
+			// from the physical plan duriung the optimisation process if the order by is on the primary key of the table
+			// In this case it thinks the table is already ordered and we fan out to remote nodes using range scans
+			// so the iteration order of the partial results when joined together gives us ordered results as require.
+			// However, we use hash partitioning, so we always need to implement the sort after all partial results
+			// are returned from nodes.
+			// So... if the logical plan has a sort, but the physical plan doesn't we need to add a sort executor
+			// in manually, which is what we're doing here
 
-	// TODO TODO
-	// We need to create out own remote call executor which corresponds to the TableReader
-	// Based on the ranges in the table reader we can figure out what remote nodes we need to call
-	// In the case of a point lookup it will be a single node, otherwise it will be all nodes.
-	// In the first execution of getRows on the remote call executor we make a gRPC call to the
-	// node(s) and in the case of a non point lookup we pass the serialized dag fragment to the node
-	// when that is received, it is instantiated and a reference stored in a "PullQueryManager" and
-	// a unique id returned.
-	// The next call to getRows just needs to pass the unique id of the query. When the query is complete
-	// the remote node can automatically unregister the query. Queries should also be unregistered after
-	// a no activity timeout.
+			desc, sortByExprs := p.byItemsToDescAndSortExpression(logicalSort.ByItems)
+			sortExec := exec.NewPullSort(dag.ColNames(), dag.ColTypes(), desc, sortByExprs)
+			exec.ConnectPullExecutors([]exec.PullExecutor{dag}, sortExec)
+			dag = sortExec
+		}
+	}
 
 	return dag, nil
 }
@@ -112,6 +119,9 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 			t = mv.TableInfo
 		}
 		executor = exec.NewPullTableScan(t, p.cluster, shardID)
+	case *core.PhysicalSort:
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
+		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	default:
 		return nil, fmt.Errorf("unexpected plan type %T", plan)
 	}
@@ -129,4 +139,15 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 	exec.ConnectPullExecutors(childExecutors, executor)
 
 	return executor, nil
+}
+
+func (p *PullEngine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {
+	lbi := len(byItems)
+	desc := make([]bool, lbi)
+	sortByExprs := make([]*common.Expression, lbi)
+	for i, byitem := range byItems {
+		desc[i] = byitem.Desc
+		sortByExprs[i] = common.NewExpression(byitem.Expr)
+	}
+	return desc, sortByExprs
 }

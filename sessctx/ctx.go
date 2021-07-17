@@ -29,6 +29,7 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool) sessionctx.Cont
 	// This is necessary to ensure prepared statement param markers are created properly in the
 	// plan
 	sessVars.StmtCtx.UseCache = true
+	sessVars.StmtCtx.MemTracker = memory.NewTracker(0, -1)
 	ctx := sessCtx{
 		is:          is,
 		store:       storage,

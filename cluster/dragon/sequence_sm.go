@@ -3,9 +3,7 @@ package dragon
 import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
-	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/table"
 	"io"
 )
 
@@ -28,7 +26,7 @@ type sequenceStateMachine struct {
 func (s *sequenceStateMachine) Update(buff []byte) (statemachine.Result, error) {
 	seqName, _ := common.DecodeString(buff, 0)
 	keyBuff := make([]byte, 0, 32)
-	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, table.SequenceTableID)
+	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, common.SequenceGeneratorTableID)
 	keyBuff = common.AppendUint64ToBufferLittleEndian(keyBuff, s.shardID)
 	keyBuff = common.EncodeString(seqName, keyBuff)
 	v, err := localGet(s.dragon.pebble, keyBuff)
@@ -41,7 +39,7 @@ func (s *sequenceStateMachine) Update(buff []byte) (statemachine.Result, error) 
 		seqVal = common.ReadUint64FromBufferLittleEndian(v, 0)
 		seqBuff = v
 	} else {
-		seqVal = cluster.UserTableIDBase
+		seqVal = common.UserTableIDBase
 		seqBuff = make([]byte, 0)
 		seqBuff = common.AppendUint64ToBufferLittleEndian(seqBuff, seqVal)
 	}

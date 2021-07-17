@@ -1,6 +1,9 @@
 package common
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pingcap/parser/mysql"
@@ -181,4 +184,52 @@ func (r *Rows) checkCodec() {
 	if r.codec == nil {
 		r.codec = chunk.NewCodec(r.tidbFieldTypes)
 	}
+}
+
+func (r *Rows) AppendAll(other *Rows) {
+	for i := 0; i < other.RowCount(); i++ {
+		r.AppendRow(other.GetRow(i))
+	}
+}
+
+func (r *Rows) String() string {
+	var sb strings.Builder
+	for i := 0; i < r.RowCount(); i++ {
+		row := r.GetRow(i)
+		sb.WriteString(row.String())
+		if i != r.RowCount()-1 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+func (r *Row) String() string {
+	var sb strings.Builder
+	sb.WriteString("|")
+	for j, colType := range r.columnTypes {
+		if r.IsNull(j) {
+			sb.WriteString("null")
+		} else {
+			switch colType.Type {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				val := r.GetInt64(j)
+				sb.WriteString(strconv.Itoa(int(val)))
+			case TypeDouble:
+				val := r.GetFloat64(j)
+				sb.WriteString(fmt.Sprintf("%f", val))
+			case TypeDecimal:
+				dec := r.GetDecimal(j)
+				sb.WriteString(dec.String())
+			case TypeVarchar:
+				dec := r.GetString(j)
+				sb.WriteString(dec)
+			default:
+				panic(fmt.Sprintf("unexpected col type %d", colType.Type))
+			}
+		}
+		sb.WriteString("|")
+	}
+
+	return sb.String()
 }

@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"github.com/squareup/pranadb/common/commontest"
 	"testing"
 
 	"github.com/squareup/pranadb/common"
@@ -16,7 +17,7 @@ func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *c
 	rf := common.NewRowsFactory(colTypes)
 	r := rf.NewRows(len(rows))
 	for _, row := range rows {
-		common.AppendRow(t, r, colTypes, row...)
+		commontest.AppendRow(t, r, colTypes, row...)
 	}
 	return r
 }

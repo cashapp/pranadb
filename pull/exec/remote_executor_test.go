@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/stretchr/testify/require"
 	"log"
@@ -21,11 +22,11 @@ func TestRemoteExecutorGetAll(t *testing.T) {
 	require.NotNil(t, provided)
 	require.Equal(t, numRows, provided.RowCount())
 
-	arrRows := common.RowsToSlice(provided)
-	common.SortRows(arrRows)
-	arrExpectedRows := common.RowsToSlice(allRows)
+	arrRows := commontest.RowsToSlice(provided)
+	commontest.SortRows(arrRows)
+	arrExpectedRows := commontest.RowsToSlice(allRows)
 	for i := 0; i < len(arrRows); i++ {
-		common.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
+		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
 	}
 }
 
@@ -39,11 +40,11 @@ func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 	require.NotNil(t, provided)
 	require.Equal(t, numRows, provided.RowCount())
 
-	arrRows := common.RowsToSlice(provided)
-	common.SortRows(arrRows)
-	arrExpectedRows := common.RowsToSlice(allRows)
+	arrRows := commontest.RowsToSlice(provided)
+	commontest.SortRows(arrRows)
+	arrExpectedRows := commontest.RowsToSlice(allRows)
 	for i := 0; i < len(arrRows); i++ {
-		common.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
+		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
 	}
 }
 
@@ -70,16 +71,14 @@ func TestRemoteExecutorGetInBatches(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, provided)
 		require.Equal(t, rowsToGet, provided.RowCount())
-		for j := 0; j < rowsToGet; j++ {
-			allReceived.AppendRow(provided.GetRow(j))
-		}
+		allReceived.AppendAll(provided)
 	}
 	require.Equal(t, numRows, allReceived.RowCount())
-	arrRows := common.RowsToSlice(allReceived)
-	common.SortRows(arrRows)
-	arrExpectedRows := common.RowsToSlice(allRows)
+	arrRows := commontest.RowsToSlice(allReceived)
+	commontest.SortRows(arrRows)
+	arrExpectedRows := commontest.RowsToSlice(allRows)
 	for i := 0; i < len(arrRows); i++ {
-		common.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
+		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
 	}
 }
 

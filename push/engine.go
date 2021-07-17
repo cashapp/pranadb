@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
 	"log"
 	"math/rand"
 	"sync"
@@ -84,9 +85,7 @@ func (p *PushEngine) Stop() {
 	if !p.started {
 		return
 	}
-	for _, scheduler := range p.schedulers {
-		scheduler.Stop()
-	}
+	// We don't stop the schedulers here - their close is controlled by ShardListener
 	p.started = false
 }
 
@@ -110,11 +109,11 @@ type shardListener struct {
 	sched   *shardScheduler
 }
 
-func (s shardListener) RemoteWriteOccurred() {
+func (s *shardListener) RemoteWriteOccurred() {
 	s.sched.CheckForRemoteBatch()
 }
 
-func (s shardListener) Close() {
+func (s *shardListener) Close() {
 	s.p.lock.Lock()
 	defer s.p.lock.Unlock()
 	s.sched.Stop()
@@ -131,21 +130,15 @@ func (s shardListener) Close() {
 }
 
 func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
-	log.Println("Handling remote rows")
-
 	// TODO use copy on write and atomic references to entities to avoid read lock
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
-	log.Println("Got lock")
-
 	for entityID, rawRows := range entityValues {
-		log.Printf("Looking up consumer")
 		rc, ok := p.remoteConsumers[entityID]
 		if !ok {
 			return fmt.Errorf("entity with id %d not registered", entityID)
 		}
-		log.Println("Got remote consumer")
 		rows := rc.RowsFactory.NewRows(len(rawRows))
 		for _, row := range rawRows {
 			err := common.DecodeRow(row, rc.ColTypes, rows)
@@ -153,12 +146,10 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 				return err
 			}
 		}
-		log.Println("decoded rows")
 		execContext := &exec.ExecutionContext{
 			WriteBatch: batch,
 			Forwarder:  p,
 		}
-		log.Println("Sending to entity handler")
 		err := rc.RowsHandler.HandleRemoteRows(rows, execContext)
 		if err != nil {
 			return err
@@ -169,7 +160,6 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 
 // IngestRows is only used in testing to inject rows
 func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
-	log.Printf("Ingesting %d rows", rows.RowCount())
 	source, ok := p.sources[sourceID]
 	if !ok {
 		return errors.New("no such source")
@@ -179,15 +169,9 @@ func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
 
 func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
 	scheduler, shardID := p.chooseScheduler()
-
-	log.Printf("Chose shard to forward to on ingest %d", shardID)
-
-	log.Printf("Ingesting on shard %d", shardID)
-
 	errChan := scheduler.ScheduleAction(func() error {
 		return source.ingestRows(rows, shardID)
 	})
-
 	err, ok := <-errChan
 	if !ok {
 		return errors.New("channel closed")
@@ -223,6 +207,78 @@ func (p *PushEngine) checkForRowsToForward() error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
+func (p *PushEngine) WaitForProcessingToComplete() error {
+
+	log.Printf("Waiting for processing to complete on node %d", p.cluster.GetNodeID())
+
+	err := p.waitForSchedulers()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Schedulers complete on node %d", p.cluster.GetNodeID())
+
+	// Wait for no rows in the forwarder table
+	err = p.waitForNoRowsInTable(common.ForwarderTableID)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("No rows in forwarder table on node %d", p.cluster.GetNodeID())
+
+	// Wait for no rows in the receiver table
+	err = p.waitForNoRowsInTable(common.ReceiverTableID)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("No rows in receiver table on node %d", p.cluster.GetNodeID())
+	return nil
+}
+
+func (p *PushEngine) waitForSchedulers() error {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	// Wait for schedulers to complete processing anything they're doing
+	chans := make([]chan struct{}, 0, len(p.schedulers))
+	for _, sched := range p.schedulers {
+		ch := make(chan struct{})
+		chans = append(chans, ch)
+		sched.ScheduleAction(func() error {
+			ch <- struct{}{}
+			return nil
+		})
+	}
+	for _, ch := range chans {
+		_, ok := <-ch
+		if !ok {
+			return errors.New("chan was closed")
+		}
+	}
+	return nil
+}
+
+func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
+	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+		keyStartPrefix := make([]byte, 0, 16)
+		keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, tableID)
+		kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 1)
+		if err != nil {
+			return false, err
+		}
+		return len(kvPairs) == 0, nil
+	}, 5*time.Second, 10*time.Millisecond)
+	if !ok {
+		return errors.New("timed out waiting for condition")
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }

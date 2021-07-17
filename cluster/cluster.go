@@ -4,10 +4,6 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-const (
-	UserTableIDBase = 100
-)
-
 type Cluster interface {
 
 	// WriteBatch writes a batch reliability to storage

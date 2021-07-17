@@ -1,12 +1,13 @@
-package common
+package commontest
 
 import (
+	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func TestByteSliceMap(t *testing.T) {
-	bsl := NewByteSliceMap()
+	bsl := common.NewByteSliceMap()
 	k := []byte("somekey")
 	v := []byte("somevalue")
 	bsl.Put(k, v)
@@ -24,9 +25,9 @@ func TestByteSliceToStringZeroCopy(t *testing.T) {
 	b1 := []byte("string1")
 	b2 := []byte("")
 
-	s1 := ByteSliceToStringZeroCopy(b1)
+	s1 := common.ByteSliceToStringZeroCopy(b1)
 	require.Equal(t, "string1", s1)
-	s2 := ByteSliceToStringZeroCopy(b2)
+	s2 := common.ByteSliceToStringZeroCopy(b2)
 	require.Equal(t, "", s2)
 }
 
@@ -34,8 +35,8 @@ func TestStringToByteSliceZeroCopy(t *testing.T) {
 	s1 := "string1"
 	s2 := ""
 
-	b1 := StringToByteSliceZeroCopy(s1)
+	b1 := common.StringToByteSliceZeroCopy(s1)
 	require.Equal(t, "string1", string(b1))
-	b2 := StringToByteSliceZeroCopy(s2)
+	b2 := common.StringToByteSliceZeroCopy(s2)
 	require.Equal(t, "", string(b2))
 }

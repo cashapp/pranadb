@@ -51,6 +51,7 @@ var (
 	DoubleColumnType    = ColumnType{Type: TypeDouble}
 	VarcharColumnType   = ColumnType{Type: TypeVarchar}
 	TimestampColumnType = ColumnType{Type: TypeTimestamp}
+	UnknownColumnType   = ColumnType{Type: TypeUnknown}
 
 	// ColumnTypesByType allows lookup of non-parameterised ColumnType by Type.
 	ColumnTypesByType = map[Type]ColumnType{

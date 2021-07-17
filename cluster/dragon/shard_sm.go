@@ -7,6 +7,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"io"
+	"log"
 )
 
 const (
@@ -117,7 +118,7 @@ func (s *shardStateMachine) writeBatchLocal(puts []cluster.KVPair, deletes [][]b
 	batch := s.dragon.pebble.NewBatch()
 	for _, kvPair := range puts {
 		s.checkKey(kvPair.Key)
-		//log.Printf("Writing into pebble k:%v v:%v", kvPair.Key, kvPair.Value)
+		log.Printf("Writing into pebble on node %d k:%v v:%v", s.nodeID, kvPair.Key, kvPair.Value)
 		err := batch.Set(kvPair.Key, kvPair.Value, nil)
 		if err != nil {
 			return err
@@ -125,6 +126,7 @@ func (s *shardStateMachine) writeBatchLocal(puts []cluster.KVPair, deletes [][]b
 	}
 	for _, k := range deletes {
 		s.checkKey(k)
+		log.Printf("Deleting from pebble on node %d k:%v", s.nodeID, k)
 		err := batch.Delete(k, nil)
 		if err != nil {
 			return err

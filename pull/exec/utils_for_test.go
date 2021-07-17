@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"github.com/squareup/pranadb/common/commontest"
 	"testing"
 
 	"github.com/squareup/pranadb/common"
@@ -16,7 +17,7 @@ func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *c
 	rf := common.NewRowsFactory(colTypes)
 	r := rf.NewRows(len(rows))
 	for _, row := range rows {
-		common.AppendRow(t, r, colTypes, row...)
+		commontest.AppendRow(t, r, colTypes, row...)
 	}
 	return r
 }
@@ -35,6 +36,14 @@ func constDoubleExpression(colIndex int, val float64) *common.Expression {
 type rowProvider struct {
 	rowsFactory *common.RowsFactory
 	rows        *common.Rows
+}
+
+func (r *rowProvider) ColNames() []string {
+	return nil
+}
+
+func (r *rowProvider) ColTypes() []common.ColumnType {
+	return nil
 }
 
 func (r *rowProvider) GetRows(limit int) (rows *common.Rows, err error) {

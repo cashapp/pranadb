@@ -14,6 +14,11 @@ const (
 	ExecutorTypeTableScan
 )
 
+const (
+	DefaultPullBatchSize = 1000
+	OrderByMaxRows       = 10000
+)
+
 func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
 	switch executorType {
 	case ExecutorTypeSelect:
@@ -33,6 +38,8 @@ type PullExecutor interface {
 	AddChild(child PullExecutor)
 	GetParent() PullExecutor
 	GetChildren() []PullExecutor
+	ColNames() []string
+	ColTypes() []common.ColumnType
 }
 
 type pullExecutorBase struct {

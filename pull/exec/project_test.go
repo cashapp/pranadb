@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -25,7 +26,7 @@ func TestProjectionOneCol(t *testing.T) {
 	provided, err := proj.GetRows(-1)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp, provided, expectedColTypes)
+	commontest.AllRowsEqual(t, exp, provided, expectedColTypes)
 
 	provided, err = proj.GetRows(-1)
 	require.NoError(t, err)
@@ -50,7 +51,7 @@ func TestProjectionAllCols(t *testing.T) {
 	provided, err := proj.GetRows(-1)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp, provided, colTypes)
+	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
 	provided, err = proj.GetRows(-1)
 	require.NoError(t, err)
@@ -78,7 +79,7 @@ func TestProjectionAllColsReverseOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, exp.RowCount(), provided.RowCount())
-	common.AllRowsEqual(t, exp, provided, expectedColTypes)
+	commontest.AllRowsEqual(t, exp, provided, expectedColTypes)
 
 	provided, err = proj.GetRows(-1)
 	require.NoError(t, err)
@@ -109,7 +110,7 @@ func TestProjectionNonColExpression(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, exp.RowCount(), provided.RowCount())
-	common.AllRowsEqual(t, exp, provided, colTypes)
+	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
 	provided, err = proj.GetRows(-1)
 	require.NoError(t, err)
@@ -137,7 +138,7 @@ func TestProjectionWithLimit2(t *testing.T) {
 	provided, err := proj.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp1, provided, colTypes)
+	commontest.AllRowsEqual(t, exp1, provided, colTypes)
 
 	expectedRows2 := [][]interface{}{
 		{3, "los angeles", 20.6, "11.75"},
@@ -147,7 +148,7 @@ func TestProjectionWithLimit2(t *testing.T) {
 	provided, err = proj.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp2, provided, colTypes)
+	commontest.AllRowsEqual(t, exp2, provided, colTypes)
 
 	expectedRows3 := [][]interface{}{
 		{5, "tokyo", 28.9, "999.99"},
@@ -156,7 +157,7 @@ func TestProjectionWithLimit2(t *testing.T) {
 	provided, err = proj.GetRows(2)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	common.AllRowsEqual(t, exp3, provided, colTypes)
+	commontest.AllRowsEqual(t, exp3, provided, colTypes)
 
 	provided, err = proj.GetRows(2)
 	require.NoError(t, err)

@@ -28,7 +28,7 @@ type fakeCluster struct {
 func NewFakeCluster(nodeID int, numShards int) Cluster {
 	return &fakeCluster{
 		nodeID:         nodeID,
-		tableSequence:  uint64(UserTableIDBase), // First 100 reserved for system tables
+		tableSequence:  uint64(common.UserTableIDBase), // First 100 reserved for system tables
 		allShardIds:    genAllShardIds(numShards),
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),

@@ -79,7 +79,7 @@ func (s *source) addConsumingExecutor(executor exec.PushExecutor) {
 
 func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 
-	log.Printf("Ingesting rows on shard %d", shardID)
+	log.Printf("Ingesting rows on shard %d and node %d", shardID, s.engine.cluster.GetNodeID())
 
 	// TODO where source has no key - need to create one
 

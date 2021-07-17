@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
@@ -160,7 +161,7 @@ func TestGenerateTableID(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
 		require.NoError(t, err)
-		require.Equal(t, uint64(i)+cluster.UserTableIDBase, id)
+		require.Equal(t, uint64(i)+common.UserTableIDBase, id)
 	}
 }
 
@@ -224,7 +225,7 @@ func TestNotifications(t *testing.T) {
 		}
 		for j := 0; j < len(dragonCluster); j++ {
 			listener := notifListeners[j]
-			common.WaitUntil(t, func() (bool, error) {
+			commontest.WaitUntil(t, func() (bool, error) {
 				lNotifs := len(listener.getNotifs())
 				return lNotifs == numNotifs, nil
 			})
