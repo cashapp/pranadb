@@ -3,6 +3,8 @@ package pull
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/sess"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -10,25 +12,21 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull/exec"
 )
 
 type PullEngine struct {
 	lock            sync.RWMutex
 	started         bool
-	planner         *parplan.Planner
 	remoteQueries   map[string]exec.PullExecutor
 	cluster         cluster.Cluster
 	metaController  *meta.Controller
 	nodeID          int
 	queryIDSequence int64
-	queryLock       sync.Mutex
 }
 
-func NewPullEngine(planner *parplan.Planner, cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
+func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
 	engine := PullEngine{
-		planner:        planner,
 		remoteQueries:  make(map[string]exec.PullExecutor),
 		cluster:        cluster,
 		metaController: metaController,
@@ -56,17 +54,17 @@ func (p *PullEngine) Stop() {
 	p.started = false
 }
 
-func (p *PullEngine) BuildPullQuery(schema *common.Schema, query string) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (queryDAG exec.PullExecutor, err error) {
 	seq := atomic.AddInt64(&p.queryIDSequence, 1)
 	queryID := fmt.Sprintf("%d-%d", p.nodeID, seq)
-	return p.buildPullQueryExecution(schema, query, queryID, false, 0)
+	return p.buildPullQueryExecution(session, query, queryID, false, 0)
 }
 
-func (p *PullEngine) BuildRemotePullQuery(schema *common.Schema, query string, shardID uint64) (queryDAG exec.PullExecutor, err error) {
-	return p.buildPullQueryExecution(schema, query, "", true, shardID)
+func (p *PullEngine) BuildRemotePullQuery(session *sess.Session, query string, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+	return p.buildPullQueryExecution(session, query, "", true, shardID)
 }
 
-func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+func (p *PullEngine) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
 	// TODO one-shot optimisation - no need to register query
 
 	p.lock.RLock()
@@ -79,7 +77,7 @@ func (p *PullEngine) ExecuteRemotePullQuery(schemaName string, query string, que
 	if !ok {
 		log.Println("Didn't find query in map, so creating a new dag")
 		var err error
-		dag, err = p.getDagForRemoteQuery(schemaName, query, shardID)
+		dag, err = p.getDagForRemoteQuery(pl, schemaName, query, shardID)
 		if err != nil {
 			return nil, err
 		}
@@ -105,12 +103,13 @@ func (p *PullEngine) deleteQuery(queryID string) {
 	delete(p.remoteQueries, queryID)
 }
 
-func (p *PullEngine) getDagForRemoteQuery(schemaName string, query string, shardID uint64) (exec.PullExecutor, error) {
+func (p *PullEngine) getDagForRemoteQuery(pl *parplan.Planner, schemaName string, query string, shardID uint64) (exec.PullExecutor, error) {
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
 		return nil, fmt.Errorf("no such schema %s", schemaName)
 	}
-	dag, err := p.BuildRemotePullQuery(schema, query, shardID)
+	session := sess.NewSession(schema, pl)
+	dag, err := p.BuildRemotePullQuery(session, query, shardID)
 	if err != nil {
 		return nil, err
 	}

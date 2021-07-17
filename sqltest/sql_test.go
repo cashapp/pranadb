@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/server"
+	"github.com/squareup/pranadb/sess"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"io/ioutil"
@@ -317,7 +319,8 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	exec, err := st.choosePrana().GetCommandExecutor().ExecuteSQLStatement("test", statement)
+	prana := st.choosePrana()
+	exec, err := prana.GetCommandExecutor().ExecuteSQLStatement(st.createSession(prana), statement)
 	require.NoError(err)
 	rows, err := exec.GetRows(100000)
 	require.NoError(err)
@@ -350,6 +353,11 @@ func (st *sqlTest) choosePrana() *server.Server {
 	// of what server they are run on
 	index := st.rnd.Int31n(int32(lp))
 	return pranas[index]
+}
+
+func (st *sqlTest) createSession(prana *server.Server) *sess.Session {
+	schema := prana.GetMetaController().GetOrCreateSchema("test")
+	return sess.NewSession(schema, parplan.NewPlanner())
 }
 
 func trimBothEnds(str string) string {

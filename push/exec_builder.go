@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
-
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/exec"
+	"github.com/squareup/pranadb/sess"
 )
 
-func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
+func (p *PushEngine) buildPushQueryExecution(session *sess.Session, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
-	physicalPlan, _, err := p.planner.QueryToPlan(schema, query, false)
+	physicalPlan, _, err := session.Pl.QueryToPlan(session.Schema, query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +23,7 @@ func (p *PushEngine) buildPushQueryExecution(schema *common.Schema, query string
 		return nil, err
 	}
 	// Update schemas to the form we need
-	err = p.updateSchemas(dag, schema)
+	err = p.updateSchemas(dag, session.Schema)
 	if err != nil {
 		return nil, err
 	}

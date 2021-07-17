@@ -366,9 +366,8 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	t.Helper()
 	clus := cluster.NewFakeCluster(1, 10)
-	plan := parplan.NewPlanner()
 	shard := sharder.NewSharder(clus)
-	pe := NewPushEngine(clus, plan, shard)
+	pe := NewPushEngine(clus, shard)
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
 	err := clus.Start()
@@ -395,7 +394,7 @@ type delegatingShardListener struct {
 type dummyRemoteQueryExecutionCallback struct {
 }
 
-func (d dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+func (d dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
 	return nil, nil
 }
 

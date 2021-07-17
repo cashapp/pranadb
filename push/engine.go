@@ -11,7 +11,6 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
 )
@@ -26,12 +25,11 @@ type PushEngine struct {
 	forwardSequences  map[uint64]uint64
 	localLeaderShards []uint64
 	cluster           cluster.Cluster
-	planner           *parplan.Planner
 	sharder           *sharder.Sharder
 	rnd               *rand.Rand
 }
 
-func NewPushEngine(cluster cluster.Cluster, planner *parplan.Planner, sharder *sharder.Sharder) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder) *PushEngine {
 	engine := PushEngine{
 		remoteConsumers:   make(map[uint64]*remoteConsumer),
 		sources:           make(map[uint64]*source),
@@ -39,7 +37,6 @@ func NewPushEngine(cluster cluster.Cluster, planner *parplan.Planner, sharder *s
 		schedulers:        make(map[uint64]*shardScheduler),
 		forwardSequences:  make(map[uint64]uint64),
 		cluster:           cluster,
-		planner:           planner,
 		sharder:           sharder,
 		rnd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
 	}

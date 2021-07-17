@@ -9,11 +9,11 @@ create source sensor_readings(
 
 create materialized view wincanton_readings
     select sensor_id, location, temperature
-    from test.sensor_readings
+    from sensor_readings
     where location='wincanton';
 
 --load data sensor_readings_1;
 
-select * from test.sensor_readings order by location;
+select * from sensor_readings order by location;
 
-select * from test.wincanton_readings;
+select * from wincanton_readings;

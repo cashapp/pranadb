@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 	"sync"
 )
 
@@ -41,6 +42,6 @@ func (d *dummyShardListener) Close() {
 type DummyRemoteQueryExecutionCallback struct {
 }
 
-func (d *DummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
+func (d *DummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
 	return nil, nil
 }

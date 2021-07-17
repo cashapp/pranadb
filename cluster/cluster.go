@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 )
 
 type Cluster interface {
@@ -48,7 +49,7 @@ type LeaderChangeCallback interface {
 }
 
 type RemoteQueryExecutionCallback interface {
-	ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error)
+	ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error)
 }
 
 // RemoteWriteHandler will be called when a remote write is done to a shard

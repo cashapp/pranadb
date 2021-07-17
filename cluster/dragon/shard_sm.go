@@ -6,6 +6,7 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 	"io"
 	"log"
 )
@@ -43,6 +44,7 @@ type shardStateMachine struct {
 	nodeIDs       []int
 	processor     bool
 	shardListener cluster.ShardListener
+	pl            *parplan.Planner
 }
 
 func (s *shardStateMachine) Update(bytes []byte) (statemachine.Result, error) {
@@ -152,7 +154,10 @@ func (s *shardStateMachine) Lookup(i interface{}) (interface{}, error) {
 		panic("expected []byte")
 	}
 	schemaName, query, queryID, limit := deserializeRemoteQueryInfo(buff)
-	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(schemaName, query, queryID, limit, s.shardID)
+	if s.pl == nil {
+		s.pl = parplan.NewPlanner()
+	}
+	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(s.pl, schemaName, query, queryID, limit, s.shardID)
 	if err != nil {
 		return nil, err
 	}
