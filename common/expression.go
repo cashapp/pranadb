@@ -13,7 +13,7 @@ type Expression struct {
 	returnType *ColumnType
 }
 
-func (e *Expression) ReturnType(colTypes []ColumnType) (*ColumnType, error) {
+func (e *Expression) ReturnType(colTypes []ColumnType) (ColumnType, error) {
 	if e.returnType == nil {
 		switch op := e.expression.(type) {
 		case *expression.Column:
@@ -26,10 +26,10 @@ func (e *Expression) ReturnType(colTypes []ColumnType) (*ColumnType, error) {
 			colType := ConvertTiDBTypeToPranaType(op.RetType)
 			e.returnType = &colType
 		default:
-			return nil, fmt.Errorf("unexpected expr type %v", op)
+			return UnknownColumnType, fmt.Errorf("unexpected expr type %v", op)
 		}
 	}
-	return e.returnType, nil
+	return *e.returnType, nil
 }
 
 func NewColumnExpression(colIndex int, colType ColumnType) *Expression {

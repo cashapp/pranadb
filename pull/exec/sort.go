@@ -70,6 +70,9 @@ func (p PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	var err error
 
 	sort.SliceStable(indexes, func(i, j int) bool {
+		if err != nil {
+			return false
+		}
 		row1 := p.rows.GetRow(indexes[i])
 		row2 := p.rows.GetRow(indexes[j])
 		for sortColIndex, sortbyExpr := range p.sortByExpressions {
