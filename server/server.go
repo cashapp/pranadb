@@ -137,7 +137,6 @@ func (s *Server) GetCluster() cluster.Cluster {
 	return s.cluster
 }
 
-func (s *Server) CreateSession(schemaName string) *command.Session {
-	schema := s.metaController.GetOrCreateSchema(schemaName)
-	return command.NewSession(s.commandExecutor, schema)
+func (s *Server) GetCommandExecutor() *command.Executor {
+	return s.commandExecutor
 }

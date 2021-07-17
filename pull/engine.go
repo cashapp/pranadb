@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/sess"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -53,14 +54,14 @@ func (p *PullEngine) Stop() {
 	p.started = false
 }
 
-func (p *PullEngine) BuildPullQuery(pl *parplan.Planner, schema *common.Schema, query string) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (queryDAG exec.PullExecutor, err error) {
 	seq := atomic.AddInt64(&p.queryIDSequence, 1)
 	queryID := fmt.Sprintf("%d-%d", p.nodeID, seq)
-	return p.buildPullQueryExecution(pl, schema, query, queryID, false, 0)
+	return p.buildPullQueryExecution(session, query, queryID, false, 0)
 }
 
-func (p *PullEngine) BuildRemotePullQuery(pl *parplan.Planner, schema *common.Schema, query string, shardID uint64) (queryDAG exec.PullExecutor, err error) {
-	return p.buildPullQueryExecution(pl, schema, query, "", true, shardID)
+func (p *PullEngine) BuildRemotePullQuery(session *sess.Session, query string, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+	return p.buildPullQueryExecution(session, query, "", true, shardID)
 }
 
 func (p *PullEngine) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
@@ -107,7 +108,8 @@ func (p *PullEngine) getDagForRemoteQuery(pl *parplan.Planner, schemaName string
 	if !ok {
 		return nil, fmt.Errorf("no such schema %s", schemaName)
 	}
-	dag, err := p.BuildRemotePullQuery(pl, schema, query, shardID)
+	session := sess.NewSession(schema, pl)
+	dag, err := p.BuildRemotePullQuery(session, query, shardID)
 	if err != nil {
 		return nil, err
 	}

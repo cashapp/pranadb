@@ -3,7 +3,7 @@ package pull
 import (
 	"fmt"
 	"github.com/pingcap/tidb/planner/util"
-	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/sess"
 	"log"
 
 	"github.com/pingcap/tidb/planner/core"
@@ -12,17 +12,17 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *PullEngine) buildPullQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, queryID string, remote bool, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) buildPullQueryExecution(session *sess.Session, query string, queryID string, remote bool, shardID uint64) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
 	log.Printf("Executing query %s", query)
-	physicalPlan, logicalSort, err := pl.QueryToPlan(schema, query, true)
+	physicalPlan, logicalSort, err := session.Pl.QueryToPlan(session.Schema, query, true)
 	if err != nil {
 		log.Printf("Query got error %v", err)
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(physicalPlan, schema, query, queryID, remote, shardID)
+	dag, err := p.buildPullDAG(physicalPlan, session.Schema, query, queryID, remote, shardID)
 	if err != nil {
 		return nil, err
 	}

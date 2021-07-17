@@ -1,9 +1,8 @@
-package command
+package sess
 
 import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/pull/exec"
 )
 
 // Session represents a user's session with Prana
@@ -12,20 +11,13 @@ import (
 // The default schema on connect is determined at user login from their user account information.
 // It can be changed by a USE <schema_name> command, if the user is an admin.
 type Session struct {
-	ce     *Executor
-	schema *common.Schema
-	pl     *parplan.Planner
+	Schema *common.Schema
+	Pl     *parplan.Planner
 }
 
-func NewSession(ce *Executor, schema *common.Schema) *Session {
+func NewSession(schema *common.Schema, pl *parplan.Planner) *Session {
 	return &Session{
-		ce:     ce,
-		schema: schema,
-		pl:     parplan.NewPlanner(),
+		Schema: schema,
+		Pl:     pl,
 	}
-}
-
-// ExecuteSQLStatement executes a synchronous SQL statement.
-func (s *Session) ExecuteSQLStatement(sql string) (exec.PullExecutor, error) {
-	return s.ce.executeSQLStatementInternal(s.pl, s.schema, sql, true, nil)
 }
