@@ -3,12 +3,6 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sess"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -18,6 +12,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/server"
+	"github.com/squareup/pranadb/sess"
 )
 
 type sqlTestsuite struct {
@@ -42,6 +44,9 @@ func TestSqlFakeCluster(t *testing.T) {
 }
 
 func TestSqlClustered(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
 	testSQL(t, false, 3)
 }
 

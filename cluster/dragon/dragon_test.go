@@ -2,12 +2,8 @@ package dragon
 
 import (
 	"errors"
+	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
-	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -15,6 +11,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 )
 
 var dragonCluster []cluster.Cluster
@@ -24,6 +27,11 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		log.Println("-short: skipped")
+		return
+	}
 	dataDir, err := ioutil.TempDir("", "dragon-test")
 	if err != nil {
 		panic("failed to create temp dir")

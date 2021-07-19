@@ -2,8 +2,9 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common/commontest"
 	"testing"
+
+	"github.com/squareup/pranadb/common/commontest"
 
 	"github.com/stretchr/testify/require"
 
@@ -365,6 +366,9 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 
 func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
 	clus := cluster.NewFakeCluster(1, 10)
 	shard := sharder.NewSharder(clus)
 	pe := NewPushEngine(clus, shard)
