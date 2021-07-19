@@ -1,11 +1,12 @@
 package command
 
 import (
-	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/sess"
 	"log"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/sess"
 
 	"github.com/alecthomas/repr"
 	"github.com/pkg/errors"
@@ -14,7 +15,7 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"

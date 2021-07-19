@@ -1,5 +1,6 @@
 run:
   tests: true
+  timeout: 5m
   max-same-issues: 50
   modules-download-mode: readonly
   skip-dirs:

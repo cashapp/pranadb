@@ -2,10 +2,11 @@ package cluster
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
 	"math/rand"
 	"testing"
+
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 
 	"github.com/stretchr/testify/require"
 )
