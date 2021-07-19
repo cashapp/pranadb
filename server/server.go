@@ -1,8 +1,6 @@
 package server
 
 import (
-	"sync"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
@@ -10,6 +8,7 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
+	"sync"
 )
 
 type Config struct {
@@ -98,11 +97,17 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	if !s.started {
+		return nil
+	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.pushEngine.Stop()
+	err := s.pushEngine.Stop()
+	if err != nil {
+		return err
+	}
 	s.pullEngine.Stop()
-	err := s.shardr.Stop()
+	err = s.shardr.Stop()
 	if err != nil {
 		return err
 	}
@@ -113,9 +118,6 @@ func (s *Server) Stop() error {
 	err = s.metaController.Stop()
 	if err != nil {
 		return err
-	}
-	if !s.started {
-		return nil
 	}
 	s.started = false
 	return nil

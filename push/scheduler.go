@@ -2,12 +2,16 @@ package push
 
 import (
 	"log"
+	"sync"
+	"sync/atomic"
 )
 
 type shardScheduler struct {
-	shardID uint64
-	engine  *PushEngine
-	actions chan *actionHolder
+	shardID  uint64
+	engine   *PushEngine
+	actions  chan *actionHolder
+	stopLock sync.Mutex
+	stopped  bool
 }
 
 type Action func() error
@@ -30,10 +34,18 @@ func (s *shardScheduler) Start() {
 }
 
 func (s *shardScheduler) Stop() {
+	s.stopLock.Lock()
+	defer s.stopLock.Unlock()
+	if s.stopped {
+		// If already stopped do nothing
+		return
+	}
+	s.stopped = true
 	close(s.actions)
 }
 
 func (s *shardScheduler) runLoop() {
+	atomic.AddInt32(&s.engine.runningSchedulers, 1)
 	for {
 		holder, ok := <-s.actions
 		if !ok {
@@ -46,6 +58,7 @@ func (s *shardScheduler) runLoop() {
 			log.Printf("Failed to execute action: %v", err)
 		}
 	}
+	atomic.AddInt32(&s.engine.runningSchedulers, -1)
 }
 
 func (s *shardScheduler) CheckForRemoteBatch() {
@@ -57,7 +70,8 @@ func (s *shardScheduler) CheckForRowsToForward() chan error {
 }
 
 func (s *shardScheduler) ScheduleAction(action Action) chan error {
-	ch := make(chan error)
+	// Channel size is 1 - we don't want writer to block waiting for reader
+	ch := make(chan error, 1)
 	s.actions <- &actionHolder{
 		action:  action,
 		errChan: ch,

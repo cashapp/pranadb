@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/squareup/pranadb/cluster"
@@ -27,6 +28,7 @@ type PushEngine struct {
 	cluster           cluster.Cluster
 	sharder           *sharder.Sharder
 	rnd               *rand.Rand
+	runningSchedulers int32
 }
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder) *PushEngine {
@@ -76,14 +78,21 @@ func (p *PushEngine) Start() error {
 	return nil
 }
 
-func (p *PushEngine) Stop() {
+func (p *PushEngine) Stop() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if !p.started {
-		return
+		return nil
 	}
-	// We don't stop the schedulers here - their close is controlled by ShardListener
+	for _, sched := range p.schedulers {
+		sched.Stop()
+	}
+	err := p.waitUntilNoSchedulersRunning()
+	if err != nil {
+		return err
+	}
 	p.started = false
+	return nil
 }
 
 func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
@@ -278,4 +287,18 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 		return err
 	}
 	return nil
+}
+
+func (p *PushEngine) waitUntilNoSchedulersRunning() error {
+	start := time.Now()
+	for {
+		numSchedulers := atomic.LoadInt32(&p.runningSchedulers)
+		if numSchedulers == 0 {
+			return nil
+		}
+		time.Sleep(time.Millisecond)
+		if time.Now().Sub(start) >= 5*time.Second {
+			return fmt.Errorf("timed out waiting for schedulers to stop, sched count is %d", numSchedulers)
+		}
+	}
 }

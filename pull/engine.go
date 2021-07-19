@@ -18,7 +18,7 @@ import (
 type PullEngine struct {
 	lock            sync.RWMutex
 	started         bool
-	remoteQueries   map[string]exec.PullExecutor
+	remoteQueries   sync.Map
 	cluster         cluster.Cluster
 	metaController  *meta.Controller
 	nodeID          int
@@ -27,7 +27,6 @@ type PullEngine struct {
 
 func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
 	engine := PullEngine{
-		remoteQueries:  make(map[string]exec.PullExecutor),
 		cluster:        cluster,
 		metaController: metaController,
 		nodeID:         cluster.GetNodeID(),
@@ -67,13 +66,10 @@ func (p *PullEngine) BuildRemotePullQuery(session *sess.Session, query string, s
 func (p *PullEngine) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
 	// TODO one-shot optimisation - no need to register query
 
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
 	// TODO prepared statements - we will need this for efficient point lookups etc
 
 	log.Printf("Executing remote query in engine %s query id %s shardID %d", query, queryID, shardID)
-	dag, ok := p.remoteQueries[queryID]
+	dag, ok := p.getCachedDag(queryID)
 	if !ok {
 		log.Println("Didn't find query in map, so creating a new dag")
 		var err error
@@ -81,7 +77,7 @@ func (p *PullEngine) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName stri
 		if err != nil {
 			return nil, err
 		}
-		p.remoteQueries[queryID] = dag
+		p.remoteQueries.Store(queryID, dag)
 	}
 
 	rows, err := dag.GetRows(limit)
@@ -90,17 +86,22 @@ func (p *PullEngine) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName stri
 	}
 	if rows.RowCount() == 0 {
 		// TODO query timeouts
-		p.deleteQuery(queryID)
+		p.remoteQueries.Delete(queryID)
 	}
 	log.Printf("Pull query %s on node %d and shard %d returning %d rows", query, p.cluster.GetNodeID(), shardID, rows.RowCount())
 	return rows, err
 }
 
-func (p *PullEngine) deleteQuery(queryID string) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
-	delete(p.remoteQueries, queryID)
+func (p *PullEngine) getCachedDag(queryID string) (exec.PullExecutor, bool) {
+	d, ok := p.remoteQueries.Load(queryID)
+	if !ok {
+		return nil, false
+	}
+	dag, ok := d.(exec.PullExecutor)
+	if ok {
+		panic("invalid type in remote queries")
+	}
+	return dag, true
 }
 
 func (p *PullEngine) getDagForRemoteQuery(pl *parplan.Planner, schemaName string, query string, shardID uint64) (exec.PullExecutor, error) {
