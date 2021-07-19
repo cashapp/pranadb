@@ -102,9 +102,12 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.pushEngine.Stop()
+	err := s.pushEngine.Stop()
+	if err != nil {
+		return err
+	}
 	s.pullEngine.Stop()
-	err := s.shardr.Stop()
+	err = s.shardr.Stop()
 	if err != nil {
 		return err
 	}
