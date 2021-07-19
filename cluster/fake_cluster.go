@@ -120,7 +120,6 @@ func (f *fakeCluster) Stop() error {
 	if !f.started {
 		return nil
 	}
-	f.stopShardListeners()
 	f.started = false
 	return nil
 }
@@ -196,12 +195,6 @@ func (f *fakeCluster) startShardListeners() {
 	for _, shardID := range f.allShardIds {
 		shardListener := f.shardListenerFactory.CreateShardListener(shardID)
 		f.shardListeners[shardID] = shardListener
-	}
-}
-
-func (f *fakeCluster) stopShardListeners() {
-	for _, shardListener := range f.shardListeners {
-		shardListener.Close()
 	}
 }
 

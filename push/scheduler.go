@@ -2,15 +2,16 @@ package push
 
 import (
 	"log"
+	"sync"
 	"sync/atomic"
 )
 
-var RunningSchedulers int32
-
 type shardScheduler struct {
-	shardID uint64
-	engine  *PushEngine
-	actions chan *actionHolder
+	shardID  uint64
+	engine   *PushEngine
+	actions  chan *actionHolder
+	stopLock sync.Mutex
+	stopped  bool
 }
 
 type Action func() error
@@ -33,11 +34,18 @@ func (s *shardScheduler) Start() {
 }
 
 func (s *shardScheduler) Stop() {
+	s.stopLock.Lock()
+	defer s.stopLock.Unlock()
+	if s.stopped {
+		// If already stopped do nothing
+		return
+	}
+	s.stopped = true
 	close(s.actions)
 }
 
 func (s *shardScheduler) runLoop() {
-	atomic.AddInt32(&RunningSchedulers, 1)
+	atomic.AddInt32(&s.engine.runningSchedulers, 1)
 	for {
 		holder, ok := <-s.actions
 		if !ok {
@@ -50,7 +58,7 @@ func (s *shardScheduler) runLoop() {
 			log.Printf("Failed to execute action: %v", err)
 		}
 	}
-	atomic.AddInt32(&RunningSchedulers, -1)
+	atomic.AddInt32(&s.engine.runningSchedulers, -1)
 }
 
 func (s *shardScheduler) CheckForRemoteBatch() {
