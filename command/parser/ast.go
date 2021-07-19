@@ -40,6 +40,7 @@ type CreateMaterializedView struct {
 	Name  *Ref      `@@`
 	Query *RawQuery `@@`
 }
+
 type ColumnDef struct {
 	Pos lexer.Position
 
@@ -83,11 +84,13 @@ type CreateSource struct {
 type Create struct {
 	MaterializedView *CreateMaterializedView `  "MATERIALIZED" "VIEW" @@`
 	Source           *CreateSource           `| "SOURCE" @@`
+	Schema           string                  `| "SCHEMA" @Ident`
 }
 
 // AST root.
 type AST struct {
 	Select string // Unaltered SELECT statement, if any.
 
-	Create *Create `"CREATE" @@`
+	Use    string  `(  "USE" @Ident`
+	Create *Create ` | "CREATE" @@ ) ";"?`
 }
