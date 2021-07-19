@@ -1,7 +1,10 @@
 package server
 
 import (
+	"errors"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
@@ -98,6 +101,9 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	if !s.started {
+		return nil
+	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.pushEngine.Stop()
@@ -114,8 +120,9 @@ func (s *Server) Stop() error {
 	if err != nil {
 		return err
 	}
-	if !s.started {
-		return nil
+	err = waitUntilNoSchedulersRunning()
+	if err != nil {
+		return err
 	}
 	s.started = false
 	return nil
@@ -139,4 +146,18 @@ func (s *Server) GetCluster() cluster.Cluster {
 
 func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
+}
+
+func waitUntilNoSchedulersRunning() error {
+	start := time.Now()
+	for {
+		numSchedulers := atomic.LoadInt32(&push.RunningSchedulers)
+		if numSchedulers == 0 {
+			return nil
+		}
+		time.Sleep(time.Millisecond)
+		if time.Now().Sub(start) >= 5*time.Second {
+			return errors.New("timed out waiting for schedulers to stop")
+		}
+	}
 }

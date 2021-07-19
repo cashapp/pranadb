@@ -1,7 +1,9 @@
 package common
 
 import (
+	"fmt"
 	"reflect"
+	"runtime"
 	"unsafe"
 )
 
@@ -40,4 +42,11 @@ func StringToByteSliceZeroCopy(str string) []byte {
 	}
 	// nolint: gosec
 	return (*[max]byte)(unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&str)).Data))[:len(str):len(str)]
+}
+
+// DumpStacks dumps stacks for all goroutines to stdout, useful when debugging
+func DumpStacks() {
+	buf := make([]byte, 1<<16)
+	runtime.Stack(buf, true)
+	fmt.Printf("%s", buf)
 }
