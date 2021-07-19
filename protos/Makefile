@@ -11,7 +11,7 @@ clean:
 
 %.pb.go: %.proto Makefile
 	protoc --go_out=plugins=grpc:. --buf-lint_out=. $<
-	rsync -rv --remove-source-files ./github.com/squareup/pranadb/protos/ ./
+	rsync -r --remove-source-files ./github.com/squareup/pranadb/protos/ ./
 	rm -rf ./github.com
 
 # Ensure the Go protoc generators are installed.

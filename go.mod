@@ -3,23 +3,15 @@ module github.com/squareup/pranadb
 go 1.16
 
 require (
-	git.apache.org/thrift.git v0.14.2 // indirect
 	github.com/alecthomas/kong v0.2.17
 	github.com/alecthomas/kong-hcl v1.0.1
 	github.com/alecthomas/participle/v2 v2.0.0-alpha6
 	github.com/alecthomas/repr v0.0.0-20210611225437-1a2716eca9d6
-	github.com/biogo/store v0.0.0-20201120204734-aad293a2328f // indirect
-	github.com/cenk/backoff v2.2.1+incompatible // indirect
-	github.com/cockroachdb/pebble v0.0.0-20210331181633-27fc006b8bfb // indirect
-	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
-	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
-	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
-	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
-	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
+	github.com/cockroachdb/pebble v0.0.0-20210331181633-27fc006b8bfb
+	github.com/golang/protobuf v1.4.3
 	github.com/google/btree v1.0.0
-	github.com/juju/ratelimit v1.0.2-0.20191002062651-f60b32039441 // indirect
-	github.com/lni/dragonboat/v3 v3.3.4 // indirect
-	github.com/peterbourgon/g2s v0.0.0-20170223122336-d4e7ad98afea // indirect
+	github.com/lni/dragonboat/v3 v3.3.4
 	github.com/pingcap/kvproto v0.0.0-20210507054410-a8152f8a876c
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
 	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf
@@ -28,7 +20,6 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tikv/pd v1.1.0-beta.0.20210323123936-c8fa72502f16 // indirect
-	golang.org/x/exp v0.0.0-20200513190911-00229845015e // indirect
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.23.0

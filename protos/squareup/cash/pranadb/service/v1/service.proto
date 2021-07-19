@@ -4,10 +4,6 @@ package squareup.cash.pranadb.service.v1;
 
 option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service";
 
-message ExecuteSQLStatementRequest {
-  string query = 1;
-}
-
 message Result {
 }
 
@@ -22,21 +18,34 @@ enum ColumnType {
   COLUMN_TYPE_TIMESTAMP = 7;
 }
 
+message DecimalParams {
+  uint32 decimal_precision = 3;
+  uint32 decimal_scale = 4;
+}
+
 message Column {
   string name = 1;
   ColumnType type = 2;
-  optional uint32 decimal_precision = 3;
-  optional uint32 decimal_scale = 4;
+  optional DecimalParams decimal_params = 3;
 }
 
-message Row {
+message ExecuteSQLStatementRequest {
+  string query = 1;
+}
 
+message ResultSet {
+  repeated Column columns = 1;
+  bytes rows = 2; // Serialized rows.
 }
 
 message ExecuteSQLStatementResponse {
-  repeated Row row = 1;
+  oneof result {
+    string error = 1;
+    ResultSet results = 2;
+  }
 }
 
 service PranaDBService {
-  rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
+  // Bidirectional stream to emulate MySQL's persistent connection.
+  rpc ExecuteSQLStatement(stream ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
 }
