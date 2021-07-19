@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.service.v1;
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service";
+
+message ExecuteSQLStatementRequest {
+  string query = 1;
+}
+
+message Result {
+}
+
+enum ColumnType {
+  COLUMN_TYPE_UNSPECIFIED = 0;
+  COLUMN_TYPE_TINY_INT = 1;
+  COLUMN_TYPE_INT = 2;
+  COLUMN_TYPE_BIG_INT = 3;
+  COLUMN_TYPE_DOUBLE = 4;
+  COLUMN_TYPE_DECIMAL = 5;
+  COLUMN_TYPE_VARCHAR = 6;
+  COLUMN_TYPE_TIMESTAMP = 7;
+}
+
+message Column {
+  string name = 1;
+  ColumnType type = 2;
+  optional uint32 decimal_precision = 3;
+  optional uint32 decimal_scale = 4;
+}
+
+message Row {
+
+}
+
+message ExecuteSQLStatementResponse {
+  repeated Row row = 1;
+}
+
+service PranaDBService {
+  rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
+}

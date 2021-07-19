@@ -17,7 +17,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 )
 
 var dragonCluster []cluster.Cluster

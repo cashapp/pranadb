@@ -15,14 +15,20 @@ jobs:
             ~/.cache/go-build
             ~/.cache/golangci-lint
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Init Hermit
-        run: ./bin/hermit env --raw >> $GITHUB_ENV
+        run: |
+          ./bin/hermit env --raw >> $GITHUB_ENV
+          ./bin/hermit install
+      - name: Build
+        run: go build ./...
+      - name: Go lint
+        run: golangci-lint run
+      - name: Proto lint
+        run: buf lint
       - name: Test
         run: go test ./...
-      - name: Lint
-        run: golangci-lint run

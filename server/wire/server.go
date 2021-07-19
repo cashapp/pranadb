@@ -2,9 +2,7 @@
 package wire
 
 import (
-	"context"
-
-	pranaproto "github.com/squareup/pranadb/protos/squareup/cash/pranadb/service"
+	pranaproto "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"github.com/squareup/pranadb/server"
 )
 
@@ -13,9 +11,11 @@ type Server struct {
 	server *server.Server
 }
 
-func (s *Server) GetMaterializedView(context.Context, *pranaproto.GetMaterializedViewRequest) (*pranaproto.GetMaterializedViewResponse, error) {
-	return nil, nil
+func (s Server) ExecuteSQLStatement(request *pranaproto.ExecuteSQLStatementRequest, statementServer pranaproto.PranaDBService_ExecuteSQLStatementServer) error {
+	panic("implement me")
 }
+
+var _ pranaproto.PranaDBServiceServer = &Server{}
 
 func New(server *server.Server) *Server {
 	return &Server{server}

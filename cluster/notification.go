@@ -4,7 +4,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 )
 
 type NotificationType int32

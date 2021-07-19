@@ -10,7 +10,7 @@ clean:
 	rm -f $(GENERATED)
 
 %.pb.go: %.proto Makefile
-	protoc --go_out=plugins=grpc:. $<
+	protoc --go_out=plugins=grpc:. --buf-lint_out=. $<
 	rsync -rv --remove-source-files ./github.com/squareup/pranadb/protos/ ./
 	rm -rf ./github.com
 

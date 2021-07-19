@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package squareup.cash.pranadb.notifications;
+package squareup.cash.pranadb.notifications.v1;
 
-option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/notifications";
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications";
 
 message DDLStatementInfo {
   int64 originating_node_id = 1;
