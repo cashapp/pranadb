@@ -106,6 +106,7 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
+		results.RowCount = uint64(rows.RowCount())
 		results.Rows = rows.Serialize()
 		return nil, results, nil
 	}
