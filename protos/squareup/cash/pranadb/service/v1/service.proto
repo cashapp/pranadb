@@ -35,7 +35,8 @@ message ExecuteSQLStatementRequest {
 
 message ResultSet {
   repeated Column columns = 1;
-  bytes rows = 2; // Serialized rows.
+  uint64 row_count = 2;
+  bytes rows = 3; // Serialized rows.
 }
 
 message ExecuteSQLStatementResponse {
