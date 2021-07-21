@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/chzyer/readline"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
 	"github.com/squareup/pranadb/common"
@@ -44,6 +46,9 @@ func main() {
 		cmd := []string{}
 		for {
 			line, err := rl.Readline()
+			if err == io.EOF {
+				kctx.Exit(0)
+			}
 			kctx.FatalIfErrorf(err)
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -57,20 +62,51 @@ func main() {
 		}
 		sql := strings.Join(cmd, " ")
 		_ = rl.SaveHistory(sql)
-		err = stream.Send(&service.ExecuteSQLStatementRequest{Query: sql})
+
+		err = sendStatement(stream, sql)
 		kctx.FatalIfErrorf(err)
+	}
+}
+
+func sendStatement(stream service.PranaDBService_ExecuteSQLStatementClient, sql string) error {
+	// Send request.
+	err := stream.Send(&service.ExecuteSQLStatementRequest{
+		Query:    sql,
+		PageSize: 1000,
+	})
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	// Receive column metadata and page data until the result of the query is fully returned.
+	var (
+		columnNames []string
+		columnTypes []common.ColumnType
+		rowsFactory *common.RowsFactory
+		count       = 0
+		more        = true
+	)
+	for more {
 		resp, err := stream.Recv()
-		kctx.FatalIfErrorf(err)
+		if err != nil {
+			return errors.WithStack(err)
+		}
 		switch result := resp.Result.(type) {
-		case *service.ExecuteSQLStatementResponse_Results:
-			names, types := toColumnTypes(result.Results)
-			rowsf := common.NewRowsFactory(types)
-			rows := rowsf.NewRows(int(result.Results.RowCount))
-			rows.Deserialize(result.Results.Rows)
-			if result.Results.RowCount != 0 {
-				fmt.Println(strings.Join(names, "|"))
+		case *service.ExecuteSQLStatementResponse_Columns:
+			columnNames, columnTypes = toColumnTypes(result.Columns)
+			if len(columnTypes) != 0 {
+				fmt.Println(strings.Join(columnNames, "|"))
 			}
-			rowstr := make([]string, len(rows.ColumnTypes()))
+			rowsFactory = common.NewRowsFactory(columnTypes)
+
+		case *service.ExecuteSQLStatementResponse_Page:
+			if rowsFactory == nil {
+				return errors.New("out of order response from server - column definitions should be first package not page data")
+			}
+			page := result.Page
+			rows := rowsFactory.NewRows(int(page.Count))
+			rows.Deserialize(page.Rows)
+			rowstr := make([]string, len(columnTypes))
 			for ri := 0; ri < rows.RowCount(); ri++ {
 				row := rows.GetRow(ri)
 				for ci, ct := range rows.ColumnTypes() {
@@ -92,19 +128,25 @@ func main() {
 				}
 				fmt.Println(strings.Join(rowstr, "|"))
 			}
-			if result.Results.RowCount == 1 {
-				fmt.Printf("1 row returned\n")
-			} else {
-				fmt.Printf("%d rows returned\n", result.Results.RowCount)
+			count += int(page.Count)
+			more = page.More
+			if !more {
+				if count == 1 {
+					fmt.Printf("1 row returned\n")
+				} else {
+					fmt.Printf("%d rows returned\n", count)
+				}
 			}
 
 		case *service.ExecuteSQLStatementResponse_Error:
 			fmt.Printf("error: %s\n", result.Error)
+			more = false
 		}
 	}
+	return nil
 }
 
-func toColumnTypes(result *service.ResultSet) (names []string, types []common.ColumnType) {
+func toColumnTypes(result *service.Columns) (names []string, types []common.ColumnType) {
 	types = make([]common.ColumnType, len(result.Columns))
 	names = make([]string, len(result.Columns))
 	for i, in := range result.Columns {

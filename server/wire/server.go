@@ -11,6 +11,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
+	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/sess"
 )
@@ -36,27 +37,79 @@ func (s *Server) ExecuteSQLStatement(stream service.PranaDBService_ExecuteSQLSta
 		} else if err != nil {
 			return err
 		}
-		newSession, results, err := s.processQuery(session, in.Query)
+		if in.PageSize == 0 {
+			if _, err = sendError(stream, errors.New("invalid page_size 0")); err != nil {
+				return err
+			}
+			continue
+		}
+		newSession, executor, err := s.processQuery(session, in.Query)
 		if ok, serr := sendError(stream, err); serr != nil {
 			return serr
 		} else if !ok {
 			continue
-		} else {
-			if newSession != nil {
-				session = newSession
-				log.Printf("Switched to schema: %s", session.Schema.Name)
-			}
-			err = stream.Send(&service.ExecuteSQLStatementResponse{
-				Result: &service.ExecuteSQLStatementResponse_Results{Results: results},
-			})
-			if err != nil {
-				return errors.WithStack(err)
+		}
+
+		if newSession != nil {
+			session = newSession
+			log.Printf("Switched to schema: %s", session.Schema.Name)
+		}
+
+		if executor != nil {
+			if err = s.streamPages(stream, int(in.PageSize), executor); err != nil {
+				return err
 			}
 		}
 	}
 }
 
-func (s *Server) processQuery(session *sess.Session, query string) (*sess.Session, *service.ResultSet, error) {
+func (s *Server) streamPages(stream service.PranaDBService_ExecuteSQLStatementServer, requestedPageSize int, executor exec.PullExecutor) error {
+	// First send column definitions.
+	columns := &service.Columns{}
+	names := executor.ColNames()
+	for i, typ := range executor.ColTypes() {
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		}
+		column := &service.Column{
+			Name: name,
+			Type: service.ColumnType(typ.Type),
+		}
+		if typ.Type == common.TypeDecimal {
+			column.DecimalParams = &service.DecimalParams{
+				DecimalPrecision: uint32(typ.DecPrecision),
+				DecimalScale:     uint32(typ.DecScale),
+			}
+		}
+		columns.Columns = append(columns.Columns, column)
+	}
+	if err := stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Columns{Columns: columns}}); err != nil {
+		return errors.WithStack(err)
+	}
+
+	// Then start sending pages until complete.
+	pageSize := requestedPageSize
+	for pageSize >= requestedPageSize {
+		// Transcode rows.
+		rows, err := executor.GetRows(requestedPageSize)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		pageSize = rows.RowCount()
+		results := &service.Page{
+			Count: uint64(pageSize),
+			Rows:  rows.Serialize(),
+			More:  pageSize == requestedPageSize,
+		}
+		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) processQuery(session *sess.Session, query string) (*sess.Session, exec.PullExecutor, error) {
 	log.Printf("exec: %s", query)
 	ast, err := parser.Parse(query)
 	if err != nil {
@@ -69,12 +122,12 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 			return nil, nil, errors.Errorf("no such schema %q", ast.Use)
 		}
 		newSession := sess.NewSession(schema, parplan.NewPlanner())
-		return newSession, &service.ResultSet{}, nil
+		return newSession, exec.NewStaticRow(), nil
 
 	case ast.Create != nil && ast.Create.Schema != "":
 		schema := s.server.GetMetaController().GetOrCreateSchema(ast.Create.Schema)
 		newSession := sess.NewSession(schema, parplan.NewPlanner())
-		return newSession, &service.ResultSet{}, nil
+		return newSession, exec.NewStaticRow(), nil
 
 	default:
 		if session == nil {
@@ -84,31 +137,7 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
-		results := &service.ResultSet{}
-		// Translate column definitions.
-		names := exec.ColNames()
-		for i, typ := range exec.ColTypes() {
-			name := ""
-			if i < len(names) {
-				name = names[i]
-			}
-			column := &service.Column{
-				Name: name,
-				Type: service.ColumnType(typ.Type),
-			}
-			if typ.Type == common.TypeDecimal {
-				column.DecimalParams = &service.DecimalParams{}
-			}
-			results.Columns = append(results.Columns, column)
-		}
-		// Transcode rows.
-		rows, err := exec.GetRows(1000)
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
-		results.RowCount = uint64(rows.RowCount())
-		results.Rows = rows.Serialize()
-		return nil, results, nil
+		return nil, exec, nil
 	}
 }
 
