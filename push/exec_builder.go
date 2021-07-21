@@ -7,13 +7,13 @@ import (
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
-	"github.com/squareup/pranadb/sess"
 )
 
-func (p *PushEngine) buildPushQueryExecution(session *sess.Session, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
+func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
-	physicalPlan, _, err := session.Pl.QueryToPlan(session.Schema, query, false)
+	physicalPlan, _, err := pl.QueryToPlan(query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +23,7 @@ func (p *PushEngine) buildPushQueryExecution(session *sess.Session, query string
 		return nil, err
 	}
 	// Update schemas to the form we need
-	err = p.updateSchemas(dag, session.Schema)
+	err = p.updateSchemas(dag, schema)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tidb/store/tikv/oracle"
+	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util"
 	"github.com/pingcap/tidb/util/kvcache"
 	"github.com/pingcap/tidb/util/memory"
@@ -20,7 +21,7 @@ import (
 	"github.com/pingcap/tipb/go-binlog"
 )
 
-func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string) sessionctx.Context {
+func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string) *SessCtx {
 	kvClient := fakeKVClient{pullQuery: pullQuery}
 	storage := fakeStorage{client: kvClient}
 	d := domain.NewDomain(storage, 0, 0, 0, nil)
@@ -32,7 +33,7 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string
 	sessVars.StmtCtx.MemTracker = memory.NewTracker(0, -1)
 	sessVars.CurrentDB = database
 
-	ctx := sessCtx{
+	ctx := SessCtx{
 		is:          is,
 		store:       storage,
 		values:      make(map[fmt.Stringer]interface{}),
@@ -42,16 +43,33 @@ func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string
 	return &ctx
 }
 
+func toDatums(args []interface{}) variable.PreparedParams {
+	pp := make([]types.Datum, len(args))
+	for i, arg := range args {
+		pp[i] = types.Datum{}
+		pp[i].SetValueWithDefaultCollation(arg)
+	}
+	return pp
+}
+
 func NewDummySessionContext() sessionctx.Context {
 	return NewSessionContext(nil, false, "test")
 }
 
-type sessCtx struct {
+type SessCtx struct {
 	is          infoschema.InfoSchema
 	store       kv.Storage
 	sessionVars *variable.SessionVars
 	values      map[fmt.Stringer]interface{}
 	txn         dummyTxn
+}
+
+func (s *SessCtx) SetInfoSchema(infoSchema infoschema.InfoSchema) {
+	s.is = infoSchema
+}
+
+func (s *SessCtx) SetArgs(args []interface{}) {
+	s.sessionVars.PreparedParams = toDatums(args)
 }
 
 type dummyTxn struct {
@@ -70,132 +88,132 @@ func (txn *dummyTxn) GetTableInfo(id int64) *model.TableInfo {
 	panic("should not be called")
 }
 
-func (s *sessCtx) NewTxn(ctx context.Context) error {
+func (s *SessCtx) NewTxn(ctx context.Context) error {
 	panic("should not be called")
 }
 
-func (s *sessCtx) NewStaleTxnWithStartTS(ctx context.Context, startTS uint64) error {
+func (s *SessCtx) NewStaleTxnWithStartTS(ctx context.Context, startTS uint64) error {
 	panic("should not be called")
 }
 
-func (s *sessCtx) Txn(active bool) (kv.Transaction, error) {
+func (s *SessCtx) Txn(active bool) (kv.Transaction, error) {
 	return &s.txn, nil
 }
 
-func (s *sessCtx) GetClient() kv.Client {
+func (s *SessCtx) GetClient() kv.Client {
 	return s.store.GetClient()
 }
 
-func (s *sessCtx) GetMPPClient() kv.MPPClient {
+func (s *SessCtx) GetMPPClient() kv.MPPClient {
 	panic("should not be called")
 }
 
-func (s *sessCtx) SetValue(key fmt.Stringer, value interface{}) {
+func (s *SessCtx) SetValue(key fmt.Stringer, value interface{}) {
 	s.values[key] = value
 }
 
-func (s sessCtx) Value(key fmt.Stringer) interface{} {
+func (s SessCtx) Value(key fmt.Stringer) interface{} {
 	value := s.values[key]
 	return value
 }
 
-func (s sessCtx) ClearValue(key fmt.Stringer) {
+func (s SessCtx) ClearValue(key fmt.Stringer) {
 	delete(s.values, key)
 }
 
-func (s sessCtx) GetInfoSchema() sessionctx.InfoschemaMetaVersion {
+func (s SessCtx) GetInfoSchema() sessionctx.InfoschemaMetaVersion {
 	return s.is
 }
 
-func (s sessCtx) GetSessionVars() *variable.SessionVars {
+func (s SessCtx) GetSessionVars() *variable.SessionVars {
 	return s.sessionVars
 }
 
-func (s sessCtx) GetSessionManager() util.SessionManager {
+func (s SessCtx) GetSessionManager() util.SessionManager {
 	panic("should not be called")
 }
 
-func (s sessCtx) RefreshTxnCtx(ctx context.Context) error {
+func (s SessCtx) RefreshTxnCtx(ctx context.Context) error {
 	panic("should not be called")
 }
 
-func (s sessCtx) RefreshVars(ctx context.Context) error {
+func (s SessCtx) RefreshVars(ctx context.Context) error {
 	panic("should not be called")
 }
 
-func (s sessCtx) InitTxnWithStartTS(startTS uint64) error {
+func (s SessCtx) InitTxnWithStartTS(startTS uint64) error {
 	panic("should not be called")
 }
 
-func (s sessCtx) GetStore() kv.Storage {
+func (s SessCtx) GetStore() kv.Storage {
 	return s.store
 }
 
-func (s sessCtx) PreparedPlanCache() *kvcache.SimpleLRUCache {
+func (s SessCtx) PreparedPlanCache() *kvcache.SimpleLRUCache {
 	panic("should not be called")
 }
 
-func (s sessCtx) StoreQueryFeedback(feedback interface{}) {
+func (s SessCtx) StoreQueryFeedback(feedback interface{}) {
 	panic("should not be called")
 }
 
-func (s sessCtx) HasDirtyContent(tid int64) bool {
+func (s SessCtx) HasDirtyContent(tid int64) bool {
 	return false
 }
 
-func (s sessCtx) StmtCommit() {
+func (s SessCtx) StmtCommit() {
 	panic("should not be called")
 }
 
-func (s sessCtx) StmtRollback() {
+func (s SessCtx) StmtRollback() {
 	panic("should not be called")
 }
 
-func (s sessCtx) StmtGetMutation(i int64) *binlog.TableMutation {
+func (s SessCtx) StmtGetMutation(i int64) *binlog.TableMutation {
 	panic("should not be called")
 }
 
-func (s sessCtx) DDLOwnerChecker() owner.DDLOwnerChecker {
+func (s SessCtx) DDLOwnerChecker() owner.DDLOwnerChecker {
 	panic("should not be called")
 }
 
-func (s sessCtx) AddTableLock(infos []model.TableLockTpInfo) {
+func (s SessCtx) AddTableLock(infos []model.TableLockTpInfo) {
 	panic("should not be called")
 }
 
-func (s sessCtx) ReleaseTableLocks(locks []model.TableLockTpInfo) {
+func (s SessCtx) ReleaseTableLocks(locks []model.TableLockTpInfo) {
 	panic("should not be called")
 }
 
-func (s sessCtx) ReleaseTableLockByTableIDs(tableIDs []int64) {
+func (s SessCtx) ReleaseTableLockByTableIDs(tableIDs []int64) {
 	panic("should not be called")
 }
 
-func (s sessCtx) CheckTableLocked(tblID int64) (bool, model.TableLockType) {
+func (s SessCtx) CheckTableLocked(tblID int64) (bool, model.TableLockType) {
 	panic("should not be called")
 }
 
-func (s sessCtx) GetAllTableLocks() []model.TableLockTpInfo {
+func (s SessCtx) GetAllTableLocks() []model.TableLockTpInfo {
 	panic("should not be called")
 }
 
-func (s sessCtx) ReleaseAllTableLocks() {
+func (s SessCtx) ReleaseAllTableLocks() {
 	panic("should not be called")
 }
 
-func (s sessCtx) HasLockedTables() bool {
+func (s SessCtx) HasLockedTables() bool {
 	panic("should not be called")
 }
 
-func (s sessCtx) PrepareTSFuture(ctx context.Context) {
+func (s SessCtx) PrepareTSFuture(ctx context.Context) {
 	panic("should not be called")
 }
 
-func (s sessCtx) StoreIndexUsage(tblID int64, idxID int64, rowsSelected int64) {
+func (s SessCtx) StoreIndexUsage(tblID int64, idxID int64, rowsSelected int64) {
 	panic("should not be called")
 }
 
-func (s sessCtx) GetTxnWriteThroughputSLI() *sli.TxnWriteThroughputSLI {
+func (s SessCtx) GetTxnWriteThroughputSLI() *sli.TxnWriteThroughputSLI {
 	panic("should not be called")
 }
 

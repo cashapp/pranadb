@@ -40,6 +40,7 @@ type PullExecutor interface {
 	GetChildren() []PullExecutor
 	ColNames() []string
 	ColTypes() []common.ColumnType
+	Reset()
 }
 
 type pullExecutorBase struct {
@@ -77,6 +78,12 @@ func (p *pullExecutorBase) ColNames() []string {
 
 func (p *pullExecutorBase) ColTypes() []common.ColumnType {
 	return p.colTypes
+}
+
+func (p *pullExecutorBase) Reset() {
+	for _, child := range p.children {
+		child.Reset()
+	}
 }
 
 func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {

@@ -18,6 +18,7 @@ func (d *Dragon) newSequenceStateMachine(clusterID uint64, nodeID uint64) statem
 	}
 }
 
+// TODO implement IOnDiskStateMachine
 type sequenceStateMachine struct {
 	dragon  *Dragon
 	shardID uint64
@@ -57,13 +58,13 @@ func (s *sequenceStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *sequenceStateMachine) SaveSnapshot(writer io.Writer, collection statemachine.ISnapshotFileCollection, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := writer.Write([]byte{0})
+	return err
 }
 
 func (s *sequenceStateMachine) RecoverFromSnapshot(reader io.Reader, files []statemachine.SnapshotFile, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := reader.Read([]byte{0})
+	return err
 }
 
 func (s *sequenceStateMachine) Close() error {

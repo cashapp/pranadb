@@ -1,0 +1,20 @@
+create source test_source_1(
+    col0 tinyint,
+    col1 int,
+    col2 bigint,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    primary key (col0)
+);
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+select * from test_mv_1 order by col0;
+
+--load data dataset_1;
+
+select * from test_mv_1 order by col0;
+
+drop materialized view test_mv_1;
+drop source test_source_1;

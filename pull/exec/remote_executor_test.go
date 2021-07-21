@@ -15,7 +15,7 @@ import (
 func TestRemoteExecutorGetAll(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows := setupRowExecutor(t, numRows, rf)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
 
 	provided, err := re.GetRows(numRows)
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestRemoteExecutorGetAll(t *testing.T) {
 func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows := setupRowExecutor(t, numRows, rf)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
 
 	provided, err := re.GetRows(numRows * 2)
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 func TestRemoteExecutorGetOne(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, _ := setupRowExecutor(t, numRows, rf)
+	re, _, _ := setupRowExecutor(t, numRows, rf, false)
 
 	provided, err := re.GetRows(1)
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestRemoteExecutorGetOne(t *testing.T) {
 func TestRemoteExecutorGetInBatches(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows := setupRowExecutor(t, numRows, rf)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
 
 	allReceived := rf.NewRows(numRows)
 	for i := 0; i < 10; i++ {
@@ -74,6 +74,12 @@ func TestRemoteExecutorGetInBatches(t *testing.T) {
 		allReceived.AppendAll(provided)
 	}
 	require.Equal(t, numRows, allReceived.RowCount())
+
+	// Should be no more rows
+	rowsEmpty, err := re.GetRows(10)
+	require.NoError(t, err)
+	require.Equal(t, 0, rowsEmpty.RowCount())
+
 	arrRows := commontest.RowsToSlice(allReceived)
 	commontest.SortRows(arrRows)
 	arrExpectedRows := commontest.RowsToSlice(allRows)
@@ -82,8 +88,34 @@ func TestRemoteExecutorGetInBatches(t *testing.T) {
 	}
 }
 
+func TestRemoteExecutorResetAndGetAgain(t *testing.T) {
+	numRows := 100
+	rf := common.NewRowsFactory(colTypes)
+	re, allRows, tc := setupRowExecutor(t, numRows, rf, true)
+
+	provided, err := re.GetRows(numRows)
+	require.NoError(t, err)
+	require.NotNil(t, provided)
+	require.Equal(t, numRows, provided.RowCount())
+
+	// Now we try and get them all again - this should work as the executor will reset itself if called again
+	// after being complete
+	tc.reset()
+	re.Reset()
+	provided, err = re.GetRows(numRows)
+	require.NoError(t, err)
+	require.NotNil(t, provided)
+	require.Equal(t, numRows, provided.RowCount())
+	arrRows := commontest.RowsToSlice(provided)
+	commontest.SortRows(arrRows)
+	arrExpectedRows := commontest.RowsToSlice(allRows)
+	for i := 0; i < len(arrRows); i++ {
+		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
+	}
+}
+
 //nolint: unparam
-func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory) (PullExecutor, *common.Rows) {
+func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool) (PullExecutor, *common.Rows, *testCluster) {
 	t.Helper()
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
@@ -115,9 +147,14 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory) (PullEx
 		rows.AppendRow(row)
 	}
 
-	tc.rowsByShard = rowsByShard
+	tc.rowsByShardOrig = rowsByShard
+	tc.reset()
 
-	return NewRemoteExecutor(nil, colTypes, "test-schema", "select * from foo", "query123", tc), allRows
+	queryInfo := &cluster.QueryExecutionInfo{
+		IsPs: ps,
+	}
+
+	return NewRemoteExecutor(nil, queryInfo, colTypes, "test-schema", tc), allRows, tc
 }
 
 func generateRow(t *testing.T, index int, rows *common.Rows) {
@@ -131,9 +168,26 @@ func generateRow(t *testing.T, index int, rows *common.Rows) {
 }
 
 type testCluster struct {
-	lock        sync.Mutex
-	allShardIds []uint64
-	rowsByShard map[uint64]*common.Rows
+	lock            sync.Mutex
+	allShardIds     []uint64
+	rowsByShard     map[uint64]*common.Rows
+	rowsByShardOrig map[uint64]*common.Rows
+}
+
+func (t *testCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
+}
+
+func (t *testCluster) reset() {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.rowsByShard = map[uint64]*common.Rows{}
+	for k, v := range t.rowsByShardOrig {
+		t.rowsByShard[k] = v
+	}
+}
+
+func (t *testCluster) DeleteAllDataWithPrefix(prefix []byte) error {
+	panic("should not be called")
 }
 
 func (t *testCluster) WriteBatch(batch *cluster.WriteBatch) error {
@@ -164,22 +218,22 @@ func (t *testCluster) GenerateTableID() (uint64, error) {
 	panic("should not be called")
 }
 
-func (t *testCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (t *testCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	log.Printf("call to get %d rows from shard %d", limit, shardID)
-	rows := t.rowsByShard[shardID]
+	log.Printf("call to get %d rows from shard %d", queryInfo.Limit, queryInfo.ShardID)
+	rows := t.rowsByShard[queryInfo.ShardID]
 	rowsNew := rowsFactory.NewRows(1)
 	rowsToSend := rowsFactory.NewRows(1)
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
-		if i < limit {
+		if i < int(queryInfo.Limit) {
 			rowsToSend.AppendRow(row)
 		} else {
 			rowsNew.AppendRow(row)
 		}
 	}
-	t.rowsByShard[shardID] = rowsNew
+	t.rowsByShard[queryInfo.ShardID] = rowsNew
 	return rowsToSend, nil
 }
 

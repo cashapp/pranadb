@@ -42,6 +42,8 @@ func NewServer(config Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, commandExecutor)
+	clus.RegisterNotificationListener(cluster.NotificationTypeCloseSession, pullEngine)
+	clus.RegisterMembershipListener(pullEngine)
 	server := Server{
 		nodeID:          config.NodeID,
 		cluster:         clus,
@@ -133,6 +135,10 @@ func (s *Server) GetSharder() *sharder.Sharder {
 
 func (s *Server) GetPushEngine() *push.PushEngine {
 	return s.pushEngine
+}
+
+func (s *Server) GetPullEngine() *pull.PullEngine {
+	return s.pullEngine
 }
 
 func (s *Server) GetCluster() cluster.Cluster {

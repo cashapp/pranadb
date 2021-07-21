@@ -2,6 +2,7 @@ package exec
 
 import (
 	"log"
+	"sync"
 
 	"github.com/squareup/pranadb/cluster"
 
@@ -14,8 +15,9 @@ import (
 type TableExecutor struct {
 	pushExecutorBase
 	tableInfo      *common.TableInfo
-	consumingNodes []PushExecutor
+	consumingNodes map[PushExecutor]struct{}
 	store          cluster.Cluster
+	lock           sync.RWMutex
 }
 
 func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
@@ -28,6 +30,7 @@ func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo,
 		pushExecutorBase: pushBase,
 		tableInfo:        tableInfo,
 		store:            store,
+		consumingNodes:   make(map[PushExecutor]struct{}),
 	}
 }
 
@@ -44,7 +47,15 @@ func (t *TableExecutor) ReCalcSchemaFromChildren() {
 }
 
 func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
-	t.consumingNodes = append(t.consumingNodes, node)
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.consumingNodes[node] = struct{}{}
+}
+
+func (t *TableExecutor) RemoveConsumingNode(node PushExecutor) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	delete(t.consumingNodes, node)
 }
 
 func (t *TableExecutor) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
@@ -64,7 +75,9 @@ func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) err
 }
 
 func (t *TableExecutor) ForwardToConsumingNodes(rows *common.Rows, ctx *ExecutionContext) error {
-	for _, consumingNode := range t.consumingNodes {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	for consumingNode := range t.consumingNodes {
 		err := consumingNode.HandleRows(rows, ctx)
 		if err != nil {
 			return err

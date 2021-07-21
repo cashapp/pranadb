@@ -38,6 +38,9 @@ type rowProvider struct {
 	rows        *common.Rows
 }
 
+func (r *rowProvider) Reset() {
+}
+
 func (r *rowProvider) ColNames() []string {
 	return nil
 }

@@ -16,13 +16,13 @@ var SchemaTableInfo = &common.TableInfo{
 	PrimaryKeyCols: []int{0},
 	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query"},
 	ColumnTypes: []common.ColumnType{
-		{Type: common.TypeBigInt},
-		{Type: common.TypeVarchar},
-		{Type: common.TypeVarchar},
-		{Type: common.TypeVarchar},
-		{Type: common.TypeVarchar},
-		{Type: common.TypeVarchar},
-		{Type: common.TypeVarchar},
+		common.BigIntColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
 	},
 }
 
@@ -188,4 +188,57 @@ func (c *Controller) newSchema(name string) *common.Schema {
 		Sources: make(map[string]*common.SourceInfo),
 		Sinks:   make(map[string]*common.SinkInfo),
 	}
+}
+
+func (c *Controller) RemoveSource(schemaName string, sourceName string, persist bool) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return fmt.Errorf("no such schema %s", schemaName)
+	}
+	sourceInfo, ok := schema.Sources[sourceName]
+	if !ok {
+		return fmt.Errorf("no such source %s", sourceName)
+	}
+	delete(schema.Sources, sourceName)
+
+	if persist {
+		return c.deleteEntityWIthID(sourceInfo.TableInfo.ID)
+	}
+
+	return nil
+}
+
+func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, persist bool) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return fmt.Errorf("no such schema %s", schemaName)
+	}
+	mvInfo, ok := schema.Mvs[mvName]
+	if !ok {
+		return fmt.Errorf("no such mv %s", mvName)
+	}
+	delete(schema.Mvs, mvName)
+
+	if persist {
+		return c.deleteEntityWIthID(mvInfo.TableInfo.ID)
+	}
+
+	return nil
+}
+
+func (c *Controller) deleteEntityWIthID(tableID uint64) error {
+	wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
+
+	var key []byte
+	key = common.AppendUint64ToBufferLittleEndian(key, common.SchemaTableID)
+	key = common.AppendUint64ToBufferLittleEndian(key, cluster.SchemaTableShardID)
+	key = common.AppendUint64ToBufferLittleEndian(key, tableID)
+
+	wb.AddDelete(key)
+
+	return c.cluster.WriteBatch(wb)
 }

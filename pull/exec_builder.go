@@ -1,8 +1,11 @@
 package pull
 
 import (
+	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/planner/util"
+	"github.com/pingcap/tidb/types"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
 	"log"
 
@@ -12,17 +15,24 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *PullEngine) buildPullQueryExecution(session *sess.Session, query string, queryID string, remote bool, shardID uint64) (queryDAG exec.PullExecutor, err error) {
+func (p *PullEngine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
+	ast, err := session.PullPlanner().Parse(query)
+	if err != nil {
+		return nil, err
+	}
+	return p.buildPullQueryExecutionFromAst(session, ast, prepare, remote)
+}
+
+func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
-	log.Printf("Executing query %s", query)
-	physicalPlan, logicalSort, err := session.Pl.QueryToPlan(session.Schema, query, true)
+	physicalPlan, logicalSort, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
 	if err != nil {
 		log.Printf("Query got error %v", err)
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(physicalPlan, session.Schema, query, queryID, remote, shardID)
+	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, remote)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +60,7 @@ func (p *PullEngine) buildPullQueryExecution(session *sess.Session, query string
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema, query string, queryID string,
-	remote bool, shardID uint64) (exec.PullExecutor, error) {
+func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -93,12 +102,12 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		var remoteDag exec.PullExecutor
 		if remote {
 			remotePlan := op.GetTablePlan()
-			remoteDag, err = p.buildPullDAG(remotePlan, schema, query, queryID, remote, shardID)
+			remoteDag, err = p.buildPullDAG(session, remotePlan, schema, remote)
 			if err != nil {
 				return nil, err
 			}
 		}
-		executor = exec.NewRemoteExecutor(remoteDag, colTypes, schema.Name, query, queryID, p.cluster)
+		executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colTypes, schema.Name, p.cluster)
 	case *core.PhysicalTableScan:
 		if !remote {
 			panic("table scans only used on remote queries")
@@ -115,7 +124,33 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 		} else {
 			t = mv.TableInfo
 		}
-		executor = exec.NewPullTableScan(t, p.cluster, shardID)
+		if len(op.Ranges) > 1 {
+			return nil, errors.New("only one range supported")
+		}
+		var scanRange *exec.ScanRange
+		if len(op.Ranges) == 1 {
+			rng := op.Ranges[0]
+			if !rng.IsFullRange() {
+				if len(rng.LowVal) != 1 {
+					return nil, errors.New("composite ranges not supported")
+				}
+				lowD := rng.LowVal[0]
+				highD := rng.HighVal[0]
+				if lowD.Kind() != types.KindInt64 {
+					return nil, errors.New("only int64 range supported")
+				}
+				scanRange = &exec.ScanRange{
+					LowVal:   lowD.GetInt64(),
+					HighVal:  highD.GetInt64(),
+					LowExcl:  rng.LowExclude,
+					HighExcl: rng.HighExclude,
+				}
+			}
+		}
+		executor, err = exec.NewPullTableScan(t, p.cluster, session.QueryInfo.ShardID, scanRange)
+		if err != nil {
+			return nil, err
+		}
 	case *core.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
@@ -125,7 +160,7 @@ func (p *PullEngine) buildPullDAG(plan core.PhysicalPlan, schema *common.Schema,
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(child, schema, query, queryID, remote, shardID)
+		childExecutor, err := p.buildPullDAG(session, child, schema, remote)
 		if err != nil {
 			return nil, err
 		}

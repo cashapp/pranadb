@@ -1,25 +1,26 @@
 package command
 
 import (
+	"fmt"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 	"testing"
+	"time"
 
 	"github.com/alecthomas/repr"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/table"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
 )
 
-func TestCommandExecutorExecutePullQuery(t *testing.T) {
+func TestCommandExecutorExecuteStatement(t *testing.T) {
 	clus := cluster.NewFakeCluster(1, 1)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -27,8 +28,7 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
-	schema := metaController.GetOrCreateSchema("test")
-	s := sess.NewSession(schema, parplan.NewPlanner())
+	s := ce.CreateSession("test")
 
 	tests := []struct {
 		name       string
@@ -106,4 +106,84 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCommandExecutorPrepareQuery(t *testing.T) {
+	clus := cluster.NewFakeCluster(1, 1)
+	metaController := meta.NewController(clus)
+	shardr := sharder.NewSharder(clus)
+	pushEngine := push.NewPushEngine(clus, shardr)
+	pullEngine := pull.NewPullEngine(clus, metaController)
+	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
+	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
+	clus.SetRemoteQueryExecutionCallback(pullEngine)
+	clus.RegisterShardListenerFactory(pushEngine)
+	err := clus.Start()
+	require.NoError(t, err)
+	err = metaController.Start()
+	require.NoError(t, err)
+	err = pushEngine.Start()
+	require.NoError(t, err)
+	err = pullEngine.Start()
+	require.NoError(t, err)
+	err = shardr.Start()
+	require.NoError(t, err)
+	s := ce.CreateSession("test")
+
+	seqGenerator := &preallocSeqGen{sequences: []uint64{1, 2}}
+	sql := `
+			create source sensor_readings(
+				sensor_id bigint,
+				location varchar,
+				temperature double,
+				primary key (sensor_id)
+			)
+		`
+	_, err = ce.executeSQLStatementInternal(s, sql, true, seqGenerator)
+	require.NoError(t, err)
+
+	src, ok := metaController.GetSource("test", "sensor_readings")
+	require.True(t, ok)
+
+	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
+	rf := common.NewRowsFactory(colTypes)
+	rows := rf.NewRows(1)
+	rows.AppendInt64ToColumn(0, 1)
+	rows.AppendStringToColumn(1, "london")
+	rows.AppendFloat64ToColumn(2, 23.1)
+
+	rows.AppendInt64ToColumn(0, 2)
+	rows.AppendStringToColumn(1, "wincanton")
+	rows.AppendFloat64ToColumn(2, 32.1)
+
+	err = pushEngine.IngestRows(rows, src.TableInfo.ID)
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	sql = "prepare select * from sensor_readings where location=?"
+	prepExec, err := ce.ExecuteSQLStatement(s, sql)
+	require.NoError(t, err)
+	require.NotNil(t, prepExec)
+	prepRows, err := prepExec.GetRows(1)
+	require.NoError(t, err)
+	require.Equal(t, 1, prepRows.RowCount())
+	row := prepRows.GetRow(0)
+	psID := row.GetInt64(0)
+
+	ex, err := ce.ExecuteSQLStatement(s, fmt.Sprintf("execute %d wincanton", psID))
+	require.NoError(t, err)
+	rowsAct, err := ex.GetRows(100)
+	require.NoError(t, err)
+	require.Equal(t, 1, rowsAct.RowCount())
+	act := rowsAct.GetRow(0)
+	commontest.RowsEqual(t, rows.GetRow(1), act, colTypes)
+
+	ex, err = ce.ExecuteSQLStatement(s, fmt.Sprintf("execute %d london", psID))
+	require.NoError(t, err)
+	rowsAct, err = ex.GetRows(100)
+	require.NoError(t, err)
+	require.Equal(t, 1, rowsAct.RowCount())
+	act = rowsAct.GetRow(0)
+	commontest.RowsEqual(t, rows.GetRow(0), act, colTypes)
 }
