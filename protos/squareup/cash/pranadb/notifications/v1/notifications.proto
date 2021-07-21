@@ -10,4 +10,5 @@ message DDLStatementInfo {
   string schema_name = 3;
   string sql = 4;
   repeated uint64 table_sequences = 5;
+  string kind = 6;
 }

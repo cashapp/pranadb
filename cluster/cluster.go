@@ -5,6 +5,10 @@ import (
 	"github.com/squareup/pranadb/parplan"
 )
 
+// SchemaTableShardID is a shard for storing table schemas. Note that this actually writes metadata to
+// the first data shard.
+const SchemaTableShardID = 1000
+
 type Cluster interface {
 
 	// WriteBatch writes a batch reliability to storage

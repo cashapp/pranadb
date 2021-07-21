@@ -5,11 +5,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/sess"
-
 	"github.com/alecthomas/repr"
 	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/sess"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
@@ -53,15 +52,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	return e.executeSQLStatementInternal(session, sql, true, nil)
 }
 
-func (e *Executor) createSource(
-	schemaName string,
-	name string,
-	colNames []string,
-	colTypes []common.ColumnType,
-	pkCols []int,
-	topicInfo *common.TopicInfo,
-	seqGenerator common.SeqGenerator,
-) error {
+func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType, pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
 	log.Printf("creating source %s on node %d", name, e.cluster.GetNodeID())
 	id := seqGenerator.GenerateSequence()
 
@@ -79,7 +70,7 @@ func (e *Executor) createSource(
 		TableInfo:  &tableInfo,
 		TopicInfo:  topicInfo,
 	}
-	err := e.metaController.RegisterSource(&sourceInfo)
+	err := e.metaController.RegisterSource(&sourceInfo, persist)
 	if err != nil {
 		return err
 	}
@@ -121,7 +112,7 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			if err != nil {
 				return nil, err
 			}
-			return e.executeInGlobalOrder(session.Schema.Name, sql, sequences)
+			return e.executeInGlobalOrder(session.Schema.Name, sql, "mv", sequences)
 		}
 		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator)
 
@@ -132,9 +123,13 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			if err != nil {
 				return nil, err
 			}
-			return e.executeInGlobalOrder(session.Schema.Name, sql, sequences)
+			_, err = e.execCreateSource(session.Schema.Name, ast.Create.Source, &preallocSeqGen{sequences: sequences}, true)
+			if err != nil {
+				return nil, err
+			}
+			return e.executeInGlobalOrder(session.Schema.Name, sql, "source", sequences)
 		}
-		return e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator)
+		return e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, false)
 
 	default:
 		panic("unsupported query " + sql)
@@ -180,7 +175,7 @@ func (e *Executor) execCreateMaterializedView(session *sess.Session, mv *parser.
 	return exec.Empty, errors.WithStack(err)
 }
 
-func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource, seqGenerator common.SeqGenerator, persist bool) (exec.PullExecutor, error) {
 	var (
 		colNames []string
 		colTypes []common.ColumnType
@@ -211,7 +206,7 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 			panic(repr.String(option))
 		}
 	}
-	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, nil, seqGenerator); err != nil {
+	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, nil, seqGenerator, persist); err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return exec.Empty, nil
@@ -222,7 +217,7 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 // the exact same order on each node irrespective of where the command originated from.
 // In order to do this, we first broadcast the command across the cluster via a raft group which ensures a global
 // ordering and we don't process the command locally until we receive it from the cluster.
-func (e *Executor) executeInGlobalOrder(schemaName string, sql string, sequences []uint64) (exec.PullExecutor, error) {
+func (e *Executor) executeInGlobalOrder(schemaName string, sql string, kind string, sequences []uint64) (exec.PullExecutor, error) {
 	nextSeq := atomic.AddInt64(&e.ddlStatementSeq, 1)
 	statementInfo := &notifications.DDLStatementInfo{
 		OriginatingNodeId: int64(e.cluster.GetNodeID()),
@@ -230,6 +225,7 @@ func (e *Executor) executeInGlobalOrder(schemaName string, sql string, sequences
 		SchemaName:        schemaName,
 		Sql:               sql,
 		TableSequences:    sequences,
+		Kind:              kind,
 	}
 	ch := make(chan statementExecutionResult)
 	e.notifActions[nextSeq] = ch
@@ -260,12 +256,20 @@ func (e *Executor) HandleNotification(notification cluster.Notification) {
 		if !ok {
 			panic("cannot find notification")
 		}
-		ex, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
-		res := statementExecutionResult{
-			exec: ex,
-			err:  err,
+		delete(e.notifActions, ddlStmt.Sequence)
+		if ddlStmt.Kind == "mv" {
+			ex, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
+			res := statementExecutionResult{
+				exec: ex,
+				err:  err,
+			}
+			ch <- res
+		} else {
+			ch <- statementExecutionResult{
+				exec: exec.Empty,
+				err:  nil,
+			}
 		}
-		ch <- res
 	} else {
 		_, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
 		if err != nil {
