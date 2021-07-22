@@ -6,20 +6,38 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/table"
 )
+
+// SchemaTableInfo is a static definition of the table schema for the table schema table.
+var SchemaTableInfo = &common.TableInfo{
+	ID:             common.SchemaTableID,
+	TableName:      "tables",
+	PrimaryKeyCols: []int{0},
+	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query"},
+	ColumnTypes: []common.ColumnType{
+		{Type: common.TypeBigInt},
+		{Type: common.TypeVarchar},
+		{Type: common.TypeVarchar},
+		{Type: common.TypeVarchar},
+		{Type: common.TypeVarchar},
+		{Type: common.TypeVarchar},
+		{Type: common.TypeVarchar},
+	},
+}
 
 type Controller struct {
 	lock    sync.RWMutex
 	schemas map[string]*common.Schema
 	started bool
-	store   cluster.Cluster
+	cluster cluster.Cluster
 }
 
 func NewController(store cluster.Cluster) *Controller {
 	return &Controller{
 		lock:    sync.RWMutex{},
 		schemas: make(map[string]*common.Schema),
-		store:   store,
+		cluster: store,
 	}
 }
 
@@ -117,7 +135,9 @@ func (c *Controller) existsMvOrSource(schema *common.Schema, name string) error 
 	return nil
 }
 
-func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
+// RegisterSource adds a Source to the metadata controller, making it active. If persist is set, saves
+// the Source schema to cluster storage.
+func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
@@ -126,6 +146,16 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 		return err
 	}
 	schema.Sources[sourceInfo.Name] = sourceInfo
+
+	if persist {
+		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
+		if err = table.Upsert(SchemaTableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
+			return err
+		}
+		if err = c.cluster.WriteBatch(wb); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

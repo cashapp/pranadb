@@ -1,8 +1,11 @@
 package command
 
 import (
-	"github.com/squareup/pranadb/sess"
 	"testing"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/sess"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/stretchr/testify/require"
 
@@ -27,9 +30,10 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 	s := sess.NewSession(schema, parplan.NewPlanner())
 
 	tests := []struct {
-		name  string
-		query string
-		rows  exec.PullExecutor
+		name       string
+		query      string
+		sourceInfo *common.SourceInfo
+		rows       exec.PullExecutor
 	}{
 		{name: "CreateSource", query: `
 			create source sensor_readings(
@@ -57,6 +61,13 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 			expected, err := test.rows.GetRows(999)
 			require.NoError(t, err)
 			require.Equal(t, expected, actual)
+
+			if test.sourceInfo != nil {
+				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
+				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(1)}, meta.SchemaTableInfo.PrimaryKeyCols, common.SchemaTableID, rf, clus)
+				require.NoError(t, err)
+				require.Equal(t, test.sourceInfo, meta.DecodeSourceInfoRow(row))
+			}
 		})
 	}
 }
