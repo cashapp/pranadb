@@ -37,7 +37,7 @@ func (r *Ref) String() string {
 
 // CreateMaterializedView statement.
 type CreateMaterializedView struct {
-	Name  *Ref      `@@`
+	Name  *Ref      `@@ "AS"`
 	Query *RawQuery `@@`
 }
 
@@ -45,8 +45,8 @@ type ColumnDef struct {
 	Pos lexer.Position
 
 	Name       string      `@Ident`
-	Type       common.Type `@(("TINY"|"BIG")? ("VARCHAR"|"INT"|"TIMESTAMP"|"DOUBLE"))` // Conversion done by common.Type.Capture()
-	Parameters []int       `("(" @Number ("," @Number)* ")")?`                         // Optional parameters to the type(x [, x, ...])
+	Type       common.Type `@(("VARCHAR"|"TINYINT"|"BIGINT"|"TIMESTAMP"|"DOUBLE"))` // Conversion done by common.Type.Capture()
+	Parameters []int       `("(" @Number ("," @Number)* ")")?`                      // Optional parameters to the type(x [, x, ...])
 }
 
 func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
