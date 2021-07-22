@@ -33,14 +33,14 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 	}{
 		{name: "CreateSource", query: `
 			create source sensor_readings(
-				sensor_id big int,
+				sensor_id bigint,
 				location varchar,
 				temperature double,
 				primary key (sensor_id)
 			)
 		`, rows: exec.Empty},
 		{name: "CreateMV", query: `
-			create materialized view test
+			create materialized view test as
 				select sensor_id, max(temperature)
 				from test.sensor_readings
 				where location='wincanton' group by sensor_id

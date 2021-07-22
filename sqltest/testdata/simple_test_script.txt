@@ -1,13 +1,13 @@
 -- Test script;
 
 create source sensor_readings(
-    sensor_id big int,
+    sensor_id bigint,
     location varchar,
     temperature double,
     primary key (sensor_id)
 );
 
-create materialized view wincanton_readings
+create materialized view wincanton_readings as
     select sensor_id, location, temperature
     from sensor_readings
     where location='wincanton';

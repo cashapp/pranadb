@@ -24,11 +24,11 @@ const (
 func (t *Type) Capture(tokens []string) error {
 	text := strings.ToUpper(strings.Join(tokens, " "))
 	switch text {
-	case "TINY INT":
+	case "TINYINT":
 		*t = TypeTinyInt
 	case "INT":
 		*t = TypeInt
-	case "BIG INT":
+	case "BIGINT":
 		*t = TypeBigInt
 	case "VARCHAR":
 		*t = TypeVarchar
