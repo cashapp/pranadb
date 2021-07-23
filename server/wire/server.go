@@ -9,7 +9,6 @@ import (
 
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/server"
@@ -117,16 +116,11 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 	}
 	switch {
 	case ast.Use != "":
-		schema, ok := s.server.GetMetaController().GetSchema(ast.Use)
-		if !ok {
-			return nil, nil, errors.Errorf("no such schema %q", ast.Use)
-		}
-		newSession := sess.NewSession(schema, parplan.NewPlanner())
+		newSession := s.server.GetCommandExecutor().CreateSession(ast.Use)
 		return newSession, exec.NewStaticRow(), nil
 
 	case ast.Create != nil && ast.Create.Schema != "":
-		schema := s.server.GetMetaController().GetOrCreateSchema(ast.Create.Schema)
-		newSession := sess.NewSession(schema, parplan.NewPlanner())
+		newSession := s.server.GetCommandExecutor().CreateSession(ast.Create.Schema)
 		return newSession, exec.NewStaticRow(), nil
 
 	default:

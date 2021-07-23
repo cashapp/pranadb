@@ -20,44 +20,71 @@ type Planner struct {
 	pushQueryOptimizer *cascades.Optimizer
 	pullQueryOptimizer *cascades.Optimizer
 	parser             *parser
+	ctx                *sessctx.SessCtx
+	schema             *common.Schema
+	is                 infoschema.InfoSchema
+	pullQuery          bool
 }
 
-func NewPlanner() *Planner {
+func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
+	is := schemaToInfoSchema(schema)
+	sessCtx := sessctx.NewSessionContext(is, pullQuery, schema.Name)
 	// TODO different rules for push and pull queries
-	return &Planner{
+	pl := &Planner{
 		pushQueryOptimizer: cascades.NewOptimizer(),
 		pullQueryOptimizer: cascades.NewOptimizer(),
 		parser:             newParser(),
+		ctx:                sessCtx,
+		schema:             schema,
+		is:                 is,
+		pullQuery:          pullQuery,
 	}
+	return pl
 }
 
-func (p *Planner) QueryToPlan(schema *common.Schema, query string, pullQuery bool) (core.PhysicalPlan, *core.LogicalSort, error) {
-	stmt, err := p.parser.Parse(query)
+func (p *Planner) SetPSArgs(args []interface{}) {
+	p.ctx.SetArgs(args)
+}
+
+func (p *Planner) RefreshInfoSchema() {
+	p.is = schemaToInfoSchema(p.schema)
+	p.ctx.SetInfoSchema(p.is)
+}
+
+func (p *Planner) Parse(query string) (AstHandle, error) {
+	return p.parser.Parse(query)
+}
+
+func (p *Planner) QueryToPlan(query string, prepare bool) (core.PhysicalPlan, *core.LogicalSort, error) {
+	ast, err := p.Parse(query)
 	if err != nil {
 		return nil, nil, err
 	}
-	is := schemaToInfoSchema(schema)
+	return p.BuildPhysicalPlan(ast, prepare)
+}
+
+func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.PhysicalPlan, *core.LogicalSort, error) {
+
+	var err error
+	if prepare {
+		err = core.Preprocess(p.ctx, stmt.stmt, core.InPrepare)
+	} else {
+		err = core.Preprocess(p.ctx, stmt.stmt)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx := context.TODO()
-	sessCtx := sessctx.NewSessionContext(is, pullQuery, schema.Name)
-	// TODO doesn't seem to work if there are prepared statement markers
-	err = core.Preprocess(sessCtx, stmt)
-	if err != nil {
-		return nil, nil, err
-	}
-	logicalPlan, err := p.createLogicalPlan(ctx, sessCtx, stmt, is)
+	logicalPlan, err := p.createLogicalPlan(context.TODO(), p.ctx, stmt.stmt, p.is)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var logicalSort *core.LogicalSort
-	if pullQuery {
+	if p.pullQuery {
 		logicalSort, _ = logicalPlan.(*core.LogicalSort)
 	}
 
-	phys, err := p.createPhysicalPlan(ctx, sessCtx, logicalPlan, true, true)
+	phys, err := p.createPhysicalPlan(context.TODO(), p.ctx, logicalPlan, true, true)
 	if err != nil {
 		return nil, nil, err
 	}

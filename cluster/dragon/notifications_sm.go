@@ -1,10 +1,9 @@
 package dragon
 
 import (
-	"io"
-
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/pkg/errors"
+	"io"
 
 	"github.com/squareup/pranadb/cluster"
 )
@@ -13,14 +12,17 @@ const (
 	notificationsStateMachineUpdatedOK uint64 = 1
 )
 
-func (d *Dragon) newNotificationsStateMachine(_ uint64, _ uint64) statemachine.IStateMachine {
+func (d *Dragon) newNotificationsStateMachine(shardID uint64, _ uint64) statemachine.IStateMachine {
 	return &notificationsStateMachine{
-		dragon: d,
+		dragon:  d,
+		shardID: shardID,
 	}
 }
 
+// TODO implement IOnDiskStateMachine
 type notificationsStateMachine struct {
-	dragon *Dragon
+	shardID uint64
+	dragon  *Dragon
 }
 
 func (s *notificationsStateMachine) Update(buff []byte) (statemachine.Result, error) {
@@ -37,13 +39,13 @@ func (s *notificationsStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *notificationsStateMachine) SaveSnapshot(writer io.Writer, collection statemachine.ISnapshotFileCollection, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := writer.Write([]byte{0})
+	return err
 }
 
 func (s *notificationsStateMachine) RecoverFromSnapshot(reader io.Reader, files []statemachine.SnapshotFile, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := reader.Read([]byte{0})
+	return err
 }
 
 func (s *notificationsStateMachine) Close() error {

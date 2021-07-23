@@ -12,12 +12,15 @@ type NotificationType int32
 const (
 	NotificationTypeUnknown NotificationType = iota
 	NotificationTypeDDLStatement
+	NotificationTypeCloseSession
 )
 
 func TypeForNotification(notification Notification) NotificationType {
 	switch notification.(type) {
 	case *notifications.DDLStatementInfo:
 		return NotificationTypeDDLStatement
+	case *notifications.SessionClosedMessage:
+		return NotificationTypeCloseSession
 	default:
 		return NotificationTypeUnknown
 	}
@@ -57,6 +60,8 @@ func DeserializeNotification(data []byte) (Notification, error) {
 	switch NotificationType(nt) {
 	case NotificationTypeDDLStatement:
 		msg = &notifications.DDLStatementInfo{}
+	case NotificationTypeCloseSession:
+		msg = &notifications.SessionClosedMessage{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}

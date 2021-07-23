@@ -24,6 +24,7 @@ func NewStaticRow(values ...interface{}) *StaticRows {
 	for i := 0; i < len(values); i++ {
 		colNames[i] = strconv.Itoa(i)
 	}
+	rows.AppendRow(row)
 	return NewStaticRows(colNames, rows)
 }
 

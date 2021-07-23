@@ -10,7 +10,6 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sharder"
 )
 
@@ -373,7 +372,7 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	shard := sharder.NewSharder(clus)
 	pe := NewPushEngine(clus, shard)
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
-	clus.SetRemoteQueryExecutionCallback(&dummyRemoteQueryExecutionCallback{})
+	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clus.Start()
 	require.NoError(t, err)
 	err = shard.Start()
@@ -393,13 +392,6 @@ func (d delegatingShardListenerFactory) CreateShardListener(shardID uint64) clus
 
 type delegatingShardListener struct {
 	delegate cluster.ShardListener
-}
-
-type dummyRemoteQueryExecutionCallback struct {
-}
-
-func (d dummyRemoteQueryExecutionCallback) ExecuteRemotePullQuery(pl *parplan.Planner, schemaName string, query string, queryID string, limit int, shardID uint64) (*common.Rows, error) {
-	return nil, nil
 }
 
 func (d delegatingShardListener) RemoteWriteOccurred() {

@@ -10,3 +10,4 @@ dev/
 docker-sources/
 polyrepo-settings.gradle.kts
 vendor
+.hermit/

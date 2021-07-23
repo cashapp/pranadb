@@ -15,13 +15,6 @@ type source struct {
 	engine        *PushEngine
 }
 
-/*
-When a source is created, need to also make sure it is created on all nodes - it must be on all nodes before it is
-activated. Same with MV
-We can do this by storing the source/mv in a system table.
-Then when
-*/
-
 func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes
@@ -50,14 +43,6 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
 	return nil
 }
 
-func (p *PushEngine) RemoveSource(sourceID uint64) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	delete(p.sources, sourceID)
-	delete(p.remoteConsumers, sourceID)
-}
-
 // SetSchedulers is called by the PranaNode whenever the shards change
 // TODO make sure all processing is complete before changing the schedulers
 // TODO atomic references
@@ -75,6 +60,10 @@ func (s *source) stop() error {
 
 func (s *source) addConsumingExecutor(executor exec.PushExecutor) {
 	s.tableExecutor.AddConsumingNode(executor)
+}
+
+func (s *source) removeConsumingExecutor(executor exec.PushExecutor) {
+	s.tableExecutor.RemoveConsumingNode(executor)
 }
 
 func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
@@ -106,7 +95,7 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)
-		key, err := common.EncodeCols(&row, pkCols, colTypes, key)
+		key, err := common.EncodeCols(&row, pkCols, colTypes, key, true)
 		if err != nil {
 			return err
 		}

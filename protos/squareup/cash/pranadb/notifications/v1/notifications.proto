@@ -12,3 +12,7 @@ message DDLStatementInfo {
   repeated uint64 table_sequences = 5;
   string kind = 6;
 }
+
+message SessionClosedMessage {
+  string session_id = 1;
+}

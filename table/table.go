@@ -67,7 +67,7 @@ func encodeKeyPrefix(tableID uint64, shardID uint64) []byte {
 
 func encodeKeyFromRow(tableInfo *common.TableInfo, row *common.Row, shardID uint64) ([]byte, error) {
 	keyBuff := encodeKeyPrefix(tableInfo.ID, shardID)
-	return common.EncodeCols(row, tableInfo.PrimaryKeyCols, tableInfo.ColumnTypes, keyBuff)
+	return common.EncodeCols(row, tableInfo.PrimaryKeyCols, tableInfo.ColumnTypes, keyBuff, false)
 }
 
 func encodeKey(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int, shardID uint64) ([]byte, error) {

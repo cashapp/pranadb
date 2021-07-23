@@ -98,6 +98,8 @@ func TestTableScanWithLimit2(t *testing.T) {
 	require.Equal(t, 0, provided.RowCount())
 }
 
+// TODO test with ranges
+
 func stopCluster(t *testing.T, clust cluster.Cluster) {
 	t.Helper()
 	err := clust.Stop()
@@ -126,7 +128,7 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}) (PullExecutor, clus
 		IndexInfos:     nil,
 	}
 
-	ts := NewPullTableScan(&tableInfo, clust, shardID)
+	ts, err := NewPullTableScan(&tableInfo, clust, shardID, nil)
 	require.NoError(t, err)
 
 	inpRows := toRows(t, inputRows, colTypes)

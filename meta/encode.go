@@ -6,11 +6,11 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-var sourceInfoRowFactory = common.NewRowsFactory(SchemaTableInfo.ColumnTypes)
+var tableInfoRowsFactory = common.NewRowsFactory(SchemaTableInfo.ColumnTypes)
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
 func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
-	rows := sourceInfoRowFactory.NewRows(1)
+	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, "source")
 	rows.AppendStringToColumn(2, info.SchemaName)
@@ -35,7 +35,7 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 
 // EncodeMaterializedViewInfoToRow encodes a common.MaterializedViewInfo into a database row.
 func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.Row {
-	rows := sourceInfoRowFactory.NewRows(1)
+	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, "materialized_view")
 	rows.AppendStringToColumn(2, info.SchemaName)

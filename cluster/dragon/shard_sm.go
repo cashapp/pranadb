@@ -6,7 +6,6 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
 	"io"
 	"log"
 )
@@ -15,6 +14,7 @@ const (
 	shardStateMachineCommandWrite        byte = 1
 	shardStateMachineCommandForwardWrite      = 2
 	shardStateMachineCommandRemoveNode        = 3
+	shardStateMachineCommandDeletePrefix      = 4
 
 	shardStateMachineResponseOK uint64 = 1
 )
@@ -37,6 +37,7 @@ func newShardStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) 
 	return &ssm
 }
 
+// TODO implement IOnDiskStateMachine
 type shardStateMachine struct {
 	nodeID        int
 	shardID       uint64
@@ -44,7 +45,6 @@ type shardStateMachine struct {
 	nodeIDs       []int
 	processor     bool
 	shardListener cluster.ShardListener
-	pl            *parplan.Planner
 }
 
 func (s *shardStateMachine) Update(bytes []byte) (statemachine.Result, error) {
@@ -56,6 +56,8 @@ func (s *shardStateMachine) Update(bytes []byte) (statemachine.Result, error) {
 		return s.handleWrite(bytes, true)
 	case shardStateMachineCommandRemoveNode:
 		return s.handleRemoveNode(bytes)
+	case shardStateMachineCommandDeletePrefix:
+		return s.handleDeletePrefix(bytes)
 	default:
 		panic(fmt.Sprintf("unexpected command %d", command))
 	}
@@ -116,6 +118,32 @@ func (s *shardStateMachine) handleRemoveNode(bytes []byte) (statemachine.Result,
 	}, nil
 }
 
+func (s *shardStateMachine) handleDeletePrefix(bytes []byte) (statemachine.Result, error) {
+	offset := 1
+	lenPrefix := int(common.ReadUint32FromBufferLittleEndian(bytes, offset))
+	offset += 4
+	prefix := bytes[offset : offset+lenPrefix]
+	log.Printf("Shard sm on node %d and shard %d, deleting all data for prefix %v", s.dragon.nodeID, s.shardID, prefix)
+	endRange := copyByteSlice(prefix)
+	// We just increment the key - it just needs to be anything larger than the prefix but of the same length
+	for i, b := range endRange {
+		if b < 255 {
+			endRange[i] = b + 1
+			break
+		}
+		if i == len(endRange)-1 {
+			panic("cannot increment key - all bits set")
+		}
+	}
+	err := s.dragon.pebble.DeleteRange(prefix, endRange, &pebble.WriteOptions{})
+	if err != nil {
+		return statemachine.Result{}, err
+	}
+	return statemachine.Result{
+		Value: shardStateMachineResponseOK,
+	}, nil
+}
+
 func (s *shardStateMachine) writeBatchLocal(puts []cluster.KVPair, deletes [][]byte) error {
 	batch := s.dragon.pebble.NewBatch()
 	for _, kvPair := range puts {
@@ -153,11 +181,12 @@ func (s *shardStateMachine) Lookup(i interface{}) (interface{}, error) {
 	if !ok {
 		panic("expected []byte")
 	}
-	schemaName, query, queryID, limit := deserializeRemoteQueryInfo(buff)
-	if s.pl == nil {
-		s.pl = parplan.NewPlanner()
+	queryInfo := &cluster.QueryExecutionInfo{}
+	err := queryInfo.Deserialize(buff)
+	if err != nil {
+		return nil, err
 	}
-	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(s.pl, schemaName, query, queryID, limit, s.shardID)
+	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -166,13 +195,13 @@ func (s *shardStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *shardStateMachine) SaveSnapshot(writer io.Writer, collection statemachine.ISnapshotFileCollection, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := writer.Write([]byte{0})
+	return err
 }
 
 func (s *shardStateMachine) RecoverFromSnapshot(reader io.Reader, files []statemachine.SnapshotFile, i <-chan struct{}) error {
-	// TODO
-	return nil
+	_, err := reader.Read([]byte{0})
+	return err
 }
 
 func (s *shardStateMachine) Close() error {
@@ -186,22 +215,4 @@ func (s *shardStateMachine) Close() error {
 func calcProcessingNode(nodeIDs []int, shardID uint64, nodeID int) bool {
 	leaderNode := nodeIDs[shardID%uint64(len(nodeIDs))]
 	return nodeID == leaderNode
-}
-
-func serializeRemoteQueryInfo(schemaName string, query string, queryID string, limit int) []byte {
-	var buff []byte
-	buff = common.EncodeString(schemaName, buff)
-	buff = common.EncodeString(query, buff)
-	buff = common.EncodeString(queryID, buff)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(limit))
-	return buff
-}
-
-func deserializeRemoteQueryInfo(buff []byte) (schemaName string, query string, queryID string, limit int) {
-	offset := 0
-	schemaName, offset = common.DecodeString(buff, offset)
-	query, offset = common.DecodeString(buff, offset)
-	queryID, offset = common.DecodeString(buff, offset)
-	limit = int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-	return
 }

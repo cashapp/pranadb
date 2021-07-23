@@ -76,6 +76,16 @@ type Dragon struct {
 	notifDispatcher              *notificationDispatcher
 	testDragon                   bool
 	shuttingDown                 bool
+	membershipListener           cluster.MembershipListener
+}
+
+func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	if d.membershipListener != nil {
+		panic("membership listener already registered")
+	}
+	d.membershipListener = listener
 }
 
 func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
@@ -124,17 +134,17 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 // ExecuteRemotePullQuery For now we are executing pull queries through raft. however going ahead we should probably fanout ourselves
 // rather than going through raft as going through raft will prevent any writes in same shard at the same time
 // and we don't need linearizability for pull queries
-func (d *Dragon) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
-	if shardID < shardClusterIDBase {
+	if queryInfo.ShardID < shardClusterIDBase {
 		panic("invalid shard cluster id")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), remoteQueryTimeout)
 	defer cancel()
 
-	queryRequest := serializeRemoteQueryInfo(schemaName, query, queryID, limit)
-	res, err := d.nh.SyncRead(ctx, shardID, queryRequest)
+	queryRequest := queryInfo.Serialize()
+	res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 	if err != nil {
 		log.Println("Exec remote pull query failed")
 		return nil, err
@@ -292,8 +302,6 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
-		log.Println("Batch write failed")
-
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
@@ -336,6 +344,55 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 		return nil, err
 	}
 	return pairs, nil
+}
+
+func (d *Dragon) DeleteAllDataWithPrefix(prefix []byte) error {
+
+	chans := make([]chan error, len(d.allShards))
+	for i, shardID := range d.allShards {
+
+		ch := make(chan error, 1)
+		chans[i] = ch
+
+		theShardID := shardID
+		go func() {
+			// We append the shard id because we're going to send the request to each shard
+			var prefixWithShard []byte
+			prefixWithShard = append(prefixWithShard, prefix...)
+			prefixWithShard = common.AppendUint64ToBufferLittleEndian(prefixWithShard, theShardID)
+			cs := d.nh.GetNoOPSession(theShardID)
+
+			ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+			defer cancel()
+
+			var buff []byte
+			buff = append(buff, shardStateMachineCommandDeletePrefix)
+
+			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(prefixWithShard)))
+			buff = append(buff, prefixWithShard...)
+
+			log.Printf("Calling from node %d to delete all data for shard id %d with key %v", d.nodeID, theShardID, prefixWithShard)
+			proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+			if err != nil {
+				ch <- err
+			}
+			if proposeRes.Value != shardStateMachineResponseOK {
+				ch <- fmt.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
+			}
+			ch <- nil
+		}()
+	}
+
+	for _, ch := range chans {
+		err, ok := <-ch
+		if !ok {
+			panic("channel closed")
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (d *Dragon) BroadcastNotification(notification cluster.Notification) error {
@@ -519,11 +576,6 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 	}
 }
 
-// A node in the cluster died, we need to tell all relevant shard state machines to remove the node
-func (d *Dragon) nodeDied(nodeID int) {
-	// TODO
-}
-
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
 func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, deletes [][]byte) {
@@ -622,6 +674,9 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	if proposeRes.Value != shardStateMachineResponseOK {
 		return fmt.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
 	}
+
+	d.membershipListener.NodeLeft(nodeID)
+
 	return nil
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/parplan"
 	"log"
 	"sync"
 
@@ -24,6 +23,7 @@ type fakeCluster struct {
 	shardListenerFactory         ShardListenerFactory
 	shardListeners               map[uint64]ShardListener
 	notifListeners               map[NotificationType]NotificationListener
+	membershipListener           MembershipListener
 }
 
 func NewFakeCluster(nodeID int, numShards int) Cluster {
@@ -63,10 +63,17 @@ func (f *fakeCluster) RegisterNotificationListener(notificationType Notification
 	f.notifListeners[notificationType] = listener
 }
 
-func (f *fakeCluster) ExecuteRemotePullQuery(schemaName string, query string, queryID string, limit int, shardID uint64, rowsFactory *common.RowsFactory) (*common.Rows, error) {
-	log.Printf("Executing remote query on shardID %d", shardID)
-	pl := parplan.NewPlanner()
-	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(pl, schemaName, query, queryID, limit, shardID)
+func (f *fakeCluster) RegisterMembershipListener(listener MembershipListener) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.membershipListener != nil {
+		panic("membership listener already registered")
+	}
+	f.membershipListener = listener
+}
+
+func (f *fakeCluster) ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 
 func (f *fakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {
@@ -158,6 +165,24 @@ func (f *fakeCluster) LocalGet(key []byte) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.getInternal(&kvWrapper{key: key}), nil
+}
+
+func (f *fakeCluster) DeleteAllDataWithPrefix(prefix []byte) error {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	pairs, err := f.LocalScan(prefix, prefix, -1)
+	if err != nil {
+		return err
+	}
+	for _, pair := range pairs {
+		err := f.deleteInternal(&kvWrapper{
+			key: pair.Key,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (f *fakeCluster) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error) {

@@ -302,3 +302,92 @@ func (p *PushEngine) waitUntilNoSchedulersRunning() error {
 		}
 	}
 }
+
+func (p *PushEngine) VerifyNoSourcesOrMVs() error {
+	if len(p.sources) > 0 {
+		return fmt.Errorf("there is %d source", len(p.sources))
+	}
+	if len(p.materializedViews) > 0 {
+		return fmt.Errorf("there is %d materialized view", len(p.materializedViews))
+	}
+	return nil
+}
+
+func (p *PushEngine) RemoveSource(sourceID uint64, deleteData bool) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	delete(p.sources, sourceID)
+	delete(p.remoteConsumers, sourceID)
+
+	log.Printf("source remove deleting data? %t", deleteData)
+	if deleteData {
+		return p.deleteAllDataForTable(sourceID)
+	}
+	return nil
+}
+
+func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedViewInfo, deleteData bool) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	log.Printf("MV remove deleting data? %t", deleteData)
+
+	mvID := info.TableInfo.ID
+	mv, ok := p.materializedViews[mvID]
+	if !ok {
+		return fmt.Errorf("cannot find materialized view with id %d", mvID)
+	}
+	err := p.disconnectMV(schema, mv.tableExecutor, deleteData)
+	if err != nil {
+		return err
+	}
+	delete(p.materializedViews, mvID)
+
+	if deleteData {
+		return p.deleteAllDataForTable(mvID)
+	}
+	return nil
+}
+
+func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor, deleteData bool) error {
+
+	switch op := node.(type) {
+	case *exec.TableScan:
+		tableName := op.TableName
+		mvInfo, ok := schema.Mvs[tableName]
+		if !ok {
+			sourceInfo, ok := schema.Sources[tableName]
+			if !ok {
+				return fmt.Errorf("unknown source or materialized view %s", tableName)
+			}
+			source := p.sources[sourceInfo.TableInfo.ID]
+			source.removeConsumingExecutor(node)
+		} else {
+			mv := p.materializedViews[mvInfo.TableInfo.ID]
+			mv.removeConsumingExecutor(node)
+		}
+	case *exec.Aggregator:
+		delete(p.remoteConsumers, op.AggTableInfo.ID)
+		if deleteData {
+			err := p.deleteAllDataForTable(op.AggTableInfo.ID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, child := range node.GetChildren() {
+		err := p.disconnectMV(schema, child, deleteData)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
+	log.Printf("Deleting all data for table %d", tableID)
+	keyPrefix := common.AppendUint64ToBufferLittleEndian([]byte{}, tableID)
+	return p.cluster.DeleteAllDataWithPrefix(keyPrefix)
+}

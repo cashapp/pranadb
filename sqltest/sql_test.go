@@ -3,6 +3,8 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/sess"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -10,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,10 +20,15 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sess"
 )
+
+// Set this to the name of a test if you want to only run that test, e.g. during development
+var TestPrefix = ""
+
+var TestSchemaName = "test"
+
+var lock sync.Mutex
 
 type sqlTestsuite struct {
 	pranaCluster []*server.Server
@@ -28,6 +36,7 @@ type sqlTestsuite struct {
 	tests        map[string]*sqlTest
 	t            *testing.T
 	dataDir      string
+	lock         sync.Mutex
 }
 
 func (w *sqlTestsuite) T() *testing.T {
@@ -52,9 +61,15 @@ func TestSqlClustered(t *testing.T) {
 
 func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	t.Helper()
+
+	// Make sure we don't run tests in parallel
+	lock.Lock()
+	defer lock.Unlock()
+
 	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t}
 	ts.setup(fakeCluster, numNodes)
 	defer ts.teardown()
+
 	suite.Run(t, ts)
 }
 
@@ -130,6 +145,9 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	currSQLTest := &sqlTest{}
 	for _, file := range files {
 		fileName := file.Name()
+		if TestPrefix != "" && (strings.Index(fileName, TestPrefix) != 0) {
+			continue
+		}
 		if !strings.HasSuffix(fileName, "_test_data.txt") && !strings.HasSuffix(fileName, "_test_out.txt") && !strings.HasSuffix(fileName, "_test_script.txt") {
 			log.Fatalf("test file %s has invalid name. test files should be of the form <test_name>_test_data.txt, <test_name>_test_script.txt or <test_name>_test_out.txt,", fileName)
 		}
@@ -175,31 +193,52 @@ type sqlTest struct {
 	outFile      string
 	output       *strings.Builder
 	rnd          *rand.Rand
+	prana        *server.Server
+	session      *sess.Session
 }
 
 func (st *sqlTest) run() {
+
+	// Only run one test in the suite at a time
+	st.testSuite.lock.Lock()
+	defer st.testSuite.lock.Unlock()
+
+	log.Printf("Running sql test %s", st.testName)
+
 	require := st.testSuite.suite.Require()
-	start := time.Now()
 
 	require.NotEmpty(st.scriptFile, fmt.Sprintf("sql test %s is missing script file %s", st.testName, fmt.Sprintf("%s_test_script.txt", st.testName)))
 	require.NotEmpty(st.testDataFile, fmt.Sprintf("sql test %s is missing test data file %s", st.testName, fmt.Sprintf("%s_test_data.txt", st.testName)))
 	require.NotEmpty(st.outFile, fmt.Sprintf("sql test %s is missing out file %s", st.testName, fmt.Sprintf("%s_test_out.txt", st.testName)))
 
-	log.Printf("**** in run for test %s %s %s %s", st.testName, st.scriptFile, st.testDataFile, st.outFile)
-
 	scriptFile, closeFunc := openFile("./testdata/" + st.scriptFile)
 	defer closeFunc()
 
-	st.output = &strings.Builder{}
-
 	b, err := ioutil.ReadAll(scriptFile)
 	require.NoError(err)
-
 	scriptContents := string(b)
 
 	// All executable script commands whether they are special comments or sql statements must end with semi-colon followed by newline
+	if scriptContents[len(scriptContents)-1] == ';' {
+		scriptContents = scriptContents[:len(scriptContents)-1]
+	}
 	commands := strings.Split(scriptContents, ";\n")
-	for _, command := range commands {
+	numIters := 1
+	for iter := 0; iter < numIters; iter++ {
+		numIts := st.runTestIteration(require, commands, iter)
+		if iter == 0 {
+			numIters = numIts
+		}
+	}
+}
+
+func (st *sqlTest) runTestIteration(require *require.Assertions, commands []string, iter int) int {
+	log.Printf("Running test iteration %d", iter)
+	st.prana = st.choosePrana()
+	st.session = st.createSession(st.prana)
+	st.output = &strings.Builder{}
+	numIters := 1
+	for i, command := range commands {
 		command = trimBothEnds(command)
 		if command == "" {
 			continue
@@ -207,6 +246,17 @@ func (st *sqlTest) run() {
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
 			log.Println("loaded dataset ok")
+		} else if strings.HasPrefix(command, "--close session") {
+			st.executeCloseSession(require)
+		} else if strings.HasPrefix(command, "--repeat") {
+			if i > 0 {
+				require.Fail("--repeat command must be first line in script")
+			}
+			var err error
+			n, err := strconv.ParseInt(command[9:], 10, 32)
+			require.NoError(err)
+			numIters = int(n)
+			log.Printf("running the test for %d iterations", numIters)
 		} else if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
 		} else {
@@ -219,14 +269,52 @@ func (st *sqlTest) run() {
 
 	outfile, closeFunc := openFile("./testdata/" + st.outFile)
 	defer closeFunc()
-	b, err = ioutil.ReadAll(outfile)
+	b, err := ioutil.ReadAll(outfile)
 	require.NoError(err)
 	expectedOutput := string(b)
 	actualOutput := st.output.String()
-	end := time.Now()
-	dur := end.Sub(start)
-	log.Printf("Test took %d ms to run", dur.Milliseconds())
-	st.testSuite.suite.Require().Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
+	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
+
+	_ = st.session.Close()
+	// TODO - there's currently a bug in notifications - which will cause intermittent failures
+	// Commented out until we can fix properly
+	//require.NoError(err)
+
+	// Now we verify that the test has left the database in a clean state - there should be no user sources
+	// or materialized views and no data in the database and nothing in the remote session caches
+	for _, prana := range st.testSuite.pranaCluster {
+		testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
+		if ok {
+			require.Equal(0, len(testSchema.Mvs), fmt.Sprintf("There are %d materialized views left at the end of the test", len(testSchema.Mvs)))
+			require.Equal(0, len(testSchema.Sources), fmt.Sprintf("There are %d sources left at the end of the test", len(testSchema.Sources)))
+			require.Equal(0, len(testSchema.Sinks), fmt.Sprintf("There are %d sinks left at the end of the test", len(testSchema.Sinks)))
+		}
+		err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
+		require.NoError(err)
+
+		keyPrefix := common.AppendUint64ToBufferLittleEndian([]byte{}, common.UserTableIDBase)
+		pairs, err := prana.GetCluster().LocalScan(keyPrefix, []byte{}, -1)
+		require.NoError(err)
+		if len(pairs) > 0 {
+			log.Printf("Table data left at end of test:")
+			for _, pair := range pairs {
+				log.Printf("k:%v v:%v", pair.Key, pair.Value)
+			}
+		}
+		require.Equal(0, len(pairs), fmt.Sprintf("table data left at end of test %d rows", len(pairs)))
+		// Commented out until we move to better notification system and use IOnDiskStateMachine
+		//ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+		//	num, err := prana.GetPullEngine().NumCachedSessions()
+		//	if err != nil {
+		//		return false, err
+		//	}
+		//	return num == 0, nil
+		//}, 5*time.Second, 1*time.Millisecond)
+		//require.True(ok, "timed out waiting for num remote sessions to get to zero")
+		//require.NoError(err)
+	}
+	log.Printf("Finished running sql test %s", st.testName)
+	return numIters
 }
 
 type dataset struct {
@@ -257,7 +345,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 				continue
 			}
 			sourceName := parts[1]
-			sourceInfo, ok := st.choosePrana().GetMetaController().GetSource("test", sourceName)
+			sourceInfo, ok := st.prana.GetMetaController().GetSource(TestSchemaName, sourceName)
 			require.True(ok, fmt.Sprintf("unknown source %s", sourceName))
 			rf := common.NewRowsFactory(sourceInfo.TableInfo.ColumnTypes)
 			rows := rf.NewRows(100)
@@ -305,13 +393,20 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	start := time.Now()
 	datasetName := command[12:]
 	dataset := st.loadDataset(require, st.testDataFile, datasetName)
-	engine := st.choosePrana().GetPushEngine()
+	engine := st.prana.GetPushEngine()
 	err := engine.IngestRows(dataset.rows, dataset.sourceInfo.TableInfo.ID)
 	require.NoError(err)
 	st.waitForProcessingToComplete(require)
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Printf("Load data %s execute time ms %d", command, dur.Milliseconds())
+}
+
+func (st *sqlTest) executeCloseSession(require *require.Assertions) {
+	// Closes then recreates the session
+	err := st.session.Close()
+	require.NoError(err)
+	st.session = st.createSession(st.prana)
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
@@ -324,24 +419,35 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	prana := st.choosePrana()
-	exec, err := prana.GetCommandExecutor().ExecuteSQLStatement(st.createSession(prana), statement)
+	exec, err := st.prana.GetCommandExecutor().ExecuteSQLStatement(st.session, statement)
+	if err != nil {
+		ue, ok := err.(errors.UserError)
+		if ok {
+			st.output.WriteString(ue.Error() + "\n")
+			return
+		}
+	}
 	require.NoError(err)
 	rows, err := exec.GetRows(100000)
 	require.NoError(err)
-	isQuery := strings.HasPrefix(strings.ToLower(statement), "select ")
-	if !isQuery {
-		// DDL
-		st.output.WriteString(statement + ";\n")
-		st.output.WriteString("Ok\n")
-	} else {
-		// Query
-		st.output.WriteString(statement + ";\n")
+	lowerStatement := strings.ToLower(statement)
+
+	st.output.WriteString(statement + ";\n")
+	if strings.HasPrefix(lowerStatement, "select ") || strings.HasPrefix(lowerStatement, "execute") {
+		// Query results
 		for i := 0; i < rows.RowCount(); i++ {
 			row := rows.GetRow(i)
 			st.output.WriteString(row.String() + "\n")
 		}
 		st.output.WriteString(fmt.Sprintf("%d rows returned\n", rows.RowCount()))
+	} else if strings.HasPrefix(lowerStatement, "prepare") {
+		// Write out the prepared statement id
+		row := rows.GetRow(0)
+		psID := row.GetInt64(0)
+		st.output.WriteString(fmt.Sprintf("%d\n", psID))
+	} else {
+		// DDL statement
+		st.output.WriteString("Ok\n")
 	}
 	end := time.Now()
 	dur := end.Sub(start)
@@ -361,8 +467,7 @@ func (st *sqlTest) choosePrana() *server.Server {
 }
 
 func (st *sqlTest) createSession(prana *server.Server) *sess.Session {
-	schema := prana.GetMetaController().GetOrCreateSchema("test")
-	return sess.NewSession(schema, parplan.NewPlanner())
+	return prana.GetCommandExecutor().CreateSession(TestSchemaName)
 }
 
 func trimBothEnds(str string) string {

@@ -44,9 +44,10 @@ type CreateMaterializedView struct {
 type ColumnDef struct {
 	Pos lexer.Position
 
-	Name       string      `@Ident`
-	Type       common.Type `@(("VARCHAR"|"TINYINT"|"BIGINT"|"TIMESTAMP"|"DOUBLE"))` // Conversion done by common.Type.Capture()
-	Parameters []int       `("(" @Number ("," @Number)* ")")?`                      // Optional parameters to the type(x [, x, ...])
+	Name string `@Ident`
+
+	Type       common.Type `@(("VARCHAR"|"TINYINT"|"INT"|"BIGINT"|"TIMESTAMP"|"DOUBLE"|"DECIMAL"))` // Conversion done by common.Type.Capture()
+	Parameters []int       `("(" @Number ("," @Number)* ")")?`                                      // Optional parameters to the type(x [, x, ...])
 }
 
 func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
@@ -89,7 +90,10 @@ type Create struct {
 
 // AST root.
 type AST struct {
-	Select string // Unaltered SELECT statement, if any.
+	Select  string // Unaltered SELECT statement, if any.
+	Execute string // Unaltered EXECUTE statement, if any.
+	Prepare string // Unaltered PREPARE statement, if any.
+	Drop    string // Unaltered DROP statement, if any.
 
 	Use    string  `(  "USE" @Ident`
 	Create *Create ` | "CREATE" @@ ) ";"?`

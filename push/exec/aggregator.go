@@ -69,7 +69,7 @@ func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error 
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)
 		incomingColTypes := a.children[0].ColTypes()
-		key, err := common.EncodeCols(&row, a.groupByCols, incomingColTypes, key)
+		key, err := common.EncodeCols(&row, a.groupByCols, incomingColTypes, key, false)
 		if err != nil {
 			return err
 		}
@@ -175,7 +175,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 	}
 
 	keyBytes := make([]byte, 0, 8)
-	keyBytes, err := common.EncodeCols(row, a.groupByCols, a.GetChildren()[0].ColTypes(), keyBytes)
+	keyBytes, err := common.EncodeCols(row, a.groupByCols, a.GetChildren()[0].ColTypes(), keyBytes, false)
 	if err != nil {
 		return err
 	}
