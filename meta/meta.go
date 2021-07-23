@@ -10,9 +10,10 @@ import (
 )
 
 // SchemaTableInfo is a static definition of the table schema for the table schema table.
-var SchemaTableInfo = &common.TableInfo{
+var SchemaTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	ID:             common.SchemaTableID,
-	TableName:      "tables",
+	SchemaName:     "sys",
+	Name:           "tables",
 	PrimaryKeyCols: []int{0},
 	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query"},
 	ColumnTypes: []common.ColumnType{
@@ -24,7 +25,7 @@ var SchemaTableInfo = &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 	},
-}
+}}
 
 type Controller struct {
 	lock    sync.RWMutex
@@ -65,29 +66,41 @@ func (c *Controller) Stop() error {
 }
 
 func (c *Controller) loadSchemas() error {
-	// TODO load all the schemas from storage
 	return nil
 }
 
-func (c *Controller) GetMaterializedView(schemaName string, name string) (mv *common.MaterializedViewInfo, ok bool) {
+func (c *Controller) registerSystemSchema() {
+	schema := c.getOrCreateSchema("sys")
+	schema.Tables[SchemaTableInfo.Name] = SchemaTableInfo
+}
+
+func (c *Controller) GetMaterializedView(schemaName string, name string) (*common.MaterializedViewInfo, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	schema, ok := c.schemas[schemaName]
 	if !ok {
 		return nil, false
 	}
-	mv, ok = schema.Mvs[name]
+	tb, ok := schema.Tables[name]
+	if !ok {
+		return nil, false
+	}
+	mv, ok := tb.(*common.MaterializedViewInfo)
 	return mv, ok
 }
 
-func (c *Controller) GetSource(schemaName string, name string) (source *common.SourceInfo, ok bool) {
+func (c *Controller) GetSource(schemaName string, name string) (*common.SourceInfo, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	schema, ok := c.schemas[schemaName]
 	if !ok {
 		return nil, false
 	}
-	source, ok = schema.Sources[name]
+	tb, ok := schema.Tables[name]
+	if !ok {
+		return nil, false
+	}
+	source, ok := tb.(*common.SourceInfo)
 	return source, ok
 }
 
@@ -124,13 +137,8 @@ func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error 
 }
 
 func (c *Controller) existsMvOrSource(schema *common.Schema, name string) error {
-	_, ok := schema.Mvs[name]
-	if ok {
-		return fmt.Errorf("materialized view with Name %s already exists in Schema %s", name, schema.Name)
-	}
-	_, ok = schema.Sources[name]
-	if ok {
-		return fmt.Errorf("source with Name %s already exists in Schema %s", name, schema.Name)
+	if _, ok := schema.Tables[name]; ok {
+		return fmt.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
 	}
 	return nil
 }
@@ -145,11 +153,11 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool)
 	if err != nil {
 		return err
 	}
-	schema.Sources[sourceInfo.Name] = sourceInfo
+	schema.Tables[sourceInfo.Name] = sourceInfo
 
 	if persist {
 		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
-		if err = table.Upsert(SchemaTableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
+		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -167,11 +175,11 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	if err != nil {
 		return err
 	}
-	schema.Mvs[mvInfo.Name] = mvInfo
+	schema.Tables[mvInfo.Name] = mvInfo
 
 	if persist {
 		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
-		if err = table.Upsert(SchemaTableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
+		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -183,10 +191,9 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 
 func (c *Controller) newSchema(name string) *common.Schema {
 	return &common.Schema{
-		Name:    name,
-		Mvs:     make(map[string]*common.MaterializedViewInfo),
-		Sources: make(map[string]*common.SourceInfo),
-		Sinks:   make(map[string]*common.SinkInfo),
+		Name:   name,
+		Tables: make(map[string]common.Table),
+		Sinks:  make(map[string]*common.SinkInfo),
 	}
 }
 
@@ -197,14 +204,17 @@ func (c *Controller) RemoveSource(schemaName string, sourceName string, persist 
 	if !ok {
 		return fmt.Errorf("no such schema %s", schemaName)
 	}
-	sourceInfo, ok := schema.Sources[sourceName]
+	tbl, ok := schema.Tables[sourceName]
 	if !ok {
 		return fmt.Errorf("no such source %s", sourceName)
 	}
-	delete(schema.Sources, sourceName)
+	if _, ok := tbl.(*common.SourceInfo); !ok {
+		return fmt.Errorf("%s is not a source", tbl)
+	}
+	delete(schema.Tables, sourceName)
 
 	if persist {
-		return c.deleteEntityWIthID(sourceInfo.TableInfo.ID)
+		return c.deleteEntityWIthID(tbl.GetTableInfo().ID)
 	}
 
 	return nil
@@ -217,14 +227,17 @@ func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, pe
 	if !ok {
 		return fmt.Errorf("no such schema %s", schemaName)
 	}
-	mvInfo, ok := schema.Mvs[mvName]
+	tbl, ok := schema.Tables[mvName]
 	if !ok {
 		return fmt.Errorf("no such mv %s", mvName)
 	}
-	delete(schema.Mvs, mvName)
+	if _, ok := tbl.(*common.MaterializedViewInfo); !ok {
+		return fmt.Errorf("%s is not a materialized view", tbl)
+	}
+	delete(schema.Tables, mvName)
 
 	if persist {
-		return c.deleteEntityWIthID(mvInfo.TableInfo.ID)
+		return c.deleteEntityWIthID(tbl.GetTableInfo().ID)
 	}
 
 	return nil

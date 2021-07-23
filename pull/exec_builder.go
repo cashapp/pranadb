@@ -3,11 +3,12 @@ package pull
 import (
 	"errors"
 	"fmt"
+	"log"
+
 	"github.com/pingcap/tidb/planner/util"
 	"github.com/pingcap/tidb/types"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
-	"log"
 
 	"github.com/pingcap/tidb/planner/core"
 
@@ -113,16 +114,9 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 			panic("table scans only used on remote queries")
 		}
 		tableName := op.Table.Name.L
-		var t *common.TableInfo
-		mv, ok := schema.Mvs[tableName]
+		tbl, ok := schema.Tables[tableName]
 		if !ok {
-			source, ok := schema.Sources[tableName]
-			if !ok {
-				return nil, fmt.Errorf("unknown source or materialized view %s", tableName)
-			}
-			t = source.TableInfo
-		} else {
-			t = mv.TableInfo
+			return nil, fmt.Errorf("unknown source or materialized view %s", tableName)
 		}
 		if len(op.Ranges) > 1 {
 			return nil, errors.New("only one range supported")
@@ -147,7 +141,7 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 				}
 			}
 		}
-		executor, err = exec.NewPullTableScan(t, p.cluster, session.QueryInfo.ShardID, scanRange)
+		executor, err = exec.NewPullTableScan(tbl.GetTableInfo(), p.cluster, session.QueryInfo.ShardID, scanRange)
 		if err != nil {
 			return nil, err
 		}

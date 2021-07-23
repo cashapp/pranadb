@@ -3,12 +3,13 @@ package push
 import (
 	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/common/commontest"
 	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/squareup/pranadb/common/commontest"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -355,17 +356,19 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 	switch op := node.(type) {
 	case *exec.TableScan:
 		tableName := op.TableName
-		mvInfo, ok := schema.Mvs[tableName]
+		tbl, ok := schema.Tables[tableName]
 		if !ok {
-			sourceInfo, ok := schema.Sources[tableName]
-			if !ok {
-				return fmt.Errorf("unknown source or materialized view %s", tableName)
-			}
-			source := p.sources[sourceInfo.TableInfo.ID]
+			return fmt.Errorf("unknown source or materialized view %s", tableName)
+		}
+		switch tbl := tbl.(type) {
+		case *common.SourceInfo:
+			source := p.sources[tbl.ID]
 			source.removeConsumingExecutor(node)
-		} else {
-			mv := p.materializedViews[mvInfo.TableInfo.ID]
+		case *common.MaterializedViewInfo:
+			mv := p.materializedViews[tbl.ID]
 			mv.removeConsumingExecutor(node)
+		default:
+			return fmt.Errorf("cannot disconnect %s: invalid table type", tbl)
 		}
 	case *exec.Aggregator:
 		delete(p.remoteConsumers, op.AggTableInfo.ID)

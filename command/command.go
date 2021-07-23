@@ -88,17 +88,16 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 
 	tableInfo := common.TableInfo{
 		ID:             id,
-		TableName:      name,
+		SchemaName:     schemaName,
+		Name:           name,
 		PrimaryKeyCols: pkCols,
 		ColumnNames:    colNames,
 		ColumnTypes:    colTypes,
 		IndexInfos:     nil,
 	}
 	sourceInfo := common.SourceInfo{
-		SchemaName: schemaName,
-		Name:       name,
-		TableInfo:  &tableInfo,
-		TopicInfo:  topicInfo,
+		TableInfo: &tableInfo,
+		TopicInfo: topicInfo,
 	}
 	err := e.metaController.RegisterSource(&sourceInfo, persist)
 	if err != nil {

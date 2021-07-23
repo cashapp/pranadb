@@ -1,12 +1,13 @@
 package exec
 
 import (
+	"testing"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestTableScanNoLimit(t *testing.T) {
@@ -121,7 +122,8 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}) (PullExecutor, clus
 
 	tableInfo := common.TableInfo{
 		ID:             tableID,
-		TableName:      "test_table",
+		SchemaName:     "test",
+		Name:           "test_table",
 		PrimaryKeyCols: []int{0},
 		ColumnNames:    colNames,
 		ColumnTypes:    colTypes,
