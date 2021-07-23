@@ -3,8 +3,6 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/sess"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -15,6 +13,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/sess"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -285,8 +286,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	for _, prana := range st.testSuite.pranaCluster {
 		testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
 		if ok {
-			require.Equal(0, len(testSchema.Mvs), fmt.Sprintf("There are %d materialized views left at the end of the test", len(testSchema.Mvs)))
-			require.Equal(0, len(testSchema.Sources), fmt.Sprintf("There are %d sources left at the end of the test", len(testSchema.Sources)))
+			require.Equal(0, len(testSchema.Tables), fmt.Sprintf("There are %d materialized views and sources left at the end of the test", len(testSchema.Tables)))
 			require.Equal(0, len(testSchema.Sinks), fmt.Sprintf("There are %d sinks left at the end of the test", len(testSchema.Sinks)))
 		}
 		err := prana.GetPushEngine().VerifyNoSourcesOrMVs()

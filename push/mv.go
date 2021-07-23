@@ -20,17 +20,16 @@ func (p *PushEngine) CreateMaterializedView(pl *parplan.Planner, schema *common.
 	}
 	tableInfo := common.TableInfo{
 		ID:             tableID,
-		TableName:      mvName,
+		SchemaName:     schema.Name,
+		Name:           mvName,
 		PrimaryKeyCols: dag.KeyCols(),
 		ColumnNames:    dag.ColNames(),
 		ColumnTypes:    dag.ColTypes(),
 		IndexInfos:     nil,
 	}
 	mvInfo := common.MaterializedViewInfo{
-		SchemaName: schema.Name,
-		Name:       mvName,
-		Query:      query,
-		TableInfo:  &tableInfo,
+		Query:     query,
+		TableInfo: &tableInfo,
 	}
 
 	tableNode := exec.NewTableExecutor(dag.ColTypes(), &tableInfo, p.cluster)

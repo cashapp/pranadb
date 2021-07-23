@@ -45,11 +45,10 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 				primary key (sensor_id)
 			)
 		`, sourceInfo: &common.SourceInfo{
-			SchemaName: "test",
-			Name:       "sensor_readings",
 			TableInfo: &common.TableInfo{
 				ID:             100,
-				TableName:      "sensor_readings",
+				SchemaName:     "test",
+				Name:           "sensor_readings",
 				PrimaryKeyCols: []int{0},
 				ColumnNames:    []string{"sensor_id", "location", "temperature"},
 				ColumnTypes: []common.ColumnType{
@@ -64,11 +63,11 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 				select sensor_id, max(temperature)
 				from test.sensor_readings
 				where location='wincanton' group by sensor_id
-		`, mvInfo: &common.MaterializedViewInfo{SchemaName: "test",
-			Name: "sensor_readings",
+		`, mvInfo: &common.MaterializedViewInfo{
 			TableInfo: &common.TableInfo{
 				ID:             100,
-				TableName:      "sensor_readings",
+				SchemaName:     "test",
+				Name:           "sensor_readings",
 				PrimaryKeyCols: []int{0},
 				ColumnNames:    []string{"sensor_id", "location", "temperature"},
 				ColumnTypes: []common.ColumnType{
@@ -93,13 +92,13 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 
 			if test.sourceInfo != nil {
 				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
-				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
+				row, err := table.LookupInPk(meta.SchemaTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
 				require.NoError(t, err)
 				require.NotNil(t, row)
 				require.Equal(t, test.sourceInfo, meta.DecodeSourceInfoRow(row))
 			} else if test.mvInfo != nil {
 				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
-				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
+				row, err := table.LookupInPk(meta.SchemaTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
 				require.NoError(t, err)
 				repr.Println(meta.DecodeMaterializedViewInfoRow(row))
 				require.Equal(t, test.mvInfo, meta.DecodeMaterializedViewInfoRow(row))

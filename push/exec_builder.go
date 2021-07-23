@@ -3,6 +3,8 @@ package push
 import (
 	"errors"
 	"fmt"
+	"reflect"
+
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
@@ -18,7 +20,7 @@ func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPushDAG(physicalPlan, 0, queryName, seqGenerator)
+	dag, err := p.buildPushDAG(physicalPlan, 0, schema.Name, queryName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +34,7 @@ func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, seqGenerator common.SeqGenerator) (exec.PushExecutor, error) {
+func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string, seqGenerator common.SeqGenerator) (exec.PushExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -123,7 +125,8 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 		tableInfo := &common.TableInfo{
 			ID:             tableID,
-			TableName:      tableName,
+			SchemaName:     schemaName,
+			Name:           tableName,
 			PrimaryKeyCols: pkCols,
 			ColumnNames:    colNames,
 			ColumnTypes:    colTypes,
@@ -153,7 +156,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPushDAG(child, aggSequence, queryName, seqGenerator)
+		childExecutor, err := p.buildPushDAG(child, aggSequence, queryName, schemaName, seqGenerator)
 		if err != nil {
 			return nil, err
 		}
@@ -182,21 +185,21 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 	switch op := executor.(type) {
 	case *exec.TableScan:
 		tableName := op.TableName
-		var tableInfo *common.TableInfo
-		mvInfo, ok := schema.Mvs[tableName]
+		tbl, ok := schema.Tables[tableName]
 		if !ok {
-			sourceInfo, ok := schema.Sources[tableName]
-			if !ok {
-				return fmt.Errorf("unknown source or materialized view %s", tableName)
-			}
-			tableInfo = sourceInfo.TableInfo
-			source := p.sources[tableInfo.ID]
-			source.addConsumingExecutor(executor)
-		} else {
-			tableInfo = mvInfo.TableInfo
-			mv := p.materializedViews[tableInfo.ID]
-			mv.addConsumingExecutor(executor)
+			return fmt.Errorf("unknown source or materialized view %s", tableName)
 		}
+		switch tbl := tbl.(type) {
+		case *common.SourceInfo:
+			source := p.sources[tbl.GetTableInfo().ID]
+			source.addConsumingExecutor(executor)
+		case *common.MaterializedViewInfo:
+			mv := p.materializedViews[tbl.GetTableInfo().ID]
+			mv.addConsumingExecutor(executor)
+		default:
+			return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
+		}
+		tableInfo := tbl.GetTableInfo()
 		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
 		colTypes := op.GetChildren()[0].ColTypes()

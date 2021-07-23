@@ -38,11 +38,8 @@ type iSSchemaInfo struct {
 func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 
 	tableInfos := make(map[string]*common.TableInfo)
-	for mvName, mv := range schema.Mvs {
-		tableInfos[mvName] = mv.TableInfo
-	}
-	for sourceName, source := range schema.Sources {
-		tableInfos[sourceName] = source.TableInfo
+	for name, tbl := range schema.Tables {
+		tableInfos[name] = tbl.GetTableInfo()
 	}
 	schemaInfo := iSSchemaInfo{
 		SchemaName:  schema.Name,
@@ -78,7 +75,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 			columns = append(columns, col)
 		}
 
-		tableName := model.NewCIStr(tableInfo.TableName)
+		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo
 		var pkCols []*model.IndexColumn
@@ -94,7 +91,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 
 		pkIndex := &model.IndexInfo{
 			ID:        1001,
-			Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.TableName)),
+			Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.Name)),
 			Table:     tableName,
 			Columns:   pkCols,
 			State:     model.StatePublic,
@@ -117,7 +114,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 			State:      model.StatePublic,
 		}
 
-		tablesMap[tableInfo.TableName] = newTiDBTable(tab)
+		tablesMap[tableInfo.Name] = newTiDBTable(tab)
 
 		tabInfos = append(tabInfos, tab)
 	}

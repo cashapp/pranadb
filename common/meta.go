@@ -105,11 +105,18 @@ type ColumnType struct {
 
 type TableInfo struct {
 	ID             uint64
-	TableName      string
+	SchemaName     string
+	Name           string
 	PrimaryKeyCols []int
 	ColumnNames    []string
 	ColumnTypes    []ColumnType
 	IndexInfos     []*IndexInfo
+}
+
+func (i *TableInfo) GetTableInfo() *TableInfo { return i }
+
+func (i *TableInfo) String() string {
+	return fmt.Sprintf("table[name=%s.%s,id=%d]", i.SchemaName, i.Name, i.ID)
 }
 
 type IndexInfo struct {
@@ -118,17 +125,31 @@ type IndexInfo struct {
 }
 
 type Schema struct {
-	Name    string
-	Mvs     map[string]*MaterializedViewInfo
-	Sources map[string]*SourceInfo
-	Sinks   map[string]*SinkInfo
+	Name   string
+	Tables map[string]Table
+	Sinks  map[string]*SinkInfo
 }
 
 type SourceInfo struct {
-	SchemaName string
-	Name       string
-	TableInfo  *TableInfo
-	TopicInfo  *TopicInfo
+	*TableInfo
+	TopicInfo *TopicInfo
+}
+
+func (i *SourceInfo) String() string {
+	return "source_" + i.TableInfo.String()
+}
+
+type Table interface {
+	GetTableInfo() *TableInfo
+}
+
+// MetaTableInfo describes a system table that is neither a source or mv.
+type MetaTableInfo struct {
+	*TableInfo
+}
+
+func (i *MetaTableInfo) String() string {
+	return "meta_" + i.TableInfo.String()
 }
 
 type TopicInfo struct {
@@ -148,10 +169,12 @@ const (
 )
 
 type MaterializedViewInfo struct {
-	SchemaName string
-	Name       string
-	Query      string
-	TableInfo  *TableInfo
+	*TableInfo
+	Query string
+}
+
+func (i *MaterializedViewInfo) String() string {
+	return "mv_" + i.TableInfo.String()
 }
 
 type SinkInfo struct {
