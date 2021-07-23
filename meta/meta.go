@@ -159,7 +159,7 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool)
 	return nil
 }
 
-func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo) error {
+func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, persist bool) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(mvInfo.SchemaName)
@@ -168,6 +168,16 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 		return err
 	}
 	schema.Mvs[mvInfo.Name] = mvInfo
+
+	if persist {
+		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
+		if err = table.Upsert(SchemaTableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
+			return err
+		}
+		if err = c.cluster.WriteBatch(wb); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
