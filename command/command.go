@@ -77,14 +77,14 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 	return e.pushEngine.CreateSource(&sourceInfo)
 }
 
-func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator) error {
+func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
 	log.Printf("creating mv %s on node %d", name, e.cluster.GetNodeID())
 	id := seqGenerator.GenerateSequence()
 	mvInfo, err := e.pushEngine.CreateMaterializedView(session, name, query, id, seqGenerator)
 	if err != nil {
 		return err
 	}
-	err = e.metaController.RegisterMaterializedView(mvInfo)
+	err = e.metaController.RegisterMaterializedView(mvInfo, persist)
 	if err != nil {
 		return err
 	}
@@ -112,9 +112,12 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			if err != nil {
 				return nil, err
 			}
+			if _, err = e.execCreateMaterializedView(session, ast.Create.MaterializedView, &preallocSeqGen{sequences: sequences}, true); err != nil {
+				return nil, err
+			}
 			return e.executeInGlobalOrder(session.Schema.Name, sql, "mv", sequences)
 		}
-		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator)
+		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, false)
 
 	case ast.Create != nil && ast.Create.Source != nil:
 		if local {
@@ -170,8 +173,8 @@ func (e *Executor) execSelect(session *sess.Session, sql string) (exec.PullExecu
 	return dag, errors.WithStack(err)
 }
 
-func (e *Executor) execCreateMaterializedView(session *sess.Session, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
-	err := e.createMaterializedView(session, mv.Name.String(), mv.Query.String(), seqGenerator)
+func (e *Executor) execCreateMaterializedView(session *sess.Session, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator, persist bool) (exec.PullExecutor, error) {
+	err := e.createMaterializedView(session, mv.Name.String(), mv.Query.String(), seqGenerator, persist)
 	return exec.Empty, errors.WithStack(err)
 }
 
@@ -257,18 +260,9 @@ func (e *Executor) HandleNotification(notification cluster.Notification) {
 			panic("cannot find notification")
 		}
 		delete(e.notifActions, ddlStmt.Sequence)
-		if ddlStmt.Kind == "mv" {
-			ex, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
-			res := statementExecutionResult{
-				exec: ex,
-				err:  err,
-			}
-			ch <- res
-		} else {
-			ch <- statementExecutionResult{
-				exec: exec.Empty,
-				err:  nil,
-			}
+		ch <- statementExecutionResult{
+			exec: exec.Empty,
+			err:  nil,
 		}
 	} else {
 		_, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)

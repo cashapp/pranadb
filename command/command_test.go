@@ -3,6 +3,7 @@ package command
 import (
 	"testing"
 
+	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/table"
@@ -33,6 +34,7 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 		name       string
 		query      string
 		sourceInfo *common.SourceInfo
+		mvInfo     *common.MaterializedViewInfo
 		rows       exec.PullExecutor
 	}{
 		{name: "CreateSource", query: `
@@ -42,13 +44,40 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 				temperature double,
 				primary key (sensor_id)
 			)
-		`, rows: exec.Empty},
+		`, sourceInfo: &common.SourceInfo{
+			SchemaName: "test",
+			Name:       "sensor_readings",
+			TableInfo: &common.TableInfo{
+				ID:             100,
+				TableName:      "sensor_readings",
+				PrimaryKeyCols: []int{0},
+				ColumnNames:    []string{"sensor_id", "location", "temperature"},
+				ColumnTypes: []common.ColumnType{
+					{Type: common.TypeBigInt},
+					{Type: common.TypeVarchar},
+					{Type: common.TypeDouble},
+				},
+			},
+		}, rows: exec.Empty},
 		{name: "CreateMV", query: `
 			create materialized view test as
 				select sensor_id, max(temperature)
 				from test.sensor_readings
 				where location='wincanton' group by sensor_id
-		`, rows: exec.Empty},
+		`, mvInfo: &common.MaterializedViewInfo{SchemaName: "test",
+			Name: "sensor_readings",
+			TableInfo: &common.TableInfo{
+				ID:             100,
+				TableName:      "sensor_readings",
+				PrimaryKeyCols: []int{0},
+				ColumnNames:    []string{"sensor_id", "location", "temperature"},
+				ColumnTypes: []common.ColumnType{
+					{Type: common.TypeBigInt},
+					{Type: common.TypeVarchar},
+					{Type: common.TypeDouble},
+				},
+			},
+		}, rows: exec.Empty},
 	}
 
 	for _, test := range tests {
@@ -64,9 +93,16 @@ func TestCommandExecutorExecutePullQuery(t *testing.T) {
 
 			if test.sourceInfo != nil {
 				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
-				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(1)}, meta.SchemaTableInfo.PrimaryKeyCols, common.SchemaTableID, rf, clus)
+				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
 				require.NoError(t, err)
+				require.NotNil(t, row)
 				require.Equal(t, test.sourceInfo, meta.DecodeSourceInfoRow(row))
+			} else if test.mvInfo != nil {
+				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
+				row, err := table.LookupInPk(meta.SchemaTableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
+				require.NoError(t, err)
+				repr.Println(meta.DecodeMaterializedViewInfoRow(row))
+				require.Equal(t, test.mvInfo, meta.DecodeMaterializedViewInfoRow(row))
 			}
 		})
 	}
