@@ -29,6 +29,6 @@ jobs:
       - name: Go lint
         run: golangci-lint run
       - name: Proto lint
-        run: buf lint
+        run: make -C protos lint
       - name: Test
         run: go test ./...

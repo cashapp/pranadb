@@ -37,7 +37,7 @@ func main() {
 	kctx.FatalIfErrorf(err)
 	pgsrv := wire.New(psrv)
 
-	gsrv := grpc.NewServer()
+	gsrv := grpc.NewServer(wire.RegisterSessionManager())
 	reflection.Register(gsrv)
 	service.RegisterPranaDBServiceServer(gsrv, pgsrv)
 	err = gsrv.Serve(l)

@@ -28,9 +28,6 @@ func main() {
 	kctx.FatalIfErrorf(err)
 	client := service.NewPranaDBServiceClient(conn)
 
-	stream, err := client.ExecuteSQLStatement(context.Background())
-	kctx.FatalIfErrorf(err)
-
 	home, err := os.UserHomeDir()
 	kctx.FatalIfErrorf(err)
 
@@ -63,14 +60,15 @@ func main() {
 		sql := strings.Join(cmd, " ")
 		_ = rl.SaveHistory(sql)
 
-		err = sendStatement(stream, sql)
-		kctx.FatalIfErrorf(err)
+		err = sendStatement(client, sql)
+		if err != nil {
+			kctx.Errorf("%s", err)
+		}
 	}
 }
 
-func sendStatement(stream service.PranaDBService_ExecuteSQLStatementClient, sql string) error {
-	// Send request.
-	err := stream.Send(&service.ExecuteSQLStatementRequest{
+func sendStatement(client service.PranaDBServiceClient, sql string) error {
+	stream, err := client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
 		Query:    sql,
 		PageSize: 1000,
 	})
@@ -84,11 +82,12 @@ func sendStatement(stream service.PranaDBService_ExecuteSQLStatementClient, sql 
 		columnTypes []common.ColumnType
 		rowsFactory *common.RowsFactory
 		count       = 0
-		more        = true
 	)
-	for more {
+	for {
 		resp, err := stream.Recv()
-		if err != nil {
+		if err == io.EOF {
+			break
+		} else if err != nil {
 			return errors.WithStack(err)
 		}
 		switch result := resp.Result.(type) {
@@ -129,18 +128,6 @@ func sendStatement(stream service.PranaDBService_ExecuteSQLStatementClient, sql 
 				fmt.Println(strings.Join(rowstr, "|"))
 			}
 			count += int(page.Count)
-			more = page.More
-			if !more {
-				if count == 1 {
-					fmt.Printf("1 row returned\n")
-				} else {
-					fmt.Printf("%d rows returned\n", count)
-				}
-			}
-
-		case *service.ExecuteSQLStatementResponse_Error:
-			fmt.Printf("error: %s\n", result.Error)
-			more = false
 		}
 	}
 	return nil

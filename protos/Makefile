@@ -14,6 +14,10 @@ clean:
 	rsync -r --remove-source-files ./github.com/squareup/pranadb/protos/ ./
 	rm -rf ./github.com
 
+.PHONY: lint
+lint: 
+	buf lint
+
 # Ensure the Go protoc generators are installed.
 .PHONY: generators
 generators: ../.hermit/go/bin/protoc-gen-go
