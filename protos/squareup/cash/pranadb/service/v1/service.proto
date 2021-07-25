@@ -2,10 +2,9 @@ syntax = "proto3";
 
 package squareup.cash.pranadb.service.v1;
 
-option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service";
+import "google/protobuf/empty.proto";
 
-message Result {
-}
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service";
 
 enum ColumnType {
   COLUMN_TYPE_UNSPECIFIED = 0;
@@ -30,13 +29,6 @@ message Column {
 }
 
 // Issue a query.
-//
-// The response is:
-//
-//     response ::= error | pages
-//     pages ::= column (page* | error)
-//
-// Where page* terminates when more = false.
 message ExecuteSQLStatementRequest {
   string query = 1;
   // Size of each page of results returned when paginating.
@@ -49,25 +41,25 @@ message Columns {
 }
 
 // Each query may return an arbitrary number of pages.
-//
-// Pagination should terminate once either an error is returned in
-// ExecuteSQLStatementResponse or Page.more is false.
 message Page {
   uint64 count = 1;
   bytes rows = 2; // Serialized rows.
-  // True if there is more data to be retrieved.
-  bool more = 3;
 }
 
 message ExecuteSQLStatementResponse {
   oneof result {
-    string error = 1;
-    Columns columns = 2;
-    Page page = 3;
+    Columns columns = 1; // Present in first response.
+    Page page = 2;
   }
 }
 
+message UseRequest {
+  string schema = 1;
+}
+
 service PranaDBService {
-  // Bidirectional stream to emulate MySQL's persistent connection.
-  rpc ExecuteSQLStatement(stream ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
+  // Use a schema.
+  rpc Use(UseRequest) returns (google.protobuf.Empty);
+  // Execute SQL and return results.
+  rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
 }

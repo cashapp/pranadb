@@ -2,10 +2,13 @@
 package wire
 
 import (
-	"io"
+	"context"
 	"log"
 
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
@@ -26,43 +29,32 @@ func New(server *server.Server) *Server {
 
 var _ service.PranaDBServiceServer = &Server{}
 
-func (s *Server) ExecuteSQLStatement(stream service.PranaDBService_ExecuteSQLStatementServer) error {
-	log.Printf("New SQL session started")
-	var session *sess.Session
-	for {
-		in, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
-		}
-		if in.PageSize == 0 {
-			if _, err = sendError(stream, errors.New("invalid page_size 0")); err != nil {
-				return err
-			}
-			continue
-		}
-		newSession, executor, err := s.processQuery(session, in.Query)
-		if ok, serr := sendError(stream, err); serr != nil {
-			return serr
-		} else if !ok {
-			continue
-		}
-
-		if newSession != nil {
-			session = newSession
-			log.Printf("Switched to schema: %s", session.Schema.Name)
-		}
-
-		if executor != nil {
-			if err = s.streamPages(stream, int(in.PageSize), executor); err != nil {
-				return err
-			}
-		}
-	}
+func (s *Server) Use(ctx context.Context, request *service.UseRequest) (*emptypb.Empty, error) {
+	session := s.server.GetCommandExecutor().CreateSession(request.Schema)
+	SetSession(ctx, session)
+	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) streamPages(stream service.PranaDBService_ExecuteSQLStatementServer, requestedPageSize int, executor exec.PullExecutor) error {
+func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error {
+	session := SessionFromContext(stream.Context())
+	newSession, executor, err := s.processQuery(session, in.Query)
+	if err != nil {
+		return err
+	}
+
+	// Have we switched schemas?
+	if newSession != nil {
+		session = newSession
+		SetSession(stream.Context(), session)
+		if executor == nil {
+			return nil
+		}
+	}
+
+	if session == nil {
+		return status.Errorf(codes.FailedPrecondition, "no schema selected - USE <schema>")
+	}
+
 	// First send column definitions.
 	columns := &service.Columns{}
 	names := executor.ColNames()
@@ -88,6 +80,7 @@ func (s *Server) streamPages(stream service.PranaDBService_ExecuteSQLStatementSe
 	}
 
 	// Then start sending pages until complete.
+	requestedPageSize := int(in.PageSize)
 	pageSize := requestedPageSize
 	for pageSize >= requestedPageSize {
 		// Transcode rows.
@@ -99,7 +92,6 @@ func (s *Server) streamPages(stream service.PranaDBService_ExecuteSQLStatementSe
 		results := &service.Page{
 			Count: uint64(pageSize),
 			Rows:  rows.Serialize(),
-			More:  pageSize == requestedPageSize,
 		}
 		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
 			return errors.WithStack(err)
@@ -125,7 +117,7 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 
 	default:
 		if session == nil {
-			return nil, nil, errors.Errorf("no schema selected - USE <schema>")
+			return nil, nil, status.Errorf(codes.FailedPrecondition, "no schema selected - USE <schema>")
 		}
 		exec, err := s.server.GetCommandExecutor().ExecuteSQLStatement(session, query)
 		if err != nil {
@@ -133,14 +125,4 @@ func (s *Server) processQuery(session *sess.Session, query string) (*sess.Sessio
 		}
 		return nil, exec, nil
 	}
-}
-
-// Returns ok=true if we should continue processing, serr!=nil if sending failed and we should abort the stream.
-func sendError(stream service.PranaDBService_ExecuteSQLStatementServer, err error) (ok bool, serr error) {
-	if err == nil {
-		return true, nil
-	}
-	return false, errors.WithStack(stream.Send(&service.ExecuteSQLStatementResponse{
-		Result: &service.ExecuteSQLStatementResponse_Error{Error: err.Error()},
-	}))
 }
