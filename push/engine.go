@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/table"
 	"log"
 	"math/rand"
 	"sync"
@@ -272,14 +273,11 @@ func (p *PushEngine) waitForSchedulers() error {
 }
 
 func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
+	log.Printf("Waiting for no rows in table %d", tableID)
+	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		keyStartPrefix := make([]byte, 0, 16)
-		keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, tableID)
-		kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyStartPrefix, 1)
-		if err != nil {
-			return false, err
-		}
-		return len(kvPairs) == 0, nil
+		exist, err := p.existRowsInLocalTable(tableID, shardIDs)
+		return !exist, err
 	}, 5*time.Second, 10*time.Millisecond)
 	if !ok {
 		return errors.New("timed out waiting for condition")
@@ -287,7 +285,23 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
+}
+
+func (p *PushEngine) existRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
+	for _, shardID := range localShards {
+		startPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
+		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
+		kvPairs, err := p.cluster.LocalScan(startPrefix, endPrefix, 1)
+		if err != nil {
+			return false, err
+		}
+		if kvPairs != nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (p *PushEngine) waitUntilNoSchedulersRunning() error {
@@ -391,6 +405,7 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 
 func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
 	log.Printf("Deleting all data for table %d", tableID)
-	keyPrefix := common.AppendUint64ToBufferLittleEndian([]byte{}, tableID)
-	return p.cluster.DeleteAllDataWithPrefix(keyPrefix)
+	startPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID)
+	endPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID+1)
+	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
 }

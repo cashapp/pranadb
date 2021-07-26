@@ -19,7 +19,6 @@ func (d *Dragon) newNotificationsStateMachine(shardID uint64, _ uint64) statemac
 	}
 }
 
-// TODO implement IOnDiskStateMachine
 type notificationsStateMachine struct {
 	shardID uint64
 	dragon  *Dragon

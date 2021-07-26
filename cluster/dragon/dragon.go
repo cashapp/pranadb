@@ -1,7 +1,6 @@
 package dragon
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -21,10 +20,6 @@ import (
 )
 
 const (
-	// We reserve the first 1000 dragon cluster ids for system raft groups
-	// The shard raft groups start from this value
-	shardClusterIDBase uint64 = 1000
-
 	// The dragon cluster id for the table sequence group
 	tableSequenceClusterID uint64 = 1
 
@@ -32,10 +27,14 @@ const (
 	notificationsClusterID uint64 = 2
 
 	// Timeout on dragon calls
-	dragonCallTimeout = time.Second * 5
+	dragonCallTimeout = time.Second * 30
 
 	// Timeout on remote queries
 	remoteQueryTimeout = time.Second * 30
+
+	sequenceGroupSize = 3
+
+	notificationGroupCoreSize = 3
 )
 
 func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int,
@@ -44,13 +43,14 @@ func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int,
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
 	dragon := Dragon{
-		nodeID:         nodeID,
-		clusterID:      clusterID,
-		nodeAddresses:  nodeAddresses,
-		totShards:      totShards,
-		dataDir:        dataDir,
-		notifListeners: make(map[cluster.NotificationType]cluster.NotificationListener),
-		testDragon:     testDragon,
+		nodeID:            nodeID,
+		clusterID:         clusterID,
+		nodeAddresses:     nodeAddresses,
+		totShards:         totShards,
+		dataDir:           dataDir,
+		notifListeners:    make(map[cluster.NotificationType]cluster.NotificationListener),
+		testDragon:        testDragon,
+		replicationFactor: replicationFactor,
 	}
 	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
 	dragon.generateNodesAndShards(totShards, replicationFactor)
@@ -77,6 +77,7 @@ type Dragon struct {
 	testDragon                   bool
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
+	replicationFactor            int
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -136,7 +137,7 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 // and we don't need linearizability for pull queries
 func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
-	if queryInfo.ShardID < shardClusterIDBase {
+	if queryInfo.ShardID < cluster.DataShardIDBase {
 		panic("invalid shard cluster id")
 	}
 
@@ -260,7 +261,7 @@ func (d *Dragon) Stop() error {
 }
 
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
-	if batch.ShardID < shardClusterIDBase {
+	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 
@@ -305,7 +306,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
-		return fmt.Errorf("unexpected return value from writing batch: %d to shard %d", proposeRes.Value, batch.ShardID)
+		return fmt.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
 	}
 
 	return nil
@@ -315,24 +316,25 @@ func (d *Dragon) LocalGet(key []byte) ([]byte, error) {
 	return localGet(d.pebble, key)
 }
 
-func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
-
-	iterOptions := &pebble.IterOptions{}
+func (d *Dragon) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
+	if startKeyPrefix == nil {
+		panic("startKeyPrefix cannot be nil")
+	}
+	if !d.testDragon {
+		log.Printf("Dragon scanning from %s to %s", common.DumpDataKey(startKeyPrefix), common.DumpDataKey(endKeyPrefix))
+	}
+	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
 	iter := d.pebble.NewIter(iterOptions)
 	iter.SeekGE(startKeyPrefix)
-	whilePrefixLen := len(whileKeyPrefix)
 	count := 0
 	var pairs []cluster.KVPair
 	if iter.Valid() {
 		for limit == -1 || count < limit {
 			k := iter.Key()
-			if bytes.Compare(k[0:whilePrefixLen], whileKeyPrefix) > 0 {
-				break
-			}
 			v := iter.Value()
 			pairs = append(pairs, cluster.KVPair{
-				Key:   copyByteSlice(k),
-				Value: copyByteSlice(v),
+				Key:   common.CopyByteSlice(k), // Must be copied as Pebble reuses the slices
+				Value: common.CopyByteSlice(v),
 			})
 			count++
 			if !iter.Next() {
@@ -346,7 +348,7 @@ func (d *Dragon) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit i
 	return pairs, nil
 }
 
-func (d *Dragon) DeleteAllDataWithPrefix(prefix []byte) error {
+func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
 
 	chans := make([]chan error, len(d.allShards))
 	for i, shardID := range d.allShards {
@@ -356,22 +358,29 @@ func (d *Dragon) DeleteAllDataWithPrefix(prefix []byte) error {
 
 		theShardID := shardID
 		go func() {
-			// We append the shard id because we're going to send the request to each shard
-			var prefixWithShard []byte
-			prefixWithShard = append(prefixWithShard, prefix...)
-			prefixWithShard = common.AppendUint64ToBufferLittleEndian(prefixWithShard, theShardID)
+			// Remember, key must be in big-endian order
+			startPrefixWithShard := make([]byte, 0, 16)
+			startPrefixWithShard = common.AppendUint64ToBufferBigEndian(startPrefixWithShard, theShardID)
+			startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
+
+			endPrefixWithShard := make([]byte, 0, 16)
+			endPrefixWithShard = common.AppendUint64ToBufferBigEndian(endPrefixWithShard, theShardID)
+			endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+
 			cs := d.nh.GetNoOPSession(theShardID)
 
 			ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
 			defer cancel()
 
 			var buff []byte
-			buff = append(buff, shardStateMachineCommandDeletePrefix)
+			buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
 
-			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(prefixWithShard)))
-			buff = append(buff, prefixWithShard...)
+			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(startPrefixWithShard)))
+			buff = append(buff, startPrefixWithShard...)
+			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(endPrefixWithShard)))
+			buff = append(buff, endPrefixWithShard...)
 
-			log.Printf("Calling from node %d to delete all data for shard id %d with key %v", d.nodeID, theShardID, prefixWithShard)
+			log.Printf("Calling from node %d to delete all data for shard id %d with key %v", d.nodeID, theShardID, startPrefixWithShard)
 			proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 			if err != nil {
 				ch <- err
@@ -431,25 +440,15 @@ func (d *Dragon) handleNotification(notification cluster.Notification) {
 
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 	v, closer, err := peb.Get(key)
+	defer common.InvokeCloser(closer)
 	if err == pebble.ErrNotFound {
 		return nil, nil
 	}
-	res := copyByteSlice(v)
-	if closer != nil {
-		err = closer.Close()
-		if err != nil {
-			return nil, err
-		}
+	if err != nil {
+		return nil, err
 	}
+	res := common.CopyByteSlice(v)
 	return res, nil
-}
-
-// Pebble tends to reuse buffers so we generally have to copy them before using them elsewhere
-// or the underlying bytes can change
-func copyByteSlice(buff []byte) []byte {
-	res := make([]byte, len(buff))
-	copy(res, buff)
-	return res
 }
 
 func (d *Dragon) joinShardGroups() error {
@@ -492,10 +491,10 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 	log.Printf("Node %d attempting to join shard cluster %d", d.nodeID, shardID)
 
-	createSMFunc := func(_ uint64, _ uint64) statemachine.IStateMachine {
-		return newShardStateMachine(d, shardID, d.nodeID, nodeIDs)
+	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
+		return newShardODStateMachine(d, shardID, d.nodeID, nodeIDs)
 	}
-	if err := d.nh.StartCluster(initialMembers, false, createSMFunc, rc); err != nil {
+	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
 		ch <- fmt.Errorf("failed to start shard dragonboat cluster %v", err)
 		return
 	}
@@ -516,12 +515,11 @@ func (d *Dragon) joinSequenceGroup() error {
 
 	initialMembers := make(map[uint64]string)
 	// Dragonboat nodes must start at 1, zero is not allowed
-	// We take the first 3 nodes
-	for i := 0; i < 3; i++ {
+	for i := 0; i < sequenceGroupSize; i++ {
 		initialMembers[uint64(i+1)] = d.nodeAddresses[i]
 	}
 	log.Printf("Node %d attempting to join sequence cluster", d.nodeID)
-	if err := d.nh.StartCluster(initialMembers, false, d.newSequenceStateMachine, rc); err != nil {
+	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
 		return fmt.Errorf("failed to start sequence dragonboat cluster %v", err)
 	}
 	log.Printf("Node %d successfully joined sequence cluster", d.nodeID)
@@ -533,18 +531,21 @@ func (d *Dragon) joinNotificationGroup() error {
 		NodeID:             uint64(d.nodeID + 1),
 		ElectionRTT:        5,
 		HeartbeatRTT:       1,
-		CheckQuorum:        true,
+		CheckQuorum:        false,
 		SnapshotEntries:    10,
 		CompactionOverhead: 5,
 		ClusterID:          notificationsClusterID,
 	}
 
 	initialMembers := make(map[uint64]string)
-	// All the nodes are in the group
+	// All the nodes are in the group however all but the first 3 nodes are observer nodes
 	for i, nodeAddress := range d.nodeAddresses {
 		initialMembers[uint64(i+1)] = nodeAddress
 	}
-	if err := d.nh.StartCluster(initialMembers, false, d.newNotificationsStateMachine, rc); err != nil {
+	isObserver := d.nodeID > notificationGroupCoreSize
+	rcCopy := rc
+	rcCopy.IsObserver = isObserver
+	if err := d.nh.StartCluster(initialMembers, false, d.newNotificationsStateMachine, rcCopy); err != nil {
 		return fmt.Errorf("failed to start notifications dragonboat cluster %v", err)
 	}
 	log.Printf("Node %d successfully joined notifications cluster", d.nodeID)
@@ -563,7 +564,7 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 	d.allShards = make([]uint64, numShards)
 	d.shardAllocs = make(map[uint64][]int)
 	for i := 0; i < numShards; i++ {
-		shardID := shardClusterIDBase + uint64(i)
+		shardID := cluster.DataShardIDBase + uint64(i)
 		d.allShards[i] = shardID
 		nids := make([]int, replicationFactor)
 		for j := 0; j < replicationFactor; j++ {
@@ -653,7 +654,7 @@ func (d *Dragon) lookupNotificationListener(notification cluster.Notification) c
 }
 
 func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
-	if shardID < shardClusterIDBase {
+	if shardID < cluster.DataShardIDBase {
 		// Ignore - these are not writing nodes
 		return nil
 	}

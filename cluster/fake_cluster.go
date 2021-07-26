@@ -134,6 +134,9 @@ func (f *fakeCluster) Stop() error {
 func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if batch.ShardID < DataShardIDBase {
+		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
+	}
 	log.Printf("Write batch for shard %d", batch.ShardID)
 	log.Printf("Writing batch, puts %d, Deletes %d", len(batch.puts.TheMap), len(batch.Deletes.TheMap))
 	for k, v := range batch.puts.TheMap {
@@ -167,39 +170,46 @@ func (f *fakeCluster) LocalGet(key []byte) ([]byte, error) {
 	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
-func (f *fakeCluster) DeleteAllDataWithPrefix(prefix []byte) error {
+func (f *fakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+	log.Printf("Deleting data in range %v to %v", startPrefix, endPrefix)
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	pairs, err := f.LocalScan(prefix, prefix, -1)
-	if err != nil {
-		return err
-	}
-	for _, pair := range pairs {
-		err := f.deleteInternal(&kvWrapper{
-			key: pair.Key,
-		})
+	for _, shardID := range f.allShardIds {
+		startPref := make([]byte, 0, 16)
+		startPref = common.AppendUint64ToBufferBigEndian(startPref, shardID)
+		startPref = append(startPref, startPrefix...)
+
+		endPref := make([]byte, 0, 16)
+		endPref = common.AppendUint64ToBufferBigEndian(endPref, shardID)
+		endPref = append(endPref, endPrefix...)
+
+		pairs, err := f.LocalScan(startPref, endPref, -1)
 		if err != nil {
 			return err
+		}
+		for _, pair := range pairs {
+			err := f.deleteInternal(&kvWrapper{
+				key: pair.Key,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (f *fakeCluster) LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *fakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}
-	if whileKeyPrefix == nil {
-		panic("whileKeyPrefix cannot be nil")
-	}
-	whilePrefixLen := len(whileKeyPrefix)
 	var result []KVPair
 	count := 0
 	resFunc := func(i btree.Item) bool {
 		wrapper := i.(*kvWrapper) // nolint: forcetypeassert
-		if bytes.Compare(wrapper.key[0:whilePrefixLen], whileKeyPrefix) > 0 {
+		if endKeyPrefix != nil && bytes.Compare(wrapper.key, endKeyPrefix) >= 0 {
 			return false
 		}
 		result = append(result, KVPair{
@@ -226,7 +236,7 @@ func (f *fakeCluster) startShardListeners() {
 func genAllShardIds(numShards int) []uint64 {
 	allShards := make([]uint64, numShards)
 	for i := 0; i < numShards; i++ {
-		allShards[i] = uint64(i)
+		allShards[i] = uint64(i) + DataShardIDBase
 	}
 	return allShards
 }

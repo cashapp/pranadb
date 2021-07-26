@@ -186,7 +186,7 @@ func (t *testCluster) reset() {
 	}
 }
 
-func (t *testCluster) DeleteAllDataWithPrefix(prefix []byte) error {
+func (t *testCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
 	panic("should not be called")
 }
 

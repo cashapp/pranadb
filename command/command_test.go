@@ -46,7 +46,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 			)
 		`, sourceInfo: &common.SourceInfo{
 			TableInfo: &common.TableInfo{
-				ID:             100,
+				ID:             common.UserTableIDBase,
 				SchemaName:     "test",
 				Name:           "sensor_readings",
 				PrimaryKeyCols: []int{0},
@@ -65,7 +65,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 				where location='wincanton' group by sensor_id
 		`, mvInfo: &common.MaterializedViewInfo{
 			TableInfo: &common.TableInfo{
-				ID:             100,
+				ID:             common.UserTableIDBase,
 				SchemaName:     "test",
 				Name:           "sensor_readings",
 				PrimaryKeyCols: []int{0},

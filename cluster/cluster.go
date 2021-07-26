@@ -5,9 +5,14 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-// SchemaTableShardID is a shard for storing table schemas. Note that this actually writes metadata to
-// the first data shard.
-const SchemaTableShardID = 1000
+const (
+	// SchemaTableShardID is a shard for storing table schemas. Note that this actually writes metadata to
+	// the first data shard.
+	SchemaTableShardID = 1000
+
+	// DataShardIDBase is the lowest value of a data shard id
+	DataShardIDBase uint64 = 1000
+)
 
 type Cluster interface {
 
@@ -17,12 +22,14 @@ type Cluster interface {
 	LocalGet(key []byte) ([]byte, error)
 
 	// LocalScan scans the local store
-	LocalScan(startKeyPrefix []byte, whileKeyPrefix []byte, limit int) ([]KVPair, error)
+	// endKeyPrefix is exclusive
+	LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
 
 	GetNodeID() int
 
 	GetAllShardIDs() []uint64
 
+	// GetLocalShardIDs returns the ids of the shards on the local node - this includes replicas
 	GetLocalShardIDs() []uint64
 
 	// GenerateTableID generates a table using a cluster wide persistent counter
@@ -38,7 +45,8 @@ type Cluster interface {
 
 	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
-	DeleteAllDataWithPrefix(prefix []byte) error
+	// DeleteAllDataInRange deletes all data in the specified ranges. Ranges do not contain the shard id
+	DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error
 
 	RegisterMembershipListener(listener MembershipListener)
 

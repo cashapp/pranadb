@@ -3,6 +3,8 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/table"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -235,6 +237,7 @@ func (st *sqlTest) run() {
 
 func (st *sqlTest) runTestIteration(require *require.Assertions, commands []string, iter int) int {
 	log.Printf("Running test iteration %d", iter)
+	start := time.Now()
 	st.prana = st.choosePrana()
 	st.session = st.createSession(st.prana)
 	st.output = &strings.Builder{}
@@ -276,10 +279,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	actualOutput := st.output.String()
 	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
 
-	_ = st.session.Close()
-	// TODO - there's currently a bug in notifications - which will cause intermittent failures
-	// Commented out until we can fix properly
-	//require.NoError(err)
+	end := time.Now()
+
+	err = st.session.Close()
+	require.NoError(err)
 
 	// Now we verify that the test has left the database in a clean state - there should be no user sources
 	// or materialized views and no data in the database and nothing in the remote session caches
@@ -292,28 +295,33 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
 		require.NoError(err)
 
-		keyPrefix := common.AppendUint64ToBufferLittleEndian([]byte{}, common.UserTableIDBase)
-		pairs, err := prana.GetCluster().LocalScan(keyPrefix, []byte{}, -1)
-		require.NoError(err)
-		if len(pairs) > 0 {
-			log.Printf("Table data left at end of test:")
-			for _, pair := range pairs {
-				log.Printf("k:%v v:%v", pair.Key, pair.Value)
+		localShards := prana.GetCluster().GetLocalShardIDs()
+		log.Printf("There are %d local shards", len(localShards))
+		for _, shardID := range localShards {
+			keyStartPrefix := table.EncodeTableKeyPrefix(common.UserTableIDBase, shardID, 16)
+			keyEndPrefix := table.EncodeTableKeyPrefix(0, shardID+1, 16)
+			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, -1)
+			require.NoError(err)
+			if len(pairs) > 0 {
+				for _, pair := range pairs {
+					log.Printf("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
+				}
+				require.Equal(0, len(pairs), fmt.Sprintf("Table data left at end of test for shard %d", shardID))
 			}
 		}
-		require.Equal(0, len(pairs), fmt.Sprintf("table data left at end of test %d rows", len(pairs)))
-		// Commented out until we move to better notification system and use IOnDiskStateMachine
-		//ok, err = commontest.WaitUntilWithError(func() (bool, error) {
-		//	num, err := prana.GetPullEngine().NumCachedSessions()
-		//	if err != nil {
-		//		return false, err
-		//	}
-		//	return num == 0, nil
-		//}, 5*time.Second, 1*time.Millisecond)
-		//require.True(ok, "timed out waiting for num remote sessions to get to zero")
-		//require.NoError(err)
+
+		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+			num, err := prana.GetPullEngine().NumCachedSessions()
+			if err != nil {
+				return false, err
+			}
+			return num == 0, nil
+		}, 5*time.Second, 1*time.Millisecond)
+		require.True(ok, "timed out waiting for num remote sessions to get to zero")
+		require.NoError(err)
 	}
-	log.Printf("Finished running sql test %s", st.testName)
+	dur := end.Sub(start)
+	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
 

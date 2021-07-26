@@ -1,6 +1,8 @@
 package cluster
 
-import "github.com/squareup/pranadb/common"
+import (
+	"github.com/squareup/pranadb/common"
+)
 
 // WriteBatch represents some puts and deletes that will be written atomically by the underlying storage implementation
 // It is not thread safe
