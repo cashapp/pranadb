@@ -127,10 +127,10 @@ func testScan(t *testing.T, limit int, expected int) {
 	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")
-	keyWhile := []byte("foo-06")
+	keyEnd := []byte("foo-07")
 
 	var res []KVPair
-	res, err = clust.LocalScan(keyStart, keyWhile, limit)
+	res, err = clust.LocalScan(keyStart, keyEnd, limit)
 	require.NoError(t, err)
 
 	require.Equal(t, expected, len(res))

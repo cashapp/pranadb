@@ -2,6 +2,8 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/table"
+	"log"
 	"testing"
 
 	"github.com/squareup/pranadb/common/commontest"
@@ -13,10 +15,6 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-// TODO write a test that hammers the mover with multiple receivers and senders different shards
-// and verifies everything received ok and no duplicates
-// TODO as above but inject failures at different points and test resend logic
-
 func TestQueueForRemoteSend(t *testing.T) {
 	clus, shard, pe := startup(t)
 	testQueueForRemoteSend(t, 1, clus, shard, pe)
@@ -25,12 +23,10 @@ func TestQueueForRemoteSend(t *testing.T) {
 func TestQueueForRemoteSendWithPersistedSequence(t *testing.T) {
 	clus, shard, pe := startup(t)
 	// Update the sequence
-	seqKey := make([]byte, 0, 16)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ForwarderSequenceTableID)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, 1)
+	seqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, cluster.DataShardIDBase, 16)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, 333)
-	batch := cluster.NewWriteBatch(1, false)
+	batch := cluster.NewWriteBatch(cluster.DataShardIDBase, false)
 	batch.AddPut(seqKey, seqValueBytes)
 	err := clus.WriteBatch(batch)
 	require.NoError(t, err)
@@ -44,13 +40,15 @@ func TestTransferData(t *testing.T) {
 	// First get some rows in the forwarder table
 	numRows := 10
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
-	localShardID := uint64(1)
+	localShardID := cluster.DataShardIDBase
 
 	rf := common.NewRowsFactory(colTypes)
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, clus, localShardID)
 
-	keyStartPrefix := createForwarderKey(localShardID)
-	kvPairs, err := clus.LocalScan(keyStartPrefix, keyStartPrefix, -1)
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 16)
+	keyEndPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID+1, localShardID, 16)
+
+	kvPairs, err := clus.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
@@ -64,25 +62,19 @@ func TestTransferData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Make sure data has been deleted from forwarder table
-	kvPairs, err = clus.LocalScan(keyStartPrefix, keyStartPrefix, -1)
+	kvPairs, err = clus.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(kvPairs))
 
 	// All the rows should be in the receiver table - this happens async so we must wait
 	waitUntilRowsInReceiverTable(t, clus, numRows)
 
-	// TODO(tfox): Use this for something?
-	// remoteKeyPrefix := make([]byte, 0)
-	// remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, ReceiverTableID)
-
 	// Check individual receiver rows
 	for i, rowToSend := range rows {
-		keyBytes := make([]byte, 0, 40)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, common.ReceiverTableID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteShardID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, localShardID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, uint64(i+1))
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteConsumerID)
+		keyBytes := table.EncodeTableKeyPrefix(common.ReceiverTableID, rowToSend.remoteShardID, 40)
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, localShardID)
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, uint64(i+1))
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteConsumerID)
 		loadRowAndVerifySame(t, keyBytes, rowToSend.row, clus, colTypes, rf)
 	}
 }
@@ -189,10 +181,9 @@ func TestHandleReceivedRows(t *testing.T) {
 		}
 
 		// Make sure rows have been deleted from receiver table
-		remoteKeyPrefix := make([]byte, 0)
-		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
-		remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, receivingShardID)
-		recPairs, err := clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
+		keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
+		keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
+		recPairs, err := clus.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 		require.NoError(t, err)
 		require.Nil(t, recPairs)
 
@@ -201,10 +192,8 @@ func TestHandleReceivedRows(t *testing.T) {
 
 		// Check the receiving sequences have been updated ok
 		for _, sendingShardID := range shardIds {
-			seqKey := make([]byte, 0, 24)
-			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ReceiverSequenceTableID)
-			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, receivingShardID)
-			seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, sendingShardID)
+			seqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, receivingShardID, 24)
+			seqKey = common.AppendUint64ToBufferBigEndian(seqKey, sendingShardID)
 
 			seqBytes, err := clus.LocalGet(seqKey)
 			require.NoError(t, err)
@@ -227,7 +216,7 @@ func TestDedupOfForwards(t *testing.T) {
 	// Queue some rows, forward them
 	numRows := 10
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
-	localShardID := uint64(1)
+	localShardID := cluster.DataShardIDBase
 	rf := common.NewRowsFactory(colTypes)
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, clus, localShardID)
 	remoteShardsIds := make(map[uint64]bool)
@@ -258,15 +247,14 @@ func TestDedupOfForwards(t *testing.T) {
 	require.Equal(t, numRows, rowsHandled)
 
 	// Make sure rows still in forwarder table
-	keyStartPrefix := createForwarderKey(localShardID)
-	kvPairs, err := clus.LocalScan(keyStartPrefix, keyStartPrefix, -1)
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 16)
+	keyEndPrefixPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID+1, localShardID, 16)
+	kvPairs, err := clus.LocalScan(keyStartPrefix, keyEndPrefixPrefix, -1)
 	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
 	// Check forwarder sequence
-	forSeqKey := make([]byte, 0, 16)
-	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, common.ForwarderSequenceTableID)
-	forSeqKey = common.AppendUint64ToBufferLittleEndian(forSeqKey, localShardID)
+	forSeqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, localShardID, 16)
 	seqBytes, err := pe.cluster.LocalGet(forSeqKey)
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
@@ -276,10 +264,8 @@ func TestDedupOfForwards(t *testing.T) {
 	// Check receiver sequence
 	maxSeq := uint64(0)
 	for remoteShardID := range remoteShardsIds {
-		recSeqKey := make([]byte, 0, 24)
-		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, common.ReceiverSequenceTableID)
-		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, remoteShardID)
-		recSeqKey = common.AppendUint64ToBufferLittleEndian(recSeqKey, localShardID)
+		recSeqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, remoteShardID, 24)
+		recSeqKey = common.AppendUint64ToBufferBigEndian(recSeqKey, localShardID)
 
 		seqBytes, err := clus.LocalGet(recSeqKey)
 		require.NoError(t, err)
@@ -293,11 +279,9 @@ func TestDedupOfForwards(t *testing.T) {
 	require.Equal(t, uint64(numRows), maxSeq)
 
 	// Make sure rows deleted from receiver table
-	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
-	kvPairs, err = clus.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
+	exists, err := pe.existRowsInLocalTable(common.ReceiverTableID, pe.cluster.GetLocalShardIDs())
 	require.NoError(t, err)
-	require.Nil(t, kvPairs)
+	require.False(t, exists)
 
 	// Now try and forward them again
 	err, ok = <-sched.ScheduleAction(func() error {
@@ -327,34 +311,31 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	t.Helper()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
-	localShardID := uint64(1)
+	localShardID := cluster.DataShardIDBase
 
 	numRows := 10
 	rf := common.NewRowsFactory(colTypes)
 
 	rows := queueRows(t, numRows, colTypes, rf, shard, pe, localShardID, store, localShardID)
 
-	keyStartPrefix := createForwarderKey(localShardID)
-	kvPairs, err := store.LocalScan(keyStartPrefix, keyStartPrefix, -1)
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 16)
+	keyEndPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID+1, localShardID, 16)
+	kvPairs, err := store.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
 	for i, rowToSend := range rows {
 
-		var keyBytes []byte
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, common.ForwarderTableID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, localShardID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteShardID)
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, uint64(i+startSequence))
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, rowToSend.remoteConsumerID)
+		keyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteShardID)
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, uint64(i+startSequence))
+		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteConsumerID)
 
 		loadRowAndVerifySame(t, keyBytes, rowToSend.row, store, colTypes, rf)
 	}
 
 	// Check forward sequence has been updated ok
-	seqKey := make([]byte, 0, 16)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, common.ForwarderSequenceTableID)
-	seqKey = common.AppendUint64ToBufferLittleEndian(seqKey, localShardID)
+	seqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, localShardID, 16)
 	seqBytes, err := pe.cluster.LocalGet(seqKey)
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
@@ -415,12 +396,6 @@ func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row
 	commontest.RowsEqual(t, *expectedRow, row, colTypes)
 }
 
-func createForwarderKey(localShardID uint64) []byte {
-	keyStartPrefix := make([]byte, 0, 16)
-	keyStartPrefix = common.AppendUint64ToBufferLittleEndian(keyStartPrefix, common.ForwarderTableID)
-	return common.AppendUint64ToBufferLittleEndian(keyStartPrefix, localShardID)
-}
-
 // nolint: unparam
 func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *common.RowsFactory, shard *sharder.Sharder, pe *PushEngine,
 	localShardID uint64, store cluster.Cluster, sendingShardID uint64) []rowInfo {
@@ -471,15 +446,29 @@ func generateRows(t *testing.T, numRows int, colTypes []common.ColumnType, sh *s
 
 func waitUntilRowsInReceiverTable(t *testing.T, stor cluster.Cluster, numRows int) {
 	t.Helper()
-	remoteKeyPrefix := make([]byte, 0)
-	remoteKeyPrefix = common.AppendUint64ToBufferLittleEndian(remoteKeyPrefix, common.ReceiverTableID)
+	shardIDs := stor.GetAllShardIDs()
 	commontest.WaitUntil(t, func() (bool, error) {
-		remPairs, err := stor.LocalScan(remoteKeyPrefix, remoteKeyPrefix, -1)
+		nr, err := numRowsInTable(stor, common.ReceiverTableID, shardIDs)
 		if err != nil {
 			return false, err
 		}
-		return numRows == len(remPairs), nil
+		return nr == numRows, nil
 	})
+}
+
+func numRowsInTable(stor cluster.Cluster, tableID uint64, shardIDs []uint64) (int, error) {
+	numRows := 0
+	for _, shardID := range shardIDs {
+		startPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
+		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
+		kvPairs, err := stor.LocalScan(startPrefix, endPrefix, -1)
+		if err != nil {
+			return 0, err
+		}
+		numRows += len(kvPairs)
+	}
+	log.Printf("Num rows total is %d", numRows)
+	return numRows, nil
 }
 
 type rowInfo struct {

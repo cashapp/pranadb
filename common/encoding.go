@@ -8,6 +8,7 @@ import (
 )
 
 var littleEndian = binary.LittleEndian
+var bigEndian = binary.BigEndian
 
 func EncodeCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte, nulls bool) ([]byte, error) {
 	for _, colIndex := range colIndexes {
@@ -195,6 +196,10 @@ func AppendUint64ToBufferLittleEndian(buffer []byte, v uint64) []byte {
 		byte(v>>40), byte(v>>48), byte(v>>56))
 }
 
+func AppendUint64ToBufferBigEndian(buffer []byte, v uint64) []byte {
+	return append(buffer, byte(v>>56), byte(v>>48), byte(v>>40), byte(v>>32), byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+}
+
 func ReadUint32FromBufferLittleEndian(buffer []byte, offset int) uint32 {
 	if IsLittleEndian {
 		// nolint: gosec
@@ -209,6 +214,14 @@ func ReadUint64FromBufferLittleEndian(buffer []byte, offset int) uint64 {
 		return *(*uint64)(unsafe.Pointer(&buffer[offset]))
 	}
 	return littleEndian.Uint64(buffer[offset:])
+}
+
+func ReadUint64FromBufferBigEndian(buffer []byte, offset int) uint64 {
+	if !IsLittleEndian {
+		// nolint: gosec
+		return *(*uint64)(unsafe.Pointer(&buffer[offset]))
+	}
+	return bigEndian.Uint64(buffer[offset:])
 }
 
 var IsLittleEndian = isLittleEndian()

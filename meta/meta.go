@@ -247,8 +247,7 @@ func (c *Controller) deleteEntityWIthID(tableID uint64) error {
 	wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
 
 	var key []byte
-	key = common.AppendUint64ToBufferLittleEndian(key, common.SchemaTableID)
-	key = common.AppendUint64ToBufferLittleEndian(key, cluster.SchemaTableShardID)
+	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SchemaTableShardID, 24)
 	key = common.AppendUint64ToBufferLittleEndian(key, tableID)
 
 	wb.AddDelete(key)
