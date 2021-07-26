@@ -335,7 +335,6 @@ func (p *PushEngine) RemoveSource(sourceID uint64, deleteData bool) error {
 	delete(p.sources, sourceID)
 	delete(p.remoteConsumers, sourceID)
 
-	log.Printf("source remove deleting data? %t", deleteData)
 	if deleteData {
 		return p.deleteAllDataForTable(sourceID)
 	}
@@ -345,8 +344,6 @@ func (p *PushEngine) RemoveSource(sourceID uint64, deleteData bool) error {
 func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedViewInfo, deleteData bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-
-	log.Printf("MV remove deleting data? %t", deleteData)
 
 	mvID := info.TableInfo.ID
 	mv, ok := p.materializedViews[mvID]
@@ -404,7 +401,6 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 }
 
 func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
-	log.Printf("Deleting all data for table %d", tableID)
 	startPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID)
 	endPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID+1)
 	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)

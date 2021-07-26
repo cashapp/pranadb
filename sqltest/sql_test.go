@@ -249,7 +249,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
-			log.Println("loaded dataset ok")
 		} else if strings.HasPrefix(command, "--close session") {
 			st.executeCloseSession(require)
 		} else if strings.HasPrefix(command, "--repeat") {
@@ -260,7 +259,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			n, err := strconv.ParseInt(command[9:], 10, 32)
 			require.NoError(err)
 			numIters = int(n)
-			log.Printf("running the test for %d iterations", numIters)
 		} else if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
 		} else {
@@ -296,7 +294,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.NoError(err)
 
 		localShards := prana.GetCluster().GetLocalShardIDs()
-		log.Printf("There are %d local shards", len(localShards))
 		for _, shardID := range localShards {
 			keyStartPrefix := table.EncodeTableKeyPrefix(common.UserTableIDBase, shardID, 16)
 			keyEndPrefix := table.EncodeTableKeyPrefix(0, shardID+1, 16)

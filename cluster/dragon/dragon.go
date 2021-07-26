@@ -145,7 +145,6 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	queryRequest := queryInfo.Serialize()
 	res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 	if err != nil {
-		log.Println("Exec remote pull query failed")
 		return nil, err
 	}
 	bytes, ok := res.([]byte)
@@ -207,12 +206,10 @@ func (d *Dragon) Start() error {
 		SystemEventListener: d,
 	}
 
-	log.Printf("Attempting to create node host for node %d", d.nodeID)
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
 		return err
 	}
-	log.Printf("Node host for node %d created ok", d.nodeID)
 	d.nh = nh
 
 	err = d.joinSequenceGroup()
@@ -317,9 +314,6 @@ func (d *Dragon) LocalGet(key []byte) ([]byte, error) {
 func (d *Dragon) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
-	}
-	if !d.testDragon {
-		log.Printf("Dragon scanning from %s to %s", common.DumpDataKey(startKeyPrefix), common.DumpDataKey(endKeyPrefix))
 	}
 	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
 	iter := d.pebble.NewIter(iterOptions)
@@ -487,8 +481,6 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 		initialMembers[uint64(nodeID+1)] = d.nodeAddresses[nodeID]
 	}
 
-	log.Printf("Node %d attempting to join shard cluster %d", d.nodeID, shardID)
-
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
 		return newShardODStateMachine(d, shardID, d.nodeID, nodeIDs)
 	}
@@ -496,7 +488,6 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 		ch <- fmt.Errorf("failed to start shard dragonboat cluster %v", err)
 		return
 	}
-	log.Printf("Node %d successfully joined shard cluster %d", d.nodeID, shardID)
 	ch <- nil
 }
 
@@ -516,11 +507,9 @@ func (d *Dragon) joinSequenceGroup() error {
 	for i := 0; i < sequenceGroupSize; i++ {
 		initialMembers[uint64(i+1)] = d.nodeAddresses[i]
 	}
-	log.Printf("Node %d attempting to join sequence cluster", d.nodeID)
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
 		return fmt.Errorf("failed to start sequence dragonboat cluster %v", err)
 	}
-	log.Printf("Node %d successfully joined sequence cluster", d.nodeID)
 	return nil
 }
 
@@ -546,7 +535,6 @@ func (d *Dragon) joinNotificationGroup() error {
 	if err := d.nh.StartCluster(initialMembers, false, d.newNotificationsStateMachine, rcCopy); err != nil {
 		return fmt.Errorf("failed to start notifications dragonboat cluster %v", err)
 	}
-	log.Printf("Node %d successfully joined notifications cluster", d.nodeID)
 	return nil
 }
 

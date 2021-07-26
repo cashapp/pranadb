@@ -8,7 +8,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
 	"io"
-	"log"
 )
 
 const (
@@ -112,7 +111,6 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte)
 	puts, deletes := deserializeWriteBatch(bytes, 1)
 	for _, kvPair := range puts {
 		s.checkKey(kvPair.Key)
-		log.Printf("Writing into pebble on node %d k:%v v:%v", s.nodeID, kvPair.Key, kvPair.Value)
 		err := batch.Set(kvPair.Key, kvPair.Value, nil)
 		if err != nil {
 			return err
@@ -120,7 +118,6 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte)
 	}
 	for _, k := range deletes {
 		s.checkKey(k)
-		log.Printf("Deleting from pebble on node %d k:%v", s.nodeID, k)
 		err := batch.Delete(k, nil)
 		if err != nil {
 			return err
@@ -173,8 +170,6 @@ func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes [
 	lenEndPrefix := int(common.ReadUint32FromBufferLittleEndian(bytes, offset))
 	offset += 4
 	endPrefix := bytes[offset : offset+lenEndPrefix]
-
-	log.Printf("Shard sm on node %d and shard %d, deleting all data between %v and %v", s.dragon.nodeID, s.shardID, startPrefix, endPrefix)
 
 	return batch.DeleteRange(startPrefix, endPrefix, &pebble.WriteOptions{})
 }

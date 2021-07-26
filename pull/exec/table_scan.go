@@ -5,7 +5,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"log"
 	"math"
 )
 
@@ -106,9 +105,7 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Scanning from %v to %v returned %d rows", startPrefix, t.rangeEnd, len(kvPairs))
 	numRows := len(kvPairs)
-	log.Printf("Got %d rows from table %d and shard %d", numRows, t.tableInfo.ID, t.shardID)
 	rows = t.rowsFactory.NewRows(numRows)
 	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
@@ -117,8 +114,6 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			t.lastRowPrefix = kvPair.Key
 		}
-		log.Printf(fmt.Sprintf("Table scan read row: %s v:%v", common.DumpDataKey(kvPair.Key), kvPair.Value))
-
 		err := common.DecodeRow(kvPair.Value, t.tableInfo.ColumnTypes, rows)
 		if err != nil {
 

@@ -20,8 +20,6 @@ func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *c
 	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, sequence)
 	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, remoteConsumerID)
 
-	log.Printf("Queued key %v", queueKeyBytes)
-
 	valueBuff := make([]byte, 0, 32)
 	valueBuff, err = common.EncodeRow(row, colTypes, valueBuff)
 	if err != nil {
