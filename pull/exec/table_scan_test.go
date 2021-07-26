@@ -214,7 +214,7 @@ func TestTableScanNaturalOrderingIntCol(t *testing.T) {
 //}
 
 func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expectedRows [][]interface{}, pkCols []int) {
-
+	t.Helper()
 	ts, clust := setupTableScan(t, inpRows, nil, pkCols)
 	defer stopCluster(t, clust)
 
@@ -286,6 +286,7 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRang
 }
 
 func insertRowsIntoTable(t *testing.T, shardID uint64, tableInfo *common.TableInfo, inpRows *common.Rows, clust cluster.Cluster) {
+	t.Helper()
 	batch := cluster.NewWriteBatch(shardID, false)
 	for i := 0; i < inpRows.RowCount(); i++ {
 		row := inpRows.GetRow(i)

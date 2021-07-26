@@ -228,7 +228,6 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 }
 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
-	// TODO do we need to worry about the i chan param?
 	startPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID)
 	endPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID+1)
 	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)

@@ -43,14 +43,13 @@ func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int,
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
 	dragon := Dragon{
-		nodeID:            nodeID,
-		clusterID:         clusterID,
-		nodeAddresses:     nodeAddresses,
-		totShards:         totShards,
-		dataDir:           dataDir,
-		notifListeners:    make(map[cluster.NotificationType]cluster.NotificationListener),
-		testDragon:        testDragon,
-		replicationFactor: replicationFactor,
+		nodeID:         nodeID,
+		clusterID:      clusterID,
+		nodeAddresses:  nodeAddresses,
+		totShards:      totShards,
+		dataDir:        dataDir,
+		notifListeners: make(map[cluster.NotificationType]cluster.NotificationListener),
+		testDragon:     testDragon,
 	}
 	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
 	dragon.generateNodesAndShards(totShards, replicationFactor)
@@ -77,7 +76,6 @@ type Dragon struct {
 	testDragon                   bool
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
-	replicationFactor            int
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {

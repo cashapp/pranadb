@@ -62,9 +62,6 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 
 func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix []byte, reader io.Reader) error {
 
-	// TODO should we return errs here (read the docs for IOnDiskStateMachine)?
-
-	// TODO should this be sync or will dragon call sync right after?
 	wo := syncWriteOptions
 
 	batch := peb.NewBatch()
