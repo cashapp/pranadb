@@ -173,6 +173,12 @@ type MaterializedViewInfo struct {
 	Query string
 }
 
+type InternalTableInfo struct {
+	*TableInfo
+	// For aggregation tables that are implicit tables of materialized views with group by clauses.
+	MaterializedViewName string
+}
+
 func (i *MaterializedViewInfo) String() string {
 	return "mv_" + i.TableInfo.String()
 }

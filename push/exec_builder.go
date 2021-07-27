@@ -13,14 +13,14 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 )
 
-func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, queryName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
+func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
 	// Build the physical plan
 	physicalPlan, _, err := pl.QueryToPlan(query, false)
 	if err != nil {
 		return nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPushDAG(physicalPlan, 0, schema.Name, queryName, seqGenerator)
+	dag, err := p.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +132,13 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			ColumnTypes:    colTypes,
 			IndexInfos:     nil, // TODO
 		}
+		aggInfo := &common.InternalTableInfo{
+			TableInfo:            tableInfo,
+			MaterializedViewName: queryName,
+		}
+		if err := p.meta.RegisterInternalTable(aggInfo, false); err != nil {
+			return nil, err
+		}
 		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.cluster, p.sharder)
 		if err != nil {
 			return nil, err
@@ -156,7 +163,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPushDAG(child, aggSequence, queryName, schemaName, seqGenerator)
+		childExecutor, err := p.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
 		if err != nil {
 			return nil, err
 		}

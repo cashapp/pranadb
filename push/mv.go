@@ -14,7 +14,7 @@ type materializedView struct {
 }
 
 func (p *PushEngine) CreateMaterializedView(pl *parplan.Planner, schema *common.Schema, mvName string, query string, tableID uint64, seqGenerator common.SeqGenerator) (*common.MaterializedViewInfo, error) {
-	dag, err := p.buildPushQueryExecution(pl, schema, query, schema.Name+"."+mvName, seqGenerator)
+	dag, err := p.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
 	if err != nil {
 		return nil, err
 	}

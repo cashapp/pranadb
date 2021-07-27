@@ -3,12 +3,14 @@ package push
 import (
 	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/table"
 	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/squareup/pranadb/common/commontest"
 
@@ -29,11 +31,12 @@ type PushEngine struct {
 	localLeaderShards []uint64
 	cluster           cluster.Cluster
 	sharder           *sharder.Sharder
+	meta              *meta.Controller
 	rnd               *rand.Rand
 	runningSchedulers int32
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller) *PushEngine {
 	engine := PushEngine{
 		remoteConsumers:   make(map[uint64]*remoteConsumer),
 		sources:           make(map[uint64]*source),
@@ -42,6 +45,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder) *PushEngin
 		forwardSequences:  make(map[uint64]uint64),
 		cluster:           cluster,
 		sharder:           sharder,
+		meta:              meta,
 		rnd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
 	}
 	return &engine

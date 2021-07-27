@@ -2,12 +2,13 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/sess"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/sess"
 
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/errors"
@@ -158,7 +159,7 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			if err != nil {
 				return nil, err
 			}
-			if _, err = e.execCreateMaterializedView(session, ast.Create.MaterializedView, &preallocSeqGen{sequences: sequences}, true); err != nil {
+			if _, err = e.execCreateMaterializedView(session, ast.Create.MaterializedView, common.NewPreallocSeqGen(sequences), true); err != nil {
 				return nil, err
 			}
 			return e.executeInGlobalOrder(session.Schema.Name, sql, "mv", sequences)
@@ -172,7 +173,7 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			if err != nil {
 				return nil, err
 			}
-			_, err = e.execCreateSource(session.Schema.Name, ast.Create.Source, &preallocSeqGen{sequences: sequences}, true)
+			_, err = e.execCreateSource(session.Schema.Name, ast.Create.Source, common.NewPreallocSeqGen(sequences), true)
 			if err != nil {
 				return nil, err
 			}
@@ -195,23 +196,6 @@ func (e *Executor) generateSequences(numValues int) ([]uint64, error) {
 		sequences[i] = v
 	}
 	return sequences, nil
-}
-
-// We need to reserve the table sequences required for the DDL statement *before* we broadcast the DDL across the
-// cluster, and those same table sequence values have to be used on every node for consistency.
-// So we create a sequence generator that returns value based on already obtained sequence values
-type preallocSeqGen struct {
-	sequences []uint64
-	index     int
-}
-
-func (p preallocSeqGen) GenerateSequence() uint64 {
-	if p.index >= len(p.sequences) {
-		panic("not enough sequence values")
-	}
-	res := p.sequences[p.index]
-	p.index++
-	return res
 }
 
 func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExecutor, error) {
@@ -381,7 +365,7 @@ func (e *Executor) HandleNotification(notification cluster.Notification) {
 	e.ddlExecLock.Lock()
 	defer e.ddlExecLock.Unlock()
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
-	seqGenerator := &preallocSeqGen{sequences: ddlStmt.TableSequences}
+	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
 	session := e.CreateSession(ddlStmt.SchemaName)
 	origNodeID := int(ddlStmt.OriginatingNodeId)
 	if origNodeID == e.cluster.GetNodeID() {

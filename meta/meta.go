@@ -15,9 +15,10 @@ var SchemaTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	SchemaName:     "sys",
 	Name:           "tables",
 	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query"},
+	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
 	ColumnTypes: []common.ColumnType{
 		common.BigIntColumnType,
+		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
@@ -127,10 +128,10 @@ func (c *Controller) getOrCreateSchema(schemaName string) *common.Schema {
 func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.existsMvOrSource(schema, name)
+	return c.existsTable(schema, name)
 }
 
-func (c *Controller) existsMvOrSource(schema *common.Schema, name string) error {
+func (c *Controller) existsTable(schema *common.Schema, name string) error {
 	if _, ok := schema.Tables[name]; ok {
 		return fmt.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
 	}
@@ -143,7 +144,7 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool)
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
-	err := c.existsMvOrSource(schema, sourceInfo.Name)
+	err := c.existsTable(schema, sourceInfo.Name)
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(mvInfo.SchemaName)
-	err := c.existsMvOrSource(schema, mvInfo.Name)
+	err := c.existsTable(schema, mvInfo.Name)
 	if err != nil {
 		return err
 	}
@@ -174,6 +175,28 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	if persist {
 		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
 		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
+			return err
+		}
+		if err = c.cluster.WriteBatch(wb); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) RegisterInternalTable(info *common.InternalTableInfo, persist bool) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	schema := c.getOrCreateSchema(info.SchemaName)
+	err := c.existsTable(schema, info.Name)
+	if err != nil {
+		return err
+	}
+	schema.Tables[info.Name] = info
+
+	if persist {
+		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
+		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeInternalTableInfoToRow(info), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {

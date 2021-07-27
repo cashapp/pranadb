@@ -38,7 +38,7 @@ func NewServer(config Config) (*Server, error) {
 
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	clus.RegisterShardListenerFactory(pushEngine)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
