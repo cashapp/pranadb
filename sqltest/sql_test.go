@@ -3,8 +3,6 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/table"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -15,6 +13,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/sess"
@@ -126,12 +127,19 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		}
 	}
 
+	wg := sync.WaitGroup{}
 	for _, prana := range w.pranaCluster {
-		err := prana.Start()
-		if err != nil {
-			log.Fatal(err)
-		}
+		wg.Add(1)
+		prana := prana
+		go func() {
+			err := prana.Start()
+			if err != nil {
+				log.Fatal(err)
+			}
+			wg.Done()
+		}()
 	}
+	wg.Wait()
 }
 
 func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
