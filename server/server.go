@@ -1,14 +1,16 @@
 package server
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/meta/schema"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-	"sync"
 )
 
 type Config struct {
@@ -41,6 +43,7 @@ func NewServer(config Config) (*Server, error) {
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
+	schemaLoader := schema.NewLoader(metaController, commandExecutor, pushEngine)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, commandExecutor)
 	clus.RegisterNotificationListener(cluster.NotificationTypeCloseSession, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
@@ -52,6 +55,7 @@ func NewServer(config Config) (*Server, error) {
 		pushEngine:      pushEngine,
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
+		schemaLoader:    schemaLoader,
 	}
 	return &server, nil
 }
@@ -65,6 +69,7 @@ type Server struct {
 	pushEngine      *push.PushEngine
 	pullEngine      *pull.PullEngine
 	commandExecutor *command.Executor
+	schemaLoader    *schema.Loader
 	started         bool
 }
 
@@ -74,26 +79,25 @@ func (s *Server) Start() error {
 	if s.started {
 		return nil
 	}
-	err := s.metaController.Start()
-	if err != nil {
-		return err
+
+	type service interface {
+		Start() error
 	}
-	err = s.cluster.Start()
-	if err != nil {
-		return err
+	services := []service{
+		s.metaController,
+		s.cluster,
+		s.shardr,
+		s.pushEngine,
+		s.pullEngine,
+		s.schemaLoader,
 	}
-	err = s.shardr.Start()
-	if err != nil {
-		return err
+	var err error
+	for _, s := range services {
+		if err = s.Start(); err != nil {
+			return err
+		}
 	}
-	err = s.pushEngine.Start()
-	if err != nil {
-		return err
-	}
-	err = s.pullEngine.Start()
-	if err != nil {
-		return err
-	}
+
 	s.started = true
 	return nil
 }

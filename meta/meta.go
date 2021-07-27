@@ -45,12 +45,10 @@ func NewController(store cluster.Cluster) *Controller {
 func (c *Controller) Start() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if !c.started {
+	if c.started {
 		return nil
 	}
-	if err := c.loadSchemas(); err != nil {
-		return err
-	}
+	c.registerSystemSchema()
 	c.started = true
 	return nil
 }
@@ -62,10 +60,6 @@ func (c *Controller) Stop() error {
 		return nil
 	}
 	c.started = false
-	return nil
-}
-
-func (c *Controller) loadSchemas() error {
 	return nil
 }
 

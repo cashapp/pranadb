@@ -8,6 +8,11 @@ import (
 
 var tableInfoRowsFactory = common.NewRowsFactory(SchemaTableInfo.ColumnTypes)
 
+const (
+	TableKindSource           = "source"
+	TableKindMaterializedView = "materialized_view"
+)
+
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
 func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)

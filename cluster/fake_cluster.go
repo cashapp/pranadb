@@ -12,7 +12,7 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-type fakeCluster struct {
+type FakeCluster struct {
 	nodeID                       int
 	mu                           sync.RWMutex
 	tableSequence                uint64
@@ -26,8 +26,8 @@ type fakeCluster struct {
 	membershipListener           MembershipListener
 }
 
-func NewFakeCluster(nodeID int, numShards int) Cluster {
-	return &fakeCluster{
+func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
+	return &FakeCluster{
 		nodeID:         nodeID,
 		tableSequence:  uint64(common.UserTableIDBase), // First 100 reserved for system tables
 		allShardIds:    genAllShardIds(numShards),
@@ -37,13 +37,13 @@ func NewFakeCluster(nodeID int, numShards int) Cluster {
 	}
 }
 
-func (f *fakeCluster) BroadcastNotification(notification Notification) error {
+func (f *FakeCluster) BroadcastNotification(notification Notification) error {
 	listener := f.lookupNotificationListener(notification)
 	listener.HandleNotification(notification)
 	return nil
 }
 
-func (f *fakeCluster) lookupNotificationListener(notification Notification) NotificationListener {
+func (f *FakeCluster) lookupNotificationListener(notification Notification) NotificationListener {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	listener, ok := f.notifListeners[TypeForNotification(notification)]
@@ -53,7 +53,7 @@ func (f *fakeCluster) lookupNotificationListener(notification Notification) Noti
 	return listener
 }
 
-func (f *fakeCluster) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
+func (f *FakeCluster) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, ok := f.notifListeners[notificationType]
@@ -63,7 +63,7 @@ func (f *fakeCluster) RegisterNotificationListener(notificationType Notification
 	f.notifListeners[notificationType] = listener
 }
 
-func (f *fakeCluster) RegisterMembershipListener(listener MembershipListener) {
+func (f *FakeCluster) RegisterMembershipListener(listener MembershipListener) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.membershipListener != nil {
@@ -72,31 +72,31 @@ func (f *fakeCluster) RegisterMembershipListener(listener MembershipListener) {
 	f.membershipListener = listener
 }
 
-func (f *fakeCluster) ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 
-func (f *fakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {
+func (f *FakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {
 	f.remoteQueryExecutionCallback = callback
 }
 
-func (f *fakeCluster) RegisterShardListenerFactory(factory ShardListenerFactory) {
+func (f *FakeCluster) RegisterShardListenerFactory(factory ShardListenerFactory) {
 	f.shardListenerFactory = factory
 }
 
-func (f *fakeCluster) GetNodeID() int {
+func (f *FakeCluster) GetNodeID() int {
 	return f.nodeID
 }
 
-func (f *fakeCluster) GetAllShardIDs() []uint64 {
+func (f *FakeCluster) GetAllShardIDs() []uint64 {
 	return f.allShardIds
 }
 
-func (f *fakeCluster) GetLocalShardIDs() []uint64 {
+func (f *FakeCluster) GetLocalShardIDs() []uint64 {
 	return f.allShardIds
 }
 
-func (f *fakeCluster) GenerateTableID() (uint64, error) {
+func (f *FakeCluster) GenerateTableID() (uint64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	res := f.tableSequence
@@ -104,7 +104,7 @@ func (f *fakeCluster) GenerateTableID() (uint64, error) {
 	return res, nil
 }
 
-func (f *fakeCluster) Start() error {
+func (f *FakeCluster) Start() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.remoteQueryExecutionCallback == nil {
@@ -121,17 +121,26 @@ func (f *fakeCluster) Start() error {
 	return nil
 }
 
-func (f *fakeCluster) Stop() error {
+// Stop resets all ephemeral state for a cluster, allowing it to be used with a new
+// server but keeping all persisted data.
+func (f *FakeCluster) Stop() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if !f.started {
 		return nil
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.remoteQueryExecutionCallback = nil
+	f.shardListenerFactory = nil
+	f.shardListeners = make(map[uint64]ShardListener)
+	f.notifListeners = make(map[NotificationType]NotificationListener)
+	f.membershipListener = nil
 	f.started = false
 	return nil
 }
 
-func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
+func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if batch.ShardID < DataShardIDBase {
@@ -164,13 +173,13 @@ func (f *fakeCluster) WriteBatch(batch *WriteBatch) error {
 	return nil
 }
 
-func (f *fakeCluster) LocalGet(key []byte) ([]byte, error) {
+func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
-func (f *fakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+func (f *FakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
 	log.Printf("Deleting data in range %v to %v", startPrefix, endPrefix)
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -199,7 +208,7 @@ func (f *fakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte)
 	return nil
 }
 
-func (f *fakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
@@ -223,7 +232,7 @@ func (f *fakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limi
 	return result, nil
 }
 
-func (f *fakeCluster) startShardListeners() {
+func (f *FakeCluster) startShardListeners() {
 	if f.shardListenerFactory == nil {
 		return
 	}
@@ -255,11 +264,11 @@ func (k kvWrapper) Less(than btree.Item) bool {
 	return bytes.Compare(thisKey, otherKey) < 0
 }
 
-func (f *fakeCluster) putInternal(item *kvWrapper) {
+func (f *FakeCluster) putInternal(item *kvWrapper) {
 	f.btree.ReplaceOrInsert(item)
 }
 
-func (f *fakeCluster) deleteInternal(item *kvWrapper) error {
+func (f *FakeCluster) deleteInternal(item *kvWrapper) error {
 	prevItem := f.btree.Delete(item)
 	if prevItem == nil {
 		return errors.New("didn't find item to delete")
@@ -267,7 +276,7 @@ func (f *fakeCluster) deleteInternal(item *kvWrapper) error {
 	return nil
 }
 
-func (f *fakeCluster) getInternal(key *kvWrapper) []byte {
+func (f *FakeCluster) getInternal(key *kvWrapper) []byte {
 	if item := f.btree.Get(key); item != nil {
 		wrapper := item.(*kvWrapper) // nolint: forcetypeassert
 		return wrapper.value
