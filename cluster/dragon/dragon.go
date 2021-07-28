@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
+	"github.com/lni/dragonboat/v3/logger"
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/pkg/errors"
@@ -76,6 +77,15 @@ type Dragon struct {
 	testDragon                   bool
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
+}
+
+func init() {
+	// This should be customizable, but these are good defaults
+	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+	logger.GetLogger("raft").SetLevel(logger.ERROR)
+	logger.GetLogger("rsm").SetLevel(logger.ERROR)
+	logger.GetLogger("transport").SetLevel(logger.WARNING)
+	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -468,7 +478,7 @@ func (d *Dragon) joinShardGroups() error {
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	rc := config.Config{
 		NodeID:             uint64(d.nodeID + 1),
-		ElectionRTT:        5,
+		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
 		SnapshotEntries:    10,
@@ -494,7 +504,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 func (d *Dragon) joinSequenceGroup() error {
 	rc := config.Config{
 		NodeID:             uint64(d.nodeID + 1),
-		ElectionRTT:        5,
+		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
 		SnapshotEntries:    10,
@@ -516,7 +526,7 @@ func (d *Dragon) joinSequenceGroup() error {
 func (d *Dragon) joinNotificationGroup() error {
 	rc := config.Config{
 		NodeID:             uint64(d.nodeID + 1),
-		ElectionRTT:        5,
+		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        false,
 		SnapshotEntries:    10,

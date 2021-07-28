@@ -129,8 +129,6 @@ func (f *FakeCluster) Stop() error {
 	if !f.started {
 		return nil
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.remoteQueryExecutionCallback = nil
 	f.shardListenerFactory = nil
 	f.shardListeners = make(map[uint64]ShardListener)
