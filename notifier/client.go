@@ -68,7 +68,7 @@ func (c *client) BroadcastNotification(notif Notification) error {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	
+
 	if len(c.unavailableServers) > 0 {
 		now := time.Now()
 		for serverAddress, failTime := range c.unavailableServers {
