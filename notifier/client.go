@@ -68,6 +68,18 @@ func (c *client) BroadcastNotification(notif Notification) error {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	
+	if len(c.unavailableServers) > 0 {
+		now := time.Now()
+		for serverAddress, failTime := range c.unavailableServers {
+			if now.Sub(failTime) >= connectionRetryBackoff {
+				// Put the server back in the available set
+				log.Printf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
+				delete(c.unavailableServers, serverAddress)
+				c.availableServers[serverAddress] = struct{}{}
+			}
+		}
+	}
 
 	for serverAddress := range c.availableServers {
 		conn, ok := c.connections[serverAddress]
@@ -83,17 +95,6 @@ func (c *client) BroadcastNotification(notif Notification) error {
 		_, err := conn.Write(bytesToSend)
 		if err != nil {
 			c.makeUnavailable(serverAddress)
-		}
-	}
-	if len(c.unavailableServers) > 0 {
-		now := time.Now()
-		for serverAddress, failTime := range c.unavailableServers {
-			if now.Sub(failTime) >= connectionRetryBackoff {
-				// Put the server back in the available set
-				log.Printf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
-				delete(c.unavailableServers, serverAddress)
-				c.availableServers[serverAddress] = struct{}{}
-			}
 		}
 	}
 	return nil
