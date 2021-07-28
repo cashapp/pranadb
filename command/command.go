@@ -87,8 +87,8 @@ func (s *sessCloser) CloseSession(sessionID string) error {
 	return nil
 }
 
-func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType, pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
-	log.Printf("creating source %s on node %d", name, e.cluster.GetNodeID())
+func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType,
+	pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
 	id := seqGenerator.GenerateSequence()
 
 	tableInfo := common.TableInfo{
@@ -112,7 +112,6 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 }
 
 func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
-	log.Printf("creating mv %s on node %d", name, e.cluster.GetNodeID())
 	id := seqGenerator.GenerateSequence()
 	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
 	if err != nil {
@@ -130,7 +129,8 @@ func (e *Executor) GetPushEngine() *push.PushEngine {
 	return e.pushEngine
 }
 
-func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
+	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.MaybeAddStack(err)
@@ -143,6 +143,11 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)
 	case ast.Drop != "":
+		if persist {
+			if err := e.broadcastDDL(session.Schema.Name, sql, nil); err != nil {
+				return nil, err
+			}
+		}
 		return e.execDrop(session, ast.Drop, persist)
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
 		if persist {
@@ -242,11 +247,13 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
 		}
-		err := e.metaController.RemoveSource(session.Schema.Name, sourceName, persist)
+		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
+		// otherwise SqlTest will think ddl is synced before data is deleted
+		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
 		if err != nil {
 			return nil, err
 		}
-		err = e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
+		err = e.metaController.RemoveSource(session.Schema.Name, sourceName, persist)
 		if err != nil {
 			return nil, err
 		}
@@ -259,11 +266,13 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
 		}
-		err := e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
+		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
+		// otherwise SqlTest will think ddl is synced before data is deleted
+		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
 		if err != nil {
 			return nil, err
 		}
-		err = e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
+		err = e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
 		if err != nil {
 			return nil, err
 		}

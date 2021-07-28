@@ -177,14 +177,10 @@ func (d *Dragon) Start() error {
 		panic("shard listener factory must be set before start")
 	}
 
-	log.Printf("attempting to start dragon node %d", d.nodeID)
-
 	d.shuttingDown = false
 
 	datadir := filepath.Join(d.dataDir, fmt.Sprintf("node-%d", d.nodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
-
-	log.Printf("Server %d has pebble dir %s", d.nodeID, pebbleDir)
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}
@@ -365,7 +361,6 @@ func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) erro
 			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(endPrefixWithShard)))
 			buff = append(buff, endPrefixWithShard...)
 
-			log.Printf("Calling from node %d to delete all data for shard id %d with key %v", d.nodeID, theShardID, startPrefixWithShard)
 			proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 			if err != nil {
 				ch <- err

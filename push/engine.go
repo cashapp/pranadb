@@ -277,7 +277,6 @@ func (p *PushEngine) waitForSchedulers() error {
 }
 
 func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
-	log.Printf("Waiting for no rows in table %d", tableID)
 	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.existRowsInLocalTable(tableID, shardIDs)
@@ -286,11 +285,7 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	if !ok {
 		return errors.New("timed out waiting for condition")
 	}
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (p *PushEngine) existRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {

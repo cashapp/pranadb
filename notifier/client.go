@@ -45,7 +45,7 @@ func (c *client) makeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
 	// Unavailable ones will be retried after a delay
-	log.Printf("Failed to send notification to server %s", serverAddress)
+	log.Printf("Server became unavailable %s", serverAddress)
 	delete(c.connections, serverAddress)
 	delete(c.availableServers, serverAddress)
 	c.unavailableServers[serverAddress] = time.Now()

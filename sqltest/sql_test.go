@@ -3,10 +3,12 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/table"
 
 	"github.com/squareup/pranadb/errors"
@@ -299,13 +300,21 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	// Now we verify that the test has left the database in a clean state - there should be no user sources
 	// or materialized views and no data in the database and nothing in the remote session caches
 	for _, prana := range st.testSuite.pranaCluster {
-		testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
-		if ok {
-			require.Equal(0, len(testSchema.Tables), fmt.Sprintf("There are %d materialized views and sources left at the end of the test", len(testSchema.Tables)))
-			require.Equal(0, len(testSchema.Sinks), fmt.Sprintf("There are %d sinks left at the end of the test", len(testSchema.Sinks)))
-		}
-		err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
+
+		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+			testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
+			require.True(ok)
+			if len(testSchema.Tables) != 0 || len(testSchema.Sinks) != 0 {
+				return false, nil
+			}
+			err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		}, 5*time.Second, 10*time.Millisecond)
 		require.NoError(err)
+		require.True(ok)
 
 		localShards := prana.GetCluster().GetLocalShardIDs()
 		for _, shardID := range localShards {
@@ -467,10 +476,47 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	} else {
 		// DDL statement
 		st.output.WriteString("Ok\n")
+		st.waitForSchemaSame(require)
 	}
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Printf("Statement %s execute time ms %d", statement, dur.Milliseconds())
+}
+
+func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
+	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+		// Wait for the schema meta data to be the same on each node. We need to do this because currently
+		// Applying DDL across the cluster is asynchronous. This will change once we implement MV activation
+		// syncing
+		var schemaPrev *common.Schema
+		for _, s := range st.testSuite.pranaCluster {
+			schemaNew, ok := s.GetMetaController().GetSchema(TestSchemaName)
+			if !ok {
+				// Schema not created
+				return false, nil
+			}
+			if schemaPrev != nil {
+				if !reflect.DeepEqual(schemaPrev, schemaNew) {
+					return false, nil
+				}
+			}
+			schemaPrev = schemaNew
+		}
+		return true, nil
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NoError(err)
+	if !ok {
+		log.Println("Schemas different on nodes")
+		for i, s := range st.testSuite.pranaCluster {
+			schema, ook := s.GetMetaController().GetSchema(TestSchemaName)
+			if !ook {
+				log.Printf("No schema on node %d", i)
+			} else {
+				log.Printf("Node %d\n%v", i, schema)
+			}
+		}
+	}
+	require.True(ok)
 }
 
 func (st *sqlTest) choosePrana() *server.Server {

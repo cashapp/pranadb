@@ -111,8 +111,8 @@ func (c *Controller) getSchema(schemaName string) (schema *common.Schema, ok boo
 }
 
 func (c *Controller) GetOrCreateSchema(schemaName string) *common.Schema {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	return c.getOrCreateSchema(schemaName)
 }
 

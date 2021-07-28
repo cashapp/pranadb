@@ -7,13 +7,14 @@ import (
 	"log"
 )
 
-func (p *PushEngine) QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
+func (p *PushEngine) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
 	sequence, err := p.nextForwardSequence(localShardID)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID, p.cluster.GetNodeID(), remoteShardID)
+	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID,
+		p.cluster.GetNodeID(), remoteShardID)
 
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, remoteShardID)
@@ -66,6 +67,7 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 		// seq|remote_consumer_id are the last 16 bytes
 		pos := len(key) - 16
 		remoteKey = append(remoteKey, key[pos:]...)
+
 		batch.addBatch.AddPut(remoteKey, kvPair.Value)
 		batch.deleteBatch.AddDelete(key)
 	}
@@ -105,8 +107,8 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 	}
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
-	log.Printf("In handleReceivedRows on shard %d and node %d, Got %d rows in receiver table", receivingShardID, p.cluster.GetNodeID(), len(kvPairs))
 	for _, kvPair := range kvPairs {
+		log.Printf("Read row from receiver %s", common.DumpDataKey(kvPair.Key))
 		sendingShardID := common.ReadUint64FromBufferBigEndian(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
 		if !ok {

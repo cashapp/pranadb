@@ -99,13 +99,13 @@ func (s *Server) Start() error {
 		Start() error
 	}
 	services := []service{
+		s.notifServer,
 		s.metaController,
 		s.cluster,
 		s.shardr,
 		s.pushEngine,
 		s.pullEngine,
 		s.schemaLoader,
-		s.notifServer,
 	}
 	var err error
 	for _, s := range services {

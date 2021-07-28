@@ -25,7 +25,7 @@ type ExecutionContext struct {
 }
 
 type Forwarder interface {
-	QueueForRemoteSend(key []byte, remoteShardID uint64, row *common.Row, localShardID uint64,
+	QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64,
 		entityID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error
 }
 

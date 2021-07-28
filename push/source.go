@@ -104,7 +104,7 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 			return err
 		}
 		// TODO we can consider an optimisation where execute on any local shards directly
-		err = s.engine.QueueForRemoteSend(key, destShardID, &row, shardID, tableID, colTypes, batch)
+		err = s.engine.QueueForRemoteSend(destShardID, &row, shardID, tableID, colTypes, batch)
 		if err != nil {
 			return err
 		}
