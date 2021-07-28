@@ -5,6 +5,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/stretchr/testify/require"
 	"log"
@@ -245,11 +246,11 @@ func (t *testCluster) RegisterShardListenerFactory(factory cluster.ShardListener
 	panic("should not be called")
 }
 
-func (t *testCluster) BroadcastNotification(notification cluster.Notification) error {
+func (t *testCluster) BroadcastNotification(notification notifier.Notification) error {
 	panic("should not be called")
 }
 
-func (t *testCluster) RegisterNotificationListener(notificationType cluster.NotificationType, listener cluster.NotificationListener) {
+func (t *testCluster) RegisterNotificationListener(notificationType notifier.NotificationType, listener notifier.NotificationListener) {
 	panic("should not be called")
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	errors2 "github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/sess"
@@ -241,7 +242,7 @@ func (p *PullEngine) NumCachedSessions() (int, error) {
 	return numEntries, nil
 }
 
-func (p *PullEngine) HandleNotification(notification cluster.Notification) {
+func (p *PullEngine) HandleNotification(notification notifier.Notification) {
 	sessCloseMsg := notification.(*notifications.SessionClosedMessage) // nolint: forcetypeassert
 	p.remoteSessionCache.Delete(sessCloseMsg.GetSessionId())
 }

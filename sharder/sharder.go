@@ -42,7 +42,7 @@ func (s *Sharder) computeHashShard(key []byte) uint64 {
 }
 
 func hash(key []byte) uint32 {
-	// TODO consistent hashing
+	// TODO consistent hashing when the cluster is not fixed size
 	hash := uint32(31)
 	for _, b := range key {
 		hash = 31*hash + uint32(b)

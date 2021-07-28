@@ -44,14 +44,14 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(v)))
 		buff = append(buff, v...)
 
-		if err := writeAllBytes(buff, bufWriter); err != nil {
+		if _, err := bufWriter.Write(buff); err != nil {
 			return err
 		}
 	}
 	// Write 0 to signify end of stream
 	buff := make([]byte, 0, 4)
 	buff = common.AppendUint32ToBufferLittleEndian(buff, 0)
-	if err := writeAllBytes(buff, writer); err != nil {
+	if _, err := bufWriter.Write(buff); err != nil {
 		return err
 	}
 	if err := bufWriter.Flush(); err != nil {
@@ -144,17 +144,4 @@ func writeLastIndexValue(batch *pebble.Batch, val uint64, shardID uint64) error 
 	vb := make([]byte, 0, 8)
 	vb = common.AppendUint64ToBufferLittleEndian(vb, val)
 	return batch.Set(key, vb, nil)
-}
-
-func writeAllBytes(bytes []byte, writer io.Writer) error {
-	offset := 0
-	lb := len(bytes)
-	for offset < lb {
-		w, err := writer.Write(bytes[offset:])
-		if err != nil {
-			return err
-		}
-		offset += w
-	}
-	return nil
 }

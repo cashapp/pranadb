@@ -2,6 +2,8 @@ package schema
 
 import (
 	"strings"
+
+	"github.com/squareup/pranadb/notifier"
 	"testing"
 
 	"github.com/squareup/pranadb/cluster"
@@ -54,7 +56,8 @@ func TestLoader(t *testing.T) {
 		// nolint: scopelint
 		t.Run(test.name, func(t *testing.T) {
 			clus := cluster.NewFakeCluster(1, 1)
-			metaController, executor := runServer(t, clus)
+			notifier := notifier.NewFakeNotifier()
+			metaController, executor := runServer(t, clus, notifier)
 			expectedSchemas := make(map[string]*common.Schema)
 			for _, ddl := range test.ddl {
 				numTables := 0
@@ -76,7 +79,7 @@ func TestLoader(t *testing.T) {
 
 			// Restart the server
 			_ = clus.Stop()
-			metaController, executor = runServer(t, clus)
+			metaController, executor = runServer(t, clus, notifier)
 			_, ok := metaController.GetSchema("test")
 			require.False(t, ok)
 
@@ -93,16 +96,16 @@ func TestLoader(t *testing.T) {
 	}
 }
 
-func runServer(t *testing.T, clus cluster.Cluster) (*meta.Controller, *command.Executor) {
+func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier) (*meta.Controller, *command.Executor) {
 	t.Helper()
 
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
-	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
-	clus.RegisterNotificationListener(cluster.NotificationTypeCloseSession, pullEngine)
+	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
+	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
+	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
 	err := clus.Start()

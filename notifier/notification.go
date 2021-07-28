@@ -1,4 +1,4 @@
-package cluster
+package notifier
 
 import (
 	"github.com/golang/protobuf/proto"

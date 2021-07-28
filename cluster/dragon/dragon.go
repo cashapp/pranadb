@@ -24,9 +24,6 @@ const (
 	// The dragon cluster id for the table sequence group
 	tableSequenceClusterID uint64 = 1
 
-	// The dragon cluster id for the notification group
-	notificationsClusterID uint64 = 2
-
 	// Timeout on dragon calls
 	dragonCallTimeout = time.Second * 30
 
@@ -34,8 +31,6 @@ const (
 	remoteQueryTimeout = time.Second * 30
 
 	sequenceGroupSize = 3
-
-	notificationGroupCoreSize = 3
 )
 
 func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int,
@@ -44,15 +39,13 @@ func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int,
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
 	dragon := Dragon{
-		nodeID:         nodeID,
-		clusterID:      clusterID,
-		nodeAddresses:  nodeAddresses,
-		totShards:      totShards,
-		dataDir:        dataDir,
-		notifListeners: make(map[cluster.NotificationType]cluster.NotificationListener),
-		testDragon:     testDragon,
+		nodeID:        nodeID,
+		clusterID:     clusterID,
+		nodeAddresses: nodeAddresses,
+		totShards:     totShards,
+		dataDir:       dataDir,
+		testDragon:    testDragon,
 	}
-	dragon.notifDispatcher = newNotificationDispatcher(&dragon)
 	dragon.generateNodesAndShards(totShards, replicationFactor)
 	return &dragon, nil
 }
@@ -72,8 +65,6 @@ type Dragon struct {
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
-	notifListeners               map[cluster.NotificationType]cluster.NotificationListener
-	notifDispatcher              *notificationDispatcher
 	testDragon                   bool
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
@@ -227,17 +218,10 @@ func (d *Dragon) Start() error {
 		return err
 	}
 
-	err = d.joinNotificationGroup()
-	if err != nil {
-		return err
-	}
-
 	err = d.joinShardGroups()
 	if err != nil {
 		return err
 	}
-
-	d.notifDispatcher.Start()
 
 	// We now sleep for a while as leader election can continue some time after start as nodes
 	// are started which causes a lot of churn
@@ -261,7 +245,6 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
-	d.notifDispatcher.Stop()
 	return err
 }
 
@@ -406,40 +389,6 @@ func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) erro
 	return nil
 }
 
-func (d *Dragon) BroadcastNotification(notification cluster.Notification) error {
-	cs := d.nh.GetNoOPSession(notificationsClusterID)
-
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
-
-	buff, err := cluster.SerializeNotification(notification)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
-	if err != nil {
-		return err
-	}
-	if proposeRes.Value != notificationsStateMachineUpdatedOK {
-		return fmt.Errorf("unexpected return value from sending notification: %d", proposeRes.Value)
-	}
-	return nil
-}
-
-func (d *Dragon) RegisterNotificationListener(notificationType cluster.NotificationType, listener cluster.NotificationListener) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	_, ok := d.notifListeners[notificationType]
-	if ok {
-		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
-	}
-	d.notifListeners[notificationType] = listener
-}
-
-func (d *Dragon) handleNotification(notification cluster.Notification) {
-	d.notifDispatcher.queueNotification(notification)
-}
-
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 	v, closer, err := peb.Get(key)
 	defer common.InvokeCloser(closer)
@@ -523,31 +472,6 @@ func (d *Dragon) joinSequenceGroup() error {
 	return nil
 }
 
-func (d *Dragon) joinNotificationGroup() error {
-	rc := config.Config{
-		NodeID:             uint64(d.nodeID + 1),
-		ElectionRTT:        10,
-		HeartbeatRTT:       1,
-		CheckQuorum:        false,
-		SnapshotEntries:    10,
-		CompactionOverhead: 5,
-		ClusterID:          notificationsClusterID,
-	}
-
-	initialMembers := make(map[uint64]string)
-	// All the nodes are in the group however all but the first 3 nodes are observer nodes
-	for i, nodeAddress := range d.nodeAddresses {
-		initialMembers[uint64(i+1)] = nodeAddress
-	}
-	isObserver := d.nodeID > notificationGroupCoreSize
-	rcCopy := rc
-	rcCopy.IsObserver = isObserver
-	if err := d.nh.StartCluster(initialMembers, false, d.newNotificationsStateMachine, rcCopy); err != nil {
-		return fmt.Errorf("failed to start notifications dragonboat cluster %v", err)
-	}
-	return nil
-}
-
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
@@ -604,49 +528,6 @@ func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, dele
 		deletes[i] = k
 	}
 	return
-}
-
-func newNotificationDispatcher(d *Dragon) *notificationDispatcher {
-	return &notificationDispatcher{
-		d:          d,
-		notifQueue: make(chan cluster.Notification, 100), // TODO make chan size configurable
-	}
-}
-
-// We dispatch notifications on a dedicated goroutine as we do not want to stall the Dragonboat goroutine
-// Using a single goroutine maintains order
-type notificationDispatcher struct {
-	d          *Dragon
-	notifQueue chan cluster.Notification
-}
-
-func (n *notificationDispatcher) queueNotification(notification cluster.Notification) {
-	n.notifQueue <- notification
-}
-
-func (n *notificationDispatcher) runLoop() {
-	for notification := range n.notifQueue {
-		listener := n.d.lookupNotificationListener(notification)
-		listener.HandleNotification(notification)
-	}
-}
-
-func (n *notificationDispatcher) Start() {
-	go n.runLoop()
-}
-
-func (n *notificationDispatcher) Stop() {
-	close(n.notifQueue)
-}
-
-func (d *Dragon) lookupNotificationListener(notification cluster.Notification) cluster.NotificationListener {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
-	listener, ok := d.notifListeners[cluster.TypeForNotification(notification)]
-	if !ok {
-		panic(fmt.Sprintf("no notification listener for type %d", cluster.TypeForNotification(notification)))
-	}
-	return listener
 }
 
 func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {

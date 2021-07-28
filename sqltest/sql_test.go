@@ -100,10 +100,15 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		}
 		w.pranaCluster[0] = s
 	} else {
-		nodeAddresses := []string{
+		raftAddresses := []string{
 			"localhost:63201",
 			"localhost:63202",
 			"localhost:63203",
+		}
+		notifAddresses := []string{
+			"localhost:63301",
+			"localhost:63302",
+			"localhost:63303",
 		}
 		dataDir, err := ioutil.TempDir("", "sql-test")
 		if err != nil {
@@ -112,13 +117,14 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		w.dataDir = dataDir
 		for i := 0; i < numNodes; i++ {
 			s, err := server.NewServer(server.Config{
-				NodeID:            i,
-				ClusterID:         12345678,
-				NodeAddresses:     nodeAddresses,
-				NumShards:         30,
-				ReplicationFactor: 3,
-				DataDir:           dataDir,
-				TestServer:        false,
+				NodeID:               i,
+				ClusterID:            12345678,
+				RaftAddresses:        raftAddresses,
+				NotifListenAddresses: notifAddresses,
+				NumShards:            30,
+				ReplicationFactor:    3,
+				DataDir:              dataDir,
+				TestServer:           false,
 			})
 			if err != nil {
 				log.Fatal(err)

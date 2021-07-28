@@ -22,7 +22,6 @@ type FakeCluster struct {
 	btree                        *btree.BTree
 	shardListenerFactory         ShardListenerFactory
 	shardListeners               map[uint64]ShardListener
-	notifListeners               map[NotificationType]NotificationListener
 	membershipListener           MembershipListener
 }
 
@@ -33,34 +32,7 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		allShardIds:    genAllShardIds(numShards),
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),
-		notifListeners: make(map[NotificationType]NotificationListener),
 	}
-}
-
-func (f *FakeCluster) BroadcastNotification(notification Notification) error {
-	listener := f.lookupNotificationListener(notification)
-	listener.HandleNotification(notification)
-	return nil
-}
-
-func (f *FakeCluster) lookupNotificationListener(notification Notification) NotificationListener {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	listener, ok := f.notifListeners[TypeForNotification(notification)]
-	if !ok {
-		panic(fmt.Sprintf("no notification listener for type %d", TypeForNotification(notification)))
-	}
-	return listener
-}
-
-func (f *FakeCluster) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	_, ok := f.notifListeners[notificationType]
-	if ok {
-		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
-	}
-	f.notifListeners[notificationType] = listener
 }
 
 func (f *FakeCluster) RegisterMembershipListener(listener MembershipListener) {
@@ -132,7 +104,6 @@ func (f *FakeCluster) Stop() error {
 	f.remoteQueryExecutionCallback = nil
 	f.shardListenerFactory = nil
 	f.shardListeners = make(map[uint64]ShardListener)
-	f.notifListeners = make(map[NotificationType]NotificationListener)
 	f.membershipListener = nil
 	f.started = false
 	return nil
