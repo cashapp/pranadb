@@ -2,10 +2,11 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/common/commontest"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
 
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/table"
@@ -24,7 +25,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 	clus := cluster.NewFakeCluster(1, 1)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
@@ -81,7 +82,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			seqGenerator := &preallocSeqGen{sequences: []uint64{1, 2}}
+			seqGenerator := common.NewPreallocSeqGen([]uint64{1, 2})
 			executor, err := ce.executeSQLStatementInternal(s, test.query, true, seqGenerator)
 			require.NoError(t, err)
 			actual, err := executor.GetRows(999)
@@ -111,7 +112,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	clus := cluster.NewFakeCluster(1, 1)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
@@ -129,7 +130,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	require.NoError(t, err)
 	s := ce.CreateSession("test")
 
-	seqGenerator := &preallocSeqGen{sequences: []uint64{1, 2}}
+	seqGenerator := common.NewPreallocSeqGen([]uint64{1, 2})
 	sql := `
 			create source sensor_readings(
 				sensor_id bigint,

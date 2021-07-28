@@ -2,9 +2,11 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/table"
 	"log"
 	"testing"
+
+	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/squareup/pranadb/common/commontest"
 
@@ -350,8 +352,9 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 		t.Skip("-short: skipped")
 	}
 	clus := cluster.NewFakeCluster(1, 10)
+	metaController := meta.NewController(clus)
 	shard := sharder.NewSharder(clus)
-	pe := NewPushEngine(clus, shard)
+	pe := NewPushEngine(clus, shard, metaController)
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clus.Start()

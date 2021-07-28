@@ -1,10 +1,12 @@
 package schema
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
@@ -13,55 +15,82 @@ import (
 )
 
 func TestLoader(t *testing.T) {
-	clus := cluster.NewFakeCluster(1, 1)
-	metaController, executor := runServer(t, clus)
-	session := executor.CreateSession("map")
-	_, err := executor.ExecuteSQLStatement(session, `create source location(
-				id bigint,
-				x varchar,
-				y varchar,
-				primary key (id)
-			)`)
-	require.NoError(t, err)
-	session = executor.CreateSession("movies")
-	_, err = executor.ExecuteSQLStatement(session, `create source actor(
-				id bigint,
-				name varchar,
-				age int,
-				primary key (id)
-			)`)
-	require.NoError(t, err)
-	_, err = executor.ExecuteSQLStatement(session, `create source movies(
-				id bigint,
-				title varchar,
-				director varchar,
-				year int,
-				primary key (id)
-			)`)
-	require.NoError(t, err)
+	type ddl struct {
+		schema  string
+		queries []string
+	}
+	tests := []struct {
+		name string
+		ddl  []ddl
+	}{
+		{
+			name: "sources",
+			ddl: []ddl{{
+				schema:  "location",
+				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) )`},
+			}, {
+				schema: "hollywood",
+				queries: []string{
+					`create source actor(id bigint, name varchar, age int, primary key (id) )`,
+					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))`,
+				},
+			}},
+		},
+		{
+			name: "mvs",
+			ddl: []ddl{{
+				schema: "hollywood",
+				queries: []string{
+					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))`,
+					`create materialized view latest_movies as
+						select director, max(year)
+						from movies
+						group by director`,
+				},
+			}},
+		},
+	}
+	for _, test := range tests {
+		// nolint: scopelint
+		t.Run(test.name, func(t *testing.T) {
+			clus := cluster.NewFakeCluster(1, 1)
+			metaController, executor := runServer(t, clus)
+			expectedSchemas := make(map[string]*common.Schema)
+			for _, ddl := range test.ddl {
+				numTables := 0
+				session := executor.CreateSession(ddl.schema)
+				for _, query := range ddl.queries {
+					_, err := executor.ExecuteSQLStatement(session, query)
+					if strings.Contains(query, "create source") {
+						numTables++
+					} else if strings.Contains(query, "create materialized view") {
+						numTables += 2
+					}
+					require.NoError(t, err)
+				}
+				schema, ok := metaController.GetSchema(ddl.schema)
+				require.True(t, ok)
+				require.Len(t, schema.Tables, numTables)
+				expectedSchemas[ddl.schema] = schema
+			}
 
-	mapSchema, ok := metaController.GetSchema("map")
-	require.True(t, ok)
-	require.Len(t, mapSchema.Tables, 1)
-	moviesSchema, ok := metaController.GetSchema("movies")
-	require.True(t, ok)
-	require.Len(t, moviesSchema.Tables, 2)
+			// Restart the server
+			_ = clus.Stop()
+			metaController, executor = runServer(t, clus)
+			_, ok := metaController.GetSchema("test")
+			require.False(t, ok)
 
-	// Restart the server
-	_ = clus.Stop()
-	metaController, executor = runServer(t, clus)
-	_, ok = metaController.GetSchema("test")
-	require.False(t, ok)
+			loader := NewLoader(metaController, executor, executor.GetPushEngine())
+			require.NoError(t, loader.Start())
 
-	loader := NewLoader(metaController, executor, executor.GetPushEngine())
-	require.NoError(t, loader.Start())
-
-	actualSchema, ok := metaController.GetSchema("map")
-	require.True(t, ok)
-	require.Equal(t, mapSchema, actualSchema)
-	actualSchema, ok = metaController.GetSchema("movies")
-	require.True(t, ok)
-	require.Equal(t, moviesSchema, actualSchema)
+			for _, schema := range test.ddl {
+				expected := expectedSchemas[schema.schema]
+				actual, ok := metaController.GetSchema(schema.schema)
+				require.True(t, ok)
+				require.Equal(t, expected, actual)
+			}
+		})
+	}
 }
 
 func runServer(t *testing.T, clus cluster.Cluster) (*meta.Controller, *command.Executor) {
@@ -69,7 +98,7 @@ func runServer(t *testing.T, clus cluster.Cluster) (*meta.Controller, *command.E
 
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
 	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)

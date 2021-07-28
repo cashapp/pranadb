@@ -11,30 +11,27 @@ var tableInfoRowsFactory = common.NewRowsFactory(SchemaTableInfo.ColumnTypes)
 const (
 	TableKindSource           = "source"
 	TableKindMaterializedView = "materialized_view"
+	TableKindAggregation      = "aggregation"
 )
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
 func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
-	rows.AppendStringToColumn(1, "source")
+	rows.AppendStringToColumn(1, TableKindSource)
 	rows.AppendStringToColumn(2, info.SchemaName)
 	rows.AppendStringToColumn(3, info.Name)
 	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
 	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
 	rows.AppendNullToColumn(6)
+	rows.AppendNullToColumn(7)
 	row := rows.GetRow(0)
 	return &row
 }
 
 // DecodeSourceInfoRow decodes a database row into a common.SourceInfo.
 func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
-	info := common.SourceInfo{
-		TableInfo: &common.TableInfo{
-			SchemaName: row.GetString(2),
-			Name:       row.GetString(3),
-		},
-	}
+	info := common.SourceInfo{}
 	jsonDecode(row.GetString(4), &info.TableInfo)
 	jsonDecode(row.GetString(5), &info.TopicInfo)
 	return &info
@@ -44,12 +41,13 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
-	rows.AppendStringToColumn(1, "materialized_view")
+	rows.AppendStringToColumn(1, TableKindMaterializedView)
 	rows.AppendStringToColumn(2, info.SchemaName)
 	rows.AppendStringToColumn(3, info.Name)
 	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
 	rows.AppendNullToColumn(5)
 	rows.AppendStringToColumn(6, info.Query)
+	rows.AppendNullToColumn(7)
 	row := rows.GetRow(0)
 	return &row
 }
@@ -57,11 +55,31 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 // DecodeMaterializedViewInfoRow decodes a database row into a common.MaterializedViewInfo.
 func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo {
 	info := common.MaterializedViewInfo{
-		TableInfo: &common.TableInfo{
-			SchemaName: row.GetString(2),
-			Name:       row.GetString(3),
-		},
 		Query: row.GetString(6),
+	}
+	jsonDecode(row.GetString(4), &info.TableInfo)
+	return &info
+}
+
+// EncodeInternalTableInfoToRow encodes a common.InternalTableInfo into a database row.
+func EncodeInternalTableInfoToRow(info *common.InternalTableInfo) *common.Row {
+	rows := tableInfoRowsFactory.NewRows(1)
+	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
+	rows.AppendStringToColumn(1, TableKindAggregation)
+	rows.AppendStringToColumn(2, info.SchemaName)
+	rows.AppendStringToColumn(3, info.Name)
+	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
+	rows.AppendNullToColumn(5)
+	rows.AppendNullToColumn(6)
+	rows.AppendStringToColumn(7, info.MaterializedViewName)
+	row := rows.GetRow(0)
+	return &row
+}
+
+// DecodeInternalTableInfoRow decodes a database row into a common.InternalTableInfo.
+func DecodeInternalTableInfoRow(row *common.Row) *common.InternalTableInfo {
+	info := common.InternalTableInfo{
+		MaterializedViewName: row.GetString(7),
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
 	return &info
