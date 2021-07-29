@@ -154,7 +154,7 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool
 		row := allRows.GetRow(i)
 		var keyBytes []byte
 		// PK is 0th column
-		keyBytes = common.AppendUint64ToBufferLittleEndian(keyBytes, uint64(row.GetInt64(0)))
+		keyBytes = common.AppendUint64ToBufferLE(keyBytes, uint64(row.GetInt64(0)))
 		shardID, err := sh.CalculateShard(sharder.ShardTypeHash, keyBytes)
 		require.NoError(t, err)
 		rows, ok := rowsByShard[shardID]

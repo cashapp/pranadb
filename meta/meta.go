@@ -272,7 +272,7 @@ func (c *Controller) deleteEntityWIthID(tableID uint64) error {
 
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
-	key = common.AppendUint64ToBufferLittleEndian(key, tableID)
+	key = common.KeyEncodeInt64(key, int64(tableID))
 
 	wb.AddDelete(key)
 

@@ -92,9 +92,9 @@ func DumpDataKey(bytes []byte) string {
 		panic("invalid key - must be at least 16 bytes")
 	}
 	// First 8 bytes is shard ID
-	shardID := ReadUint64FromBufferBigEndian(bytes, 0)
+	shardID, _ := ReadUint64FromBufferBE(bytes, 0)
 	//Next 8 bytes is table ID
-	tableID := ReadUint64FromBufferBigEndian(bytes, 8)
+	tableID, _ := ReadUint64FromBufferBE(bytes, 8)
 	//The rest depends on the table
 	remaining := bytes[16:]
 	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v", shardID, tableID, remaining)

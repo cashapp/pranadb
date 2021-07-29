@@ -160,7 +160,8 @@ func (c *connection) doReadLoop() {
 		for len(msgBuf) >= 4 {
 
 			if msgLen == -1 {
-				msgLen = int(common.ReadUint32FromBufferLittleEndian(msgBuf, 0))
+				u, _ := common.ReadUint32FromBufferLE(msgBuf, 0)
+				msgLen = int(u)
 			}
 			if len(msgBuf) >= 4+msgLen {
 				// We got a whole message

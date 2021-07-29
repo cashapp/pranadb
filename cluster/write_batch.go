@@ -35,18 +35,18 @@ func (wb *WriteBatch) HasWrites() bool {
 }
 
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(wb.puts.TheMap)))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(wb.puts.TheMap)))
 	for k, v := range wb.puts.TheMap {
 		kb := common.StringToByteSliceZeroCopy(k)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(kb)))
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(kb)))
 		buff = append(buff, kb...)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(v)))
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(v)))
 		buff = append(buff, v...)
 	}
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(wb.Deletes.TheMap)))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(wb.Deletes.TheMap)))
 	for k := range wb.Deletes.TheMap {
 		kb := common.StringToByteSliceZeroCopy(k)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(kb)))
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(kb)))
 		buff = append(buff, kb...)
 	}
 	return buff

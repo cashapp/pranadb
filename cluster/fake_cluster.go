@@ -154,11 +154,11 @@ func (f *FakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte)
 	defer f.mu.RUnlock()
 	for _, shardID := range f.allShardIds {
 		startPref := make([]byte, 0, 16)
-		startPref = common.AppendUint64ToBufferBigEndian(startPref, shardID)
+		startPref = common.AppendUint64ToBufferBE(startPref, shardID)
 		startPref = append(startPref, startPrefix...)
 
 		endPref := make([]byte, 0, 16)
-		endPref = common.AppendUint64ToBufferBigEndian(endPref, shardID)
+		endPref = common.AppendUint64ToBufferBE(endPref, shardID)
 		endPref = append(endPref, endPrefix...)
 
 		pairs, err := f.LocalScan(startPref, endPref, -1)

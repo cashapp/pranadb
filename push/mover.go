@@ -17,9 +17,9 @@ func (p *PushEngine) QueueForRemoteSend(remoteShardID uint64, row *common.Row, l
 		p.cluster.GetNodeID(), remoteShardID)
 
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
-	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, remoteShardID)
-	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, sequence)
-	queueKeyBytes = common.AppendUint64ToBufferBigEndian(queueKeyBytes, remoteConsumerID)
+	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
+	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, sequence)
+	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteConsumerID)
 
 	valueBuff := make([]byte, 0, 32)
 	valueBuff, err = common.EncodeRow(row, colTypes, valueBuff)
@@ -48,7 +48,7 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 	first := true
 	for _, kvPair := range kvPairs {
 		key := kvPair.Key
-		currRemoteShardID := common.ReadUint64FromBufferBigEndian(key, 16)
+		currRemoteShardID, _ := common.ReadUint64FromBufferBE(key, 16)
 		if first || remoteShardID != currRemoteShardID {
 			addBatch := cluster.NewWriteBatch(currRemoteShardID, true)
 			deleteBatch := cluster.NewWriteBatch(localShardID, false)
@@ -62,7 +62,7 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 		}
 
 		remoteKey := table.EncodeTableKeyPrefix(common.ReceiverTableID, remoteShardID, 40)
-		remoteKey = common.AppendUint64ToBufferBigEndian(remoteKey, localShardID)
+		remoteKey = common.AppendUint64ToBufferBE(remoteKey, localShardID)
 
 		// seq|remote_consumer_id are the last 16 bytes
 		pos := len(key) - 16
@@ -109,7 +109,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 	receivingSequences := make(map[uint64]uint64)
 	for _, kvPair := range kvPairs {
 		log.Printf("Read row from receiver %s", common.DumpDataKey(kvPair.Key))
-		sendingShardID := common.ReadUint64FromBufferBigEndian(kvPair.Key, 16)
+		sendingShardID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
 		if !ok {
 			lastReceivedSeq, err = p.lastReceivingSequence(receivingShardID, sendingShardID)
@@ -118,8 +118,8 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 			}
 		}
 
-		receivedSeq := common.ReadUint64FromBufferBigEndian(kvPair.Key, 24)
-		remoteConsumerID := common.ReadUint64FromBufferBigEndian(kvPair.Key, 32)
+		receivedSeq, _ := common.ReadUint64FromBufferBE(kvPair.Key, 24)
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 32)
 		if receivedSeq > lastReceivedSeq {
 			// We only handle rows which we haven't seen before - it's possible the forwarder
 			// might forwarder the same row more than once after failure
@@ -169,7 +169,7 @@ func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
 		if seqBytes == nil {
 			return 1, nil
 		}
-		lastSeq = common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+		lastSeq, _ = common.ReadUint64FromBufferLE(seqBytes, 0)
 		p.forwardSequences[localShardID] = lastSeq
 	}
 
@@ -179,7 +179,7 @@ func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
 func (p *PushEngine) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
 	seqKey := p.genForwardSequenceKey(localShardID)
 	seqValueBytes := make([]byte, 0, 8)
-	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)
+	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	// TODO remove this lock!
 	p.lock.RLock()
@@ -198,13 +198,14 @@ func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShard
 	if seqBytes == nil {
 		return 0, nil
 	}
-	return common.ReadUint64FromBufferLittleEndian(seqBytes, 0), nil
+	res, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
+	return res, nil
 }
 
 func (p *PushEngine) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
 	seqKey := p.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqValueBytes := make([]byte, 0, 8)
-	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, sequence)
+	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	return nil
 }
@@ -215,5 +216,5 @@ func (p *PushEngine) genForwardSequenceKey(localShardID uint64) []byte {
 
 func (p *PushEngine) genReceivingSequenceKey(receivingShardID uint64, sendingShardID uint64) []byte {
 	seqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, receivingShardID, 24)
-	return common.AppendUint64ToBufferBigEndian(seqKey, sendingShardID)
+	return common.AppendUint64ToBufferBE(seqKey, sendingShardID)
 }

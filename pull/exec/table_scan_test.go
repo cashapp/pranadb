@@ -1,7 +1,6 @@
 package exec
 
 import (
-	"log"
 	"testing"
 
 	"github.com/squareup/pranadb/cluster"
@@ -22,7 +21,7 @@ func TestTableScanNoLimit(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	ts, clust := setupTableScan(t, inpRows, nil, nil)
+	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)
@@ -46,7 +45,7 @@ func TestTableScanWithLimit0(t *testing.T) {
 		{3, "los angeles", 20.6, "11.75"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, nil, nil)
+	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	_, err := ts.GetRows(0)
@@ -62,7 +61,7 @@ func TestTableScanWithLimit2(t *testing.T) {
 		{5, "tokyo", 28.9, "999.99"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, nil, nil)
+	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	expectedRows1 := [][]interface{}{
@@ -166,7 +165,7 @@ func testTableScanWithRange(t *testing.T, scanRange *ScanRange, expectedRows [][
 		{5, "tokyo", 28.9, "999.99"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, scanRange, nil)
+	ts, clust := setupTableScan(t, inpRows, scanRange, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	exp1 := toRows(t, expectedRows, colTypes)
@@ -176,46 +175,148 @@ func testTableScanWithRange(t *testing.T, scanRange *ScanRange, expectedRows [][
 	commontest.AllRowsEqual(t, exp1, provided, colTypes)
 }
 
-func TestTableScanNaturalOrderingIntCol(t *testing.T) {
+var naturalOrderingColTypes = []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType,
+	common.VarcharColumnType, common.NewDecimalColumnType(10, 3)}
+
+/*
+	expectedRows := [][]interface{}{
+		{-300, 0.0, "str3", "-300.111"},
+		{-200, 1.1, "str7", "0.000"},
+		{-100, -1.1, "str1", "-100.111"},
+		{0, -3.1, "str4", "300.111"},
+		{100, -2.1, "str6", "-200.111"},
+		{200, 3.1, "str5", "200.111"},
+		{300, 2.1, "str2", "100.111"},
+	}
+*/
+
+func TestTableScanNaturalOrderingBigIntCol(t *testing.T) {
 	inpRows := [][]interface{}{
-		{3, "los angeles", 20.6, "11.75"},
-		{1, "wincanton", 25.5, "132.45"},
-		{4, "sydney", 45.2, "4.99"},
-		{5, "tokyo", 28.9, "999.99"},
-		{2, "london", 35.1, "9.32"},
+		{-200, 1.1, "str7", "0.000"},
+		{300, 2.1, "str2", "100.111"},
+		{0, -3.1, "str4", "300.111"},
+		{-100, -1.1, "str1", "-100.111"},
+		{200, 3.1, "str5", "200.111"},
+		{-300, 0.0, "str3", "-300.111"},
+		{100, -2.1, "str6", "-200.111"},
 	}
 	expectedRows := [][]interface{}{
-		{1, "wincanton", 25.5, "132.45"},
-		{2, "london", 35.1, "9.32"},
-		{3, "los angeles", 20.6, "11.75"},
-		{4, "sydney", 45.2, "4.99"},
-		{5, "tokyo", 28.9, "999.99"},
+		{-300, 0.0, "str3", "-300.111"},
+		{-200, 1.1, "str7", "0.000"},
+		{-100, -1.1, "str1", "-100.111"},
+		{0, -3.1, "str4", "300.111"},
+		{100, -2.1, "str6", "-200.111"},
+		{200, 3.1, "str5", "200.111"},
+		{300, 2.1, "str2", "100.111"},
 	}
-	testTableScanNaturalOrdering(t, inpRows, expectedRows, []int{0})
+	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{0})
 }
 
-// TODO natural ordering for some tests is currently broken - will be fixed in next PR
-//func TestTableScanNaturalOrderingDoubleCol(t *testing.T) {
-//	inpRows := [][]interface{}{
-//		{1, "wincanton", 67.1, "132.45"},
-//		{2, "london", 22.4, "9.32"},
-//		{3, "los angeles", 44.2, "11.75"},
-//		{4, "sydney", 0.2, "4.99"},
-//		{5, "tokyo", -56.1, "999.99"},
-//	}
-//	expectedRows := [][]interface{}{
-//		{5, "tokyo", -56.1, "999.99"},
-//		{4, "sydney", 0.2, "4.99"},
-//		{2, "london", 22.4, "9.32"},
-//		{3, "los angeles", 44.2, "11.75"},
-//		{1, "wincanton", 67.1, "132.45"},
-//	}
-//	testTableScanNaturalOrdering(t, inpRows, expectedRows, []int{2})
-//}
+func TestTableScanNaturalOrderingDoubleCol(t *testing.T) {
+	inpRows := [][]interface{}{
+		{-200, 1.1, "str7", "0.000"},
+		{300, 2.1, "str2", "100.111"},
+		{0, -3.1, "str4", "300.111"},
+		{-100, -1.1, "str1", "-100.111"},
+		{200, 3.1, "str5", "200.111"},
+		{-300, 0.0, "str3", "-300.111"},
+		{100, -2.1, "str6", "-200.111"},
+	}
+	expectedRows := [][]interface{}{
+		{0, -3.1, "str4", "300.111"},
+		{100, -2.1, "str6", "-200.111"},
+		{-100, -1.1, "str1", "-100.111"},
+		{-300, 0.0, "str3", "-300.111"},
+		{-200, 1.1, "str7", "0.000"},
+		{300, 2.1, "str2", "100.111"},
+		{200, 3.1, "str5", "200.111"},
+	}
+	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{1})
+}
 
-func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expectedRows [][]interface{}, pkCols []int) {
+func TestTableScanNaturalOrderingStringCol(t *testing.T) {
+	inpRows := [][]interface{}{
+		{-200, 1.1, "zzz", "0.000"},
+		{300, 2.1, "aaaa", "100.111"},
+		{0, -3.1, "", "300.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{200, 3.1, "zzzz", "200.111"},
+		{-300, 0.0, "aaa", "-300.111"},
+		{100, -2.1, "a", "-200.111"},
+	}
+	expectedRows := [][]interface{}{
+		{0, -3.1, "", "300.111"},
+		{100, -2.1, "a", "-200.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{-300, 0.0, "aaa", "-300.111"},
+		{-200, 1.1, "zzz", "0.000"},
+		{300, 2.1, "aaaa", "100.111"},
+		{200, 3.1, "zzzz", "200.111"},
+	}
+	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{2})
+}
+
+func TestTableScanNaturalOrderingDecimalCol(t *testing.T) {
+	inpRows := [][]interface{}{
+		{-200, 1.1, "zzz", "0.000"},
+		{300, 2.1, "aaaa", "100.111"},
+		{0, -3.1, "", "300.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{200, 3.1, "zzzz", "200.111"},
+		{-300, 0.0, "aaa", "-300.111"},
+		{100, -2.1, "a", "-200.111"},
+	}
+	expectedRows := [][]interface{}{
+		{-300, 0.0, "aaa", "-300.111"},
+		{100, -2.1, "a", "-200.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{-200, 1.1, "zzz", "0.000"},
+		{300, 2.1, "aaaa", "100.111"},
+		{200, 3.1, "zzzz", "200.111"},
+		{0, -3.1, "", "300.111"},
+	}
+	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{3})
+}
+
+func TestTableScanNaturalOrderingCompositeKey(t *testing.T) {
+	inpRows := [][]interface{}{
+		{200, 2.2, "zzz", "0.000"},
+		{-300, -3.1, "z", "-200.111"},
+		{0, 0.2, "zzz", "0.000"},
+		{200, 2.1, "z", "-100.111"},
+		{-300, -3.0, "a", "-300.111"},
+		{100, 1.1, "z", "-100.111"},
+		{-200, -2.8, "zzz", "0.000"},
+		{300, 3.2, "zzz", "0.000"},
+		{-100, -1.7, "z", "-100.111"},
+		{-100, -1.6, "zzz", "0.000"},
+		{0, 0.1, "z", "-100.111"},
+		{100, 1.2, "zzz", "0.000"},
+		{300, 3.1, "z", "-100.111"},
+		{-200, -2.9, "z", "-100.111"},
+	}
+	expectedRows := [][]interface{}{
+		{-300, -3.1, "z", "-200.111"},
+		{-300, -3.0, "a", "-300.111"},
+		{-200, -2.9, "z", "-100.111"},
+		{-200, -2.8, "zzz", "0.000"},
+		{-100, -1.7, "z", "-100.111"},
+		{-100, -1.6, "zzz", "0.000"},
+		{0, 0.1, "z", "-100.111"},
+		{0, 0.2, "zzz", "0.000"},
+		{100, 1.1, "z", "-100.111"},
+		{100, 1.2, "zzz", "0.000"},
+		{200, 2.1, "z", "-100.111"},
+		{200, 2.2, "zzz", "0.000"},
+		{300, 3.1, "z", "-100.111"},
+		{300, 3.2, "zzz", "0.000"},
+	}
+	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{0, 1})
+}
+
+func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expectedRows [][]interface{}, colTypes []common.ColumnType, pkCols []int) {
 	t.Helper()
-	ts, clust := setupTableScan(t, inpRows, nil, pkCols)
+	ts, clust := setupTableScan(t, inpRows, nil, colTypes, pkCols)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)
@@ -223,10 +324,6 @@ func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expecte
 	provided, err := ts.GetRows(-1)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
-	for i := 0; i < provided.RowCount(); i++ {
-		row := provided.GetRow(i)
-		log.Printf("Got row: %s", row.String())
-	}
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 }
 
@@ -236,7 +333,7 @@ func stopCluster(t *testing.T, clust cluster.Cluster) {
 	require.NoError(t, err)
 }
 
-func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRange, pkCols []int) (PullExecutor, cluster.Cluster) {
+func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRange, colTypes []common.ColumnType, pkCols []int) (PullExecutor, cluster.Cluster) {
 	t.Helper()
 
 	clust := cluster.NewFakeCluster(0, 10)

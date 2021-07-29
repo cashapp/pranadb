@@ -95,7 +95,7 @@ func (s *source) ingestRows(rows *common.Rows, shardID uint64) error {
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)
-		key, err := common.EncodeCols(&row, pkCols, colTypes, key, true)
+		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
 		if err != nil {
 			return err
 		}

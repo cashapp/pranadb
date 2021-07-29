@@ -69,18 +69,18 @@ func (q *QueryExecutionInfo) GetArgs() []interface{} {
 }
 
 func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType) []byte {
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(args)))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(args)))
 	for _, argType := range argTypes {
 		buff = append(buff, byte(argType.Type))
 	}
 	for _, arg := range args {
 		switch op := arg.(type) {
 		case int64:
-			buff = common.AppendUint64ToBufferLittleEndian(buff, uint64(op))
+			buff = common.AppendUint64ToBufferLE(buff, uint64(op))
 		case float64:
-			buff = common.EncodeFloat64(op, buff)
+			buff = common.AppendFloat64ToBufferLE(buff, op)
 		case string:
-			buff = common.EncodeString(op, buff)
+			buff = common.AppendStringToBufferLE(buff, op)
 		case common.Decimal:
 			// TODO
 		default:
@@ -91,8 +91,7 @@ func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType)
 }
 
 func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
-	numArgs := common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
+	numArgs, offset := common.ReadUint32FromBufferLE(buff, offset)
 	argTypes := make([]common.ColumnType, numArgs)
 	for i := 0; i < int(numArgs); i++ {
 		b := buff[offset]
@@ -100,10 +99,12 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 		t := common.Type(int(b))
 		colType := common.ColumnType{Type: t}
 		if colType.Type == common.TypeDecimal {
-			colType.DecPrecision = int(common.ReadUint64FromBufferLittleEndian(buff, offset))
-			offset += 8
-			colType.DecScale = int(common.ReadUint64FromBufferLittleEndian(buff, offset))
-			offset += 8
+			var dp uint64
+			dp, offset = common.ReadUint64FromBufferLE(buff, offset)
+			colType.DecPrecision = int(dp)
+			var dc uint64
+			dc, offset = common.ReadUint64FromBufferLE(buff, offset)
+			colType.DecScale = int(dc)
 		}
 		argTypes[i] = colType
 	}
@@ -113,15 +114,14 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 		argType := argTypes[i]
 		switch argType.Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			args[i] = common.ReadUint64FromBufferLittleEndian(buff, offset)
-			offset += 8
+			args[i], offset = common.ReadUint64FromBufferLE(buff, offset)
 		case common.TypeDouble:
-			args[i], offset = common.DecodeFloat64(buff, offset)
+			args[i], offset = common.ReadFloat64FromBufferLE(buff, offset)
 		case common.TypeVarchar:
-			args[i], offset = common.DecodeString(buff, offset)
+			args[i], offset = common.ReadStringFromBuffer(buff, offset)
 		case common.TypeDecimal:
 			var err error
-			args[i], offset, err = common.DecodeDecimal(buff, offset, argType.DecPrecision, argType.DecScale)
+			args[i], offset, err = common.ReadDecimalFromBuffer(buff, offset, argType.DecPrecision, argType.DecScale)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -134,13 +134,13 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 
 func (q *QueryExecutionInfo) Serialize() []byte {
 	var buff []byte
-	buff = common.EncodeString(q.SessionID, buff)
-	buff = common.EncodeString(q.SchemaName, buff)
-	buff = common.EncodeString(q.Query, buff)
-	buff = common.AppendUint64ToBufferLittleEndian(buff, uint64(q.PsID))
+	buff = common.AppendStringToBufferLE(buff, q.SessionID)
+	buff = common.AppendStringToBufferLE(buff, q.SchemaName)
+	buff = common.AppendStringToBufferLE(buff, q.Query)
+	buff = common.AppendUint64ToBufferLE(buff, uint64(q.PsID))
 	buff = encodePsArgs(buff, q.PsArgs, q.PsArgTypes)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, q.Limit)
-	buff = common.AppendUint64ToBufferLittleEndian(buff, q.ShardID)
+	buff = common.AppendUint32ToBufferLE(buff, q.Limit)
+	buff = common.AppendUint64ToBufferLE(buff, q.ShardID)
 	var b byte
 	if q.IsPs {
 		b = 1
@@ -153,20 +153,17 @@ func (q *QueryExecutionInfo) Serialize() []byte {
 
 func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	offset := 0
-	q.SessionID, offset = common.DecodeString(buff, offset)
-	q.SchemaName, offset = common.DecodeString(buff, offset)
-	q.Query, offset = common.DecodeString(buff, offset)
-	q.PsID = int64(common.ReadUint64FromBufferLittleEndian(buff, offset))
-	offset += 8
+	q.SessionID, offset = common.ReadStringFromBuffer(buff, offset)
+	q.SchemaName, offset = common.ReadStringFromBuffer(buff, offset)
+	q.Query, offset = common.ReadStringFromBuffer(buff, offset)
+	q.PsID, offset = common.ReadInt64FromBufferLE(buff, offset)
 	var err error
 	q.PsArgs, offset, err = decodePsArgs(offset, buff)
 	if err != nil {
 		return err
 	}
-	q.Limit = common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
-	q.ShardID = common.ReadUint64FromBufferLittleEndian(buff, offset)
-	offset += 8
+	q.Limit, offset = common.ReadUint32FromBufferLE(buff, offset)
+	q.ShardID, offset = common.ReadUint64FromBufferLE(buff, offset)
 	q.IsPs = buff[offset] == 1
 	return nil
 }

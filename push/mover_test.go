@@ -27,7 +27,7 @@ func TestQueueForRemoteSendWithPersistedSequence(t *testing.T) {
 	// Update the sequence
 	seqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, cluster.DataShardIDBase, 16)
 	seqValueBytes := make([]byte, 0, 8)
-	seqValueBytes = common.AppendUint64ToBufferLittleEndian(seqValueBytes, 333)
+	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, 333)
 	batch := cluster.NewWriteBatch(cluster.DataShardIDBase, false)
 	batch.AddPut(seqKey, seqValueBytes)
 	err := clus.WriteBatch(batch)
@@ -74,9 +74,9 @@ func TestTransferData(t *testing.T) {
 	// Check individual receiver rows
 	for i, rowToSend := range rows {
 		keyBytes := table.EncodeTableKeyPrefix(common.ReceiverTableID, rowToSend.remoteShardID, 40)
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, localShardID)
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, uint64(i+1))
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteConsumerID)
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, localShardID)
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, uint64(i+1))
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, rowToSend.remoteConsumerID)
 		loadRowAndVerifySame(t, keyBytes, rowToSend.row, clus, colTypes, rf)
 	}
 }
@@ -195,12 +195,12 @@ func TestHandleReceivedRows(t *testing.T) {
 		// Check the receiving sequences have been updated ok
 		for _, sendingShardID := range shardIds {
 			seqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, receivingShardID, 24)
-			seqKey = common.AppendUint64ToBufferBigEndian(seqKey, sendingShardID)
+			seqKey = common.AppendUint64ToBufferBE(seqKey, sendingShardID)
 
 			seqBytes, err := clus.LocalGet(seqKey)
 			require.NoError(t, err)
 			if seqBytes != nil {
-				lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+				lastSeq, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
 				expectedSeq, ok := expectedSequences[sendingShardID]
 				require.True(t, ok)
 				require.Equal(t, expectedSeq, lastSeq)
@@ -260,19 +260,19 @@ func TestDedupOfForwards(t *testing.T) {
 	seqBytes, err := pe.cluster.LocalGet(forSeqKey)
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
-	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+	lastSeq, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
 	require.Equal(t, uint64(numRows+1), lastSeq)
 
 	// Check receiver sequence
 	maxSeq := uint64(0)
 	for remoteShardID := range remoteShardsIds {
 		recSeqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, remoteShardID, 24)
-		recSeqKey = common.AppendUint64ToBufferBigEndian(recSeqKey, localShardID)
+		recSeqKey = common.AppendUint64ToBufferBE(recSeqKey, localShardID)
 
 		seqBytes, err := clus.LocalGet(recSeqKey)
 		require.NoError(t, err)
 		if seqBytes != nil {
-			lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+			lastSeq, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
 			if lastSeq > maxSeq {
 				maxSeq = lastSeq
 			}
@@ -329,9 +329,9 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	for i, rowToSend := range rows {
 
 		keyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteShardID)
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, uint64(i+startSequence))
-		keyBytes = common.AppendUint64ToBufferBigEndian(keyBytes, rowToSend.remoteConsumerID)
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, rowToSend.remoteShardID)
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, uint64(i+startSequence))
+		keyBytes = common.AppendUint64ToBufferBE(keyBytes, rowToSend.remoteConsumerID)
 
 		loadRowAndVerifySame(t, keyBytes, rowToSend.row, store, colTypes, rf)
 	}
@@ -342,7 +342,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
 
-	lastSeq := common.ReadUint64FromBufferLittleEndian(seqBytes, 0)
+	lastSeq, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
 	require.Equal(t, uint64(numRows+startSequence), lastSeq)
 }
 

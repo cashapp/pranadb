@@ -1,6 +1,8 @@
 package common
 
-import "github.com/pingcap/tidb/types"
+import (
+	"github.com/pingcap/tidb/types"
+)
 
 type Decimal struct {
 	decimal *types.MyDecimal

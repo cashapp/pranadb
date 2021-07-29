@@ -400,7 +400,7 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 }
 
 func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
-	startPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID)
-	endPrefix := common.AppendUint64ToBufferBigEndian([]byte{}, tableID+1)
+	startPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID)
+	endPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID+1)
 	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
 }
