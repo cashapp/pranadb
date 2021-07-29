@@ -6,7 +6,7 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-var tableInfoRowsFactory = common.NewRowsFactory(SchemaTableInfo.ColumnTypes)
+var tableInfoRowsFactory = common.NewRowsFactory(TableDefTableInfo.ColumnTypes)
 
 const (
 	TableKindSource           = "source"

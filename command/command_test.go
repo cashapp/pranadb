@@ -96,14 +96,14 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 			require.Equal(t, expected, actual)
 
 			if test.sourceInfo != nil {
-				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
-				row, err := table.LookupInPk(meta.SchemaTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
+				rf := common.NewRowsFactory(meta.TableDefTableInfo.ColumnTypes)
+				row, err := table.LookupInPk(meta.TableDefTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.TableDefTableInfo.PrimaryKeyCols, cluster.SystemSchemaShardID, rf, clus)
 				require.NoError(t, err)
 				require.NotNil(t, row)
 				require.Equal(t, test.sourceInfo, meta.DecodeSourceInfoRow(row))
 			} else if test.mvInfo != nil {
-				rf := common.NewRowsFactory(meta.SchemaTableInfo.ColumnTypes)
-				row, err := table.LookupInPk(meta.SchemaTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.SchemaTableInfo.PrimaryKeyCols, cluster.SchemaTableShardID, rf, clus)
+				rf := common.NewRowsFactory(meta.TableDefTableInfo.ColumnTypes)
+				row, err := table.LookupInPk(meta.TableDefTableInfo.TableInfo, []interface{}{int64(common.UserTableIDBase)}, meta.TableDefTableInfo.PrimaryKeyCols, cluster.SystemSchemaShardID, rf, clus)
 				require.NoError(t, err)
 				repr.Println(meta.DecodeMaterializedViewInfoRow(row))
 				require.Equal(t, test.mvInfo, meta.DecodeMaterializedViewInfoRow(row))

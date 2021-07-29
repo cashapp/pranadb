@@ -2,15 +2,16 @@ package exec
 
 import (
 	"fmt"
+	"log"
+	"sync"
+	"testing"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/stretchr/testify/require"
-	"log"
-	"sync"
-	"testing"
 )
 
 func TestRemoteExecutorGetAll(t *testing.T) {
@@ -113,6 +114,22 @@ func TestRemoteExecutorResetAndGetAgain(t *testing.T) {
 	for i := 0; i < len(arrRows); i++ {
 		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
 	}
+}
+
+func TestRemoteExecutorSystemShardDoesNotFanOut(t *testing.T) {
+	allShardsIds := make([]uint64, 10)
+	for i := 0; i < 10; i++ {
+		allShardsIds[i] = uint64(i)
+	}
+	tc := &testCluster{allShardIds: allShardsIds}
+
+	sh := sharder.NewSharder(tc)
+	err := sh.Start()
+	require.NoError(t, err)
+
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "test-schema", tc)
+	require.Len(t, re.clusterGetters, 1)
+	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
 }
 
 //nolint: unparam

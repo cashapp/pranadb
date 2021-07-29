@@ -7,6 +7,7 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/meta"
 )
 
 type RemoteExecutor struct {
@@ -149,8 +150,12 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 }
 
 func (re *RemoteExecutor) createGetters() {
-	re.clusterGetters = make([]*clusterGetter, len(re.ShardIDs))
-	for i, shardID := range re.ShardIDs {
+	shardIDs := re.ShardIDs
+	if re.schemaName == meta.SystemSchemaName {
+		shardIDs = []uint64{cluster.SystemSchemaShardID}
+	}
+	re.clusterGetters = make([]*clusterGetter, len(shardIDs))
+	for i, shardID := range shardIDs {
 		// Make a copy of the query exec info as they need different shard ids, session id and limit (later)
 		qei := *re.queryInfo
 		// We append the shard id to the session id - as on each remote node we need to maintain a different

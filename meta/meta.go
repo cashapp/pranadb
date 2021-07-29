@@ -9,11 +9,18 @@ import (
 	"github.com/squareup/pranadb/table"
 )
 
-// SchemaTableInfo is a static definition of the table schema for the table schema table.
-var SchemaTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
+const (
+	// SystemSchemaName is the name of the schema that houses system tables, similar to mysql's information_schema.
+	SystemSchemaName = "sys"
+	// TableDefTableName is the name of the table that holds all table definitions.
+	TableDefTableName = "tables"
+)
+
+// TableDefTableInfo is a static definition of the table schema for the table schema table.
+var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	ID:             common.SchemaTableID,
-	SchemaName:     "sys",
-	Name:           "tables",
+	SchemaName:     SystemSchemaName,
+	Name:           TableDefTableName,
 	PrimaryKeyCols: []int{0},
 	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
 	ColumnTypes: []common.ColumnType{
@@ -66,7 +73,7 @@ func (c *Controller) Stop() error {
 
 func (c *Controller) registerSystemSchema() {
 	schema := c.getOrCreateSchema("sys")
-	schema.Tables[SchemaTableInfo.Name] = SchemaTableInfo
+	schema.Tables[TableDefTableInfo.Name] = TableDefTableInfo
 }
 
 func (c *Controller) GetMaterializedView(schemaName string, name string) (*common.MaterializedViewInfo, bool) {
@@ -151,8 +158,8 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool)
 	schema.Tables[sourceInfo.Name] = sourceInfo
 
 	if persist {
-		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
-		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
+		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -173,8 +180,8 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	schema.Tables[mvInfo.Name] = mvInfo
 
 	if persist {
-		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
-		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
+		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -195,8 +202,8 @@ func (c *Controller) RegisterInternalTable(info *common.InternalTableInfo, persi
 	schema.Tables[info.Name] = info
 
 	if persist {
-		wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
-		if err = table.Upsert(SchemaTableInfo.TableInfo, EncodeInternalTableInfoToRow(info), wb); err != nil {
+		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -261,10 +268,10 @@ func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, pe
 }
 
 func (c *Controller) deleteEntityWIthID(tableID uint64) error {
-	wb := cluster.NewWriteBatch(cluster.SchemaTableShardID, false)
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 
 	var key []byte
-	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SchemaTableShardID, 24)
+	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
 	key = common.AppendUint64ToBufferLittleEndian(key, tableID)
 
 	wb.AddDelete(key)
