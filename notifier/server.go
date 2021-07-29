@@ -162,7 +162,7 @@ func (c *connection) doReadLoop() {
 			if msgLen == -1 {
 				msgLen = int(common.ReadUint32FromBufferLittleEndian(msgBuf, 0))
 			}
-			if len(msgBuf)+4 >= msgLen {
+			if len(msgBuf) >= 4+msgLen {
 				// We got a whole message
 				msg := msgBuf[4 : 4+msgLen]
 				notification, err := DeserializeNotification(msg)
@@ -174,6 +174,7 @@ func (c *connection) doReadLoop() {
 				listener.HandleNotification(notification)
 
 				msgBuf = msgBuf[4+msgLen:]
+
 				msgLen = -1
 			} else {
 				break
