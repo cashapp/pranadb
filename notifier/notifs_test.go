@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/stretchr/testify/require"
 	"log"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -23,15 +24,17 @@ func TestSimpleNotificationThreeServers(t *testing.T) {
 }
 
 func TestMultipleNotificationsDifferentSizes(t *testing.T) {
+	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
+
 	var notifsToSend []string
 
 	// Generate a bunch of notifications of various sizes
 	numNotifs := 100
 	for i := 0; i < numNotifs; i++ {
-		notifSize := i%10 + 1
+		notifSize := int(rnd.Int31n(10000) + 1)
 		notif := make([]byte, notifSize)
 		for j := 0; j < notifSize; j++ {
-			notif[j] = byte(48 + j)
+			notif[j] = byte(48 + j%30)
 		}
 		notifsToSend = append(notifsToSend, string(notif))
 	}
