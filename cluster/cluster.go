@@ -39,10 +39,6 @@ type Cluster interface {
 
 	RegisterShardListenerFactory(factory ShardListenerFactory)
 
-	BroadcastNotification(notification Notification) error
-
-	RegisterNotificationListener(notificationType NotificationType, listener NotificationListener)
-
 	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
 	// DeleteAllDataInRange deletes all data in the specified ranges. Ranges do not contain the shard id

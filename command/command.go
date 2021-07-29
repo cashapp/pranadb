@@ -2,6 +2,9 @@ package command
 
 import (
 	"fmt"
+
+	"github.com/squareup/pranadb/notifier"
+
 	"log"
 	"strconv"
 	"strings"
@@ -28,8 +31,7 @@ type Executor struct {
 	metaController    *meta.Controller
 	pushEngine        *push.PushEngine
 	pullEngine        *pull.PullEngine
-	ddlStatementSeq   int64
-	notifActions      map[int64]chan statementExecutionResult
+	notifClient       notifier.Client
 	ddlExecLock       sync.Mutex
 	sessionIDSequence int64
 }
@@ -39,13 +41,14 @@ func NewCommandExecutor(
 	pushEngine *push.PushEngine,
 	pullEngine *pull.PullEngine,
 	cluster cluster.Cluster,
+	notifClient notifier.Client,
 ) *Executor {
 	return &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
 		pullEngine:        pullEngine,
-		notifActions:      make(map[int64]chan statementExecutionResult),
+		notifClient:       notifClient,
 		sessionIDSequence: -1,
 	}
 }
@@ -63,19 +66,20 @@ func (e *Executor) CreateSession(schemaName string) *sess.Session {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
 	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
-	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster})
+	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
 }
 
 type sessCloser struct {
-	clus cluster.Cluster
+	clus        cluster.Cluster
+	notifClient notifier.Client
 }
 
-func (s sessCloser) CloseSession(sessionID string) error {
+func (s *sessCloser) CloseSession(sessionID string) error {
 	shardIDs := s.clus.GetAllShardIDs()
 	for _, shardID := range shardIDs {
 		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
 		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
-		err := s.clus.BroadcastNotification(sessCloseMsg)
+		err := s.notifClient.BroadcastNotification(sessCloseMsg)
 		if err != nil {
 			return err
 		}
@@ -83,8 +87,8 @@ func (s sessCloser) CloseSession(sessionID string) error {
 	return nil
 }
 
-func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType, pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
-	log.Printf("creating source %s on node %d", name, e.cluster.GetNodeID())
+func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType,
+	pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
 	id := seqGenerator.GenerateSequence()
 
 	tableInfo := common.TableInfo{
@@ -108,7 +112,6 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 }
 
 func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
-	log.Printf("creating mv %s on node %d", name, e.cluster.GetNodeID())
 	id := seqGenerator.GenerateSequence()
 	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
 	if err != nil {
@@ -126,7 +129,8 @@ func (e *Executor) GetPushEngine() *push.PushEngine {
 	return e.pushEngine
 }
 
-func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, local bool, seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
+	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.MaybeAddStack(err)
@@ -139,47 +143,39 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)
 	case ast.Drop != "":
-		if local {
-			sequences, err := e.generateSequences(0)
-			if err != nil {
+		if persist {
+			if err := e.broadcastDDL(session.Schema.Name, sql, nil); err != nil {
 				return nil, err
 			}
-			_, err = e.execDrop(session, ast.Drop, true)
-			if err != nil {
-				return nil, err
-			}
-			return e.executeInGlobalOrder(session.Schema.Name, sql, "drop", sequences)
 		}
-		return e.execDrop(session, ast.Drop, false)
-
+		return e.execDrop(session, ast.Drop, persist)
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		if local {
+		if persist {
 			// Materialized view needs 2 sequences
 			sequences, err := e.generateSequences(2)
 			if err != nil {
 				return nil, err
 			}
-			if _, err = e.execCreateMaterializedView(session, ast.Create.MaterializedView, common.NewPreallocSeqGen(sequences), true); err != nil {
+			seqGenerator = common.NewPreallocSeqGen(sequences)
+			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
 				return nil, err
 			}
-			return e.executeInGlobalOrder(session.Schema.Name, sql, "mv", sequences)
 		}
-		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, false)
+		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, persist)
 
 	case ast.Create != nil && ast.Create.Source != nil:
-		if local {
+		if persist {
 			// Source needs 1 sequence
 			sequences, err := e.generateSequences(1)
 			if err != nil {
 				return nil, err
 			}
-			_, err = e.execCreateSource(session.Schema.Name, ast.Create.Source, common.NewPreallocSeqGen(sequences), true)
-			if err != nil {
+			seqGenerator = common.NewPreallocSeqGen(sequences)
+			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
 				return nil, err
 			}
-			return e.executeInGlobalOrder(session.Schema.Name, sql, "source", sequences)
 		}
-		return e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, false)
+		return e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, persist)
 
 	default:
 		panic("unsupported query " + sql)
@@ -251,11 +247,13 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
 		}
-		err := e.metaController.RemoveSource(session.Schema.Name, sourceName, persist)
+		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
+		// otherwise SqlTest will think ddl is synced before data is deleted
+		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
 		if err != nil {
 			return nil, err
 		}
-		err = e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
+		err = e.metaController.RemoveSource(session.Schema.Name, sourceName, persist)
 		if err != nil {
 			return nil, err
 		}
@@ -268,11 +266,13 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
 		}
-		err := e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
+		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
+		// otherwise SqlTest will think ddl is synced before data is deleted
+		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
 		if err != nil {
 			return nil, err
 		}
-		err = e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
+		err = e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
 		if err != nil {
 			return nil, err
 		}
@@ -329,64 +329,28 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 	return exec.Empty, nil
 }
 
-// DDL statements such as create materialized view, create source etc need to broadcast to every node in the cluster
-// so they can be installed in memory on each node, and we also need to ensure that all statements are executed in
-// the exact same order on each node irrespective of where the command originated from.
-// In order to do this, we first broadcast the command across the cluster via a raft group which ensures a global
-// ordering and we don't process the command locally until we receive it from the cluster.
-func (e *Executor) executeInGlobalOrder(schemaName string, sql string, kind string, sequences []uint64) (exec.PullExecutor, error) {
-	nextSeq := atomic.AddInt64(&e.ddlStatementSeq, 1)
+func (e *Executor) broadcastDDL(schemaName string, sql string, sequences []uint64) error {
 	statementInfo := &notifications.DDLStatementInfo{
 		OriginatingNodeId: int64(e.cluster.GetNodeID()),
-		Sequence:          nextSeq,
 		SchemaName:        schemaName,
 		Sql:               sql,
 		TableSequences:    sequences,
-		Kind:              kind,
 	}
-	ch := make(chan statementExecutionResult)
-	e.notifActions[nextSeq] = ch
-
-	go func() {
-		err := e.cluster.BroadcastNotification(statementInfo)
-		if err != nil {
-			ch <- statementExecutionResult{err: err}
-		}
-	}()
-
-	res, ok := <-ch
-	if !ok {
-		panic("channel was closed")
-	}
-	return res.exec, res.err
+	return e.notifClient.BroadcastNotification(statementInfo)
 }
 
-func (e *Executor) HandleNotification(notification cluster.Notification) {
+func (e *Executor) HandleNotification(notification notifier.Notification) {
 	e.ddlExecLock.Lock()
 	defer e.ddlExecLock.Unlock()
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
 	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
+	// Note this session does not need to be closed as it does not execute any pull queries
 	session := e.CreateSession(ddlStmt.SchemaName)
 	origNodeID := int(ddlStmt.OriginatingNodeId)
-	if origNodeID == e.cluster.GetNodeID() {
-		ch, ok := e.notifActions[ddlStmt.Sequence]
-		if !ok {
-			panic("cannot find notification")
-		}
-		delete(e.notifActions, ddlStmt.Sequence)
-		ch <- statementExecutionResult{
-			exec: exec.Empty,
-			err:  nil,
-		}
-	} else {
+	if origNodeID != e.cluster.GetNodeID() {
 		_, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
 		if err != nil {
 			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
 		}
 	}
-}
-
-type statementExecutionResult struct {
-	exec exec.PullExecutor
-	err  error
 }

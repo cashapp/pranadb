@@ -2,6 +2,9 @@ package command
 
 import (
 	"fmt"
+
+	"github.com/squareup/pranadb/notifier"
+
 	"testing"
 	"time"
 
@@ -27,8 +30,9 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 	shardr := sharder.NewSharder(clus)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
-	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
+	fakeNotifier := notifier.NewFakeNotifier()
+	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus, fakeNotifier)
+	fakeNotifier.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	s := ce.CreateSession("test")
 
 	tests := []struct {
@@ -114,8 +118,9 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	shardr := sharder.NewSharder(clus)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
-	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, ce)
+	fakeNotifier := notifier.NewFakeNotifier()
+	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus, fakeNotifier)
+	fakeNotifier.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
 	err := clus.Start()

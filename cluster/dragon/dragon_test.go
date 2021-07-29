@@ -8,7 +8,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,8 +15,6 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 )
 
 var dragonCluster []cluster.Cluster
@@ -183,75 +180,6 @@ func TestGetAllShardIDs(t *testing.T) {
 	for i := 0; i < len(dragonCluster); i++ {
 		allShardIds := dragonCluster[i].GetAllShardIDs()
 		require.Equal(t, numShards, len(allShardIds))
-	}
-}
-
-type testNotificationListener struct {
-	lock   sync.Mutex
-	notifs []cluster.Notification
-}
-
-func (t *testNotificationListener) HandleNotification(notification cluster.Notification) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	t.notifs = append(t.notifs, notification)
-}
-
-func (t *testNotificationListener) getNotifs() []cluster.Notification {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	return t.notifs
-}
-
-func (t *testNotificationListener) clearNotifs() {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	t.notifs = make([]cluster.Notification, 0)
-}
-
-func TestNotifications(t *testing.T) {
-	var notifListeners []*testNotificationListener
-	for i := 0; i < len(dragonCluster); i++ {
-		notifListener := testNotificationListener{notifs: []cluster.Notification{}}
-		notifListeners = append(notifListeners, &notifListener)
-		dragonCluster[i].RegisterNotificationListener(cluster.NotificationTypeDDLStatement, &notifListener)
-	}
-	sequences := []uint64{100, 101}
-	numNotifs := 10
-	for i := 0; i < len(dragonCluster); i++ {
-		sendingNode := dragonCluster[i]
-		for j := 0; j < numNotifs; j++ {
-			notif := &notifications.DDLStatementInfo{
-				OriginatingNodeId: int64(sendingNode.GetNodeID()),
-				Sequence:          int64(j),
-				SchemaName:        "some-schema",
-				Sql:               fmt.Sprintf("sql-%d-%d", i, j),
-				TableSequences:    sequences,
-			}
-			err := sendingNode.BroadcastNotification(notif)
-			require.NoError(t, err)
-		}
-		for j := 0; j < len(dragonCluster); j++ {
-			listener := notifListeners[j]
-			commontest.WaitUntil(t, func() (bool, error) {
-				lNotifs := len(listener.getNotifs())
-				return lNotifs == numNotifs, nil
-			})
-			for k := 0; k < numNotifs; k++ {
-				notif := listener.getNotifs()[k]
-				ddlStmt, ok := notif.(*notifications.DDLStatementInfo)
-				require.True(t, ok)
-				require.Equal(t, sendingNode.GetNodeID(), int(ddlStmt.OriginatingNodeId))
-				require.Equal(t, int64(k), ddlStmt.Sequence)
-				require.Equal(t, "some-schema", ddlStmt.SchemaName)
-				require.Equal(t, fmt.Sprintf("sql-%d-%d", sendingNode.GetNodeID(), k), ddlStmt.Sql)
-				require.Equal(t, len(sequences), len(ddlStmt.TableSequences))
-				for l := 0; l < len(sequences); l++ {
-					require.Equal(t, sequences[l], ddlStmt.TableSequences[l])
-				}
-			}
-			listener.clearNotifs()
-		}
 	}
 }
 

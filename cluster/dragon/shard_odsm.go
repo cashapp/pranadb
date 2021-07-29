@@ -55,8 +55,8 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
-	hasForward := false
-	hasWrites := false
+	hasForward := false      //nolint:ifshort
+	hasDeleteRanges := false //nolint:ifshort
 	batch := s.dragon.pebble.NewBatch()
 	for i, entry := range entries {
 		cmdBytes := entry.Cmd
@@ -66,7 +66,6 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			if err := s.handleWrite(batch, cmdBytes); err != nil {
 				return nil, err
 			}
-			hasWrites = true
 			if command == shardStateMachineCommandForwardWrite {
 				hasForward = true
 			}
@@ -74,6 +73,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			s.handleRemoveNode(cmdBytes)
 		case shardStateMachineCommandDeleteRangePrefix:
 			err := s.handleDeleteRange(batch, cmdBytes)
+			hasDeleteRanges = true
 			if err != nil {
 				return nil, err
 			}
@@ -95,16 +95,30 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		return nil, err
 	}
 
-	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+	wo := nosyncWriteOptions
+	// TODO Pebble delete range doesn't seem to work synchronously unlesss batch is synced
+	// Perhaps a bug in Pebble - need to investigate
+	if hasDeleteRanges {
+		wo = syncWriteOptions
+	}
+	if err := s.dragon.pebble.Apply(batch, wo); err != nil {
 		return nil, err
 	}
 
 	// A forward write is a write which forwards a batch of rows from one shard to another
 	// In this case we want to trigger processing of those rows, if we're the processor
-	if hasWrites && hasForward && s.processor {
-		s.shardListener.RemoteWriteOccurred()
+	if hasForward {
+		s.maybeTriggerRemoteWriteOccurred()
 	}
 	return entries, nil
+}
+
+func (s *ShardOnDiskStateMachine) maybeTriggerRemoteWriteOccurred() {
+	// A forward write is a write which forwards a batch of rows from one shard to another
+	// In this case we want to trigger processing of those rows, if we're the processor
+	if s.processor {
+		s.shardListener.RemoteWriteOccurred()
+	}
 }
 
 func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte) error {
@@ -225,7 +239,12 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	startPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID)
 	endPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID+1)
-	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)
+	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)
+	if err != nil {
+		return err
+	}
+	s.maybeTriggerRemoteWriteOccurred()
+	return nil
 }
 
 func (s *ShardOnDiskStateMachine) Close() error {

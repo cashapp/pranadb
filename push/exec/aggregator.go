@@ -84,7 +84,7 @@ func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error 
 			// Destination shard is same as this one, so no need for remote send
 			return a.HandleRemoteRows(rows, ctx)
 		}
-		err = ctx.Forwarder.QueueForRemoteSend(key, remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
+		err = ctx.Forwarder.QueueForRemoteSend(remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
 		if err != nil {
 			return err
 		}

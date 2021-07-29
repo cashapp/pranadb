@@ -3,7 +3,6 @@ package exec
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/cluster"
@@ -54,7 +53,6 @@ func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryR
 		c.queryExecInfo.Limit = uint32(limit)
 		rows, err = c.re.cluster.ExecuteRemotePullQuery(&c.queryExecInfo, c.re.rowsFactory)
 		if err == nil {
-			log.Printf("cluster getter returned %d rows", rows.RowCount())
 			c.complete.Store(rows.RowCount() < limit)
 		}
 		ch <- cluster.RemoteQueryResult{

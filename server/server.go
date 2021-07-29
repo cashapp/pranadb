@@ -8,32 +8,40 @@ import (
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/meta/schema"
+	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
 )
 
 type Config struct {
-	NodeID            int
-	ClusterID         int // All nodes in a Prana cluster must share the same ClusterID
-	NodeAddresses     []string
-	NumShards         int
-	ReplicationFactor int
-	DataDir           string
-	TestServer        bool
+	NodeID               int
+	ClusterID            int // All nodes in a Prana cluster must share the same ClusterID
+	RaftAddresses        []string
+	NotifListenAddresses []string
+	NumShards            int
+	ReplicationFactor    int
+	DataDir              string
+	TestServer           bool
 }
 
 func NewServer(config Config) (*Server, error) {
 	var clus cluster.Cluster
+	var notifClient notifier.Client
+	var notifServer notifier.Server
 	if config.TestServer {
 		clus = cluster.NewFakeCluster(config.NodeID, config.NumShards)
+		fakeNotifier := notifier.NewFakeNotifier()
+		notifClient = fakeNotifier
+		notifServer = fakeNotifier
 	} else {
-		// TODO make replication factor configurable
 		var err error
-		clus, err = dragon.NewDragon(config.NodeID, config.ClusterID, config.NodeAddresses, config.NumShards, config.DataDir, config.ReplicationFactor, false)
+		clus, err = dragon.NewDragon(config.NodeID, config.ClusterID, config.RaftAddresses, config.NumShards, config.DataDir, config.ReplicationFactor, false)
 		if err != nil {
 			return nil, err
 		}
+		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
+		notifClient = notifier.NewClient(config.NotifListenAddresses...)
 	}
 
 	metaController := meta.NewController(clus)
@@ -41,11 +49,14 @@ func NewServer(config Config) (*Server, error) {
 	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	clus.RegisterShardListenerFactory(pushEngine)
 	pullEngine := pull.NewPullEngine(clus, metaController)
+
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus)
+
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
+	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
+	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	schemaLoader := schema.NewLoader(metaController, commandExecutor, pushEngine)
-	clus.RegisterNotificationListener(cluster.NotificationTypeDDLStatement, commandExecutor)
-	clus.RegisterNotificationListener(cluster.NotificationTypeCloseSession, pullEngine)
+
 	clus.RegisterMembershipListener(pullEngine)
 	server := Server{
 		nodeID:          config.NodeID,
@@ -56,6 +67,8 @@ func NewServer(config Config) (*Server, error) {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
+		notifServer:     notifServer,
+		notifClient:     notifClient,
 	}
 	return &server, nil
 }
@@ -70,6 +83,8 @@ type Server struct {
 	pullEngine      *pull.PullEngine
 	commandExecutor *command.Executor
 	schemaLoader    *schema.Loader
+	notifServer     notifier.Server
+	notifClient     notifier.Client
 	started         bool
 }
 
@@ -84,6 +99,7 @@ func (s *Server) Start() error {
 		Start() error
 	}
 	services := []service{
+		s.notifServer,
 		s.metaController,
 		s.cluster,
 		s.shardr,
@@ -97,7 +113,6 @@ func (s *Server) Start() error {
 			return err
 		}
 	}
-
 	s.started = true
 	return nil
 }
@@ -108,7 +123,11 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	err := s.pushEngine.Stop()
+	err := s.notifServer.Stop()
+	if err != nil {
+		return err
+	}
+	err = s.pushEngine.Stop()
 	if err != nil {
 		return err
 	}
@@ -151,4 +170,8 @@ func (s *Server) GetCluster() cluster.Cluster {
 
 func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
+}
+
+func (s *Server) GetNotificationsClient() notifier.Client {
+	return s.notifClient
 }

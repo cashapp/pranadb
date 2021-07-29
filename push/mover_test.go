@@ -406,7 +406,7 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
 	batch := cluster.NewWriteBatch(sendingShardID, false)
 	for _, rowToSend := range rows {
-		err := pe.QueueForRemoteSend(rowToSend.keyBuff, rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
+		err := pe.QueueForRemoteSend(rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
 		require.NoError(t, err)
 	}
 	err := store.WriteBatch(batch)

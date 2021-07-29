@@ -8,10 +8,10 @@ import (
 	"github.com/squareup/pranadb/common"
 	errors2 "github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/sess"
-	"log"
 	"strings"
 	"sync"
 )
@@ -130,7 +130,6 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 	if queryInfo.SessionID == "" {
 		panic("empty session id")
 	}
-	log.Printf("ExecuteRemotePullQuery sessionid %s, shard %d query %s", queryInfo.SessionID, queryInfo.ShardID, queryInfo.Query)
 
 	schema := p.metaController.GetOrCreateSchema(queryInfo.SchemaName)
 	s, ok := p.getCachedSession(queryInfo.SessionID)
@@ -143,16 +142,13 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 	s.Lock.Lock()
 	defer s.Lock.Unlock()
 	if s.CurrentQuery == nil {
-		log.Printf("ExecuteRemotePullQuery sessionid %s, no current query", queryInfo.SessionID)
 		s.QueryInfo = queryInfo
 		s.PullPlanner().SetPSArgs(queryInfo.PsArgs)
 		s.PullPlanner().RefreshInfoSchema()
 		if queryInfo.IsPs {
-			log.Printf("ExecuteRemotePullQuery sessionid %s, it's a PS", queryInfo.SessionID)
 			// Prepared Statement
 			ps, ok := s.PsCache[queryInfo.PsID]
 			if !ok {
-				log.Printf("ExecuteRemotePullQuery sessionid %s, preparing it", queryInfo.SessionID)
 				// Not already prepared
 				dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, true, true)
 				if err != nil {
@@ -167,7 +163,6 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 				ps.Dag = CurrentQuery(s)
 				s.PsCache[queryInfo.PsID] = ps
 			} else {
-				log.Printf("ExecuteRemotePullQuery sessionid %s, already prepared", queryInfo.SessionID)
 				// Already prepared
 				s.CurrentQuery = ps.Dag
 				// We're reusing it so it needs to be reset
@@ -186,7 +181,6 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 		}
 	}
 	rows, err := p.getRowsFromCurrentQuery(s, int(queryInfo.Limit))
-	log.Printf("Finished ExecuteRemotePullQuery sessionid %s, shard %d query %s", queryInfo.SessionID, queryInfo.ShardID, queryInfo.Query)
 	return rows, err
 }
 
@@ -241,7 +235,7 @@ func (p *PullEngine) NumCachedSessions() (int, error) {
 	return numEntries, nil
 }
 
-func (p *PullEngine) HandleNotification(notification cluster.Notification) {
+func (p *PullEngine) HandleNotification(notification notifier.Notification) {
 	sessCloseMsg := notification.(*notifications.SessionClosedMessage) // nolint: forcetypeassert
 	p.remoteSessionCache.Delete(sessCloseMsg.GetSessionId())
 }

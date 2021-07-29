@@ -2,21 +2,22 @@ package cluster
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/notifier"
 	"sync"
 )
 
 type TestNotificationListener struct {
 	lock   sync.Mutex
-	notifs []Notification
+	notifs []notifier.Notification
 }
 
-func (t *TestNotificationListener) HandleNotification(notification Notification) {
+func (t *TestNotificationListener) HandleNotification(notification notifier.Notification) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.notifs = append(t.notifs, notification)
 }
 
-func (t *TestNotificationListener) getNotifs() []Notification {
+func (t *TestNotificationListener) getNotifs() []notifier.Notification {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	return t.notifs
