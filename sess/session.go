@@ -24,10 +24,10 @@ type Session struct {
 	QueryInfo    *cluster.QueryExecutionInfo
 	CurrentQuery interface{} // TODO find a better way - typed as interface{} to avoid circular dependency with pull
 	Lock         sync.Mutex
-	sessCloser   SessionCloser
+	sessCloser   RemoteSessionCloser
 }
 
-func NewSession(id string, schema *common.Schema, sessCloser SessionCloser) *Session {
+func NewSession(id string, schema *common.Schema, sessCloser RemoteSessionCloser) *Session {
 	return &Session{
 		ID:           id,
 		Schema:       schema,
@@ -80,10 +80,21 @@ type PreparedStatement struct {
 	Ast   parplan.AstHandle
 }
 
-func (s *Session) Close() error {
-	return s.sessCloser.CloseSession(s.ID)
+// Abort should be invoked if the session might have running queries
+func (s *Session) Abort() error {
+	return s.sessCloser.CloseRemoteSessions(s.ID)
 }
 
-type SessionCloser interface {
-	CloseSession(sessionID string) error
+// Close must only be invoked if no queries are running
+func (s *Session) Close() error {
+	if len(s.PsCache) != 0 {
+		// We will only have remote sessions if we have prepared statements so we don't need to broadcast session
+		// close otherwise
+		return s.sessCloser.CloseRemoteSessions(s.ID)
+	}
+	return nil
+}
+
+type RemoteSessionCloser interface {
+	CloseRemoteSessions(sessionID string) error
 }
