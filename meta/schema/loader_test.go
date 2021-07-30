@@ -73,7 +73,7 @@ func TestLoader(t *testing.T) {
 				}
 				schema, ok := metaController.GetSchema(ddl.schema)
 				require.True(t, ok)
-				require.Len(t, schema.Tables, numTables)
+				require.Equal(t, schema.LenTables(), numTables)
 				expectedSchemas[ddl.schema] = schema
 			}
 

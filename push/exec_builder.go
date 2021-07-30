@@ -192,7 +192,7 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 	switch op := executor.(type) {
 	case *exec.TableScan:
 		tableName := op.TableName
-		tbl, ok := schema.Tables[tableName]
+		tbl, ok := schema.GetTable(tableName)
 		if !ok {
 			return fmt.Errorf("unknown source or materialized view %s", tableName)
 		}

@@ -114,7 +114,7 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 			panic("table scans only used on remote queries")
 		}
 		tableName := op.Table.Name.L
-		tbl, ok := schema.Tables[tableName]
+		tbl, ok := schema.GetTable(tableName)
 		if !ok {
 			return nil, fmt.Errorf("unknown source or materialized view %s", tableName)
 		}

@@ -55,8 +55,7 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
-	hasForward := false      //nolint:ifshort
-	hasDeleteRanges := false //nolint:ifshort
+	hasForward := false //nolint:ifshort
 	batch := s.dragon.pebble.NewBatch()
 	for i, entry := range entries {
 		cmdBytes := entry.Cmd
@@ -73,7 +72,6 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			s.handleRemoveNode(cmdBytes)
 		case shardStateMachineCommandDeleteRangePrefix:
 			err := s.handleDeleteRange(batch, cmdBytes)
-			hasDeleteRanges = true
 			if err != nil {
 				return nil, err
 			}
@@ -95,13 +93,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		return nil, err
 	}
 
-	wo := nosyncWriteOptions
-	// TODO Pebble delete range doesn't seem to work synchronously unlesss batch is synced
-	// Perhaps a bug in Pebble - need to investigate
-	if hasDeleteRanges {
-		wo = syncWriteOptions
-	}
-	if err := s.dragon.pebble.Apply(batch, wo); err != nil {
+	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, err
 	}
 

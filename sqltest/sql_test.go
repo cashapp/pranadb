@@ -8,7 +8,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -304,7 +303,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
 			require.True(ok)
-			if len(testSchema.Tables) != 0 || len(testSchema.Sinks) != 0 {
+			if testSchema.LenTables() != 0 {
 				return false, nil
 			}
 			err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
@@ -515,7 +514,7 @@ func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
 				return false, nil
 			}
 			if schemaPrev != nil {
-				if !reflect.DeepEqual(schemaPrev, schemaNew) {
+				if !schemaPrev.Equal(schemaNew) {
 					return false, nil
 				}
 			}

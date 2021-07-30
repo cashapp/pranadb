@@ -37,10 +37,7 @@ type iSSchemaInfo struct {
 
 func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 
-	tableInfos := make(map[string]*common.TableInfo)
-	for name, tbl := range schema.Tables {
-		tableInfos[name] = tbl.GetTableInfo()
-	}
+	tableInfos := schema.GetAllTableInfos()
 	schemaInfo := iSSchemaInfo{
 		SchemaName:  schema.Name,
 		TablesInfos: tableInfos,
