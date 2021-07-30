@@ -2,7 +2,7 @@
 
 SqlTest is a test tool that makes it easy to write tests for Prana.
 
-You specify your test a script to be run, together with a text file containing expected output, and another test file
+You specify your test a script to be run, together with a text file containing expected output, and another text file
 containing test data
 
 A test with name `<test_name>` is made up of three files:
@@ -30,7 +30,7 @@ things in tests. Here are the currently supported special comment directives:
 
 * `--load_data <dataset_name>;`. This loads the dataset with the specified name
 * `--repeat <n>;` This repeats the test `n` times in a loop. Very useful for reproducing non-deterministic test
-  failures.
+  failures. If there's a repeat directive, it must be the first line in a script.
 * `--close session;` This closes the current SQL session at that point. A new session will then be created for the next
   statement. Used for testing scope of prepared statements.
 
