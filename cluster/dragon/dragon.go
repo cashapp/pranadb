@@ -57,6 +57,7 @@ type Dragon struct {
 	nodeAddresses                []string
 	totShards                    int
 	dataDir                      string
+	ingestDir                    string
 	pebble                       *pebble.DB
 	nh                           *dragonboat.NodeHost
 	shardAllocs                  map[uint64][]int
@@ -181,6 +182,7 @@ func (d *Dragon) Start() error {
 
 	datadir := filepath.Join(d.dataDir, fmt.Sprintf("node-%d", d.nodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
+	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}

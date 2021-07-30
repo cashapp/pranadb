@@ -1,4 +1,4 @@
-package dragon
+package integration
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	dragon "github.com/squareup/pranadb/cluster/dragon"
 	"github.com/stretchr/testify/require"
 
 	"github.com/squareup/pranadb/cluster"
@@ -205,15 +206,15 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
-		dragon, err := NewDragon(i, 123, nodeAddresses, numShards, dataDir, 3, true)
+		clus, err := dragon.NewDragon(i, 123, nodeAddresses, numShards, dataDir, 3, true)
 		if err != nil {
 			return nil, err
 		}
-		clusterNodes[i] = dragon
-		dragon.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
-		dragon.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
+		clusterNodes[i] = clus
+		clus.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
+		clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 
-		go startDragonNode(dragon, ch)
+		go startDragonNode(clus, ch)
 	}
 
 	for i := 0; i < len(chans); i++ {
@@ -230,8 +231,8 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	return clusterNodes, nil
 }
 
-func startDragonNode(dragon cluster.Cluster, ch chan error) {
-	err := dragon.Start()
+func startDragonNode(clus cluster.Cluster, ch chan error) {
+	err := clus.Start()
 	ch <- err
 }
 

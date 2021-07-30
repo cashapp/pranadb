@@ -2,12 +2,13 @@ package dragon
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"io"
 )
 
 const (
@@ -17,10 +18,6 @@ const (
 	shardStateMachineCommandDeleteRangePrefix      = 4
 
 	shardStateMachineResponseOK uint64 = 1
-
-	snapshotSaveBufferSize      = 8 * 1024
-	snapshotRecoverBufferSize   = 8 * 1024
-	maxSnapshotRecoverBatchSize = 10000
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) statemachine.IOnDiskStateMachine {
@@ -224,14 +221,14 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 		panic("not a snapshot")
 	}
 	prefix := make([]byte, 0, 8)
-	prefix = common.AppendUint64ToBufferLE(prefix, s.shardID)
+	prefix = common.AppendUint64ToBufferBE(prefix, s.shardID)
 	return saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
 }
 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
-	startPrefix := common.AppendUint64ToBufferLE(make([]byte, 0, 8), s.shardID)
-	endPrefix := common.AppendUint64ToBufferLE(make([]byte, 0, 8), s.shardID+1)
-	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)
+	startPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID)
+	endPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID+1)
+	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
 	if err != nil {
 		return err
 	}

@@ -1,11 +1,12 @@
 package dragon
 
 import (
+	"io"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"io"
 )
 
 const (
@@ -90,7 +91,7 @@ func (s *sequenceODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i
 func (s *sequenceODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	startPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, s.shardID, 16)
 	endPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID+1, s.shardID, 16)
-	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)
+	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
 }
 
 func (s *sequenceODStateMachine) Close() error {
