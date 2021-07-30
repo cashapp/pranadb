@@ -229,9 +229,6 @@ func (p *PullEngine) NumCachedSessions() (int, error) {
 		numEntries++
 		return false
 	})
-	if numEntries > 0 {
-		return 0, fmt.Errorf("remote session cache on node %d has %d entries", p.nodeID, numEntries)
-	}
 	return numEntries, nil
 }
 
