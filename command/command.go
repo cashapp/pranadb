@@ -143,39 +143,57 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)
 	case ast.Drop != "":
+		exec, err := e.execDrop(session, ast.Drop, persist)
+		if err != nil {
+			return nil, err
+		}
 		if persist {
 			if err := e.broadcastDDL(session.Schema.Name, sql, nil); err != nil {
 				return nil, err
 			}
 		}
-		return e.execDrop(session, ast.Drop, persist)
+		return exec, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
+		var sequences []uint64
 		if persist {
 			// Materialized view needs 2 sequences
-			sequences, err := e.generateSequences(2)
+			sequences, err = e.generateSequences(2)
 			if err != nil {
 				return nil, err
 			}
 			seqGenerator = common.NewPreallocSeqGen(sequences)
+		}
+		exec, err := e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, persist)
+		if err != nil {
+			return nil, err
+		}
+		if persist {
 			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
 				return nil, err
 			}
 		}
-		return e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, persist)
+		return exec, nil
 
 	case ast.Create != nil && ast.Create.Source != nil:
+		var sequences []uint64
 		if persist {
 			// Source needs 1 sequence
-			sequences, err := e.generateSequences(1)
+			sequences, err = e.generateSequences(1)
 			if err != nil {
 				return nil, err
 			}
 			seqGenerator = common.NewPreallocSeqGen(sequences)
+		}
+		exec, err := e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, persist)
+		if err != nil {
+			return nil, err
+		}
+		if persist {
 			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
 				return nil, err
 			}
 		}
-		return e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, persist)
+		return exec, nil
 
 	default:
 		panic("unsupported query " + sql)

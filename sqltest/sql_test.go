@@ -316,19 +316,17 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.NoError(err)
 		require.True(ok)
 
-		localShards := prana.GetCluster().GetLocalShardIDs()
-		for _, shardID := range localShards {
-			keyStartPrefix := table.EncodeTableKeyPrefix(common.UserTableIDBase, shardID, 16)
-			keyEndPrefix := table.EncodeTableKeyPrefix(0, shardID+1, 16)
-			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, -1)
-			require.NoError(err)
-			if len(pairs) > 0 {
-				for _, pair := range pairs {
-					log.Printf("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
-				}
-				require.Equal(0, len(pairs), fmt.Sprintf("Table data left at end of test for shard %d", shardID))
-			}
+		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
+		// and the query can look at it's stale data - it will eventually come right once it has caught up
+		log.Println("Looking for table data at end of test")
+		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+			return st.tableDataLeft(require, prana, false)
+		}, 30*time.Second, 100*time.Millisecond)
+		require.NoError(err)
+		if !ok {
+			_, _ = st.tableDataLeft(require, prana, true)
 		}
+		require.True(ok, "table data left at end of test")
 
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			num, err := prana.GetPullEngine().NumCachedSessions()
@@ -343,6 +341,26 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
+}
+
+func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Server, displayRows bool) (bool, error) {
+	localShards := prana.GetCluster().GetLocalShardIDs()
+	for _, shardID := range localShards {
+		keyStartPrefix := table.EncodeTableKeyPrefix(common.UserTableIDBase, shardID, 16)
+		keyEndPrefix := table.EncodeTableKeyPrefix(0, shardID+1, 16)
+		pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, -1)
+		require.NoError(err)
+		if displayRows && len(pairs) > 0 {
+			for _, pair := range pairs {
+				log.Printf("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
+			}
+			require.Equal(0, len(pairs), fmt.Sprintf("Table data left at end of test for shard %d", shardID))
+		}
+		if len(pairs) != 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 type dataset struct {
