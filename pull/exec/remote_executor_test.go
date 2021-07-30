@@ -123,11 +123,7 @@ func TestRemoteExecutorSystemShardDoesNotFanOut(t *testing.T) {
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	sh := sharder.NewSharder(tc)
-	err := sh.Start()
-	require.NoError(t, err)
-
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "test-schema", tc)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
 	require.Len(t, re.clusterGetters, 1)
 	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
 }

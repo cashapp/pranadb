@@ -14,7 +14,7 @@ var nosyncWriteOptions = &pebble.WriteOptions{Sync: false}
 
 func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer io.Writer, shardID uint64) error {
 	bufWriter := bufio.NewWriterSize(writer, snapshotSaveBufferSize)
-	upper := common.IncrementBytesLittleEndian(prefix)
+	upper := common.IncrementBytesBigEndian(prefix)
 	iter := snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()

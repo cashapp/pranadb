@@ -62,16 +62,18 @@ func InvokeCloser(closer io.Closer) {
 	}
 }
 
-// IncrementBytesLittleEndian returns a new byte slice which is 1 larger than the provided slice in little endian but without
-// changing the key length
-func IncrementBytesLittleEndian(bytes []byte) []byte {
+// IncrementBytesBigEndian returns a new byte slice which is 1 larger than the provided slice when represented in
+// big endian layout, but without changing the key length
+func IncrementBytesBigEndian(bytes []byte) []byte {
 	inced := CopyByteSlice(bytes)
-	for i, b := range inced {
+	lb := len(bytes)
+	for i := lb - 1; i >= 0; i-- {
+		b := bytes[i]
 		if b < 255 {
 			inced[i] = b + 1
 			break
 		}
-		if i == len(inced)-1 {
+		if i == 0 {
 			panic("cannot increment key - all bits set")
 		}
 	}

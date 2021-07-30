@@ -9,7 +9,7 @@ import (
 const (
 	// SystemSchemaShardID is a shard for storing system tables. Note that this actually writes metadata to
 	// the first data shard.
-	SystemSchemaShardID = 1000
+	SystemSchemaShardID uint64 = 1000
 
 	// DataShardIDBase is the lowest value of a data shard id
 	DataShardIDBase uint64 = 1000
