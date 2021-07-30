@@ -133,9 +133,10 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 
 	schema := p.metaController.GetOrCreateSchema(queryInfo.SchemaName)
 	s, ok := p.getCachedSession(queryInfo.SessionID)
+	newSession := false
 	if !ok {
 		s = sess.NewSession(queryInfo.SessionID, schema, nil)
-		p.remoteSessionCache.Store(queryInfo.SessionID, s)
+		newSession = true
 	}
 	// We lock the session, not because of concurrent access but because we need a memory barrier
 	// as the session is mutated on subsequent calls which can be on different goroutines
@@ -181,6 +182,12 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 		}
 	}
 	rows, err := p.getRowsFromCurrentQuery(s, int(queryInfo.Limit))
+	if newSession {
+		// We only need to store the session for later if there is an outstanding query or there are prepared statements
+		if len(s.PsCache) != 0 || s.CurrentQuery != nil {
+			p.remoteSessionCache.Store(queryInfo.SessionID, s)
+		}
+	}
 	return rows, err
 }
 

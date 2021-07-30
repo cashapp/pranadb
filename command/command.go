@@ -74,7 +74,7 @@ type sessCloser struct {
 	notifClient notifier.Client
 }
 
-func (s *sessCloser) CloseSession(sessionID string) error {
+func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 	shardIDs := s.clus.GetAllShardIDs()
 	for _, shardID := range shardIDs {
 		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
