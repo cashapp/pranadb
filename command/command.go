@@ -129,6 +129,7 @@ func (e *Executor) GetPushEngine() *push.PushEngine {
 	return e.pushEngine
 }
 
+//nolint:gocyclo
 func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
 	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
