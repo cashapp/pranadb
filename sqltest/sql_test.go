@@ -328,15 +328,16 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		require.True(ok, "table data left at end of test")
 
+		log.Printf("Waiting for num sessions to get to zero on node %d", prana.GetCluster().GetNodeID())
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			num, err := prana.GetPullEngine().NumCachedSessions()
 			if err != nil {
 				return false, err
 			}
 			return num == 0, nil
-		}, 5*time.Second, 1*time.Millisecond)
-		require.True(ok, "timed out waiting for num remote sessions to get to zero")
+		}, 5*time.Second, 10*time.Millisecond)
 		require.NoError(err)
+		require.True(ok, "timed out waiting for num remote sessions to get to zero")
 	}
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
