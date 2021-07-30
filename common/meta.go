@@ -2,7 +2,9 @@ package common
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -125,9 +127,63 @@ type IndexInfo struct {
 }
 
 type Schema struct {
+	// Schema can be mutated from different goroutines so we need to lock to protect access to it's maps
+	lock   sync.RWMutex
 	Name   string
-	Tables map[string]Table
-	Sinks  map[string]*SinkInfo
+	tables map[string]Table
+	sinks  map[string]*SinkInfo
+}
+
+func NewSchema(name string) *Schema {
+	return &Schema{
+		Name:   name,
+		tables: make(map[string]Table),
+		sinks:  make(map[string]*SinkInfo),
+	}
+}
+
+func (s *Schema) GetTable(name string) (Table, bool) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	t, ok := s.tables[name]
+	return t, ok
+}
+
+func (s *Schema) PutTable(name string, table Table) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.tables[name] = table
+}
+
+func (s *Schema) DeleteTable(name string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	delete(s.tables, name)
+}
+
+func (s *Schema) LenTables() int {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return len(s.tables)
+}
+
+func (s *Schema) GetAllTableInfos() map[string]*TableInfo {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	lt := len(s.tables)
+	infos := make(map[string]*TableInfo, lt)
+	for name, tab := range s.tables {
+		infos[name] = tab.GetTableInfo()
+	}
+	return infos
+}
+
+func (s *Schema) Equal(other *Schema) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	other.lock.RLock()
+	defer other.lock.RUnlock()
+	return reflect.DeepEqual(s, other)
 }
 
 type SourceInfo struct {
