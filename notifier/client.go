@@ -63,7 +63,7 @@ func (c *client) BroadcastNotification(notif Notification) error {
 	}
 
 	bytesToSend := make([]byte, 0, 4+len(bytes))
-	bytesToSend = common.AppendUint32ToBufferLittleEndian(bytesToSend, uint32(len(bytes)))
+	bytesToSend = common.AppendUint32ToBufferLE(bytesToSend, uint32(len(bytes)))
 	bytesToSend = append(bytesToSend, bytes...)
 
 	c.lock.Lock()

@@ -87,7 +87,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	// We store the last received and persisted log entry
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, s.shardID, 16)
 	vb := make([]byte, 0, 8)
-	common.AppendUint64ToBufferLittleEndian(vb, lastLogIndex)
+	common.AppendUint64ToBufferLE(vb, lastLogIndex)
 	if err := batch.Set(key, vb, nil); err != nil {
 		return nil, err
 	}
@@ -141,7 +141,8 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte)
 }
 
 func (s *ShardOnDiskStateMachine) handleRemoveNode(bytes []byte) {
-	n := int(common.ReadUint32FromBufferLittleEndian(bytes, 1))
+	nu, _ := common.ReadUint32FromBufferLE(bytes, 1)
+	n := int(nu)
 	found := false
 	for _, nid := range s.nodeIDs {
 		if n == nid {
@@ -176,14 +177,13 @@ func (s *ShardOnDiskStateMachine) handleRemoveNode(bytes []byte) {
 
 func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes []byte) error {
 	offset := 1
-	lenStartPrefix := int(common.ReadUint32FromBufferLittleEndian(bytes, offset))
-	offset += 4
+	lsp, offset := common.ReadUint32FromBufferLE(bytes, offset)
+	lenStartPrefix := int(lsp)
 	startPrefix := bytes[offset : offset+lenStartPrefix]
 	offset += lenStartPrefix
 
-	lenEndPrefix := int(common.ReadUint32FromBufferLittleEndian(bytes, offset))
-	offset += 4
-	endPrefix := bytes[offset : offset+lenEndPrefix]
+	lenEndPrefix, offset := common.ReadUint32FromBufferLE(bytes, offset)
+	endPrefix := bytes[offset : offset+int(lenEndPrefix)]
 
 	return batch.DeleteRange(startPrefix, endPrefix, &pebble.WriteOptions{})
 }
@@ -193,7 +193,7 @@ func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
 		return
 	}
 	// Sanity check
-	sid := common.ReadUint64FromBufferBigEndian(key, 0)
+	sid, _ := common.ReadUint64FromBufferBE(key, 0)
 	if s.shardID != sid {
 		panic(fmt.Sprintf("invalid key in sm write, expected %d actual %d", s.shardID, sid))
 	}
@@ -232,13 +232,13 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 		panic("not a snapshot")
 	}
 	prefix := make([]byte, 0, 8)
-	prefix = common.AppendUint64ToBufferLittleEndian(prefix, s.shardID)
+	prefix = common.AppendUint64ToBufferLE(prefix, s.shardID)
 	return saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
 }
 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
-	startPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID)
-	endPrefix := common.AppendUint64ToBufferLittleEndian(make([]byte, 0, 8), s.shardID+1)
+	startPrefix := common.AppendUint64ToBufferLE(make([]byte, 0, 8), s.shardID)
+	endPrefix := common.AppendUint64ToBufferLE(make([]byte, 0, 8), s.shardID+1)
 	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader)
 	if err != nil {
 		return err

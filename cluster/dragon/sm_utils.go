@@ -14,12 +14,12 @@ var nosyncWriteOptions = &pebble.WriteOptions{Sync: false}
 
 func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer io.Writer, shardID uint64) error {
 	bufWriter := bufio.NewWriterSize(writer, snapshotSaveBufferSize)
-	upper := common.IncrementBytesLittleEndian(prefix)
+	upper := common.IncrementBytesBigEndian(prefix)
 	iter := snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		v := iter.Value()
-		theShardID := common.ReadUint64FromBufferLittleEndian(k, 8)
+		theShardID, _ := common.ReadUint64FromBufferLE(k, 8)
 		if theShardID != shardID {
 			// Sanity check
 			panic("wrong shard id!")
@@ -39,9 +39,9 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 			panic("value too long")
 		}
 		buff := make([]byte, 0, lk+lv+8)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(k)))
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(k)))
 		buff = append(buff, k...)
-		buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(v)))
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(v)))
 		buff = append(buff, v...)
 
 		if _, err := bufWriter.Write(buff); err != nil {
@@ -50,7 +50,7 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 	}
 	// Write 0 to signify end of stream
 	buff := make([]byte, 0, 4)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, 0)
+	buff = common.AppendUint32ToBufferLE(buff, 0)
 	if _, err := bufWriter.Write(buff); err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 		if _, err := io.ReadFull(bufReader, lenBuf); err != nil {
 			return err
 		}
-		lk := common.ReadUint32FromBufferLittleEndian(lenBuf, 0)
+		lk, _ := common.ReadUint32FromBufferLE(lenBuf, 0)
 		if lk == 0 {
 			// Signifies end of stream
 			break
@@ -95,7 +95,7 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 		if _, err := io.ReadFull(bufReader, lenBuf); err != nil {
 			return err
 		}
-		lv := common.ReadUint32FromBufferLittleEndian(lenBuf, 0)
+		lv, _ := common.ReadUint32FromBufferLE(lenBuf, 0)
 		vb := make([]byte, 0, lv)
 		if _, err := io.ReadFull(bufReader, vb); err != nil {
 			return err
@@ -119,7 +119,7 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 func syncPebble(peb *pebble.DB) error {
 	// To force an fsync we just write a kv into the dummy sys table with sync = true
 	prefix := make([]byte, 0, 8)
-	common.AppendUint64ToBufferLittleEndian(prefix, common.SyncTableID)
+	common.AppendUint64ToBufferLE(prefix, common.SyncTableID)
 	return peb.Set(prefix, []byte{}, syncWriteOptions)
 }
 
@@ -134,7 +134,7 @@ func loadLastProcessedRaftIndex(peb *pebble.DB, shardID uint64) (uint64, error) 
 	if err != nil {
 		return 0, err
 	}
-	lastIndex := common.ReadUint64FromBufferLittleEndian(vb, 0)
+	lastIndex, _ := common.ReadUint64FromBufferLE(vb, 0)
 	return lastIndex, nil
 }
 
@@ -142,6 +142,6 @@ func writeLastIndexValue(batch *pebble.Batch, val uint64, shardID uint64) error 
 	// We store the last received and persisted log entry
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, shardID, 16)
 	vb := make([]byte, 0, 8)
-	vb = common.AppendUint64ToBufferLittleEndian(vb, val)
+	vb = common.AppendUint64ToBufferLE(vb, val)
 	return batch.Set(key, vb, nil)
 }

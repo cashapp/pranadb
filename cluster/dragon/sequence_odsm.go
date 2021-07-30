@@ -31,9 +31,9 @@ func (s *sequenceODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	batch := s.dragon.pebble.NewBatch()
 	for i, entry := range entries {
-		seqName, _ := common.DecodeString(entry.Cmd, 0)
+		seqName, _ := common.ReadStringFromBuffer(entry.Cmd, 0)
 		keyBuff := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, s.shardID, 16)
-		keyBuff = common.EncodeString(seqName, keyBuff)
+		keyBuff = common.AppendStringToBufferLE(keyBuff, seqName)
 		v, err := localGet(s.dragon.pebble, keyBuff)
 		if err != nil {
 			return nil, err
@@ -41,15 +41,15 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 		var seqVal uint64
 		var seqBuff []byte
 		if v != nil {
-			seqVal = common.ReadUint64FromBufferLittleEndian(v, 0)
+			seqVal, _ = common.ReadUint64FromBufferLE(v, 0)
 			seqBuff = v
 		} else {
 			seqVal = common.UserTableIDBase
 			seqBuff = make([]byte, 0)
-			seqBuff = common.AppendUint64ToBufferLittleEndian(seqBuff, seqVal)
+			seqBuff = common.AppendUint64ToBufferLE(seqBuff, seqVal)
 		}
 		vBuff := make([]byte, 0, 8)
-		vBuff = common.AppendUint64ToBufferLittleEndian(vBuff, seqVal+1)
+		vBuff = common.AppendUint64ToBufferLE(vBuff, seqVal+1)
 		if err := batch.Set(keyBuff, vBuff, &pebble.WriteOptions{Sync: false}); err != nil {
 			return nil, err
 		}

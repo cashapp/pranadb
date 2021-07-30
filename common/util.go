@@ -62,16 +62,18 @@ func InvokeCloser(closer io.Closer) {
 	}
 }
 
-// IncrementBytesLittleEndian returns a new byte slice which is 1 larger than the provided slice in little endian but without
-// changing the key length
-func IncrementBytesLittleEndian(bytes []byte) []byte {
+// IncrementBytesBigEndian returns a new byte slice which is 1 larger than the provided slice when represented in
+// big endian layout, but without changing the key length
+func IncrementBytesBigEndian(bytes []byte) []byte {
 	inced := CopyByteSlice(bytes)
-	for i, b := range inced {
+	lb := len(bytes)
+	for i := lb - 1; i >= 0; i-- {
+		b := bytes[i]
 		if b < 255 {
 			inced[i] = b + 1
 			break
 		}
-		if i == len(inced)-1 {
+		if i == 0 {
 			panic("cannot increment key - all bits set")
 		}
 	}
@@ -92,9 +94,9 @@ func DumpDataKey(bytes []byte) string {
 		panic("invalid key - must be at least 16 bytes")
 	}
 	// First 8 bytes is shard ID
-	shardID := ReadUint64FromBufferBigEndian(bytes, 0)
+	shardID, _ := ReadUint64FromBufferBE(bytes, 0)
 	//Next 8 bytes is table ID
-	tableID := ReadUint64FromBufferBigEndian(bytes, 8)
+	tableID, _ := ReadUint64FromBufferBE(bytes, 8)
 	//The rest depends on the table
 	remaining := bytes[16:]
 	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v", shardID, tableID, remaining)

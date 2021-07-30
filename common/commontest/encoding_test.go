@@ -169,8 +169,8 @@ func testEncodeDecodeUint64s(t *testing.T, vals ...uint64) {
 func testEncodeDecodeUint64(t *testing.T, val uint64) {
 	t.Helper()
 	buff := make([]byte, 0, 8)
-	buff = common.AppendUint64ToBufferLittleEndian(buff, val)
-	valRead := common.ReadUint64FromBufferLittleEndian(buff, 0)
+	buff = common.AppendUint64ToBufferLE(buff, val)
+	valRead, _ := common.ReadUint64FromBufferLE(buff, 0)
 	require.Equal(t, val, valRead)
 }
 
@@ -194,7 +194,7 @@ func testEncodeDecodeUint32s(t *testing.T, vals ...uint32) {
 func testEncodeDecodeUint32(t *testing.T, val uint32) {
 	t.Helper()
 	buff := make([]byte, 0, 4)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, val)
-	valRead := common.ReadUint32FromBufferLittleEndian(buff, 0)
+	buff = common.AppendUint32ToBufferLE(buff, val)
+	valRead, _ := common.ReadUint32FromBufferLE(buff, 0)
 	require.Equal(t, val, valRead)
 }

@@ -105,7 +105,7 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 	defer cancel()
 
 	var buff []byte
-	buff = common.EncodeString("table", buff)
+	buff = common.AppendStringToBufferLE(buff, "table")
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 	if err != nil {
@@ -115,7 +115,7 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 		return 0, fmt.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
 	}
 	seqBuff := proposeRes.Data
-	seqVal := common.ReadUint64FromBufferLittleEndian(seqBuff, 0)
+	seqVal, _ := common.ReadUint64FromBufferLE(seqBuff, 0)
 	return seqVal, nil
 }
 
@@ -341,11 +341,11 @@ func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) erro
 		go func() {
 			// Remember, key must be in big-endian order
 			startPrefixWithShard := make([]byte, 0, 16)
-			startPrefixWithShard = common.AppendUint64ToBufferBigEndian(startPrefixWithShard, theShardID)
+			startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
 			startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
 
 			endPrefixWithShard := make([]byte, 0, 16)
-			endPrefixWithShard = common.AppendUint64ToBufferBigEndian(endPrefixWithShard, theShardID)
+			endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
 			endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
 
 			cs := d.nh.GetNoOPSession(theShardID)
@@ -356,9 +356,9 @@ func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) erro
 			var buff []byte
 			buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
 
-			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(startPrefixWithShard)))
+			buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefixWithShard)))
 			buff = append(buff, startPrefixWithShard...)
-			buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(len(endPrefixWithShard)))
+			buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
 			buff = append(buff, endPrefixWithShard...)
 
 			proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
@@ -495,16 +495,17 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
 func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, deletes [][]byte) {
-	numPuts := common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
+	numPuts, offset := common.ReadUint32FromBufferLE(buff, offset)
 	puts = make([]cluster.KVPair, numPuts)
 	for i := 0; i < int(numPuts); i++ {
-		kLen := int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-		offset += 4
+		var kl uint32
+		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
+		kLen := int(kl)
 		k := buff[offset : offset+kLen]
 		offset += kLen
-		vLen := int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-		offset += 4
+		var vl uint32
+		vl, offset = common.ReadUint32FromBufferLE(buff, offset)
+		vLen := int(vl)
 		v := buff[offset : offset+vLen]
 		offset += vLen
 		puts[i] = cluster.KVPair{
@@ -512,12 +513,12 @@ func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, dele
 			Value: v,
 		}
 	}
-	numDeletes := common.ReadUint32FromBufferLittleEndian(buff, offset)
-	offset += 4
+	numDeletes, offset := common.ReadUint32FromBufferLE(buff, offset)
 	deletes = make([][]byte, numDeletes)
 	for i := 0; i < int(numDeletes); i++ {
-		kLen := int(common.ReadUint32FromBufferLittleEndian(buff, offset))
-		offset += 4
+		var kl uint32
+		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
+		kLen := int(kl)
 		k := buff[offset : offset+kLen]
 		offset += kLen
 		deletes[i] = k
@@ -537,7 +538,7 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	defer cancel()
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandRemoveNode)
-	buff = common.AppendUint32ToBufferLittleEndian(buff, uint32(nodeID))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(nodeID))
 
 	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
 
