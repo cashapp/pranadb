@@ -38,6 +38,19 @@ func AppendStringToBufferLE(buffer []byte, value string) []byte {
 	return buffPtr
 }
 
+func AppendDecimalToBuffer(buffer []byte, dec Decimal, precision, scale int) ([]byte, error) {
+	return dec.Encode(buffer, precision, scale)
+}
+
+func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
+	enc, err := ts.ToPackedUint()
+	if err != nil {
+		return nil, err
+	}
+	buffer = AppendUint64ToBufferLE(buffer, enc)
+	return buffer, nil
+}
+
 func ReadUint32FromBufferLE(buffer []byte, offset int) (uint32, int) {
 	if IsLittleEndian {
 		// nolint: gosec
@@ -82,6 +95,15 @@ func ReadDecimalFromBuffer(buffer []byte, offset int, precision int, scale int) 
 		return Decimal{}, 0, err
 	}
 	return dec, offset, nil
+}
+
+func ReadTimestampFromBuffer(buffer []byte, offset int) (val Timestamp, off int, err error) {
+	ts := Timestamp{}
+	enc, off := ReadUint64FromBufferLE(buffer, offset)
+	if err := ts.FromPackedUint(enc); err != nil {
+		return Timestamp{}, 0, err
+	}
+	return ts, off, nil
 }
 
 func ReadStringFromBuffer(buffer []byte, offset int) (val string, off int) {

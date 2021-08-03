@@ -25,7 +25,7 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 }
 
 // GetRows returns the projected columns.
-func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
+func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // nolint: gocyclo
 
 	if limit == 0 || limit < -1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
@@ -83,6 +83,16 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
 					result.AppendNullToColumn(j)
 				} else {
 					result.AppendFloat64ToColumn(j, val)
+				}
+			case common.TypeTimestamp:
+				val, null, err := projColumn.EvalTimestamp(&row)
+				if err != nil {
+					return nil, err
+				}
+				if null {
+					result.AppendNullToColumn(j)
+				} else {
+					result.AppendTimestampToColumn(j, val)
 				}
 			default:
 				return nil, fmt.Errorf("unexpected column type %d", colType)

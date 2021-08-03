@@ -2,9 +2,10 @@ package common
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestKeyEncodeInt64(t *testing.T) {
@@ -98,6 +99,32 @@ func TestKeyEncodeDecimal(t *testing.T) {
 	}
 }
 
+func TestKeyEncodeTimestamp(t *testing.T) {
+	vals := []string{
+		"2021-01-01",
+		"2021-01-02",
+		"2021-01-02 12:34:56",
+		"2021-01-02 12:34:56.789",
+		"2021-01-02 12:34:56.789999",
+		"2021-01-02 12:34:56.999999",
+		"2021-01-02 12:34:57",
+		"2021-01-02 12:35:57",
+		"2021-01-02 13:35:57",
+		"2021-01-03 13:35:57",
+		"2021-02-03 13:35:57",
+		"2022-02-03 13:35:57",
+	}
+	for i := 0; i < len(vals)-1; i++ {
+		ts1 := NewTimestampFromStringForTest(vals[i])
+		ts2 := NewTimestampFromStringForTest(vals[i+1])
+		b1, err := KeyEncodeTimestamp(nil, ts1)
+		require.NoError(t, err)
+		b2, err := KeyEncodeTimestamp(nil, ts2)
+		require.NoError(t, err)
+		checkLessThan(t, b1, b2)
+	}
+}
+
 func encodeInt64(val int64) []byte {
 	return KeyEncodeInt64([]byte{}, val)
 }
@@ -117,5 +144,5 @@ func encodeDecimal(val Decimal, precision int, scale int) ([]byte, error) {
 func checkLessThan(t *testing.T, b1, b2 []byte) {
 	t.Helper()
 	diff := bytes.Compare(b1, b2)
-	require.Equal(t, -1, diff)
+	require.Equal(t, -1, diff, "expected %x < %x", b1, b2)
 }

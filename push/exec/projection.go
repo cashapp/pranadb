@@ -60,7 +60,7 @@ func (p *PushProjection) ReCalcSchemaFromChildren() {
 	}
 }
 
-func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
+func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) error { // nolint: gocyclo
 	result := p.rowsFactory.NewRows(rows.RowCount())
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -106,6 +106,16 @@ func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) er
 					result.AppendNullToColumn(j)
 				} else {
 					result.AppendFloat64ToColumn(j, val)
+				}
+			case common.TypeTimestamp:
+				val, null, err := projColumn.EvalTimestamp(&row)
+				if err != nil {
+					return err
+				}
+				if null {
+					result.AppendNullToColumn(j)
+				} else {
+					result.AppendTimestampToColumn(j, val)
 				}
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)

@@ -39,6 +39,15 @@ func KeyEncodeString(buffer []byte, val string) []byte {
 	return append(buffer, val...)
 }
 
+func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
+	enc, err := val.ToPackedUint()
+	if err != nil {
+		return nil, err
+	}
+	buffer = AppendUint64ToBufferBE(buffer, enc)
+	return buffer, nil
+}
+
 func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byte) ([]byte, error) {
 	for i, value := range key {
 		colType := colTypes[keyColIndexes[i]]
@@ -71,6 +80,16 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 				return nil, fmt.Errorf("expected %v to be string", value)
 			}
 			buffer = KeyEncodeString(buffer, valString)
+		case TypeTimestamp:
+			valTime, ok := value.(Timestamp)
+			if !ok {
+				return nil, fmt.Errorf("expected %v to be Timestamp", value)
+			}
+			var err error
+			buffer, err = KeyEncodeTimestamp(buffer, valTime)
+			if err != nil {
+				return nil, err
+			}
 		default:
 			return nil, fmt.Errorf("unexpected column type %d", colType)
 		}
@@ -110,6 +129,13 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	case TypeVarchar:
 		valString := row.GetString(colIndex)
 		buffer = KeyEncodeString(buffer, valString)
+	case TypeTimestamp:
+		valTime := row.GetTimestamp(colIndex)
+		var err error
+		buffer, err = AppendTimestampToBuffer(buffer, valTime)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("unexpected column type %d", colType)
 	}

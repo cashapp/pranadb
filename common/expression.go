@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
 
@@ -120,6 +121,17 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 		return Decimal{}, true, err
 	}
 	return *NewDecimal(dec), false, err
+}
+
+func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
+	ts, null, err := e.expression.EvalTime(nil, row.tRow)
+	if err != nil {
+		return Timestamp{}, false, err
+	}
+	if null {
+		return Timestamp{}, true, err
+	}
+	return ts, false, err
 }
 
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {

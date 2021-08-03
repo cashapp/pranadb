@@ -1,9 +1,11 @@
 package commontest
 
 import (
-	"github.com/squareup/pranadb/common"
 	"math"
 	"testing"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 )
@@ -150,12 +152,12 @@ func TestIsLittleEndian(t *testing.T) {
 }
 
 func TestEncodeDecodeUint64sLittleEndianArch(t *testing.T) {
-	common.IsLittleEndian = true
+	setEndianness(t, true)
 	testEncodeDecodeUint64s(t, 0, 1, math.MaxUint64, 12345678)
 }
 
 func TestEncodeDecodeUint64sBigEndianArch(t *testing.T) {
-	common.IsLittleEndian = false
+	setEndianness(t, false)
 	testEncodeDecodeUint64s(t, 0, 1, math.MaxUint64, 12345678)
 }
 
@@ -175,12 +177,12 @@ func testEncodeDecodeUint64(t *testing.T, val uint64) {
 }
 
 func TestEncodeDecodeUint32sLittleEndianArch(t *testing.T) {
-	common.IsLittleEndian = true
+	setEndianness(t, true)
 	testEncodeDecodeUint32s(t, 0, 1, math.MaxUint32, 12345678)
 }
 
 func TestEncodeDecodeUint32sBigEndianArch(t *testing.T) {
-	common.IsLittleEndian = false
+	setEndianness(t, false)
 	testEncodeDecodeUint32s(t, 0, 1, math.MaxUint32, 12345678)
 }
 
@@ -197,4 +199,24 @@ func testEncodeDecodeUint32(t *testing.T, val uint32) {
 	buff = common.AppendUint32ToBufferLE(buff, val)
 	valRead, _ := common.ReadUint32FromBufferLE(buff, 0)
 	require.Equal(t, val, valRead)
+}
+
+func TestEncodeDecodeTimestamp(t *testing.T) {
+	ts := common.NewTimestampFromStringForTest("2021-08-01 12:34:56.789")
+	buf, err := common.AppendTimestampToBuffer(nil, ts)
+	require.NoError(t, err)
+	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, ts.Compare(valRead))
+	assert.Equal(t, "2021-08-01 12:34:56", valRead.String())
+}
+
+func setEndianness(t *testing.T, endianness bool) {
+	t.Helper()
+
+	prev := common.IsLittleEndian
+	t.Cleanup(func() {
+		common.IsLittleEndian = prev
+	})
+	common.IsLittleEndian = endianness
 }

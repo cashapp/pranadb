@@ -144,7 +144,10 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	ctx, cancel := context.WithTimeout(context.Background(), remoteQueryTimeout)
 	defer cancel()
 
-	queryRequest := queryInfo.Serialize()
+	queryRequest, err := queryInfo.Serialize()
+	if err != nil {
+		return nil, err
+	}
 	res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 	if err != nil {
 		return nil, err

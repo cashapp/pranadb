@@ -2,9 +2,10 @@ package exec
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"sort"
 	"strings"
+
+	"github.com/squareup/pranadb/common"
 )
 
 // PullSort - a simple in memory sort executor
@@ -186,7 +187,31 @@ func (p PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 					}
 				}
 			case common.TypeTimestamp:
-				panic("implement me")
+				val1, null1, err1 := sortbyExpr.EvalTimestamp(&row1)
+				if err1 != nil {
+					err = err1
+					return false
+				}
+				val2, null2, err2 := sortbyExpr.EvalTimestamp(&row2)
+				if err2 != nil {
+					err = err2
+					return false
+				}
+				if null1 && !null2 {
+					return !descending
+				}
+				if null2 && !null1 {
+					return descending
+				}
+				if !null1 && !null2 {
+					diff := val1.Compare(val2)
+					if diff < 0 {
+						return !descending
+					}
+					if diff > 0 {
+						return descending
+					}
+				}
 			default:
 				panic(fmt.Sprintf("unexpected type %d", colType.Type))
 			}
