@@ -136,7 +136,7 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 				return nil, 0, err
 			}
 		case common.TypeTimestamp:
-			args[i], offset, err = common.ReadTimestampFromBuffer(buff, offset)
+			args[i], offset, err = common.ReadTimestampFromBuffer(buff, offset, argType.FSP)
 			if err != nil {
 				return nil, 0, err
 			}

@@ -56,12 +56,11 @@ var (
 
 	// ColumnTypesByType allows lookup of non-parameterised ColumnType by Type.
 	ColumnTypesByType = map[Type]ColumnType{
-		TypeTinyInt:   TinyIntColumnType,
-		TypeInt:       IntColumnType,
-		TypeBigInt:    BigIntColumnType,
-		TypeDouble:    DoubleColumnType,
-		TypeVarchar:   VarcharColumnType,
-		TypeTimestamp: TimestampColumnType,
+		TypeTinyInt: TinyIntColumnType,
+		TypeInt:     IntColumnType,
+		TypeBigInt:  BigIntColumnType,
+		TypeDouble:  DoubleColumnType,
+		TypeVarchar: VarcharColumnType,
 	}
 )
 
@@ -93,6 +92,13 @@ func NewDecimalColumnType(precision int, scale int) ColumnType {
 	}
 }
 
+func NewTimestampColumnType(fsp int8) ColumnType {
+	return ColumnType{
+		Type: TypeTimestamp,
+		FSP:  fsp,
+	}
+}
+
 type ColumnInfo struct {
 	Name string
 	ColumnType
@@ -102,6 +108,7 @@ type ColumnType struct {
 	Type         Type
 	DecPrecision int
 	DecScale     int
+	FSP          int8 // fractional seconds precision for time types
 }
 
 type TableInfo struct {

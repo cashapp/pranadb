@@ -12,6 +12,9 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
+// DefaultFSP is the default fractional seconds precision for a TIMESTAMP field.
+const DefaultFSP = 6
+
 // RawQuery represents raw SQL that can be passed through directly.
 type RawQuery struct {
 	Tokens []lexer.Token
@@ -64,7 +67,12 @@ func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
 			return common.ColumnType{}, participle.Errorf(c.Pos, "expected DECIMAL(precision, scale)")
 		}
 		return common.NewDecimalColumnType(c.Parameters[0], c.Parameters[1]), nil
-
+	case common.TypeTimestamp:
+		var fsp int8 = DefaultFSP
+		if len(c.Parameters) == 1 {
+			fsp = int8(c.Parameters[0])
+		}
+		return common.NewTimestampColumnType(fsp), nil
 	default:
 		panic(c.Type) // If this happens there's something wrong with the parser and/or validation.
 	}

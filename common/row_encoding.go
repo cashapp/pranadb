@@ -89,7 +89,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 					val Timestamp
 					err error
 				)
-				val, offset, err = ReadTimestampFromBuffer(buffer, offset)
+				val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
 				if err != nil {
 					return err
 				}

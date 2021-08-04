@@ -205,10 +205,10 @@ func TestEncodeDecodeTimestamp(t *testing.T) {
 	ts := common.NewTimestampFromStringForTest("2021-08-01 12:34:56.789")
 	buf, err := common.AppendTimestampToBuffer(nil, ts)
 	require.NoError(t, err)
-	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0)
+	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0, ts.Fsp())
 	require.NoError(t, err)
 	assert.Equal(t, 0, ts.Compare(valRead))
-	assert.Equal(t, "2021-08-01 12:34:56", valRead.String())
+	assert.Equal(t, "2021-08-01 12:34:56.789", valRead.String())
 }
 
 func setEndianness(t *testing.T, endianness bool) {

@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"math"
 	"unsafe"
+
+	"github.com/pingcap/parser/mysql"
 )
 
 var littleEndian = binary.LittleEndian
@@ -97,12 +99,14 @@ func ReadDecimalFromBuffer(buffer []byte, offset int, precision int, scale int) 
 	return dec, offset, nil
 }
 
-func ReadTimestampFromBuffer(buffer []byte, offset int) (val Timestamp, off int, err error) {
+func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp, off int, err error) {
 	ts := Timestamp{}
 	enc, off := ReadUint64FromBufferLE(buffer, offset)
 	if err := ts.FromPackedUint(enc); err != nil {
 		return Timestamp{}, 0, err
 	}
+	ts.SetType(mysql.TypeTimestamp)
+	ts.SetFsp(fsp)
 	return ts, off, nil
 }
 
