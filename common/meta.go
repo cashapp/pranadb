@@ -215,20 +215,57 @@ func (i *MetaTableInfo) String() string {
 }
 
 type TopicInfo struct {
-	BrokerName string
-	TopicName  string
-	KeyFormat  TopicEncoding
-	Properties map[string]interface{}
+	BrokerName    string
+	TopicName     string
+	KeyEncoding   KafkaEncoding
+	ValueEncoding KafkaEncoding
+	ColSelectors  []string
+	Properties    map[string]string
 }
 
-type TopicEncoding int
+type KafkaEncoding int
 
 const (
-	EncodingUnknown TopicEncoding = iota
-	EncodingJSON
-	EncodingProtobuf
-	EncodingRaw
+	EncodingUnknown  KafkaEncoding = iota
+	EncodingRaw                    // No encoding - value retained as []byte
+	EncodingCSV                    // Comma separated
+	EncodingJSON                   // JSON
+	EncodingProtobuf               // Protobuf
+	EncodingKafkaFloat
+	EncodingKafkaDouble
+	EncodingKafkaInteger
+	EncodingKafkaLong
+	EncodingKafkaShort
+	EncodingKafkaString
 )
+
+func KafkaEncodingFromString(str string) KafkaEncoding {
+	str = strings.ToLower(str)
+	switch str {
+	case "json":
+		return EncodingJSON
+	case "protobuf":
+		return EncodingProtobuf
+	case "raw":
+		return EncodingRaw
+	case "csv":
+		return EncodingCSV
+	case "kafkafloat":
+		return EncodingKafkaFloat
+	case "kafkadouble":
+		return EncodingKafkaDouble
+	case "kafkainteger":
+		return EncodingKafkaInteger
+	case "kafkalong":
+		return EncodingKafkaLong
+	case "kafkashort":
+		return EncodingKafkaShort
+	case "kafkastring":
+		return EncodingKafkaString
+	default:
+		return EncodingUnknown
+	}
+}
 
 type MaterializedViewInfo struct {
 	*TableInfo

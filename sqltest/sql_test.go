@@ -3,6 +3,10 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/push/source"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -13,8 +17,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/squareup/pranadb/common/commontest"
 
 	"github.com/squareup/pranadb/table"
 
@@ -29,13 +31,16 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+var TestPrefix = "prepared"
 
 var TestSchemaName = "test"
+
+var TestClusterID = 12345678
 
 var lock sync.Mutex
 
 type sqlTestsuite struct {
+	fakeKafka    *kafka.FakeKafka
 	pranaCluster []*server.Server
 	suite        suite.Suite
 	tests        map[string]*sqlTest
@@ -89,12 +94,24 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 	if fakeCluster && numNodes != 1 {
 		log.Fatal("fake cluster only supports one node")
 	}
+
+	w.fakeKafka = kafka.NewFakeKafka()
+	brokerConfigs := map[string]conf.BrokerConfig{
+		"testbroker": {
+			ClientType: conf.BrokerClientFake,
+			Properties: map[string]string{
+				"fakeKafkaBrokerID": fmt.Sprintf("%d", w.fakeKafka.ID),
+			},
+		},
+	}
+
 	w.pranaCluster = make([]*server.Server, numNodes)
 	if fakeCluster {
-		s, err := server.NewServer(server.Config{
-			NodeID:     0,
-			NumShards:  10,
-			TestServer: true,
+		s, err := server.NewServer(conf.Config{
+			NodeID:       0,
+			NumShards:    10,
+			TestServer:   true,
+			KafkaBrokers: brokerConfigs,
 		})
 		if err != nil {
 			log.Fatal(err)
@@ -117,15 +134,16 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		}
 		w.dataDir = dataDir
 		for i := 0; i < numNodes; i++ {
-			s, err := server.NewServer(server.Config{
+			s, err := server.NewServer(conf.Config{
 				NodeID:               i,
-				ClusterID:            12345678,
+				ClusterID:            TestClusterID,
 				RaftAddresses:        raftAddresses,
 				NotifListenAddresses: notifAddresses,
 				NumShards:            30,
 				ReplicationFactor:    3,
 				DataDir:              dataDir,
 				TestServer:           false,
+				KafkaBrokers:         brokerConfigs,
 			})
 			if err != nil {
 				log.Fatal(err)
@@ -213,6 +231,7 @@ type sqlTest struct {
 	rnd          *rand.Rand
 	prana        *server.Server
 	session      *sess.Session
+	topics       []*kafka.Topic
 }
 
 func (st *sqlTest) run() {
@@ -296,6 +315,11 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 	err = st.session.Close()
 	require.NoError(err)
+
+	for _, topic := range st.topics {
+		err := st.testSuite.fakeKafka.DeleteTopic(topic.Name)
+		require.NoError(err)
+	}
 
 	// Now we verify that the test has left the database in a clean state - there should be no user sources
 	// or materialized views and no data in the database and nothing in the remote session caches
@@ -443,8 +467,16 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	start := time.Now()
 	datasetName := command[12:]
 	dataset := st.loadDataset(require, st.testDataFile, datasetName)
-	engine := st.prana.GetPushEngine()
-	err := engine.IngestRows(dataset.rows, dataset.sourceInfo.TableInfo.ID)
+	fakeKafka := st.testSuite.fakeKafka
+	_, ok := fakeKafka.GetTopic(dataset.sourceInfo.TopicInfo.TopicName)
+	if !ok {
+		var err error
+		topic, err := fakeKafka.CreateTopic(dataset.sourceInfo.TopicInfo.TopicName, 10)
+		require.NoError(err)
+		st.topics = append(st.topics, topic)
+	}
+	groupID := source.GenerateGroupID(TestClusterID, dataset.sourceInfo)
+	err := fakeKafka.IngestRows(dataset.sourceInfo, dataset.rows, common.EncodingJSON, common.EncodingJSON, groupID)
 	require.NoError(err)
 	st.waitForProcessingToComplete(require)
 	end := time.Now()

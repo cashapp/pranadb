@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/squareup/pranadb/conf"
 	"log"
 	"net"
 
@@ -29,7 +30,7 @@ func main() {
 	kctx.FatalIfErrorf(err)
 
 	// TODO parse conf file into Config
-	psrv, err := server.NewServer(server.Config{
+	psrv, err := server.NewServer(conf.Config{
 		NodeID:     0,
 		NumShards:  10,
 		TestServer: true,

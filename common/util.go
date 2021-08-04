@@ -6,6 +6,7 @@ import (
 	"log"
 	"reflect"
 	"runtime"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -100,4 +101,24 @@ func DumpDataKey(bytes []byte) string {
 	//The rest depends on the table
 	remaining := bytes[16:]
 	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v", shardID, tableID, remaining)
+}
+
+type AtomicBool struct {
+	val int32
+}
+
+func (a *AtomicBool) Get() bool {
+	i := atomic.LoadInt32(&a.val)
+	return i == 1
+}
+
+func (a *AtomicBool) Set(val bool) {
+	// Uhhh, why doesn't golang have an immediate if construct?
+	var i int32
+	if val {
+		i = 1
+	} else {
+		i = 0
+	}
+	atomic.StoreInt32(&a.val, i)
 }

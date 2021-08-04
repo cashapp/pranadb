@@ -1,20 +1,38 @@
-package push
+package mover
 
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
 	"log"
+	"sync"
 )
 
-func (p *PushEngine) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
-	sequence, err := p.nextForwardSequence(localShardID)
+type RawRowHandler interface {
+	HandleRawRows(rawRows map[uint64][][]byte, batch *cluster.WriteBatch) error
+}
+
+type Mover struct {
+	cluster          cluster.Cluster
+	lock             sync.RWMutex
+	forwardSequences map[uint64]uint64
+}
+
+func NewMover(cluster cluster.Cluster) *Mover {
+	return &Mover{
+		cluster:          cluster,
+		forwardSequences: make(map[uint64]uint64),
+	}
+}
+
+func (m *Mover) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
+	sequence, err := m.nextForwardSequence(localShardID)
 	if err != nil {
 		return err
 	}
 
 	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID,
-		p.cluster.GetNodeID(), remoteShardID)
+		m.cluster.GetNodeID(), remoteShardID)
 
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
@@ -28,16 +46,16 @@ func (p *PushEngine) QueueForRemoteSend(remoteShardID uint64, row *common.Row, l
 	}
 	batch.AddPut(queueKeyBytes, valueBuff)
 	sequence++
-	return p.updateNextForwardSequence(localShardID, sequence, batch)
+	return m.updateNextForwardSequence(localShardID, sequence, batch)
 }
 
-// TODO instead of reading from storage, we can pass rows from QueueForRemoteSend to here via
+// TransferData TODO instead of reading from storage, we can pass rows from QueueForRemoteSend to here via
 // a channel - this will avoid scan of storage
-func (p *PushEngine) transferData(localShardID uint64, del bool) error {
+func (m *Mover) TransferData(localShardID uint64, del bool) error {
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID+1, localShardID, 16)
 
-	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
+	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
 		return err
 	}
@@ -74,15 +92,15 @@ func (p *PushEngine) transferData(localShardID uint64, del bool) error {
 
 	for _, fBatch := range batches {
 		// Write to the remote shard
-		log.Printf("Remote writing data from shard %d on node %d to remote shard %d", localShardID, p.cluster.GetNodeID(), fBatch.addBatch.ShardID)
-		err := p.cluster.WriteBatch(fBatch.addBatch)
+		log.Printf("Remote writing data from shard %d on node %d to remote shard %d", localShardID, m.cluster.GetNodeID(), fBatch.addBatch.ShardID)
+		err := m.cluster.WriteBatch(fBatch.addBatch)
 		if err != nil {
 			return err
 		}
 		if del {
 			// Delete locally
-			log.Printf("Deleting keys from forwarder queue for shard %d on node %d", localShardID, p.cluster.GetNodeID())
-			err = p.cluster.WriteBatch(fBatch.deleteBatch)
+			log.Printf("Deleting keys from forwarder queue for shard %d on node %d", localShardID, m.cluster.GetNodeID())
+			err = m.cluster.WriteBatch(fBatch.deleteBatch)
 			if err != nil {
 				return err
 			}
@@ -96,12 +114,12 @@ type forwardBatch struct {
 	deleteBatch *cluster.WriteBatch
 }
 
-func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) error {
+func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) error {
 	batch := cluster.NewWriteBatch(receivingShardID, false)
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
 
-	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
+	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
 		return err
 	}
@@ -112,7 +130,7 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 		sendingShardID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
 		if !ok {
-			lastReceivedSeq, err = p.lastReceivingSequence(receivingShardID, sendingShardID)
+			lastReceivedSeq, err = m.lastReceivingSequence(receivingShardID, sendingShardID)
 			if err != nil {
 				return err
 			}
@@ -142,27 +160,27 @@ func (p *PushEngine) handleReceivedRows(receivingShardID uint64, rawRowHandler R
 		}
 	}
 	for sendingShardID, lastReceivedSequence := range receivingSequences {
-		err = p.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)
+		err = m.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)
 		if err != nil {
 			return err
 		}
 	}
-	return p.cluster.WriteBatch(batch)
+	return m.cluster.WriteBatch(batch)
 }
 
 // TODO consider caching sequences in memory to avoid reading from storage each time
 // Return the next forward sequence value
-func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
+func (m *Mover) nextForwardSequence(localShardID uint64) (uint64, error) {
 
 	// TODO Rlocks don't scale well over multiple cores - we can remove this one by caching
 	// the last sequence on the scheduler and passing it in the context
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 
-	lastSeq, ok := p.forwardSequences[localShardID]
+	lastSeq, ok := m.forwardSequences[localShardID]
 	if !ok {
-		seqKey := p.genForwardSequenceKey(localShardID)
-		seqBytes, err := p.cluster.LocalGet(seqKey)
+		seqKey := m.genForwardSequenceKey(localShardID)
+		seqBytes, err := m.cluster.LocalGet(seqKey)
 		if err != nil {
 			return 0, err
 		}
@@ -170,28 +188,28 @@ func (p *PushEngine) nextForwardSequence(localShardID uint64) (uint64, error) {
 			return 1, nil
 		}
 		lastSeq, _ = common.ReadUint64FromBufferLE(seqBytes, 0)
-		p.forwardSequences[localShardID] = lastSeq
+		m.forwardSequences[localShardID] = lastSeq
 	}
 
 	return lastSeq, nil
 }
 
-func (p *PushEngine) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
-	seqKey := p.genForwardSequenceKey(localShardID)
+func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
+	seqKey := m.genForwardSequenceKey(localShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	// TODO remove this lock!
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	p.forwardSequences[localShardID] = sequence
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	m.forwardSequences[localShardID] = sequence
 	return nil
 }
 
 // TODO consider caching sequences in memory to avoid reading from storage each time
-func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShardID uint64) (uint64, error) {
-	seqKey := p.genReceivingSequenceKey(receivingShardID, sendingShardID)
-	seqBytes, err := p.cluster.LocalGet(seqKey)
+func (m *Mover) lastReceivingSequence(receivingShardID uint64, sendingShardID uint64) (uint64, error) {
+	seqKey := m.genReceivingSequenceKey(receivingShardID, sendingShardID)
+	seqBytes, err := m.cluster.LocalGet(seqKey)
 	if err != nil {
 		return 0, err
 	}
@@ -202,19 +220,19 @@ func (p *PushEngine) lastReceivingSequence(receivingShardID uint64, sendingShard
 	return res, nil
 }
 
-func (p *PushEngine) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
-	seqKey := p.genReceivingSequenceKey(receivingShardID, sendingShardID)
+func (m *Mover) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
+	seqKey := m.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	return nil
 }
 
-func (p *PushEngine) genForwardSequenceKey(localShardID uint64) []byte {
+func (m *Mover) genForwardSequenceKey(localShardID uint64) []byte {
 	return table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, localShardID, 16)
 }
 
-func (p *PushEngine) genReceivingSequenceKey(receivingShardID uint64, sendingShardID uint64) []byte {
+func (m *Mover) genReceivingSequenceKey(receivingShardID uint64, sendingShardID uint64) []byte {
 	seqKey := table.EncodeTableKeyPrefix(common.ReceiverSequenceTableID, receivingShardID, 24)
 	return common.AppendUint64ToBufferBE(seqKey, sendingShardID)
 }

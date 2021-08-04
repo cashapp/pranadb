@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/squareup/pranadb/conf"
 	"sync"
 
 	"github.com/squareup/pranadb/cluster"
@@ -14,18 +15,7 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-type Config struct {
-	NodeID               int
-	ClusterID            int // All nodes in a Prana cluster must share the same ClusterID
-	RaftAddresses        []string
-	NotifListenAddresses []string
-	NumShards            int
-	ReplicationFactor    int
-	DataDir              string
-	TestServer           bool
-}
-
-func NewServer(config Config) (*Server, error) {
+func NewServer(config conf.Config) (*Server, error) {
 	var clus cluster.Cluster
 	var notifClient notifier.Client
 	var notifServer notifier.Server
@@ -46,12 +36,10 @@ func NewServer(config Config) (*Server, error) {
 
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController)
-	clus.RegisterShardListenerFactory(pushEngine)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
-
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine)
+	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)

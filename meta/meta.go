@@ -13,7 +13,8 @@ const (
 	// SystemSchemaName is the name of the schema that houses system tables, similar to mysql's information_schema.
 	SystemSchemaName = "sys"
 	// TableDefTableName is the name of the table that holds all table definitions.
-	TableDefTableName = "tables"
+	TableDefTableName      = "tables"
+	SourceOffsetsTableName = "offsets"
 )
 
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
@@ -32,6 +33,21 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
+	},
+}}
+
+var SourceOffsetsTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
+	ID:             common.OffsetsTableID,
+	SchemaName:     SystemSchemaName,
+	Name:           SourceOffsetsTableName,
+	PrimaryKeyCols: []int{0, 1, 2},
+	ColumnNames:    []string{"schema_name", "source_name", "partition_id", "offset"},
+	// TODO need a secondary index on [schema_name, source_name] for fast lookups
+	ColumnTypes: []common.ColumnType{
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.BigIntColumnType,
+		common.BigIntColumnType,
 	},
 }}
 
@@ -74,6 +90,7 @@ func (c *Controller) Stop() error {
 func (c *Controller) registerSystemSchema() {
 	schema := c.getOrCreateSchema("sys")
 	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
+	schema.PutTable(SourceOffsetsTableInfo.Name, SourceOffsetsTableInfo)
 }
 
 func (c *Controller) GetMaterializedView(schemaName string, name string) (*common.MaterializedViewInfo, bool) {

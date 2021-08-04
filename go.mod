@@ -3,12 +3,16 @@ module github.com/squareup/pranadb
 go 1.16
 
 require (
+	github.com/PaesslerAG/gval v1.0.0 // indirect
+	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/alecthomas/kong v0.2.17
 	github.com/alecthomas/kong-hcl v1.0.1
 	github.com/alecthomas/participle/v2 v2.0.0-alpha6
 	github.com/alecthomas/repr v0.0.0-20210611225437-1a2716eca9d6
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/cockroachdb/pebble v0.0.0-20210331181633-27fc006b8bfb
+	github.com/confluentinc/confluent-kafka-go v1.7.0
+	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
 	github.com/golang/protobuf v1.4.3
 	github.com/google/btree v1.0.0
 	github.com/lni/dragonboat/v3 v3.3.4

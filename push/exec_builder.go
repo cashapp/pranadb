@@ -199,7 +199,7 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		switch tbl := tbl.(type) {
 		case *common.SourceInfo:
 			source := p.sources[tbl.GetTableInfo().ID]
-			source.addConsumingExecutor(executor)
+			source.AddConsumingExecutor(executor)
 		case *common.MaterializedViewInfo:
 			mv := p.materializedViews[tbl.GetTableInfo().ID]
 			mv.addConsumingExecutor(executor)

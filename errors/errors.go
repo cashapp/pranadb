@@ -7,6 +7,12 @@ type ErrorCode int
 
 const (
 	PreparedStatementDoesNotExist = iota
+	UnknownBrokerName
+	MissingKafkaBrokers
+	MissingTopicInfo
+	UnsupportedBrokerClientType
+	UnknownTopicEncoding
+	WrongNumberColumnSelectors
 )
 
 func NewUserErrorF(errorCode ErrorCode, msgFormat string, arg ...interface{}) UserError {

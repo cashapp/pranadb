@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"github.com/squareup/pranadb/conf"
 	"strings"
 
 	"github.com/squareup/pranadb/notifier"
@@ -101,8 +102,9 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
+	config := conf.NewTestConfig(0)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)

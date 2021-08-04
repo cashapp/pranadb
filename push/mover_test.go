@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/conf"
 	"log"
 	"testing"
 
@@ -54,11 +55,11 @@ func TestTransferData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, numRows, len(kvPairs))
 
-	sched := pe.schedulers[localShardID]
+	sched, _ := pe.GetScheduler(localShardID)
 
 	err, ok := <-sched.ScheduleAction(func() error {
 		// This needs to be called on the scheduler goroutine
-		return pe.transferData(localShardID, true)
+		return pe.Mover().TransferData(localShardID, true)
 	})
 	require.True(t, ok)
 	require.NoError(t, err)
@@ -100,10 +101,10 @@ func TestHandleReceivedRows(t *testing.T) {
 		rows = append(rows, latestRows...)
 
 		// Transfer to receiver table
-		sched := pe.schedulers[sendingShardID]
+		sched, _ := pe.GetScheduler(sendingShardID)
 		err, ok := <-sched.ScheduleAction(func() error {
 			// This needs to be called on the scheduler goroutine
-			return pe.transferData(sendingShardID, true)
+			return pe.Mover().TransferData(sendingShardID, true)
 		})
 		require.True(t, ok)
 		require.NoError(t, err)
@@ -132,7 +133,7 @@ func TestHandleReceivedRows(t *testing.T) {
 	for receivingShardID, expectedRowsAtReceivingShard := range rowsByReceivingShard {
 
 		rawRowHandler := &rawRowHandler{}
-		err := pe.handleReceivedRows(receivingShardID, rawRowHandler)
+		err := pe.Mover().HandleReceivedRows(receivingShardID, rawRowHandler)
 		require.NoError(t, err)
 
 		actualRowsByRemoteConsumer := make(map[uint64][]rowInfo)
@@ -226,10 +227,10 @@ func TestDedupOfForwards(t *testing.T) {
 		remoteShardsIds[row.remoteShardID] = true
 	}
 
-	sched := pe.schedulers[localShardID]
+	sched, _ := pe.GetScheduler(localShardID)
 	err, ok := <-sched.ScheduleAction(func() error {
 		// We set delete so the transfer doesn't delete the rows from the forward table
-		return pe.transferData(localShardID, false)
+		return pe.Mover().TransferData(localShardID, false)
 	})
 	require.True(t, ok)
 	require.NoError(t, err)
@@ -239,7 +240,7 @@ func TestDedupOfForwards(t *testing.T) {
 	rowsHandled := 0
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
-		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
+		err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
 		require.NoError(t, err)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
@@ -257,7 +258,7 @@ func TestDedupOfForwards(t *testing.T) {
 
 	// Check forwarder sequence
 	forSeqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, localShardID, 16)
-	seqBytes, err := pe.cluster.LocalGet(forSeqKey)
+	seqBytes, err := clus.LocalGet(forSeqKey)
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
 	lastSeq, _ := common.ReadUint64FromBufferLE(seqBytes, 0)
@@ -281,13 +282,13 @@ func TestDedupOfForwards(t *testing.T) {
 	require.Equal(t, uint64(numRows), maxSeq)
 
 	// Make sure rows deleted from receiver table
-	exists, err := pe.existRowsInLocalTable(common.ReceiverTableID, pe.cluster.GetLocalShardIDs())
+	exists, err := pe.ExistRowsInLocalTable(common.ReceiverTableID, clus.GetLocalShardIDs())
 	require.NoError(t, err)
 	require.False(t, exists)
 
 	// Now try and forward them again
 	err, ok = <-sched.ScheduleAction(func() error {
-		return pe.transferData(localShardID, true)
+		return pe.Mover().TransferData(localShardID, true)
 	})
 	require.True(t, ok)
 	require.NoError(t, err)
@@ -299,7 +300,7 @@ func TestDedupOfForwards(t *testing.T) {
 	rowsHandled = 0
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
-		err := pe.handleReceivedRows(remoteShardID, rawRowHandler)
+		err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
 		require.NoError(t, err)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
@@ -338,7 +339,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 
 	// Check forward sequence has been updated ok
 	seqKey := table.EncodeTableKeyPrefix(common.ForwarderSequenceTableID, localShardID, 16)
-	seqBytes, err := pe.cluster.LocalGet(seqKey)
+	seqBytes, err := store.LocalGet(seqKey)
 	require.NoError(t, err)
 	require.NotNil(t, seqBytes)
 
@@ -354,7 +355,8 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	clus := cluster.NewFakeCluster(1, 10)
 	metaController := meta.NewController(clus)
 	shard := sharder.NewSharder(clus)
-	pe := NewPushEngine(clus, shard, metaController)
+	config := conf.NewTestConfig(0)
+	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{})
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clus.Start()
@@ -364,6 +366,13 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	err = pe.Start()
 	require.NoError(t, err)
 	return clus, shard, pe
+}
+
+type dummySimpleQueryExecutor struct {
+}
+
+func (d *dummySimpleQueryExecutor) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
+	return nil, nil
 }
 
 type delegatingShardListenerFactory struct {
@@ -406,7 +415,7 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
 	batch := cluster.NewWriteBatch(sendingShardID, false)
 	for _, rowToSend := range rows {
-		err := pe.QueueForRemoteSend(rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
+		err := pe.Mover().QueueForRemoteSend(rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
 		require.NoError(t, err)
 	}
 	err := store.WriteBatch(batch)

@@ -32,6 +32,22 @@ func NewDecFromFloat64(f float64) (*Decimal, error) {
 	}, nil
 }
 
+func NewDecFromInt64(i int64) *Decimal {
+	dec := new(types.MyDecimal)
+	dec = dec.FromInt(i)
+	return &Decimal{
+		decimal: dec,
+	}
+}
+
+func NewDecFromUint64(i uint64) *Decimal {
+	dec := new(types.MyDecimal)
+	dec = dec.FromUint(i)
+	return &Decimal{
+		decimal: dec,
+	}
+}
+
 func (d *Decimal) CompareTo(dec *Decimal) int {
 	return d.decimal.Compare(dec.decimal)
 }

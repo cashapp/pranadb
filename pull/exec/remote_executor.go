@@ -85,17 +85,14 @@ func (re *RemoteExecutor) Reset() {
 
 func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
-	if limit == 0 || limit < -1 {
+	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 
 	numGetters := len(re.clusterGetters)
 	channels := make([]chan cluster.RemoteQueryResult, numGetters)
-	if limit == -1 {
-		// We can't have an unlimited limit as we're shifting over the network
-		limit = 1000
-	}
-	rows = re.rowsFactory.NewRows(limit)
+
+	rows = re.rowsFactory.NewRows(100)
 
 	// TODO this algorithm can be improved
 	// We execute these in parallel

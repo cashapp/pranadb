@@ -86,7 +86,26 @@ type TableOption struct {
 type CreateSource struct {
 	Name string `@Ident`
 	// TODO: Add selection of columns from source. Inline in the column type definitions? Separate clause?
-	Options []*TableOption `"(" @@ ("," @@)* ")"` // Table options.
+	Options          []*TableOption    `"(" @@ ("," @@)* ")"` // Table options.
+	TopicInformation *TopicInformation `"WITH" "(" @@ ")"`
+}
+
+type TopicInformation struct {
+	BrokerName    string               `"BrokerName" "=" @String ","`
+	TopicName     string               `"TopicName" "=" @String ","`
+	KeyEncoding   string               `"KeyEncoding" "=" @String ","`
+	ValueEncoding string               `"ValueEncoding" "=" @String ","`
+	ColSelectors  []*ColSelector       `"ColumnSelectors" "=" "(" @@+ ")"`
+	Properties    []*TopicInfoProperty `"Properties" "=" "(" @@+ ")"`
+}
+
+type ColSelector struct {
+	Selector string `@String`
+}
+
+type TopicInfoProperty struct {
+	Key   string `@String "="`
+	Value string `@String`
 }
 
 // Create statement.
