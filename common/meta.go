@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 )
@@ -79,7 +78,7 @@ func InferColumnType(value interface{}) ColumnType {
 		return TinyIntColumnType
 	case float64:
 		return DoubleColumnType
-	case time.Time:
+	case Timestamp:
 		return TimestampColumnType
 	default:
 		panic(fmt.Sprintf("can't infer column of type %T", value))

@@ -121,6 +121,12 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 				case common.TypeVarchar:
 					strPtr := aggState.GetString(i)
 					resultRows.AppendStringToColumn(i, *strPtr)
+				case common.TypeTimestamp:
+					ts, err := aggState.GetTimestamp(i)
+					if err != nil {
+						return err
+					}
+					resultRows.AppendTimestampToColumn(i, ts)
 				default:
 					return fmt.Errorf("unexpected column type %d", colType)
 				}
@@ -167,6 +173,8 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 				val = row.GetFloat64(groupByCol)
 			case common.TypeVarchar:
 				val = row.GetString(groupByCol)
+			case common.TypeTimestamp:
+				val = row.GetTimestamp(groupByCol)
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}
@@ -209,6 +217,10 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 					case common.TypeVarchar:
 						strVal := currRow.GetString(i)
 						aggState.SetString(i, &strVal)
+					case common.TypeTimestamp:
+						if err := aggState.SetTimestamp(i, currRow.GetTimestamp(i)); err != nil {
+							return err
+						}
 					default:
 						return fmt.Errorf("unexpected column type %d", colType)
 					}
@@ -245,6 +257,15 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 				return err
 			}
 			err = aggFunc.EvalString(arg, null, aggState, index)
+			if err != nil {
+				return err
+			}
+		case common.TypeTimestamp:
+			arg, null, err := aggFunc.ArgExpression().EvalTimestamp(row)
+			if err != nil {
+				return err
+			}
+			err = aggFunc.EvalTimestamp(arg, null, aggState, index)
 			if err != nil {
 				return err
 			}

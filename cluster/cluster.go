@@ -68,26 +68,36 @@ func (q *QueryExecutionInfo) GetArgs() []interface{} {
 	return q.PsArgs
 }
 
-func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType) []byte {
+func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType) ([]byte, error) {
 	buff = common.AppendUint32ToBufferLE(buff, uint32(len(args)))
 	for _, argType := range argTypes {
 		buff = append(buff, byte(argType.Type))
 	}
-	for _, arg := range args {
-		switch op := arg.(type) {
+	var err error
+	for i, arg := range args {
+		argType := argTypes[i]
+		switch arg := arg.(type) {
 		case int64:
-			buff = common.AppendUint64ToBufferLE(buff, uint64(op))
+			buff = common.AppendUint64ToBufferLE(buff, uint64(arg))
 		case float64:
-			buff = common.AppendFloat64ToBufferLE(buff, op)
+			buff = common.AppendFloat64ToBufferLE(buff, arg)
 		case string:
-			buff = common.AppendStringToBufferLE(buff, op)
+			buff = common.AppendStringToBufferLE(buff, arg)
 		case common.Decimal:
-			// TODO
+			buff, err = common.AppendDecimalToBuffer(buff, arg, argType.DecPrecision, argType.DecScale)
+			if err != nil {
+				return nil, err
+			}
+		case common.Timestamp:
+			buff, err = common.AppendTimestampToBuffer(buff, arg)
+			if err != nil {
+				return nil, err
+			}
 		default:
-			panic(fmt.Sprintf("unexpected arg type %v", op))
+			panic(fmt.Sprintf("unexpected arg type %v", arg))
 		}
 	}
-	return buff
+	return buff, err
 }
 
 func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
@@ -110,6 +120,7 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 	}
 
 	args := make([]interface{}, numArgs)
+	var err error
 	for i := 0; i < int(numArgs); i++ {
 		argType := argTypes[i]
 		switch argType.Type {
@@ -120,8 +131,12 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 		case common.TypeVarchar:
 			args[i], offset = common.ReadStringFromBuffer(buff, offset)
 		case common.TypeDecimal:
-			var err error
 			args[i], offset, err = common.ReadDecimalFromBuffer(buff, offset, argType.DecPrecision, argType.DecScale)
+			if err != nil {
+				return nil, 0, err
+			}
+		case common.TypeTimestamp:
+			args[i], offset, err = common.ReadTimestampFromBuffer(buff, offset)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -132,13 +147,16 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 	return args, offset, nil
 }
 
-func (q *QueryExecutionInfo) Serialize() []byte {
+func (q *QueryExecutionInfo) Serialize() ([]byte, error) {
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, q.SessionID)
 	buff = common.AppendStringToBufferLE(buff, q.SchemaName)
 	buff = common.AppendStringToBufferLE(buff, q.Query)
 	buff = common.AppendUint64ToBufferLE(buff, uint64(q.PsID))
-	buff = encodePsArgs(buff, q.PsArgs, q.PsArgTypes)
+	buff, err := encodePsArgs(buff, q.PsArgs, q.PsArgTypes)
+	if err != nil {
+		return nil, err
+	}
 	buff = common.AppendUint32ToBufferLE(buff, q.Limit)
 	buff = common.AppendUint64ToBufferLE(buff, q.ShardID)
 	var b byte
@@ -148,7 +166,7 @@ func (q *QueryExecutionInfo) Serialize() []byte {
 		b = 0
 	}
 	buff = append(buff, b)
-	return buff
+	return buff, nil
 }
 
 func (q *QueryExecutionInfo) Deserialize(buff []byte) error {

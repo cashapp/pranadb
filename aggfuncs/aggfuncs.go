@@ -63,6 +63,24 @@ func (as *AggState) GetString(index int) *string {
 	return as.strState
 }
 
+func (as *AggState) SetTimestamp(index int, val common.Timestamp) error {
+	packed, err := val.ToPackedUint()
+	if err != nil {
+		return err
+	}
+	as.SetInt64(index, int64(packed))
+	return nil
+}
+
+func (as *AggState) GetTimestamp(index int) (common.Timestamp, error) {
+	packed := as.GetInt64(index)
+	ts := common.Timestamp{}
+	if err := ts.FromPackedUint(uint64(packed)); err != nil {
+		return common.Timestamp{}, err
+	}
+	return ts, nil
+}
+
 func (as *AggState) IsSet(index int) bool {
 	return as.set[index]
 }
@@ -72,6 +90,7 @@ type AggregateFunction interface {
 	EvalInt64(currValue int64, null bool, aggState *AggState, index int) error
 	EvalFloat64(currValue float64, null bool, aggState *AggState, index int) error
 	EvalString(currValue string, null bool, aggState *AggState, index int) error
+	EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error
 
 	ValueType() common.ColumnType
 	ArgExpression() *common.Expression
@@ -148,6 +167,10 @@ func (s *SumAggregateFunction) EvalString(currValue string, null bool, aggState 
 	panic("implement me")
 }
 
+func (s *SumAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error {
+	panic("cannot sum on timestamp")
+}
+
 type CountAggregateFunction struct {
 	aggregateFunctionBase
 }
@@ -169,6 +192,14 @@ func (s *CountAggregateFunction) EvalFloat64(currValue float64, null bool, aggSt
 }
 
 func (s *CountAggregateFunction) EvalString(currValue string, null bool, aggState *AggState, index int) error {
+	if null {
+		return nil
+	}
+	aggState.SetInt64(index, aggState.GetInt64(index)+1)
+	return nil
+}
+
+func (s *CountAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error {
 	if null {
 		return nil
 	}
@@ -216,6 +247,18 @@ func (f *FirstRowAggregateFunction) EvalString(currValue string, null bool, aggS
 	return nil
 }
 
+func (f *FirstRowAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error {
+	if aggState.IsSet(index) {
+		return nil
+	}
+	if null {
+		aggState.SetNull(index, true)
+	} else if err := aggState.SetTimestamp(index, currValue); err != nil {
+		return err
+	}
+	return nil
+}
+
 type MaxAggregateFunction struct {
 	aggregateFunctionBase
 }
@@ -244,6 +287,22 @@ func (m *MaxAggregateFunction) EvalString(currValue string, null bool, aggState 
 	panic("should not be called")
 }
 
+func (m *MaxAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error {
+	if null {
+		return nil
+	}
+	other, err := aggState.GetTimestamp(index)
+	if err != nil {
+		return err
+	}
+	if !aggState.IsSet(index) || (currValue.Compare(other) > 1) {
+		if err := aggState.SetTimestamp(index, currValue); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type MinAggregateFunction struct {
 	aggregateFunctionBase
 }
@@ -270,4 +329,20 @@ func (m *MinAggregateFunction) EvalFloat64(currValue float64, null bool, aggStat
 
 func (m *MinAggregateFunction) EvalString(currValue string, null bool, aggState *AggState, index int) error {
 	panic("should not be called")
+}
+
+func (m *MinAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bool, aggState *AggState, index int) error {
+	if null {
+		return nil
+	}
+	other, err := aggState.GetTimestamp(index)
+	if err != nil {
+		return err
+	}
+	if !aggState.IsSet(index) || (currValue.Compare(other) < 1) {
+		if err := aggState.SetTimestamp(index, currValue); err != nil {
+			return err
+		}
+	}
+	return nil
 }

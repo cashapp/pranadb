@@ -41,6 +41,13 @@ func encodeRowCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 		case TypeVarchar:
 			valString := row.GetString(colIndex)
 			buffer = AppendStringToBufferLE(buffer, valString)
+		case TypeTimestamp:
+			valTimestamp := row.GetTimestamp(colIndex)
+			var err error
+			buffer, err = AppendTimestampToBuffer(buffer, valTimestamp)
+			if err != nil {
+				return nil, err
+			}
 		default:
 			return nil, fmt.Errorf("unexpected column type %d", colType)
 		}
@@ -77,6 +84,16 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 				var val string
 				val, offset = ReadStringFromBuffer(buffer, offset)
 				rows.AppendStringToColumn(colIndex, val)
+			case TypeTimestamp:
+				var (
+					val Timestamp
+					err error
+				)
+				val, offset, err = ReadTimestampFromBuffer(buffer, offset)
+				if err != nil {
+					return err
+				}
+				rows.AppendTimestampToColumn(colIndex, val)
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}

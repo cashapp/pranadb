@@ -1,11 +1,12 @@
 package commontest
 
 import (
-	"github.com/squareup/pranadb/common"
-	"github.com/stretchr/testify/require"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/stretchr/testify/require"
 )
 
 // Test utils
@@ -61,6 +62,10 @@ func RowsEqual(t *testing.T, expected common.Row, actual common.Row, colTypes []
 				val1 := expected.GetString(colIndex)
 				val2 := actual.GetString(colIndex)
 				require.Equal(t, val1, val2)
+			case common.TypeTimestamp:
+				val1 := expected.GetTimestamp(colIndex)
+				val2 := actual.GetTimestamp(colIndex)
+				require.Equalf(t, 0, val1.Compare(val2), "timestamps not equal: %v and %v", val1, val2)
 			default:
 				t.Errorf("unexpected column type %d", colType)
 			}
@@ -88,6 +93,9 @@ func AppendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, co
 				dec, err := common.NewDecFromString(colVal.(string))
 				require.NoError(t, err)
 				rows.AppendDecimalToColumn(i, *dec)
+			case common.TypeTimestamp:
+				ts := common.NewTimestampFromStringForTest(colVal.(string))
+				rows.AppendTimestampToColumn(i, ts)
 			default:
 				panic(colType.Type)
 			}

@@ -1,10 +1,11 @@
 package exec
 
 import (
+	"testing"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 var sortColTypes = []common.ColumnType{common.BigIntColumnType, common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, common.NewDecimalColumnType(10, 2)}
@@ -380,6 +381,72 @@ func TestSortDecimalDesc(t *testing.T) {
 		true,
 	}
 	testSort(t, inpRows, expRows, sortColNames, sortColTypes, descending, common.NewColumnExpression(6, sortColTypes[6]))
+}
+
+func TestSortTimestampAsc(t *testing.T) {
+	tsSortColTypes := []common.ColumnType{common.BigIntColumnType, common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, common.NewDecimalColumnType(10, 2), common.TimestampColumnType}
+	tsSortColNames := []string{"pk_bigint", "c_tinyint", "c_int", "c_bigint", "c_double", "c_varchar", "c_decimal", "c_timestamp"}
+	inpRows := [][]interface{}{
+		{7, 2, 20, 200, 20.01, "str6", "2000.01", "2021-01-02"},
+		{2, -3, -30, -300, -30.01, "str1", "-3000.01", "2021-01-03 01:02:03"},
+		{0, nil, nil, nil, nil, nil, nil, nil},
+		{5, 0, 0, 0, 0.0, "str4", "0.00", "2021-01-03 01:02:03.1234"},
+		{9, 4, 40, 400, 40.01, "str7", "4000.01", "1998-07-24"},
+		{3, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56.123456"},
+		{8, 4, 40, 400, 40.01, "str7", "4000.01", "2021-01-01 12:34:56"},
+		{6, 1, 10, 100, 10.01, "str5", "1000.01", "2020-01-03"},
+		{1, nil, nil, nil, nil, nil, nil, nil},
+		{4, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56"},
+	}
+	expRows := [][]interface{}{
+		{0, nil, nil, nil, nil, nil, nil, nil},
+		{1, nil, nil, nil, nil, nil, nil, nil},
+		{9, 4, 40, 400, 40.01, "str7", "4000.01", "1998-07-24"},
+		{6, 1, 10, 100, 10.01, "str5", "1000.01", "2020-01-03"},
+		{8, 4, 40, 400, 40.01, "str7", "4000.01", "2021-01-01 12:34:56"},
+		{7, 2, 20, 200, 20.01, "str6", "2000.01", "2021-01-02"},
+		{4, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56"},
+		{3, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56.123456"},
+		{2, -3, -30, -300, -30.01, "str1", "-3000.01", "2021-01-03 01:02:03"},
+		{5, 0, 0, 0, 0.0, "str4", "0.00", "2021-01-03 01:02:03.1234"},
+	}
+	descending := []bool{
+		false,
+	}
+	testSort(t, inpRows, expRows, tsSortColNames, tsSortColTypes, descending, common.NewColumnExpression(7, tsSortColTypes[7]))
+}
+
+func TestSortTimestampDesc(t *testing.T) {
+	tsSortColTypes := []common.ColumnType{common.BigIntColumnType, common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, common.NewDecimalColumnType(10, 2), common.TimestampColumnType}
+	tsSortColNames := []string{"pk_bigint", "c_tinyint", "c_int", "c_bigint", "c_double", "c_varchar", "c_decimal", "c_timestamp"}
+	inpRows := [][]interface{}{
+		{7, 2, 20, 200, 20.01, "str6", "2000.01", "2021-01-02"},
+		{2, -3, -30, -300, -30.01, "str1", "-3000.01", "2021-01-03 01:02:03"},
+		{0, nil, nil, nil, nil, nil, nil, nil},
+		{5, 0, 0, 0, 0.0, "str4", "0.00", "2021-01-03 01:02:03.1234"},
+		{9, 4, 40, 400, 40.01, "str7", "4000.01", "1998-07-24"},
+		{3, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56.123456"},
+		{8, 4, 40, 400, 40.01, "str7", "4000.01", "2021-01-01 12:34:56"},
+		{6, 1, 10, 100, 10.01, "str5", "1000.01", "2020-01-03"},
+		{1, nil, nil, nil, nil, nil, nil, nil},
+		{4, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56"},
+	}
+	expRows := [][]interface{}{
+		{5, 0, 0, 0, 0.0, "str4", "0.00", "2021-01-03 01:02:03.1234"},
+		{2, -3, -30, -300, -30.01, "str1", "-3000.01", "2021-01-03 01:02:03"},
+		{3, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56.123456"},
+		{4, -2, -20, -200, -20.01, "str2", "-2000.01", "2021-01-02 12:34:56"},
+		{7, 2, 20, 200, 20.01, "str6", "2000.01", "2021-01-02"},
+		{8, 4, 40, 400, 40.01, "str7", "4000.01", "2021-01-01 12:34:56"},
+		{6, 1, 10, 100, 10.01, "str5", "1000.01", "2020-01-03"},
+		{9, 4, 40, 400, 40.01, "str7", "4000.01", "1998-07-24"},
+		{0, nil, nil, nil, nil, nil, nil, nil},
+		{1, nil, nil, nil, nil, nil, nil, nil},
+	}
+	descending := []bool{
+		true,
+	}
+	testSort(t, inpRows, expRows, tsSortColNames, tsSortColTypes, descending, common.NewColumnExpression(7, tsSortColTypes[7]))
 }
 
 func TestSortMultipleColumns(t *testing.T) {

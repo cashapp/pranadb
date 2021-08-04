@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 )
@@ -44,8 +42,8 @@ func InferRow(values ...interface{}) Row {
 			rows.AppendInt64ToColumn(i, int64(value))
 		case float64:
 			rows.AppendFloat64ToColumn(i, value)
-		case time.Time:
-			rows.AppendTimeToColumn(i, value)
+		case Timestamp:
+			rows.AppendTimestampToColumn(i, value)
 		}
 	}
 	return rows.GetRow(0)
@@ -122,8 +120,8 @@ func (r *Rows) AppendStringToColumn(colIndex int, val string) {
 	col.AppendString(val)
 }
 
-func (r *Rows) AppendTimeToColumn(colIndex int, val time.Time) {
-	r.chunk.AppendTime(colIndex, types.NewTime(types.FromGoTime(val), mysql.TypeTimestamp, types.MaxFsp))
+func (r *Rows) AppendTimestampToColumn(colIndex int, val Timestamp) {
+	r.chunk.AppendTime(colIndex, val)
 }
 
 func (r *Rows) AppendNullToColumn(colIndex int) {
@@ -170,6 +168,10 @@ func (r *Row) GetDecimal(colIndex int) Decimal {
 
 func (r *Row) GetString(colIndex int) string {
 	return r.tRow.GetString(colIndex)
+}
+
+func (r *Row) GetTimestamp(colIndex int) Timestamp {
+	return r.tRow.GetTime(colIndex)
 }
 
 func (r *Row) ColCount() int {
@@ -224,6 +226,9 @@ func (r *Row) String() string {
 			case TypeVarchar:
 				dec := r.GetString(j)
 				sb.WriteString(dec)
+			case TypeTimestamp:
+				val := r.GetTimestamp(j)
+				sb.WriteString(val.String())
 			default:
 				panic(fmt.Sprintf("unexpected col type %d", colType.Type))
 			}
