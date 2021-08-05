@@ -19,13 +19,13 @@ func TestSelectOneRow(t *testing.T) {
 	exp := toRows(t, expectedRows, colTypes)
 	sel := setupSelect(t, inpRows, colExpression(2), constDoubleExpression(2, 28.0))
 
-	provided, err := sel.GetRows(-1)
+	provided, err := sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
-	provided, err = sel.GetRows(-1)
+	provided, err = sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -45,14 +45,14 @@ func TestSelectAllRows(t *testing.T) {
 	exp := toRows(t, expectedRows, colTypes)
 	sel := setupSelect(t, inpRows, colExpression(2), constDoubleExpression(2, 15.0))
 
-	provided, err := sel.GetRows(-1)
+	provided, err := sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	expectedCount := len(expectedRows)
 	require.Equal(t, expectedCount, provided.RowCount())
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
-	provided, err = sel.GetRows(-1)
+	provided, err = sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -66,13 +66,13 @@ func TestSelectNoRows(t *testing.T) {
 	}
 	sel := setupSelect(t, inpRows, colExpression(2), constDoubleExpression(2, 40.0))
 
-	provided, err := sel.GetRows(-1)
+	provided, err := sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
 
 	// And once more for good measure
-	provided, err = sel.GetRows(-1)
+	provided, err = sel.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())

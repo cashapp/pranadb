@@ -23,12 +23,12 @@ func TestProjectionOneCol(t *testing.T) {
 	exp := toRows(t, expectedRows, expectedColTypes)
 	proj := setupProject(t, inpRows, expectedColNames, expectedColTypes, colExpression(1))
 
-	provided, err := proj.GetRows(-1)
+	provided, err := proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	commontest.AllRowsEqual(t, exp, provided, expectedColTypes)
 
-	provided, err = proj.GetRows(-1)
+	provided, err = proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -48,12 +48,12 @@ func TestProjectionAllCols(t *testing.T) {
 	exp := toRows(t, expectedRows, colTypes)
 	proj := setupProject(t, inpRows, colNames, colTypes, colExpression(0), colExpression(1), colExpression(2), colExpression(3))
 
-	provided, err := proj.GetRows(-1)
+	provided, err := proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
-	provided, err = proj.GetRows(-1)
+	provided, err = proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -75,13 +75,13 @@ func TestProjectionAllColsReverseOrder(t *testing.T) {
 	exp := toRows(t, expectedRows, expectedColTypes)
 	proj := setupProject(t, inpRows, expectedColNames, expectedColTypes, colExpression(3), colExpression(2), colExpression(1), colExpression(0))
 
-	provided, err := proj.GetRows(-1)
+	provided, err := proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, exp.RowCount(), provided.RowCount())
 	commontest.AllRowsEqual(t, exp, provided, expectedColTypes)
 
-	provided, err = proj.GetRows(-1)
+	provided, err = proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -106,13 +106,13 @@ func TestProjectionNonColExpression(t *testing.T) {
 
 	proj := setupProject(t, inpRows, colNames, colTypes, colExpression(0), colExpression(1), f, colExpression(3))
 
-	provided, err := proj.GetRows(-1)
+	provided, err := proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, exp.RowCount(), provided.RowCount())
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
-	provided, err = proj.GetRows(-1)
+	provided, err = proj.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())

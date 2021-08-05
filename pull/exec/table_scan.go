@@ -83,7 +83,7 @@ func (t *PullTableScan) Reset() {
 }
 
 func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
-	if limit == 0 || limit < -1 {
+	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 

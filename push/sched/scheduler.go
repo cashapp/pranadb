@@ -47,7 +47,8 @@ func (s *ShardScheduler) Stop() {
 }
 
 func (s *ShardScheduler) runLoop() {
-	atomic.AddInt32(&runningSchedulers, 1)
+	s.incRunning()
+	defer s.decRunning()
 	for {
 		holder, ok := <-s.actions
 		if !ok {
@@ -60,6 +61,13 @@ func (s *ShardScheduler) runLoop() {
 			log.Printf("Failed to execute action: %v", err)
 		}
 	}
+}
+
+func (s *ShardScheduler) incRunning() {
+	atomic.AddInt32(&runningSchedulers, 1)
+}
+
+func (s *ShardScheduler) decRunning() {
 	atomic.AddInt32(&runningSchedulers, -1)
 }
 
@@ -92,7 +100,7 @@ func WaitUntilNoSchedulersRunning() error {
 		}
 		time.Sleep(time.Millisecond)
 		if time.Now().Sub(start) >= 5*time.Second {
-			return fmt.Errorf("timed out waiting for schedulers to stop, sched count is %d", numSchedulers)
+			return fmt.Errorf("timed out waiting for schedulers to stop running, sched count is %d", numSchedulers)
 		}
 	}
 }

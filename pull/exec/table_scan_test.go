@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTableScanNoLimit(t *testing.T) {
+func TestTableScanAllRows(t *testing.T) {
 	inpRows := [][]interface{}{
 		{1, "wincanton", 25.5, "132.45"},
 		{2, "london", 35.1, "9.32"},
@@ -26,13 +26,13 @@ func TestTableScanNoLimit(t *testing.T) {
 
 	exp := toRows(t, expectedRows, colTypes)
 
-	provided, err := ts.GetRows(-1)
+	provided, err := ts.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	commontest.AllRowsEqual(t, exp, provided, colTypes)
 
 	// Call again
-	provided, err = ts.GetRows(-1)
+	provided, err = ts.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	require.Equal(t, 0, provided.RowCount())
@@ -169,7 +169,7 @@ func testTableScanWithRange(t *testing.T, scanRange *ScanRange, expectedRows [][
 	defer stopCluster(t, clust)
 
 	exp1 := toRows(t, expectedRows, colTypes)
-	provided, err := ts.GetRows(-1)
+	provided, err := ts.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	commontest.AllRowsEqual(t, exp1, provided, colTypes)
@@ -321,7 +321,7 @@ func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expecte
 
 	exp := toRows(t, expectedRows, colTypes)
 
-	provided, err := ts.GetRows(-1)
+	provided, err := ts.GetRows(1000)
 	require.NoError(t, err)
 	require.NotNil(t, provided)
 	commontest.AllRowsEqual(t, exp, provided, colTypes)

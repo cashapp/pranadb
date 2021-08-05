@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/pull/exec"
 	"log"
 
 	"github.com/squareup/pranadb/command"
@@ -39,10 +40,11 @@ func (l *Loader) Start() error {
 	if err != nil {
 		return err
 	}
-	rows, err := pull.GetRows(-1)
+	rows, err := exec.LoadAllInBatches(pull)
 	if err != nil {
 		return err
 	}
+
 	var mvs []*common.MaterializedViewInfo
 	type tableKey struct {
 		schemaName, tableName string

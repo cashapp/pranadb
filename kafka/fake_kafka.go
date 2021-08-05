@@ -1,11 +1,9 @@
 package kafka
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/common/commontest"
+	"log"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -13,6 +11,7 @@ import (
 )
 
 const maxBufferedMessagesPerPartition = 10000
+const FakeKafkaIDPropName = "fakeKafkaID"
 
 var fakeKafkaSeq int64 = -1
 
@@ -90,99 +89,15 @@ func (f *FakeKafka) IngestMessage(topicName string, message *Message) error {
 	return nil
 }
 
-// IngestRows ingests rows given schema and source name - convenience method for use in tests
-func (f *FakeKafka) IngestRows(sourceInfo *common.SourceInfo, rows *common.Rows,
-	keyEncoding common.KafkaEncoding, valueEncoding common.KafkaEncoding, groupID string) error {
-	topicName := sourceInfo.TopicInfo.TopicName
-
-	topic, ok := f.GetTopic(topicName)
-	if !ok {
-		return fmt.Errorf("cannot find topic %s", topicName)
-	}
-	startCommitted := topic.TotalCommittedMessages(groupID)
-
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		if err := f.IngestRow(topicName, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, keyEncoding, valueEncoding); err != nil {
-			return err
-		}
-	}
-	// And we wait for all offsets to be committed
-	wanted := startCommitted + rows.RowCount()
-	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		return topic.TotalCommittedMessages(groupID) == wanted, nil
-	}, 5*time.Second, 10*time.Millisecond)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errors.New("messages not committed within timeout")
-	}
-	return nil
-}
-
-// IngestRow is a convenience method which encodes the row into a Kafka message first, then ingests it
-func (f *FakeKafka) IngestRow(topicName string, row *common.Row, colTypes []common.ColumnType, keyCols []int,
-	keyEncoding common.KafkaEncoding, valueEncoding common.KafkaEncoding) error {
-	topic, ok := f.getTopic(topicName)
-	if !ok {
-		return fmt.Errorf("no such topic %s", topicName)
-	}
-
-	// TODO support other encodings so we can test them from SQLTest
-	if keyEncoding != common.EncodingJSON || valueEncoding != common.EncodingJSON {
-		return errors.New("Only JSON key and value encodings for ingesting currently supported")
-	}
-
-	keyMap := map[string]interface{}{}
-	for i, keyCol := range keyCols {
-		colType := colTypes[keyCol]
-		colVal := getColVal(keyCol, colType, row)
-		keyMap[fmt.Sprintf("k%d", i)] = colVal
-	}
-
-	valMap := map[string]interface{}{}
-	for i, colType := range colTypes {
-		colVal := getColVal(i, colType, row)
-		valMap[fmt.Sprintf("v%d", i)] = colVal
-	}
-
-	keyBytes, err := json.Marshal(keyMap)
-	if err != nil {
-		return err
-	}
-
-	valBytes, err := json.Marshal(valMap)
-	if err != nil {
-		return err
-	}
-
-	message := &Message{
-		Key:   keyBytes,
-		Value: valBytes,
-	}
-	topic.push(message)
-	return nil
-}
-
-func getColVal(colIndex int, colType common.ColumnType, row *common.Row) interface{} {
-	var colVal interface{}
-	switch colType.Type {
-	case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-		colVal = row.GetInt64(colIndex)
-	case common.TypeDouble:
-		colVal = row.GetFloat64(colIndex)
-	case common.TypeVarchar:
-		colVal = row.GetString(colIndex)
-	case common.TypeDecimal:
-		dec := row.GetDecimal(colIndex)
-		colVal = dec.String()
-	case common.TypeTimestamp:
-		panic("TODO")
-	case common.TypeUnknown:
-		panic("unknown type")
-	}
-	return colVal
+func (f *FakeKafka) GetTopicNames() []string {
+	f.topicLock.Lock()
+	defer f.topicLock.Unlock()
+	var names []string
+	f.topics.Range(func(key, _ interface{}) bool {
+		names = append(names, key.(string))
+		return true
+	})
+	return names
 }
 
 func (f *FakeKafka) getTopic(name string) (*Topic, bool) {
@@ -265,7 +180,12 @@ func (t *Topic) close() {
 func (t *Topic) TotalCommittedMessages(groupID string) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	group := t.groups[groupID]
+	log.Printf("Asking for total committed messages for group %s", groupID)
+	group, ok := t.groups[groupID]
+	if !ok {
+		log.Println("No such group")
+		return 0
+	}
 	return group.totalCommittedMessages()
 }
 
@@ -297,6 +217,7 @@ func (g *Group) createSubscriber(t *Topic, group *Group) *Subscriber {
 func (g *Group) commitOffsets(offsets map[int32]int64) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
+	log.Printf("Group %s committing offsets", g.id)
 	for partID, offset := range offsets {
 		g.offsets[partID] = offset
 	}
@@ -338,6 +259,7 @@ func (g *Group) totalCommittedMessages() int {
 	for _, offsets := range g.offsets {
 		tot += offsets
 	}
+	log.Printf("Group %s has %d committed", g.id, tot)
 	return int(tot)
 }
 
@@ -389,7 +311,7 @@ func (c *Subscriber) Unsubscribe() error {
 }
 
 func NewFakeMessageProviderFactory(topicName string, props map[string]string, groupName string) (MessageProviderFactory, error) {
-	sFakeKafkaID, ok := props["fakeKafkaID"]
+	sFakeKafkaID, ok := props[FakeKafkaIDPropName]
 	if !ok {
 		return nil, errors.New("no fakeKafkaID property in broker configuration")
 	}

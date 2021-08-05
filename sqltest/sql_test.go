@@ -31,7 +31,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = "prepared"
+var TestPrefix = ""
 
 var TestSchemaName = "test"
 
@@ -100,7 +100,7 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		"testbroker": {
 			ClientType: conf.BrokerClientFake,
 			Properties: map[string]string{
-				"fakeKafkaBrokerID": fmt.Sprintf("%d", w.fakeKafka.ID),
+				"fakeKafkaID": fmt.Sprintf("%d", w.fakeKafka.ID),
 			},
 		},
 	}
@@ -109,6 +109,7 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 	if fakeCluster {
 		s, err := server.NewServer(conf.Config{
 			NodeID:       0,
+			ClusterID:    TestClusterID,
 			NumShards:    10,
 			TestServer:   true,
 			KafkaBrokers: brokerConfigs,
@@ -293,7 +294,12 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			n, err := strconv.ParseInt(command[9:], 10, 32)
 			require.NoError(err)
 			numIters = int(n)
-		} else if strings.HasPrefix(command, "--") {
+		} else if strings.HasPrefix(command, "--create topic") {
+			st.executeCreateTopic(require, command)
+		} else if strings.HasPrefix(command, "--delete topic") {
+			st.executeDeleteTopic(require, command)
+		}
+		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
 		} else {
 			// sql statement
@@ -362,6 +368,15 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}, 5*time.Second, 10*time.Millisecond)
 		require.NoError(err)
 		require.True(ok, "timed out waiting for num remote sessions to get to zero")
+
+		topicNames := st.testSuite.fakeKafka.GetTopicNames()
+		if len(topicNames) > 0 {
+			log.Println("Topics left at end of test run - please make sure you delete them at the end of your script")
+			for _, name := range topicNames {
+				log.Printf("Topic %s", name)
+			}
+		}
+		require.Equal(0, len(topicNames), "Topics left at end of test run")
 	}
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
@@ -373,7 +388,7 @@ func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Serv
 	for _, shardID := range localShards {
 		keyStartPrefix := table.EncodeTableKeyPrefix(common.UserTableIDBase, shardID, 16)
 		keyEndPrefix := table.EncodeTableKeyPrefix(0, shardID+1, 16)
-		pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, -1)
+		pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100)
 		require.NoError(err)
 		if displayRows && len(pairs) > 0 {
 			for _, pair := range pairs {
@@ -468,15 +483,8 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	datasetName := command[12:]
 	dataset := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
-	_, ok := fakeKafka.GetTopic(dataset.sourceInfo.TopicInfo.TopicName)
-	if !ok {
-		var err error
-		topic, err := fakeKafka.CreateTopic(dataset.sourceInfo.TopicInfo.TopicName, 10)
-		require.NoError(err)
-		st.topics = append(st.topics, topic)
-	}
 	groupID := source.GenerateGroupID(TestClusterID, dataset.sourceInfo)
-	err := fakeKafka.IngestRows(dataset.sourceInfo, dataset.rows, common.EncodingJSON, common.EncodingJSON, groupID)
+	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, common.EncodingJSON, common.EncodingJSON, groupID)
 	require.NoError(err)
 	st.waitForProcessingToComplete(require)
 	end := time.Now()
@@ -489,6 +497,32 @@ func (st *sqlTest) executeCloseSession(require *require.Assertions) {
 	err := st.session.Close()
 	require.NoError(err)
 	st.session = st.createSession(st.prana)
+}
+
+func (st *sqlTest) executeCreateTopic(require *require.Assertions, command string) {
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 3 || lp == 4, "Invalid create topic, should be --create topic topic_name [partitions]")
+	topicName := parts[2]
+	var partitions int64 = 10
+	if len(parts) > 3 {
+		var err error
+		partitions, err = strconv.ParseInt(parts[3], 10, 64)
+		require.NoError(err)
+	}
+	_, err := st.testSuite.fakeKafka.CreateTopic(topicName, int(partitions))
+	require.NoError(err)
+	log.Printf("Created topic %s partitions %d", topicName, partitions)
+}
+
+func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command string) {
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 3, "Invalid delete topic, should be --delete topic topic_name")
+	topicName := parts[2]
+	err := st.testSuite.fakeKafka.DeleteTopic(topicName)
+	require.NoError(err)
+	log.Printf("Deleted topic %s ", topicName)
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
@@ -505,6 +539,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	if err != nil {
 		ue, ok := err.(errors.UserError)
 		if ok {
+			log.Printf("failed to execute statement %s %v", statement, ue)
 			st.output.WriteString(ue.Error() + "\n")
 			return
 		}

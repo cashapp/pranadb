@@ -97,10 +97,10 @@ func (p *PushEngine) Stop() error {
 		sched.Stop()
 	}
 	// TODO instead of polling on wait just wait for sched channels to stop
-	err := sched.WaitUntilNoSchedulersRunning()
-	if err != nil {
-		return err
-	}
+	//err := sched.WaitUntilNoSchedulersRunning()
+	//if err != nil {
+	//	return err
+	//}
 	p.started = false
 	return nil
 }
