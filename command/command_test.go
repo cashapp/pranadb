@@ -62,6 +62,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 			) with (
                 brokername = "testbroker",
                 topicname = "testtopic",
+                headerencoding = "json",
                 keyencoding = "json",
                 valueencoding = "json",
                 columnselectors = (
@@ -88,10 +89,11 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 				},
 			},
 			TopicInfo: &common.TopicInfo{
-				BrokerName:    "testbroker",
-				TopicName:     "testtopic",
-				KeyEncoding:   common.EncodingJSON,
-				ValueEncoding: common.EncodingJSON,
+				BrokerName:     "testbroker",
+				TopicName:      "testtopic",
+				HeaderEncoding: common.EncodingJSON,
+				KeyEncoding:    common.EncodingJSON,
+				ValueEncoding:  common.EncodingJSON,
 				ColSelectors: []string{
 					"k.k0",
 					"v.v1",
@@ -189,6 +191,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 			)  with (
                 brokername = "testbroker",
                 topicname = "testtopic",
+                headerencoding = "json",
                 keyencoding = "json",
                 valueencoding = "json",
                 columnselectors = (

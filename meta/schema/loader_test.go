@@ -35,6 +35,7 @@ func TestLoader(t *testing.T) {
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
+                        headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
@@ -55,6 +56,7 @@ func TestLoader(t *testing.T) {
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
+                        headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
@@ -72,6 +74,7 @@ func TestLoader(t *testing.T) {
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
+                        headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
@@ -97,6 +100,7 @@ func TestLoader(t *testing.T) {
                      with (
 						brokername = "testbroker",
 						topicname = "testtopic",
+                        headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (

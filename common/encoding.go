@@ -37,6 +37,16 @@ func AppendFloat64ToBufferLE(buffer []byte, value float64) []byte {
 	return AppendUint64ToBufferLE(buffer, u)
 }
 
+func AppendFloat64ToBufferBE(buffer []byte, value float64) []byte {
+	u := math.Float64bits(value)
+	return AppendUint64ToBufferBE(buffer, u)
+}
+
+func AppendFloat32ToBufferBE(buffer []byte, value float32) []byte {
+	u := math.Float32bits(value)
+	return AppendUint32ToBufferBE(buffer, u)
+}
+
 func AppendStringToBufferLE(buffer []byte, value string) []byte {
 	buffPtr := AppendUint32ToBufferLE(buffer, uint32(len(value)))
 	buffPtr = append(buffPtr, value...)

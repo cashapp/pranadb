@@ -1,13 +1,11 @@
 package source
 
 import (
-	"encoding/binary"
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/stretchr/testify/require"
 	"log"
-	"math"
 	"testing"
 	"time"
 )
@@ -20,9 +18,7 @@ type verifyExpectedValuesFunc = func(t *testing.T, row *common.Row)
 
 func TestParseMessageKafkaFloatKey(t *testing.T) {
 	f := float32(123.25)
-	u := math.Float32bits(f)
-	keyBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(keyBytes, u)
+	keyBytes := common.AppendFloat32ToBufferBE(nil, f)
 
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, float64(f), row.GetFloat64(0))
@@ -32,9 +28,7 @@ func TestParseMessageKafkaFloatKey(t *testing.T) {
 
 func TestParseMessageKafkaDoubleKey(t *testing.T) {
 	f := 432.25
-	u := math.Float64bits(f)
-	keyBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(keyBytes, u)
+	keyBytes := common.AppendFloat64ToBufferBE(nil, f)
 
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, f, row.GetFloat64(0))
@@ -99,8 +93,9 @@ func testParseMessageKafkaKey(t *testing.T, keyType common.ColumnType, keyEncodi
 	}
 
 	testParseMessage(t, colNames, theColTypes,
+		common.EncodingJSON,
 		keyEncoding, common.EncodingJSON,
-		keyBytes, []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
+		nil, keyBytes, []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
 		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf2)
 }
 
@@ -142,7 +137,9 @@ func testParseMessageNilKeyAndNilJSONVals(t *testing.T, colType common.ColumnTyp
 	}
 
 	testParseMessage(t, colNames, theColTypes,
+		common.EncodingJSON,
 		keyEncoding, common.EncodingJSON,
+		nil,
 		[]byte{}, []byte(`{"vf1":null,"vf2":null,"vf3":null,"vf4":null}`),
 		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf)
 }
@@ -160,8 +157,8 @@ func TestParseMessageNilJsonKeyAndNilJsonVals(t *testing.T) {
 	}
 
 	testParseMessage(t, colNames, theColTypes,
-		common.EncodingJSON, common.EncodingJSON,
-		[]byte(`{"kf1":null}`), []byte(`{"vf1":null,"vf2":null,"vf3":null,"vf4":null}`),
+		common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
+		nil, []byte(`{"kf1":null}`), []byte(`{"vf1":null,"vf2":null,"vf3":null,"vf4":null}`),
 		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf)
 }
 
@@ -177,24 +174,24 @@ func verifyJSONExpectedValues(t *testing.T, row *common.Row) {
 
 func TestParseMessageJSONSimple(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
-		common.EncodingJSON, common.EncodingJSON,
-		[]byte(`{"kf1":1234}`), []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
+		common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
+		nil, []byte(`{"kf1":1234}`), []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
 		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(),
 		verifyJSONExpectedValues)
 }
 
 func TestParseMessageJSONArray(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
-		common.EncodingJSON, common.EncodingJSON,
-		[]byte(`{"kf1":[4321,1234]}`), []byte(`{"vf1":[4321,6789],"vf2":[0.1,9.99,23.12],"vf3":["a","foo","bar"],"vf4":["12345678.99"]}`),
+		common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
+		nil, []byte(`{"kf1":[4321,1234]}`), []byte(`{"vf1":[4321,6789],"vf2":[0.1,9.99,23.12],"vf3":["a","foo","bar"],"vf4":["12345678.99"]}`),
 		[]string{"k.kf1[1]", "v.vf1[0]", "v.vf2[2]", "v.vf3[1]", "v.vf4[0]"}, time.Now(),
 		verifyJSONExpectedValues)
 }
 
 func TestParseMessageJSONNested(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
-		common.EncodingJSON, common.EncodingJSON,
-		[]byte(`{"kf1":{"kf2":123,"kf3":1234}}`), []byte(`{"vf1":{"vf2":4321,"vf3": {"vf4": 23.12, "vf5": {"vf6": "foo", "vf7": "12345678.99"}}}}`),
+		common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
+		nil, []byte(`{"kf1":{"kf2":123,"kf3":1234}}`), []byte(`{"vf1":{"vf2":4321,"vf3": {"vf4": 23.12, "vf5": {"vf6": "foo", "vf7": "12345678.99"}}}}`),
 		[]string{"k.kf1.kf3", "v.vf1.vf2", "v.vf1.vf3.vf4", "v.vf1.vf3.vf5.vf6", "v.vf1.vf3.vf5.vf7"}, time.Now(),
 		verifyJSONExpectedValues)
 }
@@ -224,16 +221,178 @@ func TestParseMessageTimestamp(t *testing.T) {
 		require.Equal(t, tsMysql, row.GetTimestamp(2))
 	}
 
-	testParseMessage(t, theColNames, theColTypes, common.EncodingJSON, common.EncodingJSON,
-		[]byte(fmt.Sprintf(`{"kf1":"%s"}`, sTS)),               // Tests decoding mysql timestamp from string field in message
+	testParseMessage(t, theColNames, theColTypes, common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
+		nil,
+		[]byte(fmt.Sprintf(`{"kf1":"%s"}`, sTS)), // Tests decoding mysql timestamp from string field in message
 		[]byte(fmt.Sprintf(`{"vf1":%d}`, unixMillisPastEpoch)), // Tests decoding mysql timestamp from numeric field - assumed to be milliseconds past Unix epoch
 		[]string{"t", "k.kf1", "v.vf1"}, ts,
 		vf)
 }
 
+func TestParseMessagesJSONHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, int64(4321), row.GetInt64(1))
+		require.Equal(t, "blah", row.GetString(2))
+		require.Equal(t, 12.12, row.GetFloat64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingJSON,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: []byte(`{"hf1":4321}`)},
+			{Key: "hdr2", Value: []byte(`{"hf2":"blah"}`)},
+			{Key: "hdr3", Value: []byte(`{"hf3":12.12}`)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1.hf1", "h.hdr2.hf2", "h.hdr3.hf3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaStringHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.VarcharColumnType, common.VarcharColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, "val1", row.GetString(1))
+		require.Equal(t, "val2", row.GetString(2))
+		require.Equal(t, "val3", row.GetString(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaString,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: []byte("val1")},
+			{Key: "hdr2", Value: []byte("val2")},
+			{Key: "hdr3", Value: []byte("val3")},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaLongHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, int64(12345678), row.GetInt64(1))
+		require.Equal(t, int64(87654321), row.GetInt64(2))
+		require.Equal(t, int64(54321234), row.GetInt64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaLong,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: common.AppendUint64ToBufferBE(nil, 12345678)},
+			{Key: "hdr2", Value: common.AppendUint64ToBufferBE(nil, 87654321)},
+			{Key: "hdr3", Value: common.AppendUint64ToBufferBE(nil, 54321234)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaIntegerHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, int64(12345678), row.GetInt64(1))
+		require.Equal(t, int64(87654321), row.GetInt64(2))
+		require.Equal(t, int64(54321234), row.GetInt64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaInteger,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: common.AppendUint32ToBufferBE(nil, 12345678)},
+			{Key: "hdr2", Value: common.AppendUint32ToBufferBE(nil, 87654321)},
+			{Key: "hdr3", Value: common.AppendUint32ToBufferBE(nil, 54321234)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaShortHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, int64(2134), row.GetInt64(1))
+		require.Equal(t, int64(4321), row.GetInt64(2))
+		require.Equal(t, int64(5423), row.GetInt64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaShort,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: common.AppendUint16ToBufferBE(nil, 2134)},
+			{Key: "hdr2", Value: common.AppendUint16ToBufferBE(nil, 4321)},
+			{Key: "hdr3", Value: common.AppendUint16ToBufferBE(nil, 5423)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaFloatHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType, common.DoubleColumnType, common.DoubleColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, 2134.25, row.GetFloat64(1))
+		require.Equal(t, 4321.25, row.GetFloat64(2))
+		require.Equal(t, 5423.25, row.GetFloat64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaFloat,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: common.AppendFloat32ToBufferBE(nil, 2134.25)},
+			{Key: "hdr2", Value: common.AppendFloat32ToBufferBE(nil, 4321.25)},
+			{Key: "hdr3", Value: common.AppendFloat32ToBufferBE(nil, 5423.25)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
+func TestParseMessagesKafkaDoubleHeaders(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2", "col3"}
+	theColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType, common.DoubleColumnType, common.DoubleColumnType}
+	vf := func(t *testing.T, row *common.Row) {
+		t.Helper()
+		require.Equal(t, int64(1234), row.GetInt64(0))
+		require.Equal(t, 2134.25, row.GetFloat64(1))
+		require.Equal(t, 4321.25, row.GetFloat64(2))
+		require.Equal(t, 5423.25, row.GetFloat64(3))
+	}
+	testParseMessage(t, theColNames, theColTypes,
+		common.EncodingKafkaDouble,
+		common.EncodingJSON, common.EncodingJSON,
+		[]kafka.MessageHeader{
+			{Key: "hdr1", Value: common.AppendFloat64ToBufferBE(nil, 2134.25)},
+			{Key: "hdr2", Value: common.AppendFloat64ToBufferBE(nil, 4321.25)},
+			{Key: "hdr3", Value: common.AppendFloat64ToBufferBE(nil, 5423.25)},
+		},
+		[]byte(`{"kf1":1234}`), []byte(`{}`),
+		[]string{"k.kf1", "h.hdr1", "h.hdr2", "h.hdr3"}, time.Now(),
+		vf)
+}
+
 //nolint:unparam
-func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnType, keyEncoding common.KafkaEncoding,
-	valueEncoding common.KafkaEncoding, keyBytes []byte, valueBytes []byte, colSelectors []string, timestamp time.Time,
+func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnType, headerEncoding common.KafkaEncoding, keyEncoding common.KafkaEncoding,
+	valueEncoding common.KafkaEncoding, headers []kafka.MessageHeader, keyBytes []byte, valueBytes []byte, colSelectors []string, timestamp time.Time,
 	vf verifyExpectedValuesFunc) {
 	t.Helper()
 	tableInfo := &common.TableInfo{
@@ -246,12 +405,13 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		IndexInfos:     nil,
 	}
 	topicInfo := &common.TopicInfo{
-		BrokerName:    "test_broker",
-		TopicName:     "test_topic",
-		KeyEncoding:   keyEncoding,
-		ValueEncoding: valueEncoding,
-		ColSelectors:  colSelectors,
-		Properties:    nil,
+		BrokerName:     "test_broker",
+		TopicName:      "test_topic",
+		HeaderEncoding: headerEncoding,
+		KeyEncoding:    keyEncoding,
+		ValueEncoding:  valueEncoding,
+		ColSelectors:   colSelectors,
+		Properties:     nil,
 	}
 	sourceInfo := &common.SourceInfo{
 		TableInfo: tableInfo,
@@ -265,7 +425,7 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		TimeStamp: timestamp,
 		Key:       keyBytes,
 		Value:     valueBytes,
-		Headers:   nil,
+		Headers:   headers,
 	}
 	rows, err := mp.ParseMessages([]*kafka.Message{msg})
 	require.NoError(t, err)
