@@ -5,7 +5,7 @@ create source test_source_1(
     col3 double,
     col4 decimal(10, 2),
     col5 varchar,
-    col6 timestamp,
+    col6 timestamp(6),
     primary key (col0)
 );
 
