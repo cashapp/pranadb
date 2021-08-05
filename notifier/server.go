@@ -149,10 +149,6 @@ func (c *connection) doReadLoop() {
 			c.loopCh <- nil
 			return
 		}
-		if n == 0 {
-			c.loopCh <- nil
-			return
-		}
 		msgBuf = append(msgBuf, readBuff[0:n]...)
 		for len(msgBuf) >= 4 {
 			if msgLen == -1 {
