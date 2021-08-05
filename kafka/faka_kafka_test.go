@@ -197,7 +197,7 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 
 	//sub1 and sub2 should have non overlapping partitions
 	require.Equal(t, len(offsets1), len(offsets2))
-	for partID, _ := range offsets1 {
+	for partID := range offsets1 {
 		_, ok := offsets2[partID]
 		require.False(t, ok)
 	}
@@ -219,6 +219,7 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 }
 
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {
+	t.Helper()
 	var sentMsgs []*Message
 	for i := 0; i < numMessages; i++ {
 		key := []byte(fmt.Sprintf("key-%d", i))

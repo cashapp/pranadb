@@ -3,9 +3,11 @@ package source
 import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
+	"log"
 	"math"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 func CoerceInt64(val interface{}) (int64, error) {
@@ -115,6 +117,26 @@ func CoerceDecimal(val interface{}) (*common.Decimal, error) {
 		return common.NewDecFromFloat64(float64(v))
 	default:
 		return nil, coerceFailedErr(v, "decimal")
+	}
+}
+
+func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
+	switch v := val.(type) {
+	case *common.Timestamp:
+		return *v, nil
+	case time.Time:
+		return common.NewTimestampFromGoTime(v), nil
+	case string:
+		return common.NewTimestampFromString(v), nil
+	case float64:
+		return CoerceTimestamp(uint64(v))
+	case uint64:
+		// Incoming value is assumed to be Unix milliseconds past epoch
+		ts := common.NewTimestampFromUnixEpochMillis(int64(v))
+		log.Printf("coerced ts from unix millis %d %s", v, ts)
+		return ts, nil
+	default:
+		return common.Timestamp{}, coerceFailedErr(v, "timestamp")
 	}
 }
 

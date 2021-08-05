@@ -2,10 +2,9 @@ package common
 
 import (
 	"encoding/binary"
+	"github.com/pingcap/parser/mysql"
 	"math"
 	"unsafe"
-
-	"github.com/pingcap/parser/mysql"
 )
 
 var littleEndian = binary.LittleEndian

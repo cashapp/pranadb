@@ -60,13 +60,19 @@ func IngestRow(f *FakeKafka, topicName string, row *common.Row, colTypes []commo
 	keyMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal := getColVal(keyCol, colType, row)
+		colVal, err := getColVal(keyCol, colType, row)
+		if err != nil {
+			return err
+		}
 		keyMap[fmt.Sprintf("k%d", i)] = colVal
 	}
 
 	valMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal := getColVal(i, colType, row)
+		colVal, err := getColVal(i, colType, row)
+		if err != nil {
+			return err
+		}
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 
@@ -88,7 +94,7 @@ func IngestRow(f *FakeKafka, topicName string, row *common.Row, colTypes []commo
 	return nil
 }
 
-func getColVal(colIndex int, colType common.ColumnType, row *common.Row) interface{} {
+func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interface{}, error) {
 	var colVal interface{}
 	switch colType.Type {
 	case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
@@ -101,9 +107,15 @@ func getColVal(colIndex int, colType common.ColumnType, row *common.Row) interfa
 		dec := row.GetDecimal(colIndex)
 		colVal = dec.String()
 	case common.TypeTimestamp:
-		panic("TODO")
+		ts := row.GetTimestamp(colIndex)
+		gotime, err := ts.GoTime(time.UTC)
+		if err != nil {
+			return nil, err
+		}
+		// convert to unix millis past epoch
+		colVal = gotime.UnixNano() / 1000000
 	case common.TypeUnknown:
 		panic("unknown type")
 	}
-	return colVal
+	return colVal, nil
 }

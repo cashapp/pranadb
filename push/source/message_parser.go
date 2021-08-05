@@ -67,6 +67,7 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 	rep := make(map[string]interface{}, 2)
 	rep["k"] = km
 	rep["v"] = vm
+	rep["t"] = message.TimeStamp
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
 		c := context.Background()
@@ -103,6 +104,12 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 				return err
 			}
 			rows.AppendDecimalToColumn(i, *dval)
+		case common.TypeTimestamp:
+			tsVal, err := CoerceTimestamp(val)
+			if err != nil {
+				return err
+			}
+			rows.AppendTimestampToColumn(i, tsVal)
 		default:
 			return fmt.Errorf("unsupported col type %d", colType.Type)
 		}

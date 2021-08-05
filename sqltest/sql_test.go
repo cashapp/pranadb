@@ -463,7 +463,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 						require.NoError(err)
 						currDataSet.rows.AppendDecimalToColumn(i, *val)
 					case common.TypeTimestamp:
-						val := common.NewTimestampFromStringForTest(part)
+						val := common.NewTimestampFromString(part)
 						currDataSet.rows.AppendTimestampToColumn(i, val)
 					default:
 						require.Fail(fmt.Sprintf("unexpected data type %d", colType.Type))

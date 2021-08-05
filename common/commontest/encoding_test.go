@@ -3,6 +3,7 @@ package commontest
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/assert"
@@ -201,14 +202,48 @@ func testEncodeDecodeUint32(t *testing.T, val uint32) {
 	require.Equal(t, val, valRead)
 }
 
-func TestEncodeDecodeTimestamp(t *testing.T) {
-	ts := common.NewTimestampFromStringForTest("2021-08-01 12:34:56.789")
+func TestEncodeDecodeTimestampFromString(t *testing.T) {
+	ts := common.NewTimestampFromString("2021-08-01 12:34:56.789")
 	buf, err := common.AppendTimestampToBuffer(nil, ts)
 	require.NoError(t, err)
 	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0, ts.Fsp())
 	require.NoError(t, err)
 	assert.Equal(t, 0, ts.Compare(valRead))
 	assert.Equal(t, "2021-08-01 12:34:56.789", valRead.String())
+
+	// And check the other way
+	s := ts.String()
+	ts2 := common.NewTimestampFromString(s)
+	assert.Equal(t, ts, ts2)
+}
+
+func TestEncodeDecodeTimestampToString(t *testing.T) {
+	now := time.Now()
+	ts1 := common.NewTimestampFromGoTime(now)
+	s := ts1.String()
+	ts2 := common.NewTimestampFromString(s)
+	require.Equal(t, ts1, ts2)
+}
+
+func TestEncodeDecodeTimestampFromGoTime(t *testing.T) {
+	now := time.Now()
+	ts := common.NewTimestampFromGoTime(now)
+	buf, err := common.AppendTimestampToBuffer(nil, ts)
+	require.NoError(t, err)
+	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0, 6)
+	require.NoError(t, err)
+	assert.Equal(t, 0, ts.Compare(valRead))
+}
+
+func TestEncodeDecodeTimestampFromUnixEpochMillis(t *testing.T) {
+	// Get a time that is rounded to nearest ms
+	now := time.Now()
+	unixMillisPastEpoch := now.UnixNano() / 1000000
+	unixSeconds := unixMillisPastEpoch / 1000
+	trounded := time.Unix(unixSeconds, (unixMillisPastEpoch%1000)*1000000)
+	ts1 := common.NewTimestampFromGoTime(trounded)
+	ts2 := common.NewTimestampFromUnixEpochMillis(unixMillisPastEpoch)
+	require.Equal(t, ts1, ts2)
 }
 
 func setEndianness(t *testing.T, endianness bool) {

@@ -2,9 +2,11 @@ package source
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/stretchr/testify/require"
+	"log"
 	"math"
 	"testing"
 	"time"
@@ -99,7 +101,7 @@ func testParseMessageKafkaKey(t *testing.T, keyType common.ColumnType, keyEncodi
 	testParseMessage(t, colNames, theColTypes,
 		keyEncoding, common.EncodingJSON,
 		keyBytes, []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
-		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, vf2)
+		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf2)
 }
 
 func TestParseMessageNilKafkaLongKeyAndVals(t *testing.T) {
@@ -142,7 +144,7 @@ func testParseMessageNilKeyAndNilJSONVals(t *testing.T, colType common.ColumnTyp
 	testParseMessage(t, colNames, theColTypes,
 		keyEncoding, common.EncodingJSON,
 		[]byte{}, []byte(`{"vf1":null,"vf2":null,"vf3":null,"vf4":null}`),
-		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, vf)
+		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf)
 }
 
 func TestParseMessageNilJsonKeyAndNilJsonVals(t *testing.T) {
@@ -160,7 +162,7 @@ func TestParseMessageNilJsonKeyAndNilJsonVals(t *testing.T) {
 	testParseMessage(t, colNames, theColTypes,
 		common.EncodingJSON, common.EncodingJSON,
 		[]byte(`{"kf1":null}`), []byte(`{"vf1":null,"vf2":null,"vf3":null,"vf4":null}`),
-		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, vf)
+		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf)
 }
 
 func verifyJSONExpectedValues(t *testing.T, row *common.Row) {
@@ -177,7 +179,7 @@ func TestParseMessageJSONSimple(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
 		common.EncodingJSON, common.EncodingJSON,
 		[]byte(`{"kf1":1234}`), []byte(`{"vf1":4321,"vf2":23.12,"vf3":"foo","vf4":"12345678.99"}`),
-		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"},
+		[]string{"k.kf1", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(),
 		verifyJSONExpectedValues)
 }
 
@@ -185,7 +187,7 @@ func TestParseMessageJSONArray(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
 		common.EncodingJSON, common.EncodingJSON,
 		[]byte(`{"kf1":[4321,1234]}`), []byte(`{"vf1":[4321,6789],"vf2":[0.1,9.99,23.12],"vf3":["a","foo","bar"],"vf4":["12345678.99"]}`),
-		[]string{"k.kf1[1]", "v.vf1[0]", "v.vf2[2]", "v.vf3[1]", "v.vf4[0]"},
+		[]string{"k.kf1[1]", "v.vf1[0]", "v.vf2[2]", "v.vf3[1]", "v.vf4[0]"}, time.Now(),
 		verifyJSONExpectedValues)
 }
 
@@ -193,13 +195,45 @@ func TestParseMessageJSONNested(t *testing.T) {
 	testParseMessage(t, colNames, colTypes,
 		common.EncodingJSON, common.EncodingJSON,
 		[]byte(`{"kf1":{"kf2":123,"kf3":1234}}`), []byte(`{"vf1":{"vf2":4321,"vf3": {"vf4": 23.12, "vf5": {"vf6": "foo", "vf7": "12345678.99"}}}}`),
-		[]string{"k.kf1.kf3", "v.vf1.vf2", "v.vf1.vf3.vf4", "v.vf1.vf3.vf5.vf6", "v.vf1.vf3.vf5.vf7"},
+		[]string{"k.kf1.kf3", "v.vf1.vf2", "v.vf1.vf3.vf4", "v.vf1.vf3.vf5.vf6", "v.vf1.vf3.vf5.vf7"}, time.Now(),
 		verifyJSONExpectedValues)
+}
+
+func TestParseMessageTimestamp(t *testing.T) {
+	theColNames := []string{"col0", "col1", "col2"}
+	theColTypes := []common.ColumnType{common.TimestampColumnType, common.TimestampColumnType, common.TimestampColumnType}
+
+	now := time.Now()
+	// round it to the nearest millisecond
+	unixMillisPastEpoch := now.UnixNano() / 1000000
+	unixSeconds := unixMillisPastEpoch / 1000
+	ts := time.Unix(unixSeconds, (unixMillisPastEpoch%1000)*1000000)
+	tsMysql := common.NewTimestampFromGoTime(ts)
+	sTS := tsMysql.String()
+
+	// We get col0 from the timestamp of the Kafka message itself
+	// We get col1 from a string field in the message
+	// We get col2 from a numeric field in the message assumed to be unix milliseconds (like new Date().getTime())
+	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
+		require.Equal(t, tsMysql, row.GetTimestamp(0))
+
+		ts2 := row.GetTimestamp(1)
+		log.Printf("Received str timestamp is %s", ts2.String())
+
+		require.Equal(t, tsMysql, row.GetTimestamp(1))
+		require.Equal(t, tsMysql, row.GetTimestamp(2))
+	}
+
+	testParseMessage(t, theColNames, theColTypes, common.EncodingJSON, common.EncodingJSON,
+		[]byte(fmt.Sprintf(`{"kf1":"%s"}`, sTS)),               // Tests decoding mysql timestamp from string field in message
+		[]byte(fmt.Sprintf(`{"vf1":%d}`, unixMillisPastEpoch)), // Tests decoding mysql timestamp from numeric field - assumed to be milliseconds past Unix epoch
+		[]string{"t", "k.kf1", "v.vf1"}, ts,
+		vf)
 }
 
 //nolint:unparam
 func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnType, keyEncoding common.KafkaEncoding,
-	valueEncoding common.KafkaEncoding, keyBytes []byte, valueBytes []byte, colSelectors []string,
+	valueEncoding common.KafkaEncoding, keyBytes []byte, valueBytes []byte, colSelectors []string, timestamp time.Time,
 	vf verifyExpectedValuesFunc) {
 	t.Helper()
 	tableInfo := &common.TableInfo{
@@ -228,7 +262,7 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 
 	msg := &kafka.Message{
 		PartInfo:  kafka.PartInfo{},
-		TimeStamp: time.Time{},
+		TimeStamp: timestamp,
 		Key:       keyBytes,
 		Value:     valueBytes,
 		Headers:   nil,
