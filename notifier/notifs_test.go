@@ -5,7 +5,6 @@ import (
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/stretchr/testify/require"
-	"log"
 	"math/rand"
 	"sync"
 	"testing"
@@ -117,14 +116,11 @@ func TestNotificationsRetryConnections(t *testing.T) {
 	require.Equal(t, 3, client.numAvailableServers())
 	require.Equal(t, 0, client.numUnavailableServers())
 
-	log.Printf("Calling to stop server")
 	err = servers[1].Stop()
-	log.Println("Stopped server")
 	require.NoError(t, err)
 	start := time.Now()
 	for time.Now().Sub(start) < 5*time.Second {
 		err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-		log.Println("sent message")
 		require.NoError(t, err)
 		numSent++
 
