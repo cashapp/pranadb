@@ -58,11 +58,11 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 	w.suite.SetT(t)
 }
 
-func TestSqlFakeCluster(t *testing.T) {
+func TestSQLFakeCluster(t *testing.T) {
 	testSQL(t, true, 1)
 }
 
-func TestSqlClustered(t *testing.T) {
+func TestSQLClustered(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
@@ -83,7 +83,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	suite.Run(t, ts)
 }
 
-func (w *sqlTestsuite) TestSql() {
+func (w *sqlTestsuite) TestSQL() {
 	for testName, sTest := range w.tests {
 		w.suite.Run(testName, sTest.run)
 	}

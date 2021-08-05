@@ -268,7 +268,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SqlTest will think ddl is synced before data is deleted
+		// otherwise SQLTest will think ddl is synced before data is deleted
 		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
 		if err != nil {
 			return nil, err
@@ -287,7 +287,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SqlTest will think ddl is synced before data is deleted
+		// otherwise SQLTest will think ddl is synced before data is deleted
 		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
 		if err != nil {
 			return nil, err
