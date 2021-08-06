@@ -344,6 +344,10 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 		}
 	}
 
+	headerEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.HeaderEncoding))
+	if headerEncoding == common.EncodingUnknown {
+		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.HeaderEncoding)
+	}
 	keyEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.KeyEncoding))
 	if keyEncoding == common.EncodingUnknown {
 		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.KeyEncoding)
@@ -370,12 +374,13 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 	}
 
 	topicInfo := &common.TopicInfo{
-		BrokerName:    stripQuotes(src.TopicInformation.BrokerName),
-		TopicName:     stripQuotes(src.TopicInformation.TopicName),
-		KeyEncoding:   keyEncoding,
-		ValueEncoding: valueEncoding,
-		ColSelectors:  colSelectors,
-		Properties:    propsMap,
+		BrokerName:     stripQuotes(src.TopicInformation.BrokerName),
+		TopicName:      stripQuotes(src.TopicInformation.TopicName),
+		HeaderEncoding: headerEncoding,
+		KeyEncoding:    keyEncoding,
+		ValueEncoding:  valueEncoding,
+		ColSelectors:   colSelectors,
+		Properties:     propsMap,
 	}
 	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, topicInfo, seqGenerator, persist); err != nil {
 		return nil, errors.MaybeAddStack(err)

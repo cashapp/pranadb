@@ -215,12 +215,13 @@ func (i *MetaTableInfo) String() string {
 }
 
 type TopicInfo struct {
-	BrokerName    string
-	TopicName     string
-	KeyEncoding   KafkaEncoding
-	ValueEncoding KafkaEncoding
-	ColSelectors  []string
-	Properties    map[string]string
+	BrokerName     string
+	TopicName      string
+	KeyEncoding    KafkaEncoding
+	ValueEncoding  KafkaEncoding
+	HeaderEncoding KafkaEncoding
+	ColSelectors   []string
+	Properties     map[string]string
 }
 
 type KafkaEncoding int

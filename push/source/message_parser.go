@@ -54,6 +54,18 @@ func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, 
 
 func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) error {
 	ti := m.sourceInfo.TopicInfo
+	// Decode headers
+	var hdrs map[string]interface{}
+	if lh := len(message.Headers); lh > 0 {
+		hdrs = make(map[string]interface{}, lh)
+		for _, hdr := range message.Headers {
+			hm, err := m.decodeBytes(ti.HeaderEncoding, hdr.Value)
+			if err != nil {
+				return err
+			}
+			hdrs[hdr.Key] = hm
+		}
+	}
 	// Decode key
 	km, err := m.decodeBytes(ti.KeyEncoding, message.Key)
 	if err != nil {
@@ -65,6 +77,7 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 		return err
 	}
 	rep := make(map[string]interface{}, 2)
+	rep["h"] = hdrs
 	rep["k"] = km
 	rep["v"] = vm
 	rep["t"] = message.TimeStamp

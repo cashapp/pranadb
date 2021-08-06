@@ -10,6 +10,7 @@ create source test_source_1(
 ) with (
     brokername = "testbroker",
     topicname = "testtopic",
+    headerencoding = "json",
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (

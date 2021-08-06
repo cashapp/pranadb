@@ -158,10 +158,6 @@ func (r *Row) GetFloat64(colIndex int) float64 {
 	return r.tRow.GetFloat64(colIndex)
 }
 
-func (r *Row) GetFloat32(colIndex int) float32 {
-	return r.tRow.GetFloat32(colIndex)
-}
-
 func (r *Row) GetDecimal(colIndex int) Decimal {
 	return *NewDecimal(r.tRow.GetMyDecimal(colIndex))
 }
