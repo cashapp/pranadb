@@ -30,6 +30,7 @@ var (
 		// 	}
 		// 	return token, nil
 		// }, "Ident"),
+		participle.Unquote("String"),
 	)
 	selectPrefix  = regexp.MustCompile(`(?i)^select\s+`)
 	preparePrefix = regexp.MustCompile(`(?i)^prepare\s+`)

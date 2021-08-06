@@ -2,14 +2,13 @@ package command
 
 import (
 	"fmt"
-
-	"github.com/squareup/pranadb/notifier"
-
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/notifier"
 
 	"github.com/squareup/pranadb/sess"
 
@@ -344,28 +343,28 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 		}
 	}
 
-	headerEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.HeaderEncoding))
+	headerEncoding := common.KafkaEncodingFromString(src.TopicInformation.HeaderEncoding)
 	if headerEncoding == common.EncodingUnknown {
 		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.HeaderEncoding)
 	}
-	keyEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.KeyEncoding))
+	keyEncoding := common.KafkaEncodingFromString(src.TopicInformation.KeyEncoding)
 	if keyEncoding == common.EncodingUnknown {
 		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.KeyEncoding)
 	}
-	valueEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.ValueEncoding))
+	valueEncoding := common.KafkaEncodingFromString(src.TopicInformation.ValueEncoding)
 	if valueEncoding == common.EncodingUnknown {
 		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.ValueEncoding)
 	}
 	props := src.TopicInformation.Properties
 	propsMap := make(map[string]string, len(props))
 	for _, prop := range props {
-		propsMap[stripQuotes(prop.Key)] = stripQuotes(prop.Value)
+		propsMap[prop.Key] = prop.Value
 	}
 
 	cs := src.TopicInformation.ColSelectors
 	colSelectors := make([]string, len(cs))
 	for i := 0; i < len(cs); i++ {
-		colSelectors[i] = stripQuotes(cs[i].Selector)
+		colSelectors[i] = cs[i]
 	}
 	lc := len(colSelectors)
 	if lc > 0 && lc != len(colTypes) {
@@ -374,8 +373,8 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 	}
 
 	topicInfo := &common.TopicInfo{
-		BrokerName:     stripQuotes(src.TopicInformation.BrokerName),
-		TopicName:      stripQuotes(src.TopicInformation.TopicName),
+		BrokerName:     src.TopicInformation.BrokerName,
+		TopicName:      src.TopicInformation.TopicName,
 		HeaderEncoding: headerEncoding,
 		KeyEncoding:    keyEncoding,
 		ValueEncoding:  valueEncoding,
@@ -412,11 +411,4 @@ func (e *Executor) HandleNotification(notification notifier.Notification) {
 			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
 		}
 	}
-}
-
-func stripQuotes(str string) string {
-	if str[0] == '"' && str[len(str)-1] == '"' {
-		return str[1 : len(str)-1]
-	}
-	return str
 }

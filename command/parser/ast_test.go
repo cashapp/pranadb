@@ -50,16 +50,15 @@ func TestParse(t *testing.T) {
 			keyencoding = "json",
 			valueencoding = "json",
 			columnselectors = (
-			"k.k0"
-			"v.v1"
-			"v.v2"
-		)
+				"k.k0",
+				"v.v1",
+				"v.v2"
+			)
 			properties = (
-			"prop1" = "val1"
+			"prop1" = "val1",
 			"prop2" = "val2"
-		)
-		)
-			`, &AST{Create: &Create{
+			)
+		)`, &AST{Create: &Create{
 			Source: &CreateSource{
 				Name: "sensor_readings",
 				Options: []*TableOption{
@@ -69,19 +68,15 @@ func TestParse(t *testing.T) {
 					{PrimaryKey: "sensor_id"},
 				},
 				TopicInformation: &TopicInformation{
-					BrokerName:     `"testbroker"`,
-					TopicName:      `"testtopic"`,
-					HeaderEncoding: `"json"`,
-					KeyEncoding:    `"json"`,
-					ValueEncoding:  `"json"`,
-					ColSelectors: []*ColSelector{
-						{Selector: `"k.k0"`},
-						{Selector: `"v.v1"`},
-						{Selector: `"v.v2"`},
-					},
+					BrokerName:     "testbroker",
+					TopicName:      "testtopic",
+					HeaderEncoding: "json",
+					KeyEncoding:    "json",
+					ValueEncoding:  "json",
+					ColSelectors:   []string{"k.k0", "v.v1", "v.v2"},
 					Properties: []*TopicInfoProperty{
-						{Key: `"prop1"`, Value: `"val1"`},
-						{Key: `"prop2"`, Value: `"val2"`},
+						{Key: "prop1", Value: "val1"},
+						{Key: "prop2", Value: "val2"},
 					},
 				},
 			},

@@ -19,16 +19,16 @@ create source test_source_1(
     keyencoding = "stringbytes",
     valueencoding = "json",
     columnselectors = (
-        "v.v0"
-        "v.v1"
-        "v.v2"
-        "v.v3"
-        "v.v4"
-        "k"
+        "v.v0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "k",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -61,16 +61,16 @@ create source test_source_1(
     keyencoding = "int64be",
     valueencoding = "json",
     columnselectors = (
-        "k"
-        "v.v1"
-        "v.v2"
-        "v.v3"
-        "v.v4"
-        "v.v5"
+        "k",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -103,16 +103,16 @@ create source test_source_1(
     keyencoding = "int32be",
     valueencoding = "json",
     columnselectors = (
-        "v.v0"
-        "v.v1"
-        "k"
-        "v.v3"
-        "v.v4"
-        "v.v5"
+        "v.v0",
+        "v.v1",
+        "k",
+        "v.v3",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -145,16 +145,16 @@ create source test_source_1(
     keyencoding = "float64be",
     valueencoding = "json",
     columnselectors = (
-        "v.v0"
-        "v.v1"
-        "v.v2"
-        "k"
-        "v.v4"
-        "v.v5"
+        "v.v0",
+        "v.v1",
+        "v.v2",
+        "k",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -187,16 +187,16 @@ create source test_source_1(
     keyencoding = "float32be",
     valueencoding = "json",
     columnselectors = (
-        "v.v0"
-        "v.v1"
-        "v.v2"
-        "k"
-        "v.v4"
-        "v.v5"
+        "v.v0",
+        "v.v1",
+        "v.v2",
+        "k",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -229,16 +229,16 @@ create source test_source_1(
     keyencoding = "int16be",
     valueencoding = "json",
     columnselectors = (
-        "v.v0"
-        "v.v1"
-        "k"
-        "v.v3"
-        "v.v4"
-        "v.v5"
+        "v.v0",
+        "v.v1",
+        "k",
+        "v.v3",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -270,16 +270,16 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0"
-        "v.v1"
-        "v.v2"
-        "v.v3"
-        "v.v4"
-        "v.v5"
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
         "v.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -311,16 +311,16 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.n0.k0"
-        "v.n1.v1"
-        "v.n2.v2"
-        "v.n3.v3"
-        "v.n4.v4"
-        "v.n5.v5"
+        "k.n0.k0",
+        "v.n1.v1",
+        "v.n2.v2",
+        "v.n3.v3",
+        "v.n4.v4",
+        "v.n5.v5",
         "v.n6.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -352,16 +352,16 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "h.key.k0"
-        "h.val.v1"
-        "h.val.v2"
-        "h.val.v3"
-        "h.val.v4"
-        "h.val.v5"
+        "h.key.k0",
+        "h.val.v1",
+        "h.val.v2",
+        "h.val.v3",
+        "h.val.v4",
+        "h.val.v5",
         "h.val.v6"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );
@@ -393,16 +393,16 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0"
-        "v.v1"
-        "v.v2"
-        "v.v3"
-        "v.v4"
-        "v.v5"
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
         "t"
     )
     properties = (
-        "prop1" = "val1"
+        "prop1" = "val1",
         "prop2" = "val2"
     )
 );

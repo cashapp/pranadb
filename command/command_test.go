@@ -2,6 +2,8 @@ package command
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
@@ -11,7 +13,6 @@ import (
 	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/meta"
@@ -66,12 +67,12 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
                 keyencoding = "json",
                 valueencoding = "json",
                 columnselectors = (
-				    "k.k0"
-                    "v.v1"
+				    "k.k0",
+                    "v.v1",
                     "v.v2"
 				)
                 properties = (
-                    "prop1" = "val1"
+                    "prop1" = "val1",
                     "prop2" = "val2"
                 )
             )
@@ -195,12 +196,12 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
                 keyencoding = "json",
                 valueencoding = "json",
                 columnselectors = (
-				    "k.k0"
-                    "v.v1"
+				    "k.k0",
+                    "v.v1",
                     "v.v2"
 				)
                 properties = (
-                    "prop1" = "val1"
+                    "prop1" = "val1",
                     "prop2" = "val2"
                 )
             )
