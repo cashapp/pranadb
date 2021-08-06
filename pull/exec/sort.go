@@ -34,8 +34,7 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 }
 
 func (p PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
-	// TODO - get rid of getRows with limit -1, doesn't make sense - we always call in batches
-	if limit == 0 || limit < -1 {
+	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 

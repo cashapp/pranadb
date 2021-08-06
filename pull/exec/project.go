@@ -27,7 +27,7 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 // GetRows returns the projected columns.
 func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // nolint: gocyclo
 
-	if limit == 0 || limit < -1 {
+	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 

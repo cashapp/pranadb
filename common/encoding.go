@@ -2,15 +2,18 @@ package common
 
 import (
 	"encoding/binary"
+	"github.com/pingcap/parser/mysql"
 	"math"
 	"unsafe"
-
-	"github.com/pingcap/parser/mysql"
 )
 
 var littleEndian = binary.LittleEndian
 var bigEndian = binary.BigEndian
 var IsLittleEndian = isLittleEndian()
+
+func AppendUint16ToBufferBE(buffer []byte, v uint16) []byte {
+	return append(buffer, byte(v>>8), byte(v))
+}
 
 func AppendUint32ToBufferLE(buffer []byte, v uint32) []byte {
 	return append(buffer, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
@@ -53,12 +56,28 @@ func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
 	return buffer, nil
 }
 
+func ReadUint16FromBufferBE(buffer []byte, offset int) (uint16, int) {
+	if !IsLittleEndian {
+		// nolint: gosec
+		return *(*uint16)(unsafe.Pointer(&buffer[offset])), offset + 2
+	}
+	return bigEndian.Uint16(buffer[offset:]), offset + 2
+}
+
 func ReadUint32FromBufferLE(buffer []byte, offset int) (uint32, int) {
 	if IsLittleEndian {
 		// nolint: gosec
 		return *(*uint32)(unsafe.Pointer(&buffer[offset])), offset + 4
 	}
 	return littleEndian.Uint32(buffer[offset:]), offset + 4
+}
+
+func ReadUint32FromBufferBE(buffer []byte, offset int) (uint32, int) {
+	if !IsLittleEndian {
+		// nolint: gosec
+		return *(*uint32)(unsafe.Pointer(&buffer[offset])), offset + 4
+	}
+	return bigEndian.Uint32(buffer[offset:]), offset + 4
 }
 
 func ReadUint64FromBufferLE(buffer []byte, offset int) (uint64, int) {
@@ -87,6 +106,20 @@ func ReadFloat64FromBufferLE(buffer []byte, offset int) (val float64, off int) {
 	var u uint64
 	u, offset = ReadUint64FromBufferLE(buffer, offset)
 	val = math.Float64frombits(u)
+	return val, offset
+}
+
+func ReadFloat64FromBufferBE(buffer []byte, offset int) (val float64, off int) {
+	var u uint64
+	u, offset = ReadUint64FromBufferBE(buffer, offset)
+	val = math.Float64frombits(u)
+	return val, offset
+}
+
+func ReadFloat32FromBufferBE(buffer []byte, offset int) (val float32, off int) {
+	var u uint32
+	u, offset = ReadUint32FromBufferBE(buffer, offset)
+	val = math.Float32frombits(u)
 	return val, offset
 }
 

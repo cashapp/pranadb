@@ -3,8 +3,6 @@ package pull
 import (
 	"errors"
 	"fmt"
-	"log"
-
 	"github.com/pingcap/tidb/planner/util"
 	"github.com/pingcap/tidb/types"
 	"github.com/squareup/pranadb/parplan"
@@ -29,7 +27,6 @@ func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast p
 	// Build the physical plan
 	physicalPlan, logicalSort, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
 	if err != nil {
-		log.Printf("Query got error %v", err)
 		return nil, err
 	}
 	// Build initial dag from the plan

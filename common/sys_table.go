@@ -10,7 +10,8 @@ const (
 	LastLogIndexReceivedTableID = 6
 	SyncTableID                 = 7
 	// SchemaTableID stores table schemas
-	SchemaTableID = 8
+	SchemaTableID  = 8
+	OffsetsTableID = 9
 
 	UserTableIDBase = 1000
 )

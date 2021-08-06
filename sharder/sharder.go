@@ -28,14 +28,18 @@ func NewSharder(cluster cluster.Cluster) *Sharder {
 }
 
 func (s *Sharder) CalculateShard(shardType ShardType, key []byte) (uint64, error) {
+	shardIDs := s.getShardIDs()
+	return s.CalculateShardWithShardIDs(shardType, key, shardIDs)
+}
+
+func (s *Sharder) CalculateShardWithShardIDs(shardType ShardType, key []byte, shardIDs []uint64) (uint64, error) {
 	if shardType == ShardTypeHash {
-		return s.computeHashShard(key), nil
+		return s.computeHashShard(key, shardIDs), nil
 	}
 	panic("unsupported")
 }
 
-func (s *Sharder) computeHashShard(key []byte) uint64 {
-	shardIDs := s.getShardIDs()
+func (s *Sharder) computeHashShard(key []byte, shardIDs []uint64) uint64 {
 	hash := hash(key)
 	index := hash % uint32(len(shardIDs))
 	return shardIDs[index]

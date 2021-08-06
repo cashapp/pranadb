@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/kafka"
 	"strings"
 
 	"github.com/squareup/pranadb/notifier"
@@ -28,13 +30,61 @@ func TestLoader(t *testing.T) {
 		{
 			name: "sources",
 			ddl: []ddl{{
-				schema:  "location",
-				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) )`},
+				schema: "location",
+				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) ) 
+					with (
+						brokername = "testbroker",
+						topicname = "testtopic",
+						keyencoding = "json",
+						valueencoding = "json",
+						columnselectors = (
+							"k.k0"
+							"v.v1"
+							"v.v2"
+						)
+						properties = (
+							"prop1" = "val1"
+							"prop2" = "val2"
+						)
+					)
+					`},
 			}, {
 				schema: "hollywood",
 				queries: []string{
-					`create source actor(id bigint, name varchar, age int, primary key (id) )`,
-					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))`,
+					`create source actor(id bigint, name varchar, age int, primary key (id) )
+					with (
+						brokername = "testbroker",
+						topicname = "testtopic",
+						keyencoding = "json",
+						valueencoding = "json",
+						columnselectors = (
+							"k.k0"
+							"v.v1"
+							"v.v2"
+						)
+						properties = (
+							"prop1" = "val1"
+							"prop2" = "val2"
+						)
+					)
+				`,
+					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))
+					with (
+						brokername = "testbroker",
+						topicname = "testtopic",
+						keyencoding = "json",
+						valueencoding = "json",
+						columnselectors = (
+							"k.k0"
+							"v.v1"
+							"v.v2"
+							"v.v3"
+						)
+						properties = (
+							"prop1" = "val1"
+							"prop2" = "val2"
+						)
+					)`,
 				},
 			}},
 		},
@@ -43,7 +93,23 @@ func TestLoader(t *testing.T) {
 			ddl: []ddl{{
 				schema: "hollywood",
 				queries: []string{
-					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))`,
+					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))
+                     with (
+						brokername = "testbroker",
+						topicname = "testtopic",
+						keyencoding = "json",
+						valueencoding = "json",
+						columnselectors = (
+							"k.k0"
+							"v.v1"
+							"v.v2"
+							"v.v3"
+						)
+						properties = (
+							"prop1" = "val1"
+							"prop2" = "val2"
+						)
+					)`,
 					`create materialized view latest_movies as
 						select director, max(year)
 						from movies
@@ -98,17 +164,20 @@ func TestLoader(t *testing.T) {
 
 func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier) (*meta.Controller, *command.Executor) {
 	t.Helper()
-
+	fakeKafka := kafka.NewFakeKafka()
+	_, err := fakeKafka.CreateTopic("testtopic", 10)
+	require.NoError(t, err)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
+	config := conf.NewTestConfig(fakeKafka.ID)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
-	err := clus.Start()
+	err = clus.Start()
 	require.NoError(t, err)
 	err = metaController.Start()
 	require.NoError(t, err)

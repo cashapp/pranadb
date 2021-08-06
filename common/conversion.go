@@ -7,24 +7,27 @@ import (
 )
 
 func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
+	var ft *types.FieldType
 	switch columnType.Type {
 	case TypeTinyInt:
-		return types.NewFieldType(mysql.TypeTiny)
+		ft = types.NewFieldType(mysql.TypeTiny)
 	case TypeInt:
-		return types.NewFieldType(mysql.TypeLong)
+		ft = types.NewFieldType(mysql.TypeLong)
 	case TypeBigInt:
-		return types.NewFieldType(mysql.TypeLonglong)
+		ft = types.NewFieldType(mysql.TypeLonglong)
 	case TypeDouble:
-		return types.NewFieldType(mysql.TypeDouble)
+		ft = types.NewFieldType(mysql.TypeDouble)
 	case TypeDecimal:
-		return types.NewFieldType(mysql.TypeNewDecimal)
+		ft = types.NewFieldType(mysql.TypeNewDecimal)
 	case TypeVarchar:
-		return types.NewFieldType(mysql.TypeVarchar)
+		ft = types.NewFieldType(mysql.TypeVarchar)
 	case TypeTimestamp:
-		return types.NewFieldType(mysql.TypeTimestamp)
+		ft = types.NewFieldType(mysql.TypeTimestamp)
 	default:
 		panic(fmt.Sprintf("unknown column type %d", columnType))
 	}
+	ft.Collate = mysql.DefaultCollationName // Need to set this to avoid TiDB warnings in log
+	return ft
 }
 
 func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {

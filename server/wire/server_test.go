@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"github.com/squareup/pranadb/conf"
 	"net"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	psrv, err := server.NewServer(server.Config{
+	psrv, err := server.NewServer(conf.Config{
 		NodeID:     0,
 		NumShards:  10,
 		TestServer: true,

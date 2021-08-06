@@ -3,6 +3,7 @@ package exec
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/push/mover"
 )
 
 type PushExecutor interface {
@@ -21,12 +22,7 @@ type PushExecutor interface {
 
 type ExecutionContext struct {
 	WriteBatch *cluster.WriteBatch
-	Forwarder  Forwarder
-}
-
-type Forwarder interface {
-	QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64,
-		entityID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error
+	Mover      *mover.Mover
 }
 
 type pushExecutorBase struct {

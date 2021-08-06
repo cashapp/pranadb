@@ -2,19 +2,16 @@ package command
 
 import (
 	"fmt"
-
-	"github.com/squareup/pranadb/notifier"
-
-	"testing"
-	"time"
-
+	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-
-	"github.com/alecthomas/repr"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/table"
-
 	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/meta"
@@ -24,12 +21,26 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
+// TODO these test seems to add little value - can be replaced with SQLTests which are also easier to maintain
+
 func TestCommandExecutorExecuteStatement(t *testing.T) {
+	fakeKafka := kafka.NewFakeKafka()
+	_, err := fakeKafka.CreateTopic("testtopic", 10)
+	require.NoError(t, err)
+
 	clus := cluster.NewFakeCluster(1, 1)
+	require.NoError(t, err)
 	metaController := meta.NewController(clus)
+	err = metaController.Start()
+	require.NoError(t, err)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
+	config := conf.NewTestConfig(fakeKafka.ID)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
+	clus.SetRemoteQueryExecutionCallback(pullEngine)
+	clus.RegisterShardListenerFactory(pushEngine)
+	err = clus.Start()
+	require.NoError(t, err)
 	fakeNotifier := notifier.NewFakeNotifier()
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus, fakeNotifier)
 	fakeNotifier.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
@@ -48,7 +59,21 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 				location varchar,
 				temperature double,
 				primary key (sensor_id)
-			)
+			) with (
+                brokername = "testbroker",
+                topicname = "testtopic",
+                keyencoding = "json",
+                valueencoding = "json",
+                columnselectors = (
+				    "k.k0"
+                    "v.v1"
+                    "v.v2"
+				)
+                properties = (
+                    "prop1" = "val1"
+                    "prop2" = "val2"
+                )
+            )
 		`, sourceInfo: &common.SourceInfo{
 			TableInfo: &common.TableInfo{
 				ID:             common.UserTableIDBase,
@@ -60,6 +85,21 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 					{Type: common.TypeBigInt},
 					{Type: common.TypeVarchar},
 					{Type: common.TypeDouble},
+				},
+			},
+			TopicInfo: &common.TopicInfo{
+				BrokerName:    "testbroker",
+				TopicName:     "testtopic",
+				KeyEncoding:   common.EncodingJSON,
+				ValueEncoding: common.EncodingJSON,
+				ColSelectors: []string{
+					"k.k0",
+					"v.v1",
+					"v.v2",
+				},
+				Properties: map[string]string{
+					"prop1": "val1",
+					"prop2": "val2",
 				},
 			},
 		}, rows: exec.Empty},
@@ -113,17 +153,21 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 }
 
 func TestCommandExecutorPrepareQuery(t *testing.T) {
+	fakeKafka := kafka.NewFakeKafka()
+	_, err := fakeKafka.CreateTopic("testtopic", 10)
+	require.NoError(t, err)
 	clus := cluster.NewFakeCluster(1, 1)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController)
 	pullEngine := pull.NewPullEngine(clus, metaController)
+	config := conf.NewTestConfig(fakeKafka.ID)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	fakeNotifier := notifier.NewFakeNotifier()
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus, fakeNotifier)
 	fakeNotifier.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
-	err := clus.Start()
+	err = clus.Start()
 	require.NoError(t, err)
 	err = metaController.Start()
 	require.NoError(t, err)
@@ -142,7 +186,21 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 				location varchar,
 				temperature double,
 				primary key (sensor_id)
-			)
+			)  with (
+                brokername = "testbroker",
+                topicname = "testtopic",
+                keyencoding = "json",
+                valueencoding = "json",
+                columnselectors = (
+				    "k.k0"
+                    "v.v1"
+                    "v.v2"
+				)
+                properties = (
+                    "prop1" = "val1"
+                    "prop2" = "val2"
+                )
+            )
 		`
 	_, err = ce.executeSQLStatementInternal(s, sql, true, seqGenerator)
 	require.NoError(t, err)
@@ -161,10 +219,12 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	rows.AppendStringToColumn(1, "wincanton")
 	rows.AppendFloat64ToColumn(2, 32.1)
 
-	err = pushEngine.IngestRows(rows, src.TableInfo.ID)
+	groupID := source.GenerateGroupID(config.ClusterID, src)
+	err = kafka.IngestRows(fakeKafka, src, rows, common.EncodingJSON, common.EncodingJSON, groupID)
 	require.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
+	err = pushEngine.WaitForProcessingToComplete()
+	require.NoError(t, err)
 
 	sql = "prepare select * from sensor_readings where location=?"
 	prepExec, err := ce.ExecuteSQLStatement(s, sql)

@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	"github.com/cznic/mathutil"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
@@ -285,4 +286,24 @@ func (p *PullEngine) clearSessionsForNode(nodeID int) {
 	for _, sessID := range idsToRemove {
 		p.remoteSessionCache.Delete(sessID)
 	}
+}
+
+// ExecuteQuery - Lightweight query interface - used internally for loading a moderate amount of rows
+func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
+	schema, ok := p.metaController.GetSchema(schemaName)
+	if !ok {
+		return nil, fmt.Errorf("no such schema %s", schemaName)
+	}
+	sess := sess.NewSession("", schema, nil)
+	exec, err := p.BuildPullQuery(sess, query)
+	if err != nil {
+		return nil, err
+	}
+	// The query is one shot, so remote session will not be stored, so session does not need to be closed
+	// and have close broadcast
+	rows, err = exec.GetRows(mathutil.MaxInt)
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }

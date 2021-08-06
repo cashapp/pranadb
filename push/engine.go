@@ -3,10 +3,13 @@ package push
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/push/mover"
+	"github.com/squareup/pranadb/push/sched"
+	"github.com/squareup/pranadb/push/source"
 	"log"
 	"math/rand"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/squareup/pranadb/meta"
@@ -23,30 +26,34 @@ import (
 type PushEngine struct {
 	lock              sync.RWMutex
 	started           bool
-	schedulers        map[uint64]*shardScheduler
-	sources           map[uint64]*source
+	schedulers        map[uint64]*sched.ShardScheduler
+	sources           map[uint64]*source.Source
 	materializedViews map[uint64]*materializedView
 	remoteConsumers   map[uint64]*remoteConsumer
-	forwardSequences  map[uint64]uint64
+	mover             *mover.Mover
 	localLeaderShards []uint64
 	cluster           cluster.Cluster
 	sharder           *sharder.Sharder
 	meta              *meta.Controller
 	rnd               *rand.Rand
-	runningSchedulers int32
+	cfg               *conf.Config
+	queryExec         common.SimpleQueryExec
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
+	queryExec common.SimpleQueryExec) *PushEngine {
 	engine := PushEngine{
 		remoteConsumers:   make(map[uint64]*remoteConsumer),
-		sources:           make(map[uint64]*source),
+		sources:           make(map[uint64]*source.Source),
 		materializedViews: make(map[uint64]*materializedView),
-		schedulers:        make(map[uint64]*shardScheduler),
-		forwardSequences:  make(map[uint64]uint64),
+		schedulers:        make(map[uint64]*sched.ShardScheduler),
+		mover:             mover.NewMover(cluster),
 		cluster:           cluster,
 		sharder:           sharder,
 		meta:              meta,
 		rnd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:               cfg,
+		queryExec:         queryExec,
 	}
 	return &engine
 }
@@ -64,10 +71,6 @@ type remoteConsumer struct {
 // TODO do we even need these?
 type remoteRowsHandler interface {
 	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
-}
-
-type RawRowHandler interface {
-	HandleRawRows(rawRows map[uint64][][]byte, batch *cluster.WriteBatch) error
 }
 
 func (p *PushEngine) Start() error {
@@ -93,10 +96,11 @@ func (p *PushEngine) Stop() error {
 	for _, sched := range p.schedulers {
 		sched.Stop()
 	}
-	err := p.waitUntilNoSchedulersRunning()
-	if err != nil {
-		return err
-	}
+	// TODO instead of polling on wait just wait for sched channels to stop
+	//err := sched.WaitUntilNoSchedulersRunning()
+	//if err != nil {
+	//	return err
+	//}
 	p.started = false
 	return nil
 }
@@ -104,7 +108,7 @@ func (p *PushEngine) Stop() error {
 func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	sched := newShardScheduler(shardID, p)
+	sched := sched.NewShardScheduler(shardID)
 	sched.Start()
 	p.schedulers[shardID] = sched
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
@@ -118,11 +122,20 @@ func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 type shardListener struct {
 	shardID uint64
 	p       *PushEngine
-	sched   *shardScheduler
+	sched   *sched.ShardScheduler
 }
 
 func (s *shardListener) RemoteWriteOccurred() {
-	s.sched.CheckForRemoteBatch()
+	s.sched.ScheduleActionFireAndForget(s.maybeHandleRemoteBatch)
+}
+
+func (s *shardListener) maybeHandleRemoteBatch() error {
+	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
+	err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
+	if err != nil {
+		return err
+	}
+	return s.p.mover.TransferData(s.shardID, true)
 }
 
 func (s *shardListener) Close() {
@@ -160,7 +173,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 		}
 		execContext := &exec.ExecutionContext{
 			WriteBatch: batch,
-			Forwarder:  p,
+			Mover:      p.mover,
 		}
 		err := rc.RowsHandler.HandleRemoteRows(rows, execContext)
 		if err != nil {
@@ -170,48 +183,35 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 	return nil
 }
 
-// IngestRows is only used in testing to inject rows
-func (p *PushEngine) IngestRows(rows *common.Rows, sourceID uint64) error {
+func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
 	source, ok := p.sources[sourceID]
 	if !ok {
-		return errors.New("no such source")
+		return nil, errors.New("no such source")
 	}
-	return p.ingest(rows, source)
+	return source, nil
 }
 
-func (p *PushEngine) ingest(rows *common.Rows, source *source) error {
-	scheduler, shardID := p.chooseScheduler()
-	errChan := scheduler.ScheduleAction(func() error {
-		return source.ingestRows(rows, shardID)
-	})
-	err, ok := <-errChan
-	if !ok {
-		return errors.New("channel closed")
+// ChooseLocalScheduler chooses a local scheduler by hashing the key
+func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
+	if err != nil {
+		return nil, err
 	}
-	return err
-}
-
-func (p *PushEngine) chooseScheduler() (*shardScheduler, uint64) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	var shardID uint64
-	// Choose a shard, preferably local for storing this ingest
-	numLocal := len(p.localLeaderShards)
-	if numLocal > 0 {
-		r := p.rnd.Int31n(int32(numLocal))
-		shardID = p.localLeaderShards[r]
-	} else {
-		panic("no local shards")
-	}
-	return p.schedulers[shardID], shardID
+	return p.schedulers[shardID], nil
 }
 
 func (p *PushEngine) checkForRowsToForward() error {
 	// If the node failed previously there may be un-forwarded rows in the forwarder table
 	// If there are we need to forwarded them
 	for _, scheduler := range p.schedulers {
-		ch := scheduler.CheckForRowsToForward()
+		ch := scheduler.ScheduleAction(func() error {
+			return p.mover.TransferData(scheduler.ShardID(), true)
+		})
 		err, ok := <-ch
 		if !ok {
 			return errors.New("channel was closed")
@@ -279,7 +279,7 @@ func (p *PushEngine) waitForSchedulers() error {
 func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		exist, err := p.existRowsInLocalTable(tableID, shardIDs)
+		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, err
 	}, 5*time.Second, 10*time.Millisecond)
 	if !ok {
@@ -288,7 +288,7 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	return err
 }
 
-func (p *PushEngine) existRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
+func (p *PushEngine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
 	for _, shardID := range localShards {
 		startPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
 		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
@@ -303,20 +303,6 @@ func (p *PushEngine) existRowsInLocalTable(tableID uint64, localShards []uint64)
 	return false, nil
 }
 
-func (p *PushEngine) waitUntilNoSchedulersRunning() error {
-	start := time.Now()
-	for {
-		numSchedulers := atomic.LoadInt32(&p.runningSchedulers)
-		if numSchedulers == 0 {
-			return nil
-		}
-		time.Sleep(time.Millisecond)
-		if time.Now().Sub(start) >= 5*time.Second {
-			return fmt.Errorf("timed out waiting for schedulers to stop, sched count is %d", numSchedulers)
-		}
-	}
-}
-
 func (p *PushEngine) VerifyNoSourcesOrMVs() error {
 	if len(p.sources) > 0 {
 		return fmt.Errorf("there is %d source", len(p.sources))
@@ -327,9 +313,24 @@ func (p *PushEngine) VerifyNoSourcesOrMVs() error {
 	return nil
 }
 
+func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	sched, ok := p.schedulers[shardID]
+	return sched, ok
+}
+
 func (p *PushEngine) RemoveSource(sourceID uint64, deleteData bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+
+	src, ok := p.sources[sourceID]
+	if !ok {
+		return fmt.Errorf("no such source %d", sourceID)
+	}
+	if err := src.Stop(); err != nil {
+		return err
+	}
 
 	delete(p.sources, sourceID)
 	delete(p.remoteConsumers, sourceID)
@@ -373,7 +374,7 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 		switch tbl := tbl.(type) {
 		case *common.SourceInfo:
 			source := p.sources[tbl.ID]
-			source.removeConsumingExecutor(node)
+			source.RemoveConsumingExecutor(node)
 		case *common.MaterializedViewInfo:
 			mv := p.materializedViews[tbl.ID]
 			mv.removeConsumingExecutor(node)
@@ -403,4 +404,51 @@ func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
 	startPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID)
 	endPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID+1)
 	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
+}
+
+func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
+	src, err := p.createSource(sourceInfo)
+	if err != nil {
+		return err
+	}
+	return src.Start() // Outside the lock
+}
+
+func (p *PushEngine) createSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+
+	colTypes := sourceInfo.TableInfo.ColumnTypes
+
+	tableExecutor := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.cluster)
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	src, err := source.NewSource(
+		sourceInfo,
+		tableExecutor,
+		p.sharder,
+		p.cluster,
+		p.mover,
+		p,
+		p.cfg,
+		p.queryExec,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	rf := common.NewRowsFactory(colTypes)
+	rc := &remoteConsumer{
+		RowsFactory: rf,
+		ColTypes:    colTypes,
+		RowsHandler: src.TableExecutor(),
+	}
+	p.remoteConsumers[sourceInfo.TableInfo.ID] = rc
+
+	p.sources[sourceInfo.TableInfo.ID] = src
+	return src, nil
+}
+
+func (p *PushEngine) Mover() *mover.Mover {
+	return p.mover
 }

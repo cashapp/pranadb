@@ -89,6 +89,7 @@ func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 
 func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType,
 	pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
+
 	id := seqGenerator.GenerateSequence()
 
 	tableInfo := common.TableInfo{
@@ -267,7 +268,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SqlTest will think ddl is synced before data is deleted
+		// otherwise SQLTest will think ddl is synced before data is deleted
 		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
 		if err != nil {
 			return nil, err
@@ -286,7 +287,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SqlTest will think ddl is synced before data is deleted
+		// otherwise SQLTest will think ddl is synced before data is deleted
 		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
 		if err != nil {
 			return nil, err
@@ -342,7 +343,41 @@ func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource,
 			panic(repr.String(option))
 		}
 	}
-	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, nil, seqGenerator, persist); err != nil {
+
+	keyEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.KeyEncoding))
+	if keyEncoding == common.EncodingUnknown {
+		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.KeyEncoding)
+	}
+	valueEncoding := common.KafkaEncodingFromString(stripQuotes(src.TopicInformation.ValueEncoding))
+	if valueEncoding == common.EncodingUnknown {
+		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.ValueEncoding)
+	}
+	props := src.TopicInformation.Properties
+	propsMap := make(map[string]string, len(props))
+	for _, prop := range props {
+		propsMap[stripQuotes(prop.Key)] = stripQuotes(prop.Value)
+	}
+
+	cs := src.TopicInformation.ColSelectors
+	colSelectors := make([]string, len(cs))
+	for i := 0; i < len(cs); i++ {
+		colSelectors[i] = stripQuotes(cs[i].Selector)
+	}
+	lc := len(colSelectors)
+	if lc > 0 && lc != len(colTypes) {
+		return nil, errors.NewUserErrorF(errors.WrongNumberColumnSelectors,
+			"if specified, number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
+	}
+
+	topicInfo := &common.TopicInfo{
+		BrokerName:    stripQuotes(src.TopicInformation.BrokerName),
+		TopicName:     stripQuotes(src.TopicInformation.TopicName),
+		KeyEncoding:   keyEncoding,
+		ValueEncoding: valueEncoding,
+		ColSelectors:  colSelectors,
+		Properties:    propsMap,
+	}
+	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, topicInfo, seqGenerator, persist); err != nil {
 		return nil, errors.MaybeAddStack(err)
 	}
 	return exec.Empty, nil
@@ -372,4 +407,11 @@ func (e *Executor) HandleNotification(notification notifier.Notification) {
 			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
 		}
 	}
+}
+
+func stripQuotes(str string) string {
+	if str[0] == '"' && str[len(str)-1] == '"' {
+		return str[1 : len(str)-1]
+	}
+	return str
 }

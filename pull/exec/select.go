@@ -27,7 +27,7 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 
 func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 
-	if limit == 0 || limit < -1 {
+	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 
