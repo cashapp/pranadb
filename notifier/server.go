@@ -26,10 +26,8 @@ func NewServer(listenAddress string) Server {
 
 func newServer(listenAddress string) *server {
 	return &server{
-		listenAddress:  listenAddress,
-		acceptLoopCh:   make(chan struct{}, 1),
-		connections:    make(map[*connection]struct{}),
-		notifListeners: make(map[NotificationType]NotificationListener),
+		listenAddress: listenAddress,
+		acceptLoopCh:  make(chan struct{}, 1),
 	}
 }
 
@@ -39,8 +37,8 @@ type server struct {
 	started        bool
 	lock           sync.RWMutex
 	acceptLoopCh   chan struct{}
-	connections    map[*connection]struct{}
-	notifListeners map[NotificationType]NotificationListener
+	connections    sync.Map
+	notifListeners sync.Map
 }
 
 func (s *server) Start() error {
@@ -68,7 +66,7 @@ func (s *server) acceptLoop() {
 			conn: conn,
 			s:    s,
 		}
-		s.connections[c] = struct{}{}
+		s.connections.Store(c, struct{}{})
 		c.start()
 	}
 	s.acceptLoopCh <- struct{}{}
@@ -77,7 +75,6 @@ func (s *server) acceptLoop() {
 func (s *server) Stop() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
 	if !s.started {
 		return nil
 	}
@@ -90,13 +87,16 @@ func (s *server) Stop() error {
 		panic("channel was closed")
 	}
 	// Now close connections
-	for conn := range s.connections {
-		if err := conn.stop(); err != nil {
-			return err
+	var e error
+	s.connections.Range(func(conn, _ interface{}) bool {
+		if err := conn.(*connection).stop(); err != nil {
+			e = err
+			return false
 		}
-	}
+		return true
+	})
 	s.started = false
-	return nil
+	return e
 }
 
 func (s *server) ListenAddress() string {
@@ -104,28 +104,22 @@ func (s *server) ListenAddress() string {
 }
 
 func (s *server) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	_, ok := s.notifListeners[notificationType]
+	_, ok := s.notifListeners.Load(notificationType)
 	if ok {
 		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
 	}
-	s.notifListeners[notificationType] = listener
+	s.notifListeners.Store(notificationType, listener)
 }
 func (s *server) lookupNotificationListener(notification Notification) NotificationListener {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	listener, ok := s.notifListeners[TypeForNotification(notification)]
+	l, ok := s.notifListeners.Load(TypeForNotification(notification))
 	if !ok {
 		panic(fmt.Sprintf("no notification listener for type %d", TypeForNotification(notification)))
 	}
-	return listener
+	return l.(NotificationListener)
 }
 
 func (s *server) removeConnection(conn *connection) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	delete(s.connections, conn)
+	s.connections.Delete(conn)
 }
 
 type connection struct {
@@ -135,7 +129,7 @@ type connection struct {
 }
 
 func (c *connection) start() {
-	c.loopCh = make(chan error, 1)
+	c.loopCh = make(chan error, 10)
 	go c.readLoop()
 }
 
@@ -156,9 +150,7 @@ func (c *connection) doReadLoop() {
 			return
 		}
 		msgBuf = append(msgBuf, readBuff[0:n]...)
-
 		for len(msgBuf) >= 4 {
-
 			if msgLen == -1 {
 				u, _ := common.ReadUint32FromBufferLE(msgBuf, 0)
 				msgLen = int(u)
@@ -173,9 +165,7 @@ func (c *connection) doReadLoop() {
 				}
 				listener := c.s.lookupNotificationListener(notification)
 				listener.HandleNotification(notification)
-
 				msgBuf = msgBuf[4+msgLen:]
-
 				msgLen = -1
 			} else {
 				break
@@ -188,7 +178,6 @@ func (c *connection) stop() error {
 	if err := c.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
 	}
-	// What for connection loop to stop
 	err, ok := <-c.loopCh
 	if !ok {
 		return errors.WithStack(errors.New("connection channel was closed"))
