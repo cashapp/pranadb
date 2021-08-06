@@ -21,7 +21,7 @@ import (
 // TODO make configurable
 const (
 	numConsumersPerSource = 1
-	pollTimeoutMs         = 1000
+	pollTimeoutMs         = 10
 	maxPollMessages       = 10000
 )
 

@@ -3,7 +3,8 @@ package kafka
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"log"
+	"github.com/squareup/pranadb/sharder"
+	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -85,8 +86,7 @@ func (f *FakeKafka) IngestMessage(topicName string, message *Message) error {
 	if !ok {
 		return fmt.Errorf("no such topic %s", topicName)
 	}
-	topic.push(message)
-	return nil
+	return topic.push(message)
 }
 
 func (f *FakeKafka) GetTopicNames() []string {
@@ -108,12 +108,8 @@ func (f *FakeKafka) getTopic(name string) (*Topic, bool) {
 	return t.(*Topic), true
 }
 
-func hash(key []byte) uint32 {
-	hash := uint32(31)
-	for _, b := range key {
-		hash = 31*hash + uint32(b)
-	}
-	return hash
+func hash(key []byte) (uint32, error) {
+	return sharder.Hash(key)
 }
 
 type Topic struct {
@@ -140,14 +136,22 @@ func (p *Partition) push(message *Message) {
 	p.messages <- message
 }
 
-func (t *Topic) push(message *Message) {
-	part := t.calcPartition(message)
+func (t *Topic) push(message *Message) error {
+	part, err := t.calcPartition(message)
+	if err != nil {
+		return err
+	}
 	t.partitions[part].push(message)
+	return nil
 }
 
-func (t *Topic) calcPartition(message *Message) int {
-	hash := hash(message.Key)
-	return int(hash % uint32(len(t.partitions)))
+func (t *Topic) calcPartition(message *Message) (int, error) {
+	h, err := hash(message.Key)
+	if err != nil {
+		return 0, err
+	}
+	partID := int(h % uint32(len(t.partitions)))
+	return partID, nil
 }
 
 func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
@@ -180,10 +184,8 @@ func (t *Topic) close() {
 func (t *Topic) TotalCommittedMessages(groupID string) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	log.Printf("Asking for total committed messages for group %s", groupID)
 	group, ok := t.groups[groupID]
 	if !ok {
-		log.Println("No such group")
 		return 0
 	}
 	return group.totalCommittedMessages()
@@ -217,7 +219,6 @@ func (g *Group) createSubscriber(t *Topic, group *Group) *Subscriber {
 func (g *Group) commitOffsets(offsets map[int32]int64) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	log.Printf("Group %s committing offsets", g.id)
 	for partID, offset := range offsets {
 		g.offsets[partID] = offset
 	}
@@ -259,14 +260,12 @@ func (g *Group) totalCommittedMessages() int {
 	for _, offsets := range g.offsets {
 		tot += offsets
 	}
-	log.Printf("Group %s has %d committed", g.id, tot)
 	return int(tot)
 }
 
 type Subscriber struct {
 	topic      *Topic
 	lock       sync.Mutex
-	partIndex  int
 	partitions []*Partition
 	group      *Group
 }
@@ -275,35 +274,44 @@ func (c *Subscriber) commitOffsets(offsets map[int32]int64) {
 	c.group.commitOffsets(offsets)
 }
 
-func (c *Subscriber) GetMessage(pollTimeout time.Duration) *Message {
-	// Need to hold the topic rebalance read lock too
-	c.topic.lock.RLock()
-	defer c.topic.lock.RUnlock()
+func (c *Subscriber) copyParts() []*Partition {
+	// Need to hold the group rebalance read lock too
+	c.group.lock.Lock()
+	defer c.group.lock.Unlock()
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	lp := len(c.partitions)
 
-	start := time.Now()
+	res := make([]*Partition, len(c.partitions))
+	copy(res, c.partitions)
+	return res
+}
 
-	timeout := time.Duration(int64(pollTimeout) / int64(lp))
-	if timeout == 0 {
-		timeout = 1
+func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	// We copy the parts in case a rebalance happens while we're waiting for a message
+	partsCopy := c.copyParts()
+
+	// We have to do a bit of reflective wibbling to select from a dynamic set of channels with a timeout
+	var set []reflect.SelectCase
+	for _, part := range partsCopy {
+		set = append(set, reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(part.messages),
+		})
 	}
-	for {
-		part := c.partitions[c.partIndex]
-		c.partIndex++
-		if c.partIndex == lp {
-			c.partIndex = 0
-		}
-		select {
-		case msg := <-part.messages:
-			return msg
-		case <-time.After(timeout):
-		}
-		if time.Now().Sub(start) >= pollTimeout {
-			return nil
-		}
+	set = append(set, reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(time.After(pollTimeout)),
+	})
+
+	index, valValue, ok := reflect.Select(set)
+	if !ok {
+		return nil, errors.New("channel was closed")
 	}
+	if index == len(partsCopy) {
+		// timeout fired
+		return nil, nil
+	}
+	return valValue.Interface().(*Message), nil
 }
 
 func (c *Subscriber) Unsubscribe() error {
@@ -359,8 +367,7 @@ type FakeMessageProvider struct {
 }
 
 func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
-	msg := f.subscriber.GetMessage(pollTimeout)
-	return msg, nil
+	return f.subscriber.GetMessage(pollTimeout)
 }
 
 func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {

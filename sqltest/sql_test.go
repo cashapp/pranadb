@@ -39,6 +39,8 @@ var TestClusterID = 12345678
 
 var lock sync.Mutex
 
+var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+
 type sqlTestsuite struct {
 	fakeKafka    *kafka.FakeKafka
 	pranaCluster []*server.Server
@@ -47,6 +49,7 @@ type sqlTestsuite struct {
 	t            *testing.T
 	dataDir      string
 	lock         sync.Mutex
+	encoders     map[string]kafka.MessageEncoder
 }
 
 func (w *sqlTestsuite) T() *testing.T {
@@ -76,7 +79,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t}
+	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]kafka.MessageEncoder)}
 	ts.setup(fakeCluster, numNodes)
 	defer ts.teardown()
 
@@ -169,6 +172,7 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 }
 
 func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
+	w.registerEncoders()
 	w.setupPranaCluster(fakeCluster, numNodes)
 
 	files, err := ioutil.ReadDir("./testdata")
@@ -205,6 +209,25 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 			currSQLTest.scriptFile = fileName
 		}
 	}
+}
+
+func (w *sqlTestsuite) registerEncoders() {
+	w.registerEncoder(&kafka.JSONKeyJSONValueEncoder{})
+	w.registerEncoder(&kafka.StringKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.Int64BEKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.Int32BEKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.Int16BEKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.Float64BEKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.Float32BEKeyTLJSONValueEncoder{})
+	w.registerEncoder(&kafka.NestedJSONKeyNestedJSONValueEncoder{})
+	w.registerEncoder(&kafka.JSONHeadersEncoder{})
+}
+
+func (w *sqlTestsuite) registerEncoder(encoder kafka.MessageEncoder) {
+	if _, ok := w.encoders[encoder.Name()]; ok {
+		panic(fmt.Sprintf("encoder with name %s already registered", encoder.Name()))
+	}
+	w.encoders[encoder.Name()] = encoder
 }
 
 func (w *sqlTestsuite) teardown() {
@@ -278,6 +301,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	st.output = &strings.Builder{}
 	numIters := 1
 	for i, command := range commands {
+		st.output.WriteString(command + ";\n")
 		command = trimBothEnds(command)
 		if command == "" {
 			continue
@@ -410,10 +434,11 @@ type dataset struct {
 	rows       *common.Rows
 }
 
-func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsName string) *dataset {
+func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsName string) (*dataset, kafka.MessageEncoder) {
 	dataFile, closeFunc := openFile("./testdata/" + st.testDataFile)
 	defer closeFunc()
 	scanner := bufio.NewScanner(dataFile)
+	var encoder kafka.MessageEncoder
 	var currDataSet *dataset
 	lineNum := 1
 	for scanner.Scan() {
@@ -422,17 +447,25 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 		if strings.HasPrefix(line, "dataset:") {
 			line = line[8:]
 			parts := strings.Split(line, " ")
-			require.Equal(2, len(parts), fmt.Sprintf("invalid dataset line in file %s: %s", fileName, line))
+			lp := len(parts)
+			require.True(lp == 2 || lp == 3, fmt.Sprintf("invalid dataset line in file %s: %s", fileName, line))
 			dataSetName := parts[0]
 			if dsName != dataSetName {
 				if currDataSet != nil {
-					return currDataSet
+					return currDataSet, encoder
 				}
 				continue
 			}
 			sourceName := parts[1]
 			sourceInfo, ok := st.prana.GetMetaController().GetSource(TestSchemaName, sourceName)
 			require.True(ok, fmt.Sprintf("unknown source %s", sourceName))
+			if lp == 3 {
+				encoderName := parts[2]
+				encoder, ok = st.testSuite.encoders[encoderName]
+				require.True(ok, fmt.Sprintf("unknown encoder %s", encoderName))
+			} else {
+				encoder = defaultEncoder
+			}
 			rf := common.NewRowsFactory(sourceInfo.TableInfo.ColumnTypes)
 			rows := rf.NewRows(100)
 			currDataSet = &dataset{name: dataSetName, sourceInfo: sourceInfo, rows: rows, colTypes: sourceInfo.TableInfo.ColumnTypes}
@@ -474,17 +507,18 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 		lineNum++
 	}
 	require.NotNil(currDataSet, fmt.Sprintf("Cannot find dataset %s in test data file %s", dsName, fileName))
-	return currDataSet
+	return currDataSet, encoder
 }
 
 func (st *sqlTest) executeLoadData(require *require.Assertions, command string) {
 	log.Printf("Executing load data %s", command)
 	start := time.Now()
 	datasetName := command[12:]
-	dataset := st.loadDataset(require, st.testDataFile, datasetName)
+	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
 	groupID := source.GenerateGroupID(TestClusterID, dataset.sourceInfo)
-	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, common.EncodingJSON, common.EncodingJSON, groupID)
+	log.Println("Ingesting rows")
+	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, groupID, encoder)
 	require.NoError(err)
 	st.waitForProcessingToComplete(require)
 	end := time.Now()
@@ -549,7 +583,6 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	require.NoError(err)
 	lowerStatement := strings.ToLower(statement)
 
-	st.output.WriteString(statement + ";\n")
 	if strings.HasPrefix(lowerStatement, "select ") || strings.HasPrefix(lowerStatement, "execute") {
 		// Query results
 		for i := 0; i < rows.RowCount(); i++ {

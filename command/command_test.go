@@ -223,7 +223,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	rows.AppendFloat64ToColumn(2, 32.1)
 
 	groupID := source.GenerateGroupID(config.ClusterID, src)
-	err = kafka.IngestRows(fakeKafka, src, rows, common.EncodingJSON, common.EncodingJSON, groupID)
+	err = kafka.IngestRows(fakeKafka, src, rows, groupID, &kafka.JSONKeyJSONValueEncoder{})
 	require.NoError(t, err)
 
 	err = pushEngine.WaitForProcessingToComplete()

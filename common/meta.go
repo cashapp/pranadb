@@ -232,12 +232,12 @@ const (
 	EncodingCSV                    // Comma separated
 	EncodingJSON                   // JSON
 	EncodingProtobuf               // Protobuf
-	EncodingKafkaFloat
-	EncodingKafkaDouble
-	EncodingKafkaInteger
-	EncodingKafkaLong
-	EncodingKafkaShort
-	EncodingKafkaString
+	EncodingFloat32BE
+	EncodingFloat64BE
+	EncodingInt32BE
+	EncodingInt64BE
+	EncodingInt16BE
+	EncodingStringBytes
 )
 
 func KafkaEncodingFromString(str string) KafkaEncoding {
@@ -251,18 +251,18 @@ func KafkaEncodingFromString(str string) KafkaEncoding {
 		return EncodingRaw
 	case "csv":
 		return EncodingCSV
-	case "kafkafloat":
-		return EncodingKafkaFloat
-	case "kafkadouble":
-		return EncodingKafkaDouble
-	case "kafkainteger":
-		return EncodingKafkaInteger
-	case "kafkalong":
-		return EncodingKafkaLong
-	case "kafkashort":
-		return EncodingKafkaShort
-	case "kafkastring":
-		return EncodingKafkaString
+	case "float32be":
+		return EncodingFloat32BE
+	case "float64be":
+		return EncodingFloat64BE
+	case "int32be":
+		return EncodingInt32BE
+	case "int64be":
+		return EncodingInt64BE
+	case "int16be":
+		return EncodingInt16BE
+	case "stringbytes":
+		return EncodingStringBytes
 	default:
 		return EncodingUnknown
 	}

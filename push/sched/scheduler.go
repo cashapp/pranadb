@@ -1,14 +1,9 @@
 package sched
 
 import (
-	"fmt"
 	"log"
 	"sync"
-	"sync/atomic"
-	"time"
 )
-
-var runningSchedulers int32
 
 type ShardScheduler struct {
 	shardID  uint64
@@ -47,8 +42,6 @@ func (s *ShardScheduler) Stop() {
 }
 
 func (s *ShardScheduler) runLoop() {
-	s.incRunning()
-	defer s.decRunning()
 	for {
 		holder, ok := <-s.actions
 		if !ok {
@@ -61,14 +54,6 @@ func (s *ShardScheduler) runLoop() {
 			log.Printf("Failed to execute action: %v", err)
 		}
 	}
-}
-
-func (s *ShardScheduler) incRunning() {
-	atomic.AddInt32(&runningSchedulers, 1)
-}
-
-func (s *ShardScheduler) decRunning() {
-	atomic.AddInt32(&runningSchedulers, -1)
 }
 
 func (s *ShardScheduler) ScheduleAction(action Action) chan error {
@@ -89,18 +74,4 @@ func (s *ShardScheduler) ScheduleActionFireAndForget(action Action) {
 
 func (s *ShardScheduler) ShardID() uint64 {
 	return s.shardID
-}
-
-func WaitUntilNoSchedulersRunning() error {
-	start := time.Now()
-	for {
-		numSchedulers := atomic.LoadInt32(&runningSchedulers)
-		if numSchedulers == 0 {
-			return nil
-		}
-		time.Sleep(time.Millisecond)
-		if time.Now().Sub(start) >= 5*time.Second {
-			return fmt.Errorf("timed out waiting for schedulers to stop running, sched count is %d", numSchedulers)
-		}
-	}
 }

@@ -1,40 +1,40 @@
 package kafka
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"log"
 	"time"
 )
 
-// IngestRows ingests rows given schema and source name - convenience method for use in tests
-func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows,
-	keyEncoding common.KafkaEncoding, valueEncoding common.KafkaEncoding, groupID string) error {
-	topicName := sourceInfo.TopicInfo.TopicName
+// For ingested rows, timestamp starts at this value and increments by one second for each row
+var timestampBase = time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
 
+// IngestRows ingests rows given schema and source name - convenience method for use in tests
+func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, groupID string, encoder MessageEncoder) error {
+	topicName := sourceInfo.TopicInfo.TopicName
 	topic, ok := f.GetTopic(topicName)
 	if !ok {
 		return fmt.Errorf("cannot find topic %s", topicName)
 	}
 	startCommitted := topic.TotalCommittedMessages(groupID)
 
+	timestamp := timestampBase
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
-		if err := IngestRow(f, topicName, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, keyEncoding, valueEncoding); err != nil {
+		// We give each
+		if err := IngestRow(f, topic, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
 			return err
 		}
+		timestamp = timestamp.Add(1 * time.Second)
 	}
 	// And we wait for all offsets to be committed
 	wanted := startCommitted + rows.RowCount()
-	log.Printf("Want %d  committed messages", wanted)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		n := topic.TotalCommittedMessages(groupID)
-		log.Printf("Got %d committed messages", n)
 		return n == wanted, nil
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 1*time.Millisecond)
 	if err != nil {
 		return err
 	}
@@ -45,53 +45,13 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows,
 }
 
 // IngestRow is a convenience method which encodes the row into a Kafka message first, then ingests it
-func IngestRow(f *FakeKafka, topicName string, row *common.Row, colTypes []common.ColumnType, keyCols []int,
-	keyEncoding common.KafkaEncoding, valueEncoding common.KafkaEncoding) error {
-	topic, ok := f.getTopic(topicName)
-	if !ok {
-		return fmt.Errorf("no such topic %s", topicName)
-	}
-
-	// TODO support other encodings so we can test them from SQLTest
-	if keyEncoding != common.EncodingJSON || valueEncoding != common.EncodingJSON {
-		return errors.New("only JSON key and value encodings for ingesting currently supported")
-	}
-
-	keyMap := map[string]interface{}{}
-	for i, keyCol := range keyCols {
-		colType := colTypes[keyCol]
-		colVal, err := getColVal(keyCol, colType, row)
-		if err != nil {
-			return err
-		}
-		keyMap[fmt.Sprintf("k%d", i)] = colVal
-	}
-
-	valMap := map[string]interface{}{}
-	for i, colType := range colTypes {
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return err
-		}
-		valMap[fmt.Sprintf("v%d", i)] = colVal
-	}
-
-	keyBytes, err := json.Marshal(keyMap)
+func IngestRow(f *FakeKafka, topic *Topic, row *common.Row, colTypes []common.ColumnType, keyCols []int,
+	encoder MessageEncoder, timestamp time.Time) error {
+	message, err := encoder.EncodeMessage(row, colTypes, keyCols, timestamp)
 	if err != nil {
 		return err
 	}
-
-	valBytes, err := json.Marshal(valMap)
-	if err != nil {
-		return err
-	}
-
-	message := &Message{
-		Key:   keyBytes,
-		Value: valBytes,
-	}
-	topic.push(message)
-	return nil
+	return topic.push(message)
 }
 
 func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interface{}, error) {

@@ -16,27 +16,27 @@ var colTypes = []common.ColumnType{common.BigIntColumnType, common.BigIntColumnT
 
 type verifyExpectedValuesFunc = func(t *testing.T, row *common.Row)
 
-func TestParseMessageKafkaFloatKey(t *testing.T) {
+func TestParseMessageFloat32BEKey(t *testing.T) {
 	f := float32(123.25)
 	keyBytes := common.AppendFloat32ToBufferBE(nil, f)
 
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, float64(f), row.GetFloat64(0))
 	}
-	testParseMessageKafkaKey(t, common.DoubleColumnType, common.EncodingKafkaFloat, keyBytes, vf)
+	testParseMessageBinaryKey(t, common.DoubleColumnType, common.EncodingFloat32BE, keyBytes, vf)
 }
 
-func TestParseMessageKafkaDoubleKey(t *testing.T) {
+func TestParseMessageFloat64BEKey(t *testing.T) {
 	f := 432.25
 	keyBytes := common.AppendFloat64ToBufferBE(nil, f)
 
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, f, row.GetFloat64(0))
 	}
-	testParseMessageKafkaKey(t, common.DoubleColumnType, common.EncodingKafkaDouble, keyBytes, vf)
+	testParseMessageBinaryKey(t, common.DoubleColumnType, common.EncodingFloat64BE, keyBytes, vf)
 }
 
-func TestParseMessageKafkaShortKey(t *testing.T) {
+func TestParseMessageInt16BEKey(t *testing.T) {
 	s := 12354
 	var keyBytes []byte
 	keyBytes = common.AppendUint16ToBufferBE(keyBytes, uint16(s))
@@ -44,10 +44,10 @@ func TestParseMessageKafkaShortKey(t *testing.T) {
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, int64(s), row.GetInt64(0))
 	}
-	testParseMessageKafkaKey(t, common.BigIntColumnType, common.EncodingKafkaShort, keyBytes, vf)
+	testParseMessageBinaryKey(t, common.BigIntColumnType, common.EncodingInt16BE, keyBytes, vf)
 }
 
-func TestParseMessageKafkaIntegerKey(t *testing.T) {
+func TestParseMessageInt32BEKey(t *testing.T) {
 	i := 7654321
 	var keyBytes []byte
 	keyBytes = common.AppendUint32ToBufferBE(keyBytes, uint32(i))
@@ -55,10 +55,10 @@ func TestParseMessageKafkaIntegerKey(t *testing.T) {
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, int64(i), row.GetInt64(0))
 	}
-	testParseMessageKafkaKey(t, common.BigIntColumnType, common.EncodingKafkaInteger, keyBytes, vf)
+	testParseMessageBinaryKey(t, common.BigIntColumnType, common.EncodingInt32BE, keyBytes, vf)
 }
 
-func TestParseMessageKafkaLongKey(t *testing.T) {
+func TestParseMessageInt64BEKey(t *testing.T) {
 	l := 987654321
 	var keyBytes []byte
 	keyBytes = common.AppendUint64ToBufferBE(keyBytes, uint64(l))
@@ -66,19 +66,19 @@ func TestParseMessageKafkaLongKey(t *testing.T) {
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, int64(l), row.GetInt64(0))
 	}
-	testParseMessageKafkaKey(t, common.BigIntColumnType, common.EncodingKafkaLong, keyBytes, vf)
+	testParseMessageBinaryKey(t, common.BigIntColumnType, common.EncodingInt64BE, keyBytes, vf)
 }
 
-func TestParseMessageKafkaStringKey(t *testing.T) {
+func TestParseMessageStringBytesKey(t *testing.T) {
 	s := "armadillos"
 
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, s, row.GetString(0))
 	}
-	testParseMessageKafkaKey(t, common.VarcharColumnType, common.EncodingKafkaString, []byte(s), vf)
+	testParseMessageBinaryKey(t, common.VarcharColumnType, common.EncodingStringBytes, []byte(s), vf)
 }
 
-func testParseMessageKafkaKey(t *testing.T, keyType common.ColumnType, keyEncoding common.KafkaEncoding, keyBytes []byte,
+func testParseMessageBinaryKey(t *testing.T, keyType common.ColumnType, keyEncoding common.KafkaEncoding, keyBytes []byte,
 	vf verifyExpectedValuesFunc) {
 	t.Helper()
 	theColTypes := []common.ColumnType{keyType, common.BigIntColumnType, common.DoubleColumnType, common.VarcharColumnType, dt}
@@ -99,28 +99,28 @@ func testParseMessageKafkaKey(t *testing.T, keyType common.ColumnType, keyEncodi
 		[]string{"k", "v.vf1", "v.vf2", "v.vf3", "v.vf4"}, time.Now(), vf2)
 }
 
-func TestParseMessageNilKafkaLongKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingKafkaLong)
+func TestParseMessageNilInt64BEKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingInt64BE)
 }
 
-func TestParseMessageNilKafkaIntegerKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingKafkaInteger)
+func TestParseMessageNilInt32BEKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingInt32BE)
 }
 
-func TestParseMessageNilKafkaShortKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingKafkaShort)
+func TestParseMessageNilInt16BEKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.BigIntColumnType, common.EncodingInt16BE)
 }
 
-func TestParseMessageNilKafkaFloatKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.DoubleColumnType, common.EncodingKafkaFloat)
+func TestParseMessageNilFloat32BEKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.DoubleColumnType, common.EncodingFloat32BE)
 }
 
-func TestParseMessageNilKafkaDoubleKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.DoubleColumnType, common.EncodingKafkaDouble)
+func TestParseMessageNilFloat64BEKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.DoubleColumnType, common.EncodingFloat64BE)
 }
 
-func TestParseMessageNilKafkaStringKeyAndVals(t *testing.T) {
-	testParseMessageNilKeyAndNilJSONVals(t, common.VarcharColumnType, common.EncodingKafkaString)
+func TestParseMessageNilStringBytesKeyAndVals(t *testing.T) {
+	testParseMessageNilKeyAndNilJSONVals(t, common.VarcharColumnType, common.EncodingStringBytes)
 }
 
 func testParseMessageNilKeyAndNilJSONVals(t *testing.T, colType common.ColumnType, keyEncoding common.KafkaEncoding) {
@@ -252,7 +252,7 @@ func TestParseMessagesJSONHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaStringHeaders(t *testing.T) {
+func TestParseMessagesStringBytesHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.VarcharColumnType, common.VarcharColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -263,7 +263,7 @@ func TestParseMessagesKafkaStringHeaders(t *testing.T) {
 		require.Equal(t, "val3", row.GetString(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaString,
+		common.EncodingStringBytes,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: []byte("val1")},
@@ -275,7 +275,7 @@ func TestParseMessagesKafkaStringHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaLongHeaders(t *testing.T) {
+func TestParseMessagesInt64BEHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -286,7 +286,7 @@ func TestParseMessagesKafkaLongHeaders(t *testing.T) {
 		require.Equal(t, int64(54321234), row.GetInt64(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaLong,
+		common.EncodingInt64BE,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: common.AppendUint64ToBufferBE(nil, 12345678)},
@@ -298,7 +298,7 @@ func TestParseMessagesKafkaLongHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaIntegerHeaders(t *testing.T) {
+func TestParseMessagesInt32BEHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -309,7 +309,7 @@ func TestParseMessagesKafkaIntegerHeaders(t *testing.T) {
 		require.Equal(t, int64(54321234), row.GetInt64(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaInteger,
+		common.EncodingInt32BE,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: common.AppendUint32ToBufferBE(nil, 12345678)},
@@ -321,7 +321,7 @@ func TestParseMessagesKafkaIntegerHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaShortHeaders(t *testing.T) {
+func TestParseMessagesInt16BEHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType, common.BigIntColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -332,7 +332,7 @@ func TestParseMessagesKafkaShortHeaders(t *testing.T) {
 		require.Equal(t, int64(5423), row.GetInt64(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaShort,
+		common.EncodingInt16BE,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: common.AppendUint16ToBufferBE(nil, 2134)},
@@ -344,7 +344,7 @@ func TestParseMessagesKafkaShortHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaFloatHeaders(t *testing.T) {
+func TestParseMessagesFloat32BEHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType, common.DoubleColumnType, common.DoubleColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -355,7 +355,7 @@ func TestParseMessagesKafkaFloatHeaders(t *testing.T) {
 		require.Equal(t, 5423.25, row.GetFloat64(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaFloat,
+		common.EncodingFloat32BE,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: common.AppendFloat32ToBufferBE(nil, 2134.25)},
@@ -367,7 +367,7 @@ func TestParseMessagesKafkaFloatHeaders(t *testing.T) {
 		vf)
 }
 
-func TestParseMessagesKafkaDoubleHeaders(t *testing.T) {
+func TestParseMessagesFloat64BEHeaders(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2", "col3"}
 	theColTypes := []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType, common.DoubleColumnType, common.DoubleColumnType}
 	vf := func(t *testing.T, row *common.Row) {
@@ -378,7 +378,7 @@ func TestParseMessagesKafkaDoubleHeaders(t *testing.T) {
 		require.Equal(t, 5423.25, row.GetFloat64(3))
 	}
 	testParseMessage(t, theColNames, theColTypes,
-		common.EncodingKafkaDouble,
+		common.EncodingFloat64BE,
 		common.EncodingJSON, common.EncodingJSON,
 		[]kafka.MessageHeader{
 			{Key: "hdr1", Value: common.AppendFloat64ToBufferBE(nil, 2134.25)},

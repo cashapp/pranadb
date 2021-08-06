@@ -1,3 +1,4 @@
+--create topic testtopic;
 create source test_source_1(
     col0 bigint,
     col1 tinyint,
@@ -26,10 +27,15 @@ create source test_source_1(
     )
 );
 Ok
+
 create materialized view test_mv_1 as select * from test_source_1;
 Ok
+
 select * from test_mv_1 order by col0;
 0 rows returned
+
+--load data dataset_1;
+
 select * from test_mv_1 order by col0;
 |1|100|1000|1234.432100|12345678.99|str1|
 |2|200|2000|2234.432100|22345678.99|str2|
@@ -42,7 +48,10 @@ select * from test_mv_1 order by col0;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 10 rows returned
+
 drop materialized view test_mv_1;
 Ok
 drop source test_source_1;
 Ok
+
+--delete topic testtopic;
