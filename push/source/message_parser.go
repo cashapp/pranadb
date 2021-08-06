@@ -7,6 +7,7 @@ import (
 	"github.com/PaesslerAG/gval"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
+	"strings"
 )
 
 var jsonDecoder = &JSONDecoder{}
@@ -19,26 +20,56 @@ var kafkaDecoderShort = newKafkaDecoder(common.EncodingKafkaShort)
 var kafkaDecoderString = newKafkaDecoder(common.EncodingKafkaString)
 
 type MessageParser struct {
-	sourceInfo  *common.SourceInfo
-	rowsFactory *common.RowsFactory
-	colEvals    []gval.Evaluable
+	sourceInfo   *common.SourceInfo
+	rowsFactory  *common.RowsFactory
+	colEvals     []gval.Evaluable
+	parseHeaders bool
+	parseKey     bool
+	parseValue   bool
+	repMap       map[string]interface{}
 }
 
 func NewMessageParser(sourceInfo *common.SourceInfo) (*MessageParser, error) {
 	lang := gval.Full()
 	selectors := sourceInfo.TopicInfo.ColSelectors
 	selectEvals := make([]gval.Evaluable, len(selectors))
+	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
+	// don't use them
+	parseHeaders := false
+	parseKey := false
+	parseValue := false
+	repMapSize := 0
 	for i, selector := range selectors {
+		if strings.HasPrefix(selector, "h") {
+			parseHeaders = true
+			repMapSize++
+		}
+		if strings.HasPrefix(selector, "k") {
+			parseKey = true
+			repMapSize++
+		}
+		if strings.HasPrefix(selector, "v") {
+			parseValue = true
+			repMapSize++
+		}
+		if strings.HasPrefix(selector, "t") {
+			repMapSize++
+		}
 		eval, err := lang.NewEvaluable(selector)
 		if err != nil {
 			return nil, err
 		}
 		selectEvals[i] = eval
 	}
+	repMap := make(map[string]interface{}, repMapSize)
 	return &MessageParser{
-		rowsFactory: common.NewRowsFactory(sourceInfo.ColumnTypes),
-		sourceInfo:  sourceInfo,
-		colEvals:    selectEvals,
+		rowsFactory:  common.NewRowsFactory(sourceInfo.ColumnTypes),
+		sourceInfo:   sourceInfo,
+		colEvals:     selectEvals,
+		parseHeaders: parseHeaders,
+		parseKey:     parseKey,
+		parseValue:   parseValue,
+		repMap:       repMap,
 	}, nil
 }
 
@@ -56,35 +87,46 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 	ti := m.sourceInfo.TopicInfo
 	// Decode headers
 	var hdrs map[string]interface{}
-	if lh := len(message.Headers); lh > 0 {
-		hdrs = make(map[string]interface{}, lh)
-		for _, hdr := range message.Headers {
-			hm, err := m.decodeBytes(ti.HeaderEncoding, hdr.Value)
-			if err != nil {
-				return err
+	if m.parseHeaders {
+		lh := len(message.Headers)
+		if lh > 0 {
+			hdrs = make(map[string]interface{}, lh)
+			for _, hdr := range message.Headers {
+				hm, err := m.decodeBytes(ti.HeaderEncoding, hdr.Value)
+				if err != nil {
+					return err
+				}
+				hdrs[hdr.Key] = hm
 			}
-			hdrs[hdr.Key] = hm
 		}
 	}
 	// Decode key
-	km, err := m.decodeBytes(ti.KeyEncoding, message.Key)
-	if err != nil {
-		return err
+	var km interface{}
+	if m.parseKey {
+		var err error
+		km, err = m.decodeBytes(ti.KeyEncoding, message.Key)
+		if err != nil {
+			return err
+		}
 	}
 	// Decode value
-	vm, err := m.decodeBytes(ti.ValueEncoding, message.Value)
-	if err != nil {
-		return err
+	var vm interface{}
+	if m.parseValue {
+		var err error
+		vm, err = m.decodeBytes(ti.ValueEncoding, message.Value)
+		if err != nil {
+			return err
+		}
 	}
-	rep := make(map[string]interface{}, 2)
-	rep["h"] = hdrs
-	rep["k"] = km
-	rep["v"] = vm
-	rep["t"] = message.TimeStamp
+
+	m.repMap["h"] = hdrs
+	m.repMap["k"] = km
+	m.repMap["v"] = vm
+	m.repMap["t"] = message.TimeStamp
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
 		c := context.Background()
-		val, err := eval(c, rep)
+		val, err := eval(c, m.repMap)
 		if err != nil {
 			return err
 		}
