@@ -3,8 +3,8 @@ module github.com/squareup/pranadb
 go 1.16
 
 require (
-	github.com/PaesslerAG/gval v1.0.0 // indirect
-	github.com/PaesslerAG/jsonpath v0.1.1
+	github.com/PaesslerAG/gval v1.0.0
+	github.com/PaesslerAG/jsonpath v0.1.1 // indirect
 	github.com/alecthomas/kong v0.2.17
 	github.com/alecthomas/kong-hcl v1.0.1
 	github.com/alecthomas/participle/v2 v2.0.0-alpha6
