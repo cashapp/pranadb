@@ -63,8 +63,6 @@ execute 7 6 800;
 prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
 execute 8 6 600 6000 6234.4321 62345678.99 str6;
 
---show remote sessions;
-
 --close session;
 -- ps should now be closed as session was closed;
 execute 8 6 600 6000 6234.4321 62345678.99 str6;

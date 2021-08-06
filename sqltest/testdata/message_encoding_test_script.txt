@@ -1,0 +1,416 @@
+-- We test various different ways of encoding kafka messages with keys, values, headers JSON and binary etc;
+
+-- TEST1 - string encoded key, top level JSON encoded value;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col5)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        "v.v0"
+        "v.v1"
+        "v.v2"
+        "v.v3"
+        "v.v4"
+        "k"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST2 - int64BE encoded key, top level JSON encoded value;
+------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int64be",
+    valueencoding = "json",
+    columnselectors = (
+        "k"
+        "v.v1"
+        "v.v2"
+        "v.v3"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_2;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST3 - int32BE encoded key, top level JSON encoded value;
+------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int32be",
+    valueencoding = "json",
+    columnselectors = (
+        "v.v0"
+        "v.v1"
+        "k"
+        "v.v3"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_3;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST4 - float64BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "float64be",
+    valueencoding = "json",
+    columnselectors = (
+        "v.v0"
+        "v.v1"
+        "v.v2"
+        "k"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_4;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST5 - float32BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "float32be",
+    valueencoding = "json",
+    columnselectors = (
+        "v.v0"
+        "v.v1"
+        "v.v2"
+        "k"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_5;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST6 - int16BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int16be",
+    valueencoding = "json",
+    columnselectors = (
+        "v.v0"
+        "v.v1"
+        "k"
+        "v.v3"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_6;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST7 - top level JSON encoded key, top level JSON encoded value;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0"
+        "v.v1"
+        "v.v2"
+        "v.v3"
+        "v.v4"
+        "v.v5"
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_7;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST8 - nested JSON encoded key, nested JSON encoded value;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.n0.k0"
+        "v.n1.v1"
+        "v.n2.v2"
+        "v.n3.v3"
+        "v.n4.v4"
+        "v.n5.v5"
+        "v.n6.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_8;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST9 - key and value encoded as message headers in JSON!;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "h.key.k0"
+        "h.val.v1"
+        "h.val.v2"
+        "h.val.v3"
+        "h.val.v4"
+        "h.val.v5"
+        "h.val.v6"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_9;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
+
+-- TEST10 - timestamp column value coming from timestamp of Kafka message;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0"
+        "v.v1"
+        "v.v2"
+        "v.v3"
+        "v.v4"
+        "v.v5"
+        "t"
+    )
+    properties = (
+        "prop1" = "val1"
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_10;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;

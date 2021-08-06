@@ -7,17 +7,18 @@ import (
 	"github.com/PaesslerAG/gval"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
+	"log"
 	"strings"
 )
 
 var jsonDecoder = &JSONDecoder{}
 var protobufDecoder = &ProtobufDecoder{}
-var kafkaDecoderFloat = newKafkaDecoder(common.EncodingKafkaFloat)
-var kafkaDecoderDouble = newKafkaDecoder(common.EncodingKafkaDouble)
-var kafkaDecoderInteger = newKafkaDecoder(common.EncodingKafkaInteger)
-var kafkaDecoderLong = newKafkaDecoder(common.EncodingKafkaLong)
-var kafkaDecoderShort = newKafkaDecoder(common.EncodingKafkaShort)
-var kafkaDecoderString = newKafkaDecoder(common.EncodingKafkaString)
+var kafkaDecoderFloat = newKafkaDecoder(common.EncodingFloat32BE)
+var kafkaDecoderDouble = newKafkaDecoder(common.EncodingFloat64BE)
+var kafkaDecoderInteger = newKafkaDecoder(common.EncodingInt32BE)
+var kafkaDecoderLong = newKafkaDecoder(common.EncodingInt64BE)
+var kafkaDecoderShort = newKafkaDecoder(common.EncodingInt16BE)
+var kafkaDecoderString = newKafkaDecoder(common.EncodingStringBytes)
 
 type MessageParser struct {
 	sourceInfo   *common.SourceInfo
@@ -83,6 +84,7 @@ func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, 
 	return rows, nil
 }
 
+//nolint:gocyclo
 func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) error {
 	ti := m.sourceInfo.TopicInfo
 	// Decode headers
@@ -160,6 +162,7 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 			}
 			rows.AppendDecimalToColumn(i, *dval)
 		case common.TypeTimestamp:
+			log.Printf("coercing ts from %v", val)
 			tsVal, err := CoerceTimestamp(val)
 			if err != nil {
 				return err
@@ -180,17 +183,17 @@ func (m *MessageParser) decodeBytes(encoding common.KafkaEncoding, bytes []byte)
 	switch encoding {
 	case common.EncodingJSON:
 		decoder = jsonDecoder
-	case common.EncodingKafkaDouble:
+	case common.EncodingFloat64BE:
 		decoder = kafkaDecoderDouble
-	case common.EncodingKafkaFloat:
+	case common.EncodingFloat32BE:
 		decoder = kafkaDecoderFloat
-	case common.EncodingKafkaInteger:
+	case common.EncodingInt32BE:
 		decoder = kafkaDecoderInteger
-	case common.EncodingKafkaLong:
+	case common.EncodingInt64BE:
 		decoder = kafkaDecoderLong
-	case common.EncodingKafkaShort:
+	case common.EncodingInt16BE:
 		decoder = kafkaDecoderShort
-	case common.EncodingKafkaString:
+	case common.EncodingStringBytes:
 		decoder = kafkaDecoderString
 	case common.EncodingProtobuf:
 		decoder = protobufDecoder
@@ -228,22 +231,22 @@ func (k *KafkaDecoder) Decode(bytes []byte) (interface{}, error) {
 		return nil, nil
 	}
 	switch k.encoding {
-	case common.EncodingKafkaFloat:
+	case common.EncodingFloat32BE:
 		val, _ := common.ReadFloat32FromBufferBE(bytes, 0)
 		return val, nil
-	case common.EncodingKafkaDouble:
+	case common.EncodingFloat64BE:
 		val, _ := common.ReadFloat64FromBufferBE(bytes, 0)
 		return val, nil
-	case common.EncodingKafkaInteger:
+	case common.EncodingInt32BE:
 		val, _ := common.ReadUint32FromBufferBE(bytes, 0)
 		return int32(val), nil
-	case common.EncodingKafkaLong:
+	case common.EncodingInt64BE:
 		val, _ := common.ReadUint64FromBufferBE(bytes, 0)
 		return int64(val), nil
-	case common.EncodingKafkaShort:
+	case common.EncodingInt16BE:
 		val, _ := common.ReadUint16FromBufferBE(bytes, 0)
 		return int16(val), nil
-	case common.EncodingKafkaString:
+	case common.EncodingStringBytes:
 		// UTF-8 encoded
 		return string(bytes), nil
 	default:

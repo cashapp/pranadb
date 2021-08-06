@@ -59,7 +59,6 @@ func (m *MessageConsumer) pollLoop() {
 			log.Printf("Failed to get batch of messages %v", err)
 			return
 		}
-		//
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler)
@@ -67,9 +66,9 @@ func (m *MessageConsumer) pollLoop() {
 				log.Printf("Failed to process messages %v", err)
 				return
 			}
-
 		}
 		// Commit the offsets - note there may be more offsets than messages in the case of duplicates
+
 		if len(offsetsToCommit) != 0 {
 			if err := m.msgProvider.CommitOffsets(offsetsToCommit); err != nil {
 				log.Printf("Failed to commit Kafka offsets %v", err)
@@ -113,6 +112,5 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 			break
 		}
 	}
-	log.Printf("Got a batch of %d messages", len(msgs))
 	return msgs, offsetsToCommit, nil
 }

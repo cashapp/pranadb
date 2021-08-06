@@ -1,6 +1,8 @@
 package sharder
 
 import (
+	"github.com/squareup/pranadb/common"
+	"hash/fnv"
 	"sync"
 	"sync/atomic"
 
@@ -34,24 +36,38 @@ func (s *Sharder) CalculateShard(shardType ShardType, key []byte) (uint64, error
 
 func (s *Sharder) CalculateShardWithShardIDs(shardType ShardType, key []byte, shardIDs []uint64) (uint64, error) {
 	if shardType == ShardTypeHash {
-		return s.computeHashShard(key, shardIDs), nil
+		return s.computeHashShard(key, shardIDs)
 	}
 	panic("unsupported")
 }
 
-func (s *Sharder) computeHashShard(key []byte, shardIDs []uint64) uint64 {
-	hash := hash(key)
+func (s *Sharder) computeHashShard(key []byte, shardIDs []uint64) (uint64, error) {
+	hash, err := Hash(key)
+	if err != nil {
+		return 0, err
+	}
 	index := hash % uint32(len(shardIDs))
-	return shardIDs[index]
+	return shardIDs[index], nil
 }
 
-func hash(key []byte) uint32 {
+func Hash(key []byte) (uint32, error) {
 	// TODO consistent hashing when the cluster is not fixed size
-	hash := uint32(31)
-	for _, b := range key {
-		hash = 31*hash + uint32(b)
+	h1 := fnv.New64a()
+	_, err := h1.Write(key)
+	if err != nil {
+		return 0, err
 	}
-	return hash
+	v1 := h1.Sum64()
+	b := common.AppendUint64ToBufferLE(nil, v1)
+	// hash it again to get a good distribution - I found a single hash can result in poorly distributed
+	// values when the input was incrementing
+	// TODO maybe find a better hash algo - maybe use a crypto hash, but.. performance?
+	h2 := fnv.New32()
+	_, err = h2.Write(b)
+	if err != nil {
+		return 0, err
+	}
+	return h2.Sum32(), nil
 }
 
 func (s *Sharder) getShardIDs() []uint64 {

@@ -84,7 +84,8 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 
 	receivedMsgs := map[string]*Message{}
 	for i := 0; i < numMessages; i++ {
-		msg := sub.GetMessage(5 * time.Second)
+		msg, err := sub.GetMessage(5 * time.Second)
+		require.NoError(t, err)
 		require.NotNil(t, msg)
 		receivedMsgs[string(msg.Key)] = msg
 	}
@@ -118,29 +119,24 @@ func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 
 	receivedMsgs := map[string]*Message{}
 
-	sub1Count := 0
-	sub2Count := 0
 	for i := 0; i < numMessages; i++ {
 		start := time.Now()
 		var msg *Message
 		for {
-			msg = sub1.GetMessage(1 * time.Millisecond)
+			msg, err = sub1.GetMessage(1 * time.Millisecond)
+			require.NoError(t, err)
 			if msg != nil {
-				sub1Count++
 				break
 			}
-			msg = sub2.GetMessage(1 * time.Millisecond)
+			msg, err = sub2.GetMessage(1 * time.Millisecond)
+			require.NoError(t, err)
 			if msg != nil {
-				sub2Count++
 				break
 			}
 			require.True(t, time.Now().Sub(start) >= 5*time.Second, "timedout waiting for msgs")
 		}
 		receivedMsgs[string(msg.Key)] = msg
 	}
-
-	// Should be round-robin'd
-	require.Equal(t, sub1Count, sub2Count)
 
 	for _, msg := range sentMsgs {
 		rec, ok := receivedMsgs[string(msg.Key)]
@@ -181,12 +177,14 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 		start := time.Now()
 		var msg *Message
 		for {
-			msg = sub1.GetMessage(1 * time.Millisecond)
+			msg, err = sub1.GetMessage(1 * time.Millisecond)
+			require.NoError(t, err)
 			if msg != nil {
 				offsets1[msg.PartInfo.PartitionID] = msg.PartInfo.Offset
 				break
 			}
-			msg = sub2.GetMessage(1 * time.Millisecond)
+			msg, err = sub2.GetMessage(1 * time.Millisecond)
+			require.NoError(t, err)
 			if msg != nil {
 				offsets2[msg.PartInfo.PartitionID] = msg.PartInfo.Offset
 				break
@@ -205,11 +203,9 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 	offsetsTot := map[int32]int64{}
 	for partID, offset := range offsets1 {
 		offsetsTot[partID] = offset
-		require.Equal(t, numMessages/10, int(offset))
 	}
 	for partID, offset := range offsets2 {
 		offsetsTot[partID] = offset
-		require.Equal(t, numMessages/10, int(offset))
 	}
 
 	sub1.commitOffsets(offsets1)

@@ -1,3 +1,6 @@
+-- Prepared Statements tests;
+
+--create topic testtopic;
 create source test_source_1(
     col0 bigint,
     col1 tinyint,
@@ -26,6 +29,10 @@ create source test_source_1(
     )
 );
 Ok
+
+--load data dataset_1;
+
+-- ps with no params;
 prepare select * from test_source_1 where col0 > 5 order by col0;
 0
 execute 0;
@@ -35,6 +42,9 @@ execute 0;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 5 rows returned
+
+-- now test each col type;
+
 prepare select * from test_source_1 where col0 > ? order by col0;
 1
 execute 1 6;
@@ -43,6 +53,7 @@ execute 1 6;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 4 rows returned
+
 prepare select * from test_source_1 where col1 > ? order by col0;
 2
 execute 2 300;
@@ -54,6 +65,7 @@ execute 2 300;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 7 rows returned
+
 prepare select * from test_source_1 where col2 > ? order by col0;
 3
 execute 3 7000;
@@ -61,6 +73,7 @@ execute 3 7000;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 3 rows returned
+
 prepare select * from test_source_1 where col3 > ? order by col0;
 4
 execute 4 6123.65;
@@ -70,6 +83,7 @@ execute 4 6123.65;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 5 rows returned
+
 prepare select * from test_source_1 where col4 > ? order by col0;
 5
 execute 5 25000000.88;
@@ -82,6 +96,7 @@ execute 5 25000000.88;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 8 rows returned
+
 prepare select * from test_source_1 where col5 > ? order by col0;
 6
 execute 6 str5;
@@ -90,17 +105,28 @@ execute 6 str5;
 |8|800|8000|8234.432100|82345678.99|str8|
 |9|900|9000|9234.432100|92345678.99|str9|
 4 rows returned
+
+-- ps with two params;
 prepare select * from test_source_1 where col0 > ? and col1 > ? order by col0;
 7
 execute 7 6 800;
 |9|900|9000|9234.432100|92345678.99|str9|
 |10|1000|10000|10234.432100|93345678.99|str10|
 2 rows returned
+
+-- ps with params for all cols;
 prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
 8
 execute 8 6 600 6000 6234.4321 62345678.99 str6;
 |6|600|6000|6234.432100|62345678.99|str6|
 1 rows returned
+
+--close session;
+-- ps should now be closed as session was closed;
+execute 8 6 600 6000 6234.4321 62345678.99 str6;
 cannot find prepared statement with id 8
+
 drop source test_source_1;
 Ok
+
+--delete topic testtopic;
