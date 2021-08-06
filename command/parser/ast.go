@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/participle/v2"
@@ -24,7 +25,12 @@ type RawQuery struct {
 func (r *RawQuery) String() string {
 	out := strings.Builder{}
 	for _, token := range r.Tokens {
-		out.WriteString(token.Value)
+		v := token.Value
+		if token.Type == parser.Lexer().Symbols()["String"] {
+			// THIS IS A HACK! Need to fix participle bug that's stripping the quotes from the raw tokens
+			v = strconv.Quote(v)
+		}
+		out.WriteString(v)
 	}
 	return out.String()
 }
@@ -96,8 +102,8 @@ type TopicInformation struct {
 	HeaderEncoding string               `"HeaderEncoding" "=" @String ","`
 	KeyEncoding    string               `"KeyEncoding" "=" @String ","`
 	ValueEncoding  string               `"ValueEncoding" "=" @String ","`
-	ColSelectors   []*ColSelector       `"ColumnSelectors" "=" "(" @@+ ")"`
-	Properties     []*TopicInfoProperty `"Properties" "=" "(" @@+ ")"`
+	ColSelectors   []string             `"ColumnSelectors" "=" "(" (@String ("," @String)*)? ")"`
+	Properties     []*TopicInfoProperty `"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type ColSelector struct {

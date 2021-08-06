@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/pingcap/parser/mysql"
 	"time"
+
+	"github.com/pingcap/parser/mysql"
 
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/types"
@@ -22,7 +23,7 @@ func NewTimestampFromString(str string) Timestamp {
 }
 
 func NewTimestampFromGoTime(t time.Time) Timestamp {
-	return types.NewTime(types.FromGoTime(t), mysql.TypeTimestamp, 6)
+	return types.NewTime(types.FromGoTime(t.UTC()), mysql.TypeTimestamp, 6)
 }
 
 func NewTimestampFromUnixEpochMillis(v int64) Timestamp {

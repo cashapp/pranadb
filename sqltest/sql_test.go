@@ -3,10 +3,6 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/push/source"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -17,6 +13,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/push/source"
 
 	"github.com/squareup/pranadb/table"
 
@@ -498,6 +499,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 					case common.TypeTimestamp:
 						val := common.NewTimestampFromString(part)
 						currDataSet.rows.AppendTimestampToColumn(i, val)
+						fmt.Println(val.String())
 					default:
 						require.Fail(fmt.Sprintf("unexpected data type %d", colType.Type))
 					}

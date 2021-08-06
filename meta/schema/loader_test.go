@@ -1,12 +1,13 @@
 package schema
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
-	"strings"
 
 	"github.com/squareup/pranadb/notifier"
-	"testing"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command"
@@ -39,12 +40,12 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0"
-							"v.v1"
+							"k.k0",
+							"v.v1",
 							"v.v2"
 						)
 						properties = (
-							"prop1" = "val1"
+							"prop1" = "val1",
 							"prop2" = "val2"
 						)
 					)
@@ -60,12 +61,12 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0"
-							"v.v1"
+							"k.k0",
+							"v.v1",
 							"v.v2"
 						)
 						properties = (
-							"prop1" = "val1"
+							"prop1" = "val1",
 							"prop2" = "val2"
 						)
 					)
@@ -78,13 +79,13 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0"
-							"v.v1"
-							"v.v2"
+							"k.k0",
+							"v.v1",
+							"v.v2",
 							"v.v3"
 						)
 						properties = (
-							"prop1" = "val1"
+							"prop1" = "val1",
 							"prop2" = "val2"
 						)
 					)`,
@@ -104,13 +105,13 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0"
-							"v.v1"
-							"v.v2"
+							"k.k0",
+							"v.v1",
+							"v.v2",
 							"v.v3"
 						)
 						properties = (
-							"prop1" = "val1"
+							"prop1" = "val1",
 							"prop2" = "val2"
 						)
 					)`,
