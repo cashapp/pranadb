@@ -5,6 +5,7 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/alecthomas/repr"
+	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,6 +37,55 @@ func TestParse(t *testing.T) {
 				},
 			},
 		}, ""},
+		{"CreateSource", `
+			create source sensor_readings(
+			sensor_id bigint,
+			location varchar,
+			temperature double,
+			primary key (sensor_id)
+		) with (
+			brokername = "testbroker",
+			topicname = "testtopic",
+			headerencoding = "json",
+			keyencoding = "json",
+			valueencoding = "json",
+			columnselectors = (
+			"k.k0"
+			"v.v1"
+			"v.v2"
+		)
+			properties = (
+			"prop1" = "val1"
+			"prop2" = "val2"
+		)
+		)
+			`, &AST{Create: &Create{
+			Source: &CreateSource{
+				Name: "sensor_readings",
+				Options: []*TableOption{
+					{Column: &ColumnDef{Pos: lexer.Position{Offset: 38, Line: 3, Column: 4}, Name: "sensor_id", Type: common.Type(3)}},
+					{Column: &ColumnDef{Pos: lexer.Position{Offset: 59, Line: 4, Column: 4}, Name: "location", Type: common.Type(6)}},
+					{Column: &ColumnDef{Pos: lexer.Position{Offset: 80, Line: 5, Column: 4}, Name: "temperature", Type: common.Type(4)}},
+					{PrimaryKey: "sensor_id"},
+				},
+				TopicInformation: &TopicInformation{
+					BrokerName:     `"testbroker"`,
+					TopicName:      `"testtopic"`,
+					HeaderEncoding: `"json"`,
+					KeyEncoding:    `"json"`,
+					ValueEncoding:  `"json"`,
+					ColSelectors: []*ColSelector{
+						{Selector: `"k.k0"`},
+						{Selector: `"v.v1"`},
+						{Selector: `"v.v2"`},
+					},
+					Properties: []*TopicInfoProperty{
+						{Key: `"prop1"`, Value: `"val1"`},
+						{Key: `"prop2"`, Value: `"val2"`},
+					},
+				},
+			},
+		}}, ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
