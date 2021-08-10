@@ -4,7 +4,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"log"
 	"sync"
 )
 
@@ -30,9 +29,6 @@ func (m *Mover) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localS
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID,
-		m.cluster.GetNodeID(), remoteShardID)
 
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
@@ -92,14 +88,12 @@ func (m *Mover) TransferData(localShardID uint64, del bool) error {
 
 	for _, fBatch := range batches {
 		// Write to the remote shard
-		log.Printf("Remote writing data from shard %d on node %d to remote shard %d", localShardID, m.cluster.GetNodeID(), fBatch.addBatch.ShardID)
 		err := m.cluster.WriteBatch(fBatch.addBatch)
 		if err != nil {
 			return err
 		}
 		if del {
 			// Delete locally
-			log.Printf("Deleting keys from forwarder queue for shard %d on node %d", localShardID, m.cluster.GetNodeID())
 			err = m.cluster.WriteBatch(fBatch.deleteBatch)
 			if err != nil {
 				return err
@@ -126,7 +120,6 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
 	for _, kvPair := range kvPairs {
-		log.Printf("Read row from receiver %s", common.DumpDataKey(kvPair.Key))
 		sendingShardID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
 		if !ok {

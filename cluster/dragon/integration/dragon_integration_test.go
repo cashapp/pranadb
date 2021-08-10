@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/conf"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -206,7 +207,15 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
-		clus, err := dragon.NewDragon(i, 123, nodeAddresses, numShards, dataDir, 3, true)
+		cnf := conf.NewConfig()
+		cnf.NodeID = i
+		cnf.ClusterID = 123
+		cnf.RaftAddresses = nodeAddresses
+		cnf.NumShards = numShards
+		cnf.DataDir = dataDir
+		cnf.ReplicationFactor = 3
+		cnf.TestServer = true
+		clus, err := dragon.NewDragon(*cnf)
 		if err != nil {
 			return nil, err
 		}

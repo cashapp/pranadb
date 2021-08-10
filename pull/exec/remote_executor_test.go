@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/meta"
 	"log"
 	"sync"
 	"testing"
@@ -116,16 +117,19 @@ func TestRemoteExecutorResetAndGetAgain(t *testing.T) {
 	}
 }
 
-func TestRemoteExecutorSystemShardDoesNotFanOut(t *testing.T) {
+func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
 		allShardsIds[i] = uint64(i)
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colTypes, "sys", tc)
 	require.Len(t, re.clusterGetters, 1)
 	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
+
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
+	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
 //nolint: unparam

@@ -154,7 +154,7 @@ func TestLoader(t *testing.T) {
 			_, ok := metaController.GetSchema("test")
 			require.False(t, ok)
 
-			loader := NewLoader(metaController, executor, executor.GetPushEngine())
+			loader := NewLoader(metaController, executor.GetPushEngine(), executor.GetPullEngine())
 			require.NoError(t, loader.Start())
 
 			for _, schema := range test.ddl {

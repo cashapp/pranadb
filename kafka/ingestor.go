@@ -18,7 +18,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	if !ok {
 		return fmt.Errorf("cannot find topic %s", topicName)
 	}
-	startCommitted := topic.TotalCommittedMessages(groupID)
+	ingestedStart, _ := topic.TotalMessages(groupID)
 
 	timestamp := timestampBase
 	for i := 0; i < rows.RowCount(); i++ {
@@ -30,10 +30,13 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 		timestamp = timestamp.Add(1 * time.Second)
 	}
 	// And we wait for all offsets to be committed
-	wanted := startCommitted + rows.RowCount()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		n := topic.TotalCommittedMessages(groupID)
-		return n == wanted, nil
+		ingested, committed := topic.TotalMessages(groupID)
+		// All the messages have been ingested and committed
+		if (ingested-ingestedStart == rows.RowCount()) && (ingested-committed) == 0 {
+			return true, nil
+		}
+		return false, nil
 	}, 10*time.Second, 1*time.Millisecond)
 	if err != nil {
 		return err

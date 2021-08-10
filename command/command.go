@@ -52,6 +52,14 @@ func NewCommandExecutor(
 	}
 }
 
+func (e *Executor) Start() error {
+	return e.notifClient.Start()
+}
+
+func (e *Executor) Stop() error {
+	return e.notifClient.Stop()
+}
+
 // ExecuteSQLStatement executes a synchronous SQL statement.
 func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
 	// Sessions cannot be accessed concurrently and we also need a memory barrier even if they're not accessed
@@ -127,6 +135,10 @@ func (e *Executor) createMaterializedView(session *sess.Session, name string, qu
 // GetPushEngine is only used in testing
 func (e *Executor) GetPushEngine() *push.PushEngine {
 	return e.pushEngine
+}
+
+func (e *Executor) GetPullEngine() *pull.PullEngine {
+	return e.pullEngine
 }
 
 //nolint:gocyclo
@@ -268,7 +280,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
 		// otherwise SQLTest will think ddl is synced before data is deleted
-		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
+		err := e.pushEngine.RemoveSource(sourceInfo, persist)
 		if err != nil {
 			return nil, err
 		}

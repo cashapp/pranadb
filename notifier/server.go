@@ -44,7 +44,9 @@ type server struct {
 func (s *server) Start() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
+	if s.started {
+		return nil
+	}
 	list, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
 		return errors.WithStack(err)

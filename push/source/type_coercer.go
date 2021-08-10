@@ -3,7 +3,6 @@ package source
 import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
-	"log"
 	"math"
 	"reflect"
 	"strconv"
@@ -133,7 +132,6 @@ func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
 	case uint64:
 		// Incoming value is assumed to be Unix milliseconds past epoch
 		ts := common.NewTimestampFromUnixEpochMillis(int64(v))
-		log.Printf("coerced ts from unix millis %d %s", v, ts)
 		return ts, nil
 	default:
 		return common.Timestamp{}, coerceFailedErr(v, "timestamp")

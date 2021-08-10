@@ -3,11 +3,12 @@ package exec
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/meta"
+	"strings"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/meta"
 )
 
 type RemoteExecutor struct {
@@ -149,7 +150,10 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 func (re *RemoteExecutor) createGetters() {
 	shardIDs := re.ShardIDs
 	if re.schemaName == meta.SystemSchemaName {
-		shardIDs = []uint64{cluster.SystemSchemaShardID}
+		// It's only the tables sys table that doesn't require fanout, others do, e.g. offsets
+		if strings.Index(strings.ToLower(re.queryInfo.Query), fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1 {
+			shardIDs = []uint64{cluster.SystemSchemaShardID}
+		}
 	}
 	re.clusterGetters = make([]*clusterGetter, len(shardIDs))
 	for i, shardID := range shardIDs {

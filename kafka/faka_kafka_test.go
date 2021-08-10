@@ -208,8 +208,10 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 		offsetsTot[partID] = offset
 	}
 
-	sub1.commitOffsets(offsets1)
-	sub2.commitOffsets(offsets2)
+	err = sub1.commitOffsets(offsets1)
+	require.NoError(t, err)
+	err = sub2.commitOffsets(offsets2)
+	require.NoError(t, err)
 
 	require.Equal(t, group1.offsets, offsetsTot)
 }

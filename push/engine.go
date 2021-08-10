@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/source"
-	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -43,19 +42,23 @@ type PushEngine struct {
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
 	queryExec common.SimpleQueryExec) *PushEngine {
 	engine := PushEngine{
-		remoteConsumers:   make(map[uint64]*remoteConsumer),
-		sources:           make(map[uint64]*source.Source),
-		materializedViews: make(map[uint64]*materializedView),
-		schedulers:        make(map[uint64]*sched.ShardScheduler),
-		mover:             mover.NewMover(cluster),
-		cluster:           cluster,
-		sharder:           sharder,
-		meta:              meta,
-		rnd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
-		cfg:               cfg,
-		queryExec:         queryExec,
+		mover:     mover.NewMover(cluster),
+		cluster:   cluster,
+		sharder:   sharder,
+		meta:      meta,
+		rnd:       rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:       cfg,
+		queryExec: queryExec,
 	}
+	engine.createMaps()
 	return &engine
+}
+
+func (p *PushEngine) createMaps() {
+	p.remoteConsumers = make(map[uint64]*remoteConsumer)
+	p.sources = make(map[uint64]*source.Source)
+	p.materializedViews = make(map[uint64]*materializedView)
+	p.schedulers = make(map[uint64]*sched.ShardScheduler)
 }
 
 // remoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -93,9 +96,15 @@ func (p *PushEngine) Stop() error {
 	if !p.started {
 		return nil
 	}
+	for _, src := range p.sources {
+		if err := src.Stop(); err != nil {
+			return err
+		}
+	}
 	for _, sched := range p.schedulers {
 		sched.Stop()
 	}
+	p.createMaps() // Clear the internal state
 	p.started = false
 	return nil
 }
@@ -125,7 +134,6 @@ func (s *shardListener) RemoteWriteOccurred() {
 }
 
 func (s *shardListener) maybeHandleRemoteBatch() error {
-	log.Printf("In maybeHandleRemoteBatch on shard %d", s.shardID)
 	err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
 	if err != nil {
 		return err
@@ -221,14 +229,10 @@ func (p *PushEngine) checkForRowsToForward() error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *PushEngine) WaitForProcessingToComplete() error {
 
-	log.Printf("Waiting for processing to complete on node %d", p.cluster.GetNodeID())
-
 	err := p.waitForSchedulers()
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Schedulers complete on node %d", p.cluster.GetNodeID())
 
 	// Wait for no rows in the forwarder table
 	err = p.waitForNoRowsInTable(common.ForwarderTableID)
@@ -236,15 +240,12 @@ func (p *PushEngine) WaitForProcessingToComplete() error {
 		return err
 	}
 
-	log.Printf("No rows in forwarder table on node %d", p.cluster.GetNodeID())
-
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("No rows in receiver table on node %d", p.cluster.GetNodeID())
 	return nil
 }
 
@@ -315,23 +316,33 @@ func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) 
 	return sched, ok
 }
 
-func (p *PushEngine) RemoveSource(sourceID uint64, deleteData bool) error {
+func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	src, ok := p.sources[sourceID]
+	src, ok := p.sources[sourceInfo.ID]
 	if !ok {
-		return fmt.Errorf("no such source %d", sourceID)
+		return fmt.Errorf("no such source %d", sourceInfo.ID)
 	}
 	if err := src.Stop(); err != nil {
 		return err
 	}
 
-	delete(p.sources, sourceID)
-	delete(p.remoteConsumers, sourceID)
+	delete(p.sources, sourceInfo.ID)
+	delete(p.remoteConsumers, sourceInfo.ID)
 
 	if deleteData {
-		return p.deleteAllDataForTable(sourceID)
+		// Delete the committed offsets for the source
+		startPrefix := common.AppendUint64ToBufferBE(nil, common.OffsetsTableID)
+		startPrefix = common.KeyEncodeString(startPrefix, sourceInfo.SchemaName)
+		startPrefix = common.KeyEncodeString(startPrefix, sourceInfo.Name)
+		endPrefix := common.IncrementBytesBigEndian(startPrefix)
+
+		if err := p.cluster.DeleteAllDataInRange(startPrefix, endPrefix); err != nil {
+			return err
+		}
+		// Delete the table data
+		return p.deleteAllDataForTable(sourceInfo.ID)
 	}
 	return nil
 }
@@ -396,8 +407,8 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 }
 
 func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
-	startPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID)
-	endPrefix := common.AppendUint64ToBufferBE([]byte{}, tableID+1)
+	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
+	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
 	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
 }
 

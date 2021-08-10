@@ -30,11 +30,7 @@ func main() {
 	kctx.FatalIfErrorf(err)
 
 	// TODO parse conf file into Config
-	psrv, err := server.NewServer(conf.Config{
-		NodeID:     0,
-		NumShards:  10,
-		TestServer: true,
-	})
+	psrv, err := server.NewServer(*(conf.NewTestConfig(0)))
 	kctx.FatalIfErrorf(err)
 	pgsrv := wire.New(psrv)
 

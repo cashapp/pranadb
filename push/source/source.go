@@ -10,6 +10,7 @@ import (
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/squareup/pranadb/cluster"
@@ -23,6 +24,8 @@ const (
 	numConsumersPerSource = 1
 	pollTimeoutMs         = 10
 	maxPollMessages       = 10000
+	maxRetryDelay         = time.Second * 30
+	initialRestartDelay   = time.Millisecond * 100
 )
 
 type RowProcessor interface {
@@ -44,6 +47,9 @@ type Source struct {
 	msgConsumers            []*MessageConsumer
 	startupCommittedOffsets map[int32]int64
 	queryExec               common.SimpleQueryExec
+	lock                    sync.Mutex
+	lastRestartDelay        time.Duration
+	started                 bool
 }
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
@@ -82,22 +88,33 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		return nil, errors.NewUserErrorF(errors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
 	return &Source{
-		sourceInfo:    sourceInfo,
-		tableExecutor: tableExec,
-		sharder:       sharder,
-		cluster:       cluster,
-		mover:         mover,
-		schedSelector: schedSelector,
-		messageParser: messageParser,
-		msgProvFact:   msgProvFact,
-		queryExec:     queryExec,
+		sourceInfo:              sourceInfo,
+		tableExecutor:           tableExec,
+		sharder:                 sharder,
+		cluster:                 cluster,
+		mover:                   mover,
+		schedSelector:           schedSelector,
+		messageParser:           messageParser,
+		msgProvFact:             msgProvFact,
+		queryExec:               queryExec,
+		startupCommittedOffsets: make(map[int32]int64),
 	}, nil
 }
 
 func (s *Source) Start() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.started {
+		return nil
+	}
 
 	if err := s.loadStartupCommittedOffsets(); err != nil {
 		return err
+	}
+
+	if len(s.msgConsumers) != 0 {
+		panic("more than zero consumers!")
 	}
 
 	for i := 0; i < numConsumersPerSource; i++ {
@@ -105,7 +122,7 @@ func (s *Source) Start() error {
 		if err != nil {
 			return err
 		}
-		// We choose a local scheduler based on the name of the schema, name of source and number of ordinal of the message consumer
+		// We choose a local scheduler based on the name of the schema, name of source and ordinal of the message consumer
 		// The shard of that scheduler is where ingested rows will be staged, ready to be forwarded to their
 		// destination shards. Having a message consumer pinned to a shard ensures all messages for a particular
 		// Kafka partition are forwarded in order. If different batches used different shards, we couldn't guarantee that.
@@ -119,18 +136,12 @@ func (s *Source) Start() error {
 		if err != nil {
 			return err
 		}
-		consumer := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler)
+		consumer := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
 		s.msgConsumers = append(s.msgConsumers, consumer)
 		consumer.Start()
 	}
 
-	// TODO we should wait for rebalancing to settle down when we start the consumers - there may be churn as
-	// the cluster starts up - we do not want to consume messages in that time as the partition allocation could
-	// change and we could end up with messages from the same partition being processed out of order as they are
-	// forwarded into different staging shard IDs.
-
-	// We will do this by stalling message processing until a fixed delay after the last rebalancing.
-
+	s.started = true
 	return nil
 }
 
@@ -155,10 +166,54 @@ func (s *Source) loadStartupCommittedOffsets() error {
 	return nil
 }
 
-func (s *Source) Stop() error {
-	for _, consumer := range s.msgConsumers {
-		consumer.Stop()
+// An error occurred in the consumer
+func (s *Source) consumerError(err error, clientError bool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if !s.started {
+		return
 	}
+	log.Printf("Failure in consumer %v source will be stopped", err)
+	if err2 := s.stop(); err2 != nil {
+		return
+	}
+	if clientError {
+		var delay time.Duration
+		if s.lastRestartDelay != 0 {
+			delay = s.lastRestartDelay
+			if delay < maxRetryDelay {
+				delay *= 2
+			}
+		} else {
+			delay = initialRestartDelay
+		}
+		log.Printf("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
+		time.AfterFunc(delay, func() {
+			err := s.Start()
+			if err != nil {
+				log.Printf("Failed to start source %v", err)
+			}
+		})
+	}
+}
+
+func (s *Source) Stop() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.stop()
+}
+
+func (s *Source) stop() error {
+	if !s.started {
+		panic("not started")
+	}
+	for _, consumer := range s.msgConsumers {
+		if err := consumer.Stop(); err != nil {
+			return err
+		}
+	}
+	s.msgConsumers = nil
+	s.started = false
 	return nil
 }
 
@@ -182,13 +237,10 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64) error {
-
 	rows, err := s.messageParser.ParseMessages(messages)
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Ingesting rows on shard %d and node %d", shardID, s.cluster.GetNodeID())
 
 	// TODO where Source has no key - need to create one
 
@@ -231,12 +283,22 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 // we store the last received offsets here and we will reject any in the consumer that we've seen before
 func (s *Source) commitOffsetsToPrana(offsets map[int32]int64, batch *cluster.WriteBatch) {
 	for partID, offset := range offsets {
+
+		val := make([]byte, 0, 36)
+		val = append(val, 1)
+		val = common.AppendStringToBufferLE(val, s.sourceInfo.SchemaName)
+		val = append(val, 1)
+		val = common.AppendStringToBufferLE(val, s.sourceInfo.Name)
+		val = append(val, 1)
+		val = common.AppendUint64ToBufferLE(val, uint64(partID))
+		val = append(val, 1)
+		val = common.AppendUint64ToBufferLE(val, uint64(offset))
+
 		key := table.EncodeTableKeyPrefix(common.OffsetsTableID, batch.ShardID, 40)
 		key = common.KeyEncodeString(key, s.sourceInfo.SchemaName)
 		key = common.KeyEncodeString(key, s.sourceInfo.Name)
 		key = common.KeyEncodeInt64(key, int64(partID))
-		val := make([]byte, 8)
-		val = common.AppendUint64ToBufferLE(val, uint64(offset))
+
 		batch.AddPut(key, val)
 	}
 }

@@ -9,61 +9,113 @@ import (
 )
 
 type MessageConsumer struct {
-	msgProvider kafka.MessageProvider
-	pollTimeout time.Duration
-	maxMessages int
-	source      *Source
-	started     common.AtomicBool
-	loopCh      chan struct{}
-	scheduler   *sched.ShardScheduler
+	msgProvider             kafka.MessageProvider
+	pollTimeout             time.Duration
+	maxMessages             int
+	source                  *Source
+	loopCh                  chan struct{}
+	scheduler               *sched.ShardScheduler
+	startupCommittedOffsets map[int32]int64
+	started                 common.AtomicBool
+	running                 common.AtomicBool
 }
 
 func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
-	scheduler *sched.ShardScheduler) *MessageConsumer {
-	return &MessageConsumer{
-		msgProvider: msgProvider,
-		pollTimeout: pollTimeout,
-		maxMessages: maxMessages,
-		source:      source,
-		scheduler:   scheduler,
+	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) *MessageConsumer {
+	lcm := make(map[int32]int64)
+	for k, v := range startupCommitOffsets {
+		lcm[k] = v
 	}
+	mc := &MessageConsumer{
+		msgProvider:             msgProvider,
+		pollTimeout:             pollTimeout,
+		maxMessages:             maxMessages,
+		source:                  source,
+		scheduler:               scheduler,
+		startupCommittedOffsets: lcm,
+		loopCh:                  make(chan struct{}, 1),
+	}
+	msgProvider.SetPartitionsAssignedCb(mc.partitionsAssigned)
+	msgProvider.SetPartitionsRevokedCb(mc.partitionsRevoked)
+	return mc
+}
+
+func (m *MessageConsumer) partitionsAssigned() error {
+
+	if !m.running.CompareAndSet(false, true) {
+		return nil
+	}
+	// We start the poll loop again
+	go m.pollLoop()
+	return nil
+}
+
+func (m *MessageConsumer) partitionsRevoked() error {
+	// Re-balancing is about to occur - the Kafka client should guarantee this is called before rebalancing actually
+	// happens - it gives the consumer a chance to finish processing any messages and to commit any offsets.
+	// Without this it would be possible for another consumer to take over processing for the the same set of
+	// partitions and commit an offset in the same partition before this one had committed theirs.
+
+	// We wait for any processing to complete on the poll loop
+
+	m.waitForPollLoopToStop()
+	return nil
 }
 
 func (m *MessageConsumer) Start() {
-	if m.started.Get() {
+	if !m.started.CompareAndSet(false, true) {
 		return
 	}
-	m.loopCh = make(chan struct{}, 1)
-	m.started.Set(true)
-	go m.pollLoop()
+	if m.running.CompareAndSet(false, true) {
+		go m.pollLoop()
+	}
 }
 
-func (m *MessageConsumer) Stop() {
-	if !m.started.Get() {
-		return
+func (m *MessageConsumer) Stop() error {
+	if !m.started.CompareAndSet(true, false) {
+		return nil
 	}
-	m.started.Set(false)
-	_, ok := <-m.loopCh
-	if !ok {
-		panic("channel closed")
+	// unsubscribe happens here
+	err := m.msgProvider.Stop()
+
+	// If called from a consumer error it will be called on the poll loop and the consumer error will
+	// have already set running to false
+	m.waitForPollLoopToStop()
+
+	return err
+}
+
+func (m *MessageConsumer) waitForPollLoopToStop() {
+	if m.running.CompareAndSet(true, false) {
+		_, ok := <-m.loopCh
+		if !ok {
+			panic("channel closed")
+		}
 	}
+}
+
+func (m *MessageConsumer) consumerError(err error, clientError bool) {
+	m.running.Set(false)
+	go func() {
+		m.source.consumerError(err, clientError)
+	}()
 }
 
 func (m *MessageConsumer) pollLoop() {
 	defer func() {
 		m.loopCh <- struct{}{}
 	}()
-	for m.started.Get() {
+	for m.running.Get() {
 		messages, offsetsToCommit, err := m.getBatch(m.pollTimeout, m.maxMessages)
 		if err != nil {
-			log.Printf("Failed to get batch of messages %v", err)
+			m.consumerError(err, true)
 			return
 		}
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler)
 			if err != nil {
-				log.Printf("Failed to process messages %v", err)
+				m.consumerError(err, false)
 				return
 			}
 		}
@@ -71,7 +123,7 @@ func (m *MessageConsumer) pollLoop() {
 
 		if len(offsetsToCommit) != 0 {
 			if err := m.msgProvider.CommitOffsets(offsetsToCommit); err != nil {
-				log.Printf("Failed to commit Kafka offsets %v", err)
+				m.consumerError(err, true)
 				return
 			}
 		}
@@ -93,16 +145,23 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		if msg == nil {
 			break
 		}
+
 		partID := msg.PartInfo.PartitionID
-		startupLastOffset := m.source.startupLastOffset(partID)
+
+		var lastOffset int64
+		var ok bool
+		lastOffset, ok = m.startupCommittedOffsets[partID]
+		if !ok {
+			lastOffset = 0
+		}
 
 		offsetsToCommit[partID] = msg.PartInfo.Offset
-		if msg.PartInfo.Offset <= startupLastOffset {
+		if msg.PartInfo.Offset <= lastOffset {
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.
 			// In this case we log a warning, and ignore the message, the offset will be committed
-			log.Printf("Duplicate message delivery attempted on schema %s source %s topic %s partition %d - is the server recovering after failure?"+
-				" Message will be ignoreed", m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID)
+			log.Printf("Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
+				" Message will be ignored", m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
 			continue
 		}
 

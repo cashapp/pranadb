@@ -79,11 +79,13 @@ func TestNotificationStopServer(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 	client := newClient(listenAddresses...)
+	err := client.Start()
+	require.NoError(t, err)
 	defer stopClient(t, client)
 
 	sendAndReceiveNotif(t, client, "aardvarks", listeners)
 
-	err := servers[1].Stop()
+	err = servers[1].Stop()
 	require.NoError(t, err)
 
 	var listenersWithout1 []*notifListener
@@ -107,10 +109,12 @@ func TestNotificationsRetryConnections(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 	client := newClient(listenAddresses...)
+	err := client.Start()
+	require.NoError(t, err)
 	defer stopClient(t, client)
 
 	numSent := 0
-	err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+	err = client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 	require.NoError(t, err)
 	numSent++
 	require.Equal(t, 3, client.numAvailableServers())
@@ -179,6 +183,8 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 
 	for i := 0; i < numClients; i++ {
 		client := newClient(listenAddresses...)
+		err := client.Start()
+		require.NoError(t, err)
 		clients[i] = client
 	}
 	defer stopClients(t, clients)
@@ -235,6 +241,8 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 	}
 
 	client := newClient(listenAddresses...)
+	err := client.Start()
+	require.NoError(t, err)
 	defer stopClient(t, client)
 
 	notifs := make([]Notification, len(notifsToSend))
@@ -267,6 +275,8 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	client := newClient("localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
 	defer stopClient(t, client)
 
 	scMessage := &notifications.SessionClosedMessage{SessionId: "foo"}

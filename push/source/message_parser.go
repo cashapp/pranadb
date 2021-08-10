@@ -7,7 +7,6 @@ import (
 	"github.com/PaesslerAG/gval"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
-	"log"
 	"strings"
 )
 
@@ -162,7 +161,6 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 			}
 			rows.AppendDecimalToColumn(i, *dval)
 		case common.TypeTimestamp:
-			log.Printf("coercing ts from %v", val)
 			tsVal, err := CoerceTimestamp(val)
 			if err != nil {
 				return err
