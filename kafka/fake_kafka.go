@@ -301,7 +301,10 @@ func (g *Group) commitOffsets(offsets map[int32]int64) error {
 	for partID, offset := range offsets {
 		co, ok := g.offsets.Load(partID)
 		if ok {
-			currOff := co.(int64)
+			currOff, ok := co.(int64)
+			if !ok {
+				panic("not an int64")
+			}
 			if currOff >= offset {
 				return fmt.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
 			}
@@ -380,7 +383,11 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 func (g *Group) getOffsets() map[int32]int64 {
 	m := make(map[int32]int64)
 	g.offsets.Range(func(key, value interface{}) bool {
-		m[key.(int32)] = value.(int64)
+		v, ok := value.(int64)
+		if !ok {
+			panic("not anint64")
+		}
+		m[key.(int32)] = v
 		return true
 	})
 
@@ -396,7 +403,6 @@ func (g *Group) resetOffsets() {
 
 type Subscriber struct {
 	topic      *Topic
-	lock       sync.Mutex
 	partitions []*Partition
 	group      *Group
 	prCB       PartitionsCallback

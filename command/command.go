@@ -2,14 +2,12 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/notifier"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"github.com/squareup/pranadb/notifier"
 
 	"github.com/squareup/pranadb/sess"
 
@@ -146,17 +144,6 @@ func (e *Executor) GetPullEngine() *pull.PullEngine {
 //nolint:gocyclo
 func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
 	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
-	start := time.Now()
-	ss := sql
-	if len(ss) > 30 {
-		ss = ss[0:30]
-	}
-	ss = strings.Replace(ss, "\n", " ", -1)
-	defer func() {
-		dur := time.Now().Sub(start)
-		log.Printf("Executing %s took %d ms on node %d", ss, dur.Milliseconds(), e.cluster.GetNodeID())
-	}()
-	log.Printf("Executing sql %s on node %d", ss, e.cluster.GetNodeID())
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.MaybeAddStack(err)

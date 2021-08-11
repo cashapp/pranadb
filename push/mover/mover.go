@@ -86,21 +86,44 @@ func (m *Mover) TransferData(localShardID uint64, del bool) error {
 		batch.deleteBatch.AddDelete(key)
 	}
 
-	for _, fBatch := range batches {
+	// We send these in parallel for better performance
+	lb := len(batches)
+	chs := make([]chan error, lb)
+	for i, fBatch := range batches {
+		chs[i] = m.sendRemoteBatch(fBatch, del)
+	}
+	for i := 0; i < lb; i++ {
+		err, ok := <-chs[i]
+		if !ok {
+			panic("channel closed")
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Mover) sendRemoteBatch(fBatch *forwardBatch, del bool) chan error {
+	ch := make(chan error, 1)
+	go func() {
 		// Write to the remote shard
 		err := m.cluster.WriteBatch(fBatch.addBatch)
 		if err != nil {
-			return err
+			ch <- err
+			return
 		}
 		if del {
 			// Delete locally
 			err = m.cluster.WriteBatch(fBatch.deleteBatch)
 			if err != nil {
-				return err
+				ch <- err
+				return
 			}
 		}
-	}
-	return nil
+		ch <- nil
+	}()
+	return ch
 }
 
 type forwardBatch struct {
