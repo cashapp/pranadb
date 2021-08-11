@@ -5,7 +5,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/stretchr/testify/require"
-	"log"
 	"testing"
 	"time"
 )
@@ -213,10 +212,6 @@ func TestParseMessageTimestamp(t *testing.T) {
 	// We get col2 from a numeric field in the message assumed to be unix milliseconds (like new Date().getTime())
 	vf := func(t *testing.T, row *common.Row) { //nolint:thelper
 		require.Equal(t, tsMysql, row.GetTimestamp(0))
-
-		ts2 := row.GetTimestamp(1)
-		log.Printf("Received str timestamp is %s", ts2.String())
-
 		require.Equal(t, tsMysql, row.GetTimestamp(1))
 		require.Equal(t, tsMysql, row.GetTimestamp(2))
 	}

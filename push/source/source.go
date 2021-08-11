@@ -21,8 +21,8 @@ import (
 
 // TODO make configurable
 const (
-	numConsumersPerSource = 1
-	pollTimeoutMs         = 10
+	numConsumersPerSource = 2
+	pollTimeoutMs         = 100
 	maxPollMessages       = 10000
 	maxRetryDelay         = time.Second * 30
 	initialRestartDelay   = time.Millisecond * 100
@@ -41,7 +41,6 @@ type Source struct {
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
 	mover                   *mover.Mover
-	messageParser           *MessageParser
 	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
 	msgConsumers            []*MessageConsumer
@@ -70,10 +69,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		return nil, errors.NewUserErrorF(errors.UnknownBrokerName, "Unknown broker. Name: %s", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
-	messageParser, err := NewMessageParser(sourceInfo)
-	if err != nil {
-		return nil, err
-	}
 	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
@@ -94,7 +89,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		cluster:                 cluster,
 		mover:                   mover,
 		schedSelector:           schedSelector,
-		messageParser:           messageParser,
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
 		startupCommittedOffsets: make(map[int32]int64),
@@ -136,7 +130,10 @@ func (s *Source) Start() error {
 		if err != nil {
 			return err
 		}
-		consumer := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
+		consumer, err := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
+		if err != nil {
+			return err
+		}
 		s.msgConsumers = append(s.msgConsumers, consumer)
 		consumer.Start()
 	}
@@ -225,9 +222,10 @@ func (s *Source) RemoveConsumingExecutor(executor exec.PushExecutor) {
 	s.tableExecutor.RemoveConsumingNode(executor)
 }
 
-func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, scheduler *sched.ShardScheduler) error {
+func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, scheduler *sched.ShardScheduler,
+	mp *MessageParser) error {
 	errChan := scheduler.ScheduleAction(func() error {
-		return s.ingestMessages(messages, offsetsToCommit, scheduler.ShardID())
+		return s.ingestMessages(messages, offsetsToCommit, scheduler.ShardID(), mp)
 	})
 	err, ok := <-errChan
 	if !ok {
@@ -236,8 +234,8 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 	return err
 }
 
-func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64) error {
-	rows, err := s.messageParser.ParseMessages(messages)
+func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {
+	rows, err := mp.ParseMessages(messages)
 	if err != nil {
 		return err
 	}

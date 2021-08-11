@@ -20,7 +20,7 @@ create source test_source_1(
         "v.v2",
         "v.v3",
         "v.v4",
-        "v.v5"
+        "v.v5",
         "v.v6"
     )
     properties = (

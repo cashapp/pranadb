@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/squareup/pranadb/notifier"
 
@@ -112,15 +113,16 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 		TableInfo: &tableInfo,
 		TopicInfo: topicInfo,
 	}
-	err := e.metaController.RegisterSource(&sourceInfo, persist)
+	err := e.pushEngine.CreateSource(&sourceInfo)
 	if err != nil {
 		return err
 	}
-	return e.pushEngine.CreateSource(&sourceInfo)
+	return e.metaController.RegisterSource(&sourceInfo, persist)
 }
 
 func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
 	id := seqGenerator.GenerateSequence()
+	// FIXME - this needs to be in the opposite order
 	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
 	if err != nil {
 		return err
@@ -144,6 +146,17 @@ func (e *Executor) GetPullEngine() *pull.PullEngine {
 //nolint:gocyclo
 func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
 	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
+	start := time.Now()
+	ss := sql
+	if len(ss) > 30 {
+		ss = ss[0:30]
+	}
+	ss = strings.Replace(ss, "\n", " ", -1)
+	defer func() {
+		dur := time.Now().Sub(start)
+		log.Printf("Executing %s took %d ms on node %d", ss, dur.Milliseconds(), e.cluster.GetNodeID())
+	}()
+	log.Printf("Executing sql %s on node %d", ss, e.cluster.GetNodeID())
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.MaybeAddStack(err)
@@ -412,6 +425,7 @@ func (e *Executor) broadcastDDL(schemaName string, sql string, sequences []uint6
 func (e *Executor) HandleNotification(notification notifier.Notification) {
 	e.ddlExecLock.Lock()
 	defer e.ddlExecLock.Unlock()
+
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
 	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
 	// Note this session does not need to be closed as it does not execute any pull queries

@@ -126,13 +126,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			NumShards:    10,
 			TestServer:   true,
 			KafkaBrokers: brokerConfigs,
-			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
-			// snapshotting - in real life these would be much higher
-			DataSnapshotEntries:        10,
-			DataCompactionOverhead:     5,
-			SequenceSnapshotEntries:    10,
-			SequenceCompactionOverhead: 5,
-			Debug:                      true, // Starts a debug profile server so can see stacks etc
 		})
 		if err != nil {
 			log.Fatal(err)
@@ -160,6 +153,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.TestServer = false
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
+			//cnf.Debug = true
+
+			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
+			// snapshotting - in real life these would be much higher
+			//cnf.DataSnapshotEntries = 10
+			//cnf.DataCompactionOverhead = 5
+			//cnf.SequenceSnapshotEntries = 10
+			//cnf.SequenceCompactionOverhead = 5
+
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
@@ -411,7 +413,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
-		log.Println("Looking for table data at end of test")
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)
 		}, 30*time.Second, 100*time.Millisecond)
@@ -537,7 +538,6 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 					case common.TypeTimestamp:
 						val := common.NewTimestampFromString(part)
 						currDataSet.rows.AppendTimestampToColumn(i, val)
-						fmt.Println(val.String())
 					default:
 						require.Fail(fmt.Sprintf("unexpected data type %d", colType.Type))
 					}
@@ -605,7 +605,7 @@ func (st *sqlTest) executeResetOffets(require *require.Assertions, command strin
 	topicName := parts[2]
 	topic, ok := st.testSuite.fakeKafka.GetTopic(topicName)
 	require.True(ok, fmt.Sprintf("no such topic %s", topicName))
-	err := topic.RestOffsets()
+	err := topic.ResetOffsets()
 	require.NoError(err)
 }
 
@@ -681,6 +681,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 }
 
 func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
+	log.Println("Waiting for schemas the same")
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		// Wait for the schema meta data to be the same on each node. We need to do this because currently
 		// Applying DDL across the cluster is asynchronous. This will change once we implement MV activation
@@ -699,8 +700,9 @@ func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
 			}
 			schemaPrev = schemaNew
 		}
+		log.Printf("Schemas the same %v", schemaPrev)
 		return true, nil
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 5*time.Hour, 10*time.Millisecond)
 	require.NoError(err)
 	if !ok {
 		log.Println("Schemas different on nodes")

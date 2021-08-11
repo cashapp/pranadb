@@ -96,7 +96,7 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 		require.Equal(t, msg, rec)
 	}
 
-	group, ok := topic.groups[groupID]
+	group, ok := topic.getGroup(groupID)
 	require.True(t, ok)
 	require.Equal(t, 1, len(group.subscribers))
 }
@@ -144,8 +144,7 @@ func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 		require.Equal(t, msg, rec)
 	}
 
-	group, ok := topic.groups[groupID]
-	require.Equal(t, 1, len(topic.groups))
+	group, ok := topic.getGroup(groupID)
 	require.True(t, ok)
 	require.Equal(t, 2, len(group.subscribers))
 }
@@ -166,9 +165,8 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 	sub2, err := topic.CreateSubscriber(groupID1)
 	require.NoError(t, err)
 
-	group1, ok := topic.groups[groupID1]
+	group1, ok := topic.getGroup(groupID1)
 	require.True(t, ok)
-	require.Equal(t, 0, len(group1.offsets))
 
 	offsets1 := map[int32]int64{}
 	offsets2 := map[int32]int64{}
@@ -213,7 +211,7 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 	err = sub2.commitOffsets(offsets2)
 	require.NoError(t, err)
 
-	require.Equal(t, group1.offsets, offsetsTot)
+	require.Equal(t, group1.getOffsets(), offsetsTot)
 }
 
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {

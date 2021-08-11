@@ -24,6 +24,7 @@ import (
 
 type PushEngine struct {
 	lock              sync.RWMutex
+	localShardsLock   sync.RWMutex
 	started           bool
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
@@ -112,6 +113,8 @@ func (p *PushEngine) Stop() error {
 func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	p.localShardsLock.Lock()
+	defer p.localShardsLock.Unlock()
 	sched := sched.NewShardScheduler(shardID)
 	sched.Start()
 	p.schedulers[shardID] = sched
@@ -142,10 +145,10 @@ func (s *shardListener) maybeHandleRemoteBatch() error {
 }
 
 func (s *shardListener) Close() {
-	s.p.lock.Lock()
-	defer s.p.lock.Unlock()
 	s.sched.Stop()
-	delete(s.p.schedulers, s.shardID)
+	s.p.removeScheduler(s.shardID)
+	s.p.localShardsLock.Lock()
+	defer s.p.localShardsLock.Unlock()
 	locShards := make([]uint64, len(s.p.localLeaderShards)-1)
 	index := 0
 	for _, sid := range s.p.localLeaderShards {
@@ -155,6 +158,12 @@ func (s *shardListener) Close() {
 		}
 	}
 	s.p.localLeaderShards = locShards
+}
+
+func (p *PushEngine) removeScheduler(shardID uint64) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	delete(p.schedulers, shardID)
 }
 
 func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
@@ -199,8 +208,8 @@ func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
 
 // ChooseLocalScheduler chooses a local scheduler by hashing the key
 func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+	p.localShardsLock.RLock()
+	defer p.localShardsLock.RUnlock()
 	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
 	if err != nil {
 		return nil, err
@@ -277,7 +286,7 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, err
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 	if !ok {
 		return errors.New("timed out waiting for condition")
 	}

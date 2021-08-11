@@ -18,13 +18,18 @@ type MessageConsumer struct {
 	startupCommittedOffsets map[int32]int64
 	started                 common.AtomicBool
 	running                 common.AtomicBool
+	messageParser           *MessageParser
 }
 
 func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
-	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) *MessageConsumer {
+	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) (*MessageConsumer, error) {
 	lcm := make(map[int32]int64)
 	for k, v := range startupCommitOffsets {
 		lcm[k] = v
+	}
+	messageParser, err := NewMessageParser(source.sourceInfo)
+	if err != nil {
+		return nil, err
 	}
 	mc := &MessageConsumer{
 		msgProvider:             msgProvider,
@@ -34,10 +39,11 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 		scheduler:               scheduler,
 		startupCommittedOffsets: lcm,
 		loopCh:                  make(chan struct{}, 1),
+		messageParser:           messageParser,
 	}
 	msgProvider.SetPartitionsAssignedCb(mc.partitionsAssigned)
 	msgProvider.SetPartitionsRevokedCb(mc.partitionsRevoked)
-	return mc
+	return mc, nil
 }
 
 func (m *MessageConsumer) partitionsAssigned() error {
@@ -113,7 +119,7 @@ func (m *MessageConsumer) pollLoop() {
 		}
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
-			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler)
+			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
 			if err != nil {
 				m.consumerError(err, false)
 				return

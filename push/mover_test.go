@@ -3,7 +3,6 @@ package push
 import (
 	"fmt"
 	"github.com/squareup/pranadb/conf"
-	"log"
 	"testing"
 
 	"github.com/squareup/pranadb/meta"
@@ -479,7 +478,6 @@ func numRowsInTable(stor cluster.Cluster, tableID uint64, shardIDs []uint64) (in
 		}
 		numRows += len(kvPairs)
 	}
-	log.Printf("Num rows total is %d", numRows)
 	return numRows, nil
 }
 

@@ -193,8 +193,8 @@ func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, 
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	// TODO remove this lock!
-	m.lock.RLock()
-	defer m.lock.RUnlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.forwardSequences[localShardID] = sequence
 	return nil
 }

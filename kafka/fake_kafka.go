@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/sharder"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -68,15 +69,12 @@ func (f *FakeKafka) CreateTopic(name string, partitions int) (*Topic, error) {
 	topic := &Topic{
 		Name:       name,
 		partitions: parts,
-		groups:     make(map[string]*Group),
 	}
 	f.topics.Store(name, topic)
 	return topic, nil
 }
 
 func (f *FakeKafka) GetTopic(name string) (*Topic, bool) {
-	f.topicLock.Lock()
-	defer f.topicLock.Unlock()
 	return f.getTopic(name)
 }
 
@@ -126,7 +124,7 @@ func hash(key []byte) (uint32, error) {
 type Topic struct {
 	Name       string
 	lock       sync.RWMutex
-	groups     map[string]*Group
+	groups     sync.Map
 	partitions []*Partition
 }
 
@@ -152,15 +150,11 @@ func (p *Partition) resetOffset() {
 }
 
 func (t *Topic) injectFailure(groupID string, failTime time.Duration) error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	group, ok := t.groups[groupID]
+	group, ok := t.getGroup(groupID)
 	if !ok {
 		return fmt.Errorf("no such group %s", groupID)
 	}
-	group.injectFailure(failTime)
-	return nil
+	return group.injectFailure(failTime)
 }
 
 func (t *Topic) push(message *Message) error {
@@ -170,6 +164,14 @@ func (t *Topic) push(message *Message) error {
 	}
 	t.partitions[part].push(message)
 	return nil
+}
+
+func (t *Topic) getGroup(groupID string) (*Group, bool) {
+	v, ok := t.groups.Load(groupID)
+	if !ok {
+		return nil, false
+	}
+	return v.(*Group), true
 }
 
 func (t *Topic) calcPartition(message *Message) (int, error) {
@@ -182,91 +184,91 @@ func (t *Topic) calcPartition(message *Message) (int, error) {
 }
 
 func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	group, ok := t.groups[groupID]
+	group, ok := t.getGroup(groupID)
 	if !ok {
-		group = newGroup(groupID, t)
-		t.groups[groupID] = group
+		t.lock.Lock()
+		group, ok = t.getGroup(groupID)
+		if !ok {
+			group = newGroup(groupID, t)
+			t.groups.Store(groupID, group)
+		}
+		t.lock.Unlock()
 	}
-	subscriber := group.createSubscriber(t, group)
-	if err := group.rebalance(); err != nil {
-		return nil, err
-	}
-	return subscriber, nil
+	return group.createSubscriber(t, group)
 }
 
-func (t *Topic) RestOffsets() error {
+func (t *Topic) ResetOffsets() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	for _, part := range t.partitions {
 		part.resetOffset()
 	}
-	for _, group := range t.groups {
-		group.resetOffsets()
-	}
+	t.groups.Range(func(_, v interface{}) bool {
+		v.(*Group).resetOffsets()
+		return true
+	})
 	return nil
-}
-
-func (t *Topic) unsubscribe(subscriber *Subscriber) error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	group := t.groups[subscriber.group.id]
-	return group.unsubscribe(subscriber)
 }
 
 func (t *Topic) close() {
 }
 
 func (t *Topic) TotalMessages(groupID string) (int, int) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	group, ok := t.groups[groupID]
+	group, ok := t.getGroup(groupID)
 	if !ok {
 		return 0, 0
 	}
 	totMsgs := 0
 	totCommitted := 0
+	offs := group.getOffsets()
 	for _, part := range t.partitions {
 		highOff := atomic.LoadInt64(&part.highOffset)
 		totMsgs += int(highOff)
-		committed := group.offsetsForPartition(part.id)
+		committed := offs[part.id]
 		totCommitted += int(committed)
 	}
 	return totMsgs, totCommitted
 }
 
 type Group struct {
-	id          string
-	lock        sync.Mutex
-	topic       *Topic
-	offsets     map[int32]int64
-	subscribers []*Subscriber
-	failureEnd  *time.Time
+	id              string
+	subscribersLock sync.Mutex
+	topic           *Topic
+	offsets         sync.Map
+	subscribers     []*Subscriber
+	failureEnd      *time.Time
+	feLock          sync.Mutex
 }
 
 func newGroup(id string, topic *Topic) *Group {
 	return &Group{
-		id:      id,
-		topic:   topic,
-		offsets: make(map[int32]int64),
+		id:    id,
+		topic: topic,
 	}
 }
 
-func (g *Group) injectFailure(failTime time.Duration) {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	if g.failureEnd != nil {
-		panic("already in failure mode")
+func (g *Group) injectFailure(failTime time.Duration) error {
+	g.subscribersLock.Lock()
+	defer g.subscribersLock.Unlock()
+	if err := g.quiesceConsumers(); err != nil {
+		return err
 	}
 	tEnd := time.Now().Add(failTime)
+	g.feLock.Lock()
 	g.failureEnd = &tEnd
+	g.feLock.Unlock()
+	return g.wakeConsumers()
 }
 
 func (g *Group) checkInjectFailure() error {
+
+	g.feLock.Lock()
+	defer g.feLock.Unlock()
+
 	if g.failureEnd != nil {
+
 		if time.Now().Sub(*g.failureEnd) >= 0 {
+			log.Println("Failure injection has ended")
 			g.failureEnd = nil
 			return nil
 		}
@@ -275,34 +277,43 @@ func (g *Group) checkInjectFailure() error {
 	return nil
 }
 
-func (g *Group) createSubscriber(t *Topic, group *Group) *Subscriber {
+func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
+	g.subscribersLock.Lock()
+	defer g.subscribersLock.Unlock()
+	if err := g.quiesceConsumers(); err != nil {
+		return nil, err
+	}
 	subscriber := &Subscriber{
 		topic: t,
 		group: group,
 	}
 	g.subscribers = append(g.subscribers, subscriber)
-	return subscriber
+	if err := g.rebalance(); err != nil {
+		return nil, err
+	}
+	return subscriber, nil
 }
 
 func (g *Group) commitOffsets(offsets map[int32]int64) error {
-	g.lock.Lock()
-	defer g.lock.Unlock()
 	if err := g.checkInjectFailure(); err != nil {
 		return err
 	}
 	for partID, offset := range offsets {
-		currOff, ok := g.offsets[partID]
-		if ok && (currOff >= offset) {
-			return fmt.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
+		co, ok := g.offsets.Load(partID)
+		if ok {
+			currOff := co.(int64)
+			if currOff >= offset {
+				return fmt.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
+			}
 		}
-		g.offsets[partID] = offset
+		g.offsets.Store(partID, offset)
 	}
 	return nil
 }
 
-func (g *Group) rebalance() error {
+func (g *Group) quiesceConsumers() error {
 	// We first call the subscribers that rebalance is about to occur - this gives them a chance to
-	// commit offsets - this must be done outside of the group lock
+	// commit offsets - this must be done outside of the group subscribersLock
 	for _, subscriber := range g.subscribers {
 		if subscriber.prCB != nil {
 			if err := subscriber.prCB(); err != nil {
@@ -310,8 +321,10 @@ func (g *Group) rebalance() error {
 			}
 		}
 	}
-	g.lock.Lock()
-	defer g.lock.Unlock()
+	return nil
+}
+
+func (g *Group) rebalance() error {
 	if len(g.subscribers) == 0 {
 		return nil
 	}
@@ -331,6 +344,10 @@ func (g *Group) rebalance() error {
 			builder.WriteString(fmt.Sprintf("%d,", part.id))
 		}
 	}
+	return g.wakeConsumers()
+}
+
+func (g *Group) wakeConsumers() error {
 	for _, subscriber := range g.subscribers {
 		if subscriber.paCB != nil {
 			if err := subscriber.paCB(); err != nil {
@@ -342,8 +359,14 @@ func (g *Group) rebalance() error {
 }
 
 func (g *Group) unsubscribe(subscriber *Subscriber) error {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+
+	g.subscribersLock.Lock()
+	defer g.subscribersLock.Unlock()
+
+	if err := g.quiesceConsumers(); err != nil {
+		return err
+	}
+
 	var newSubscribers []*Subscriber
 	for _, c := range g.subscribers {
 		if c != subscriber {
@@ -351,19 +374,24 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 		}
 	}
 	g.subscribers = newSubscribers
-	return nil
+	return g.rebalance()
 }
 
-func (g *Group) offsetsForPartition(partID int32) int64 {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	return g.offsets[partID]
+func (g *Group) getOffsets() map[int32]int64 {
+	m := make(map[int32]int64)
+	g.offsets.Range(func(key, value interface{}) bool {
+		m[key.(int32)] = value.(int64)
+		return true
+	})
+
+	return m
 }
 
 func (g *Group) resetOffsets() {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	g.offsets = make(map[int32]int64)
+	g.offsets.Range(func(key, _ interface{}) bool {
+		g.offsets.Delete(key)
+		return true
+	})
 }
 
 type Subscriber struct {
@@ -387,24 +415,7 @@ func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
 	return c.group.commitOffsets(offsets)
 }
 
-func (c *Subscriber) copyParts() []*Partition {
-	// Need to hold the group rebalance read lock too
-	c.group.lock.Lock()
-	defer c.group.lock.Unlock()
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	res := make([]*Partition, len(c.partitions))
-	copy(res, c.partitions)
-	return res
-}
-
 func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
-
-	// We need to lock the group too when this occurs to prevent a rebalance happening at the same time
-
-	c.group.lock.Lock()
-	defer c.group.lock.Unlock()
 
 	if err := c.group.checkInjectFailure(); err != nil {
 		return nil, err
@@ -439,7 +450,7 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 }
 
 func (c *Subscriber) Unsubscribe() error {
-	return c.topic.unsubscribe(c)
+	return c.group.unsubscribe(c)
 }
 
 func NewFakeMessageProviderFactory(topicName string, props map[string]string, groupName string) (MessageProviderFactory, error) {

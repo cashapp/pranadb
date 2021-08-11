@@ -3,7 +3,6 @@ package exec
 import (
 	"fmt"
 	"github.com/squareup/pranadb/meta"
-	"log"
 	"sync"
 	"testing"
 
@@ -239,7 +238,6 @@ func (t *testCluster) GenerateTableID() (uint64, error) {
 func (t *testCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	log.Printf("call to get %d rows from shard %d", queryInfo.Limit, queryInfo.ShardID)
 	rows := t.rowsByShard[queryInfo.ShardID]
 	rowsNew := rowsFactory.NewRows(1)
 	rowsToSend := rowsFactory.NewRows(1)
