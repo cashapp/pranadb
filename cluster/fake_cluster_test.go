@@ -154,3 +154,38 @@ func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
 	}
 	return *wb
 }
+
+func TestRestart(t *testing.T) {
+
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
+
+	key := []byte("somekey")
+	value := []byte("somevalue")
+
+	kvPair := KVPair{
+		Key:   key,
+		Value: value,
+	}
+
+	shardID := uint64(123545)
+	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
+
+	err := clust.WriteBatch(&writeBatch)
+	require.NoError(t, err)
+
+	// Now stop the cluster
+	stopClustFunc(t, clust)
+
+	// Restart it
+	err = clust.Start()
+	require.NoError(t, err)
+
+	// Data should be there
+
+	res, err := clust.LocalGet(key)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	require.Equal(t, string(value), string(res))
+}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
+	"strings"
 	"sync"
 
 	"github.com/google/btree"
@@ -33,6 +33,24 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),
 	}
+}
+
+func (f *FakeCluster) Dump() string {
+	builder := &strings.Builder{}
+	builder.WriteString("Dumping database\n")
+	f.btree.AscendGreaterOrEqual(&kvWrapper{
+		key:   nil,
+		value: nil,
+	}, func(i btree.Item) bool {
+		kv, ok := i.(*kvWrapper)
+		if !ok {
+			panic("not a kv wrapper")
+		}
+		s := fmt.Sprintf("key:%s value:%v", common.DumpDataKey(kv.key), kv.value)
+		builder.WriteString(s + "\n")
+		return true
+	})
+	return builder.String()
 }
 
 func (f *FakeCluster) RegisterMembershipListener(listener MembershipListener) {
@@ -101,10 +119,7 @@ func (f *FakeCluster) Stop() error {
 	if !f.started {
 		return nil
 	}
-	f.remoteQueryExecutionCallback = nil
-	f.shardListenerFactory = nil
 	f.shardListeners = make(map[uint64]ShardListener)
-	f.membershipListener = nil
 	f.started = false
 	return nil
 }
@@ -115,11 +130,8 @@ func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 	if batch.ShardID < DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-	log.Printf("Write batch for shard %d", batch.ShardID)
-	log.Printf("Writing batch, puts %d, Deletes %d", len(batch.puts.TheMap), len(batch.Deletes.TheMap))
 	for k, v := range batch.puts.TheMap {
 		kBytes := common.StringToByteSliceZeroCopy(k)
-		log.Printf("Putting key %v value %v", kBytes, v)
 		f.putInternal(&kvWrapper{
 			key:   kBytes,
 			value: v,
@@ -127,7 +139,6 @@ func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 	}
 	for k := range batch.Deletes.TheMap {
 		kBytes := common.StringToByteSliceZeroCopy(k)
-		log.Printf("Deleting key %v", kBytes)
 		err := f.deleteInternal(&kvWrapper{
 			key: kBytes,
 		})
@@ -149,7 +160,6 @@ func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
 }
 
 func (f *FakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
-	log.Printf("Deleting data in range %v to %v", startPrefix, endPrefix)
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	for _, shardID := range f.allShardIds {

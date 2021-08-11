@@ -4,7 +4,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"log"
 	"sync"
 )
 
@@ -30,9 +29,6 @@ func (m *Mover) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localS
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Queueing data for transfer from shard %d on node %d to remote shard %d", localShardID,
-		m.cluster.GetNodeID(), remoteShardID)
 
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
@@ -90,23 +86,44 @@ func (m *Mover) TransferData(localShardID uint64, del bool) error {
 		batch.deleteBatch.AddDelete(key)
 	}
 
-	for _, fBatch := range batches {
-		// Write to the remote shard
-		log.Printf("Remote writing data from shard %d on node %d to remote shard %d", localShardID, m.cluster.GetNodeID(), fBatch.addBatch.ShardID)
-		err := m.cluster.WriteBatch(fBatch.addBatch)
+	// We send these in parallel for better performance
+	lb := len(batches)
+	chs := make([]chan error, lb)
+	for i, fBatch := range batches {
+		chs[i] = m.sendRemoteBatch(fBatch, del)
+	}
+	for i := 0; i < lb; i++ {
+		err, ok := <-chs[i]
+		if !ok {
+			panic("channel closed")
+		}
 		if err != nil {
 			return err
 		}
-		if del {
-			// Delete locally
-			log.Printf("Deleting keys from forwarder queue for shard %d on node %d", localShardID, m.cluster.GetNodeID())
-			err = m.cluster.WriteBatch(fBatch.deleteBatch)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	return nil
+}
+
+func (m *Mover) sendRemoteBatch(fBatch *forwardBatch, del bool) chan error {
+	ch := make(chan error, 1)
+	go func() {
+		// Write to the remote shard
+		err := m.cluster.WriteBatch(fBatch.addBatch)
+		if err != nil {
+			ch <- err
+			return
+		}
+		if del {
+			// Delete locally
+			err = m.cluster.WriteBatch(fBatch.deleteBatch)
+			if err != nil {
+				ch <- err
+				return
+			}
+		}
+		ch <- nil
+	}()
+	return ch
 }
 
 type forwardBatch struct {
@@ -126,7 +143,6 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
 	for _, kvPair := range kvPairs {
-		log.Printf("Read row from receiver %s", common.DumpDataKey(kvPair.Key))
 		sendingShardID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
 		if !ok {
@@ -200,8 +216,8 @@ func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, 
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
 	// TODO remove this lock!
-	m.lock.RLock()
-	defer m.lock.RUnlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.forwardSequences[localShardID] = sequence
 	return nil
 }

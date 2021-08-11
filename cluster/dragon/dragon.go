@@ -3,6 +3,8 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/lni/dragonboat/v3/client"
+	"github.com/squareup/pranadb/conf"
 	"log"
 	"path/filepath"
 	"sync"
@@ -25,38 +27,30 @@ const (
 	tableSequenceClusterID uint64 = 1
 
 	// Timeout on dragon calls
-	dragonCallTimeout = time.Second * 30
+	dragonCallTimeout = time.Second * 10
 
 	// Timeout on remote queries
-	remoteQueryTimeout = time.Second * 30
+	remoteQueryTimeout = time.Second * 10
 
 	sequenceGroupSize = 3
+
+	retryDelay = 10 * time.Millisecond
+
+	executeRetryTimeout = 10 * time.Second
 )
 
-func NewDragon(nodeID int, clusterID int, nodeAddresses []string, totShards int, dataDir string, replicationFactor int,
-	testDragon bool) (cluster.Cluster, error) {
-	if len(nodeAddresses) < 3 {
+func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
+	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
-	dragon := Dragon{
-		nodeID:        nodeID,
-		clusterID:     clusterID,
-		nodeAddresses: nodeAddresses,
-		totShards:     totShards,
-		dataDir:       dataDir,
-		testDragon:    testDragon,
-	}
-	dragon.generateNodesAndShards(totShards, replicationFactor)
+	dragon := Dragon{cnf: cnf}
+	dragon.generateNodesAndShards(cnf.NumShards, cnf.ReplicationFactor)
 	return &dragon, nil
 }
 
 type Dragon struct {
 	lock                         sync.RWMutex
-	nodeID                       int
-	clusterID                    int
-	nodeAddresses                []string
-	totShards                    int
-	dataDir                      string
+	cnf                          conf.Config
 	ingestDir                    string
 	pebble                       *pebble.DB
 	nh                           *dragonboat.NodeHost
@@ -66,7 +60,6 @@ type Dragon struct {
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
-	testDragon                   bool
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
 }
@@ -96,7 +89,7 @@ func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFacto
 func (d *Dragon) GetNodeID() int {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	return d.nodeID
+	return d.cnf.NodeID
 }
 
 func (d *Dragon) GenerateTableID() (uint64, error) {
@@ -108,7 +101,7 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, "table")
 
-	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
 	if err != nil {
 		return 0, err
 	}
@@ -148,9 +141,13 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	if err != nil {
 		return nil, err
 	}
-	res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
+
+	res, err := d.executeWithRetry(func() (interface{}, error) {
+		return d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
+	})
+
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.ClusterID, queryInfo.Query, err))
 	}
 	bytes, ok := res.([]byte)
 	if !ok {
@@ -183,7 +180,7 @@ func (d *Dragon) Start() error {
 
 	d.shuttingDown = false
 
-	datadir := filepath.Join(d.dataDir, fmt.Sprintf("node-%d", d.nodeID))
+	datadir := filepath.Join(d.cnf.DataDir, fmt.Sprintf("node-%d", d.cnf.NodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
 
@@ -195,12 +192,12 @@ func (d *Dragon) Start() error {
 	}
 	d.pebble = pebble
 
-	nodeAddress := d.nodeAddresses[d.nodeID]
+	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
 
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
-		DeploymentID:        uint64(d.clusterID),
+		DeploymentID:        uint64(d.cnf.ClusterID),
 		WALDir:              dragonBoatDir,
 		NodeHostDir:         dragonBoatDir,
 		RTTMillisecond:      200,
@@ -224,13 +221,8 @@ func (d *Dragon) Start() error {
 		return err
 	}
 
-	// We now sleep for a while as leader election can continue some time after start as nodes
-	// are started which causes a lot of churn
-	// TODO think of a better way of doing this
-	time.Sleep(5 * time.Second)
-
 	d.started = true
-	log.Printf("Dragon node %d started", d.nodeID)
+	log.Printf("Dragon node %d started", d.cnf.NodeID)
 	return nil
 }
 
@@ -290,7 +282,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	}
 	buff = batch.Serialize(buff)
 
-	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
 	if err != nil {
 		return err
 	}
@@ -366,7 +358,7 @@ func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) erro
 			buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
 			buff = append(buff, endPrefixWithShard...)
 
-			proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+			proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
 			if err != nil {
 				ch <- err
 			}
@@ -426,23 +418,24 @@ func (d *Dragon) joinShardGroups() error {
 
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	rc := config.Config{
-		NodeID:             uint64(d.nodeID + 1),
+		NodeID:             uint64(d.cnf.NodeID + 1),
 		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
-		SnapshotEntries:    10,
-		CompactionOverhead: 5,
+		SnapshotEntries:    uint64(d.cnf.DataSnapshotEntries),
+		CompactionOverhead: uint64(d.cnf.DataCompactionOverhead),
 		ClusterID:          shardID,
 	}
 
 	initialMembers := make(map[uint64]string)
 	for _, nodeID := range nodeIDs {
-		initialMembers[uint64(nodeID+1)] = d.nodeAddresses[nodeID]
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
 	}
 
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
-		return newShardODStateMachine(d, shardID, d.nodeID, nodeIDs)
+		return newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
 	}
+
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
 		ch <- fmt.Errorf("failed to start shard dragonboat cluster %v", err)
 		return
@@ -452,19 +445,19 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 func (d *Dragon) joinSequenceGroup() error {
 	rc := config.Config{
-		NodeID:             uint64(d.nodeID + 1),
+		NodeID:             uint64(d.cnf.NodeID + 1),
 		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
-		SnapshotEntries:    10,
-		CompactionOverhead: 5,
+		SnapshotEntries:    uint64(d.cnf.SequenceSnapshotEntries),
+		CompactionOverhead: uint64(d.cnf.SequenceCompactionOverhead),
 		ClusterID:          tableSequenceClusterID,
 	}
 
 	initialMembers := make(map[uint64]string)
 	// Dragonboat nodes must start at 1, zero is not allowed
 	for i := 0; i < sequenceGroupSize; i++ {
-		initialMembers[uint64(i+1)] = d.nodeAddresses[i]
+		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
 		return fmt.Errorf("failed to start sequence dragonboat cluster %v", err)
@@ -475,7 +468,7 @@ func (d *Dragon) joinSequenceGroup() error {
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
-	numNodes := len(d.nodeAddresses)
+	numNodes := len(d.cnf.RaftAddresses)
 	allNodes := make([]int, numNodes)
 	for i := 0; i < numNodes; i++ {
 		allNodes[i] = i
@@ -489,7 +482,7 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 		nids := make([]int, replicationFactor)
 		for j := 0; j < replicationFactor; j++ {
 			nids[j] = allNodes[(i+j)%numNodes]
-			if nids[j] == d.nodeID {
+			if nids[j] == d.cnf.NodeID {
 				d.localShards = append(d.localShards, shardID)
 			}
 		}
@@ -545,7 +538,7 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	buff = append(buff, shardStateMachineCommandRemoveNode)
 	buff = common.AppendUint32ToBufferLE(buff, uint32(nodeID))
 
-	proposeRes, err := d.nh.SyncPropose(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
 
 	if err != nil {
 		return err
@@ -557,6 +550,37 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	d.membershipListener.NodeLeft(nodeID)
 
 	return nil
+}
+
+// It's expected to get cluster not ready from time to time, we should retry in this case
+// See https://github.com/lni/dragonboat/issues/183
+func (d *Dragon) executeWithRetry(f func() (interface{}, error)) (interface{}, error) {
+	start := time.Now()
+	for {
+		res, err := f()
+		if err == nil {
+			return res, nil
+		}
+		if err != dragonboat.ErrClusterNotReady {
+			return nil, err
+		}
+		if time.Now().Sub(start) >= executeRetryTimeout {
+			return nil, err
+		}
+		time.Sleep(retryDelay)
+	}
+}
+
+func (d *Dragon) proposeWithRetry(ctx context.Context,
+	session *client.Session, cmd []byte) (statemachine.Result, error) {
+	r, err := d.executeWithRetry(func() (interface{}, error) {
+		return d.nh.SyncPropose(ctx, session, cmd)
+	})
+	smRes, ok := r.(statemachine.Result)
+	if !ok {
+		panic("not a sm result")
+	}
+	return smRes, err
 }
 
 // ISystemEventListener implementation

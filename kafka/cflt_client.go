@@ -2,6 +2,8 @@ package kafka
 
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"log"
+	"sync"
 	"time"
 )
 
@@ -35,18 +37,59 @@ func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, e
 	if err != nil {
 		return nil, err
 	}
-	if err := consumer.Subscribe(krpf.topicName, nil); err != nil {
+	kmp := &KafkaMessageProvider{}
+	if err := consumer.Subscribe(krpf.topicName, kmp.RebalanceOccurred); err != nil {
 		return nil, err
 	}
-	return &KafkaMessageProvider{consumer: consumer}, nil
+	kmp.consumer = consumer
+	return kmp, nil
 }
 
 type KafkaMessageProvider struct {
+	lock      sync.Mutex
 	consumer  *kafka.Consumer
 	topicName string
+	paCb      PartitionsCallback
+	prCb      PartitionsCallback
+}
+
+func (k *KafkaMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
+	k.paCb = cb
+}
+
+func (k *KafkaMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
+	k.prCb = cb
+}
+
+func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
+	k.lock.Lock()
+	defer k.lock.Unlock()
+	// TODO prevent getMessage until some time after rebalance event
+	log.Printf("Rebalance occurred %s", event.String())
+
+	switch event.(type) {
+	case kafka.AssignedPartitions:
+		if k.paCb == nil {
+			panic("No PartitionsAssignedCallback set")
+		}
+		if err := k.paCb(); err != nil {
+			return err
+		}
+	case kafka.RevokedPartitions:
+		if k.prCb == nil {
+			panic("No PartitionsRevokedCallback set")
+		}
+		if err := k.prCb(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	k.lock.Lock()
+	defer k.lock.Unlock()
 	msg, err := k.consumer.ReadMessage(pollTimeout)
 	if err != nil {
 		return nil, err

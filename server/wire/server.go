@@ -3,8 +3,6 @@ package wire
 
 import (
 	"context"
-	"log"
-
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -101,7 +99,6 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 }
 
 func (s *Server) processQuery(session *sess.Session, query string) (*sess.Session, exec.PullExecutor, error) {
-	log.Printf("exec: %s", query)
 	ast, err := parser.Parse(query)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)

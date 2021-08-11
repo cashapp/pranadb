@@ -2,8 +2,6 @@ package exec
 
 import (
 	"fmt"
-	"log"
-
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -74,8 +72,6 @@ func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error 
 			return err
 		}
 
-		log.Println("Agg partitioner forwarding row(s)")
-
 		remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, key)
 		if err != nil {
 			return err
@@ -134,7 +130,6 @@ func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) 
 		}
 	}
 
-	log.Printf("Aggregator writing %d rows into agg state", resultRows.RowCount())
 	for i := 0; i < resultRows.RowCount(); i++ {
 		row := resultRows.GetRow(i)
 		err := table.Upsert(a.AggTableInfo, &row, ctx.WriteBatch)

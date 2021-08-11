@@ -103,22 +103,33 @@ func DumpDataKey(bytes []byte) string {
 	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v", shardID, tableID, remaining)
 }
 
+const atFalse = 0
+const atTrue = 1
+
 type AtomicBool struct {
 	val int32
 }
 
 func (a *AtomicBool) Get() bool {
 	i := atomic.LoadInt32(&a.val)
-	return i == 1
+	return i == atTrue
 }
 
 func (a *AtomicBool) Set(val bool) {
-	// Uhhh, why doesn't golang have an immediate if construct?
+	atomic.StoreInt32(&a.val, a.toInt(val))
+}
+
+func (a *AtomicBool) toInt(val bool) int32 {
+	// Uggghhh, why doesn't golang have an immediate if construct?
 	var i int32
 	if val {
-		i = 1
+		i = atTrue
 	} else {
-		i = 0
+		i = atFalse
 	}
-	atomic.StoreInt32(&a.val, i)
+	return i
+}
+
+func (a *AtomicBool) CompareAndSet(expected bool, val bool) bool {
+	return atomic.CompareAndSwapInt32(&a.val, a.toInt(expected), a.toInt(val))
 }

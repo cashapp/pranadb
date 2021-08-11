@@ -178,7 +178,7 @@ func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes [
 }
 
 func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
-	if s.dragon.testDragon {
+	if s.dragon.cnf.TestServer {
 		return
 	}
 	// Sanity check

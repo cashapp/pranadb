@@ -14,6 +14,8 @@ const connectionRetryBackoff = 1 * time.Second
 
 type Client interface {
 	BroadcastNotification(notif Notification) error
+	Start() error
+	Stop() error
 }
 
 func NewClient(serverAddresses ...string) Client {
@@ -21,19 +23,15 @@ func NewClient(serverAddresses ...string) Client {
 }
 
 func newClient(serverAddresses ...string) *client {
-	availableServers := make(map[string]struct{}, len(serverAddresses))
-	for _, serverAddress := range serverAddresses {
-		availableServers[serverAddress] = struct{}{}
-	}
 	return &client{
 		serverAddresses:    serverAddresses,
 		connections:        make(map[string]net.Conn),
-		availableServers:   availableServers,
 		unavailableServers: make(map[string]time.Time),
 	}
 }
 
 type client struct {
+	started            bool
 	serverAddresses    []string
 	connections        map[string]net.Conn
 	lock               sync.Mutex
@@ -100,15 +98,31 @@ func (c *client) BroadcastNotification(notif Notification) error {
 	return nil
 }
 
+func (c *client) Start() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.started {
+		return nil
+	}
+	c.addAvailableServers()
+	c.started = true
+	return nil
+}
+
 func (c *client) Stop() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
+	if !c.started {
+		return nil
+	}
 	for _, conn := range c.connections {
 		if err := conn.Close(); err != nil {
 			return err
 		}
 	}
+	c.connections = make(map[string]net.Conn)
+	c.unavailableServers = make(map[string]time.Time)
+	c.started = false
 	return nil
 }
 
@@ -124,6 +138,13 @@ func (c *client) numUnavailableServers() int {
 	defer c.lock.Unlock()
 
 	return len(c.unavailableServers)
+}
+
+func (c *client) addAvailableServers() {
+	c.availableServers = make(map[string]struct{}, len(c.serverAddresses))
+	for _, serverAddress := range c.serverAddresses {
+		c.availableServers[serverAddress] = struct{}{}
+	}
 }
 
 func serializeNotification(notification Notification) ([]byte, error) {

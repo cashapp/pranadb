@@ -1,7 +1,10 @@
 package server
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/conf"
+	"log"
+	"net/http" //nolint:stylecheck
 	"sync"
 
 	"github.com/squareup/pranadb/cluster"
@@ -13,6 +16,10 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
+
+	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
+	//nolint:gosec
+	_ "net/http/pprof" //nolint:stylecheck
 )
 
 func NewServer(config conf.Config) (*Server, error) {
@@ -26,14 +33,13 @@ func NewServer(config conf.Config) (*Server, error) {
 		notifServer = fakeNotifier
 	} else {
 		var err error
-		clus, err = dragon.NewDragon(config.NodeID, config.ClusterID, config.RaftAddresses, config.NumShards, config.DataDir, config.ReplicationFactor, false)
+		clus, err = dragon.NewDragon(config)
 		if err != nil {
 			return nil, err
 		}
 		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
 		notifClient = notifier.NewClient(config.NotifListenAddresses...)
 	}
-
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
@@ -43,10 +49,22 @@ func NewServer(config conf.Config) (*Server, error) {
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	schemaLoader := schema.NewLoader(metaController, commandExecutor, pushEngine)
-
+	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
+
+	services := []service{
+		notifServer,
+		metaController,
+		clus,
+		shardr,
+		commandExecutor,
+		pushEngine,
+		pullEngine,
+		schemaLoader,
+	}
+
 	server := Server{
+		conf:            config,
 		nodeID:          config.NodeID,
 		cluster:         clus,
 		shardr:          shardr,
@@ -57,6 +75,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader:    schemaLoader,
 		notifServer:     notifServer,
 		notifClient:     notifClient,
+		services:        services,
 	}
 	return &server, nil
 }
@@ -73,7 +92,14 @@ type Server struct {
 	schemaLoader    *schema.Loader
 	notifServer     notifier.Server
 	notifClient     notifier.Client
+	services        []service
 	started         bool
+	conf            conf.Config
+}
+
+type service interface {
+	Start() error
+	Stop() error
 }
 
 func (s *Server) Start() error {
@@ -83,25 +109,20 @@ func (s *Server) Start() error {
 		return nil
 	}
 
-	type service interface {
-		Start() error
-	}
-	services := []service{
-		s.notifServer,
-		s.metaController,
-		s.cluster,
-		s.shardr,
-		s.pushEngine,
-		s.pullEngine,
-		s.schemaLoader,
-	}
 	var err error
-	for _, s := range services {
+	for _, s := range s.services {
 		if err = s.Start(); err != nil {
 			return err
 		}
 	}
 	s.started = true
+
+	if s.conf.Debug {
+		go func() {
+			log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil))
+		}()
+	}
+
 	return nil
 }
 
@@ -111,26 +132,10 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	err := s.notifServer.Stop()
-	if err != nil {
-		return err
-	}
-	err = s.pushEngine.Stop()
-	if err != nil {
-		return err
-	}
-	s.pullEngine.Stop()
-	err = s.shardr.Stop()
-	if err != nil {
-		return err
-	}
-	err = s.cluster.Stop()
-	if err != nil {
-		return err
-	}
-	err = s.metaController.Stop()
-	if err != nil {
-		return err
+	for i := len(s.services) - 1; i >= 0; i-- {
+		if err := s.services[i].Stop(); err != nil {
+			return err
+		}
 	}
 	s.started = false
 	return nil

@@ -83,6 +83,7 @@ func (c *Controller) Stop() error {
 	if !c.started {
 		return nil
 	}
+	c.schemas = make(map[string]*common.Schema)
 	c.started = false
 	return nil
 }

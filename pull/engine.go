@@ -45,13 +45,15 @@ func (p *PullEngine) Start() error {
 	return nil
 }
 
-func (p *PullEngine) Stop() {
+func (p *PullEngine) Stop() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if !p.started {
-		return
+		return nil
 	}
+	p.remoteSessionCache = sync.Map{} // Clear the internal state
 	p.started = false
+	return nil
 }
 
 // PrepareSQLStatement prepares a SQL statement

@@ -10,7 +10,11 @@ type MessageProvider interface {
 	GetMessage(pollTimeout time.Duration) (*Message, error)
 	CommitOffsets(offsets map[int32]int64) error
 	Stop() error
+	SetPartitionsAssignedCb(cb PartitionsCallback)
+	SetPartitionsRevokedCb(cb PartitionsCallback)
 }
+
+type PartitionsCallback func() error
 
 type Message struct {
 	PartInfo  PartInfo

@@ -2,7 +2,7 @@ package exec
 
 import (
 	"fmt"
-	"log"
+	"github.com/squareup/pranadb/meta"
 	"sync"
 	"testing"
 
@@ -116,16 +116,19 @@ func TestRemoteExecutorResetAndGetAgain(t *testing.T) {
 	}
 }
 
-func TestRemoteExecutorSystemShardDoesNotFanOut(t *testing.T) {
+func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
 		allShardsIds[i] = uint64(i)
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colTypes, "sys", tc)
 	require.Len(t, re.clusterGetters, 1)
 	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
+
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
+	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
 //nolint: unparam
@@ -235,7 +238,6 @@ func (t *testCluster) GenerateTableID() (uint64, error) {
 func (t *testCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	log.Printf("call to get %d rows from shard %d", queryInfo.Limit, queryInfo.ShardID)
 	rows := t.rowsByShard[queryInfo.ShardID]
 	rowsNew := rowsFactory.NewRows(1)
 	rowsToSend := rowsFactory.NewRows(1)

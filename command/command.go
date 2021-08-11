@@ -2,13 +2,12 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/notifier"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/squareup/pranadb/notifier"
 
 	"github.com/squareup/pranadb/sess"
 
@@ -50,6 +49,14 @@ func NewCommandExecutor(
 		notifClient:       notifClient,
 		sessionIDSequence: -1,
 	}
+}
+
+func (e *Executor) Start() error {
+	return e.notifClient.Start()
+}
+
+func (e *Executor) Stop() error {
+	return e.notifClient.Stop()
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
@@ -104,15 +111,16 @@ func (e *Executor) createSource(schemaName string, name string, colNames []strin
 		TableInfo: &tableInfo,
 		TopicInfo: topicInfo,
 	}
-	err := e.metaController.RegisterSource(&sourceInfo, persist)
+	err := e.pushEngine.CreateSource(&sourceInfo)
 	if err != nil {
 		return err
 	}
-	return e.pushEngine.CreateSource(&sourceInfo)
+	return e.metaController.RegisterSource(&sourceInfo, persist)
 }
 
 func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
 	id := seqGenerator.GenerateSequence()
+	// FIXME - this needs to be in the opposite order
 	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
 	if err != nil {
 		return err
@@ -127,6 +135,10 @@ func (e *Executor) createMaterializedView(session *sess.Session, name string, qu
 // GetPushEngine is only used in testing
 func (e *Executor) GetPushEngine() *push.PushEngine {
 	return e.pushEngine
+}
+
+func (e *Executor) GetPullEngine() *pull.PullEngine {
+	return e.pullEngine
 }
 
 //nolint:gocyclo
@@ -268,7 +280,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		}
 		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
 		// otherwise SQLTest will think ddl is synced before data is deleted
-		err := e.pushEngine.RemoveSource(sourceInfo.TableInfo.ID, persist)
+		err := e.pushEngine.RemoveSource(sourceInfo, persist)
 		if err != nil {
 			return nil, err
 		}
@@ -400,6 +412,7 @@ func (e *Executor) broadcastDDL(schemaName string, sql string, sequences []uint6
 func (e *Executor) HandleNotification(notification notifier.Notification) {
 	e.ddlExecLock.Lock()
 	defer e.ddlExecLock.Unlock()
+
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
 	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
 	// Note this session does not need to be closed as it does not execute any pull queries

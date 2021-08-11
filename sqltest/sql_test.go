@@ -43,6 +43,8 @@ var lock sync.Mutex
 var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
 
 type sqlTestsuite struct {
+	fakeCluster  bool
+	numNodes     int
 	fakeKafka    *kafka.FakeKafka
 	pranaCluster []*server.Server
 	suite        suite.Suite
@@ -93,13 +95,20 @@ func (w *sqlTestsuite) TestSQL() {
 	}
 }
 
-func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
+func (w *sqlTestsuite) restartCluster() {
+	log.Println("Restarting cluster")
+	w.stopCluster()
+	log.Println("Stopped cluster")
+	w.startCluster()
+	log.Println("Restarted it")
+}
 
-	if fakeCluster && numNodes != 1 {
+func (w *sqlTestsuite) setupPranaCluster() {
+
+	if w.fakeCluster && w.numNodes != 1 {
 		log.Fatal("fake cluster only supports one node")
 	}
 
-	w.fakeKafka = kafka.NewFakeKafka()
 	brokerConfigs := map[string]conf.BrokerConfig{
 		"testbroker": {
 			ClientType: conf.BrokerClientFake,
@@ -109,8 +118,8 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		},
 	}
 
-	w.pranaCluster = make([]*server.Server, numNodes)
-	if fakeCluster {
+	w.pranaCluster = make([]*server.Server, w.numNodes)
+	if w.fakeCluster {
 		s, err := server.NewServer(conf.Config{
 			NodeID:       0,
 			ClusterID:    TestClusterID,
@@ -133,23 +142,27 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 			"localhost:63302",
 			"localhost:63303",
 		}
-		dataDir, err := ioutil.TempDir("", "sql-test")
-		if err != nil {
-			log.Fatal(err)
-		}
-		w.dataDir = dataDir
-		for i := 0; i < numNodes; i++ {
-			s, err := server.NewServer(conf.Config{
-				NodeID:               i,
-				ClusterID:            TestClusterID,
-				RaftAddresses:        raftAddresses,
-				NotifListenAddresses: notifAddresses,
-				NumShards:            30,
-				ReplicationFactor:    3,
-				DataDir:              dataDir,
-				TestServer:           false,
-				KafkaBrokers:         brokerConfigs,
-			})
+		for i := 0; i < w.numNodes; i++ {
+			cnf := conf.NewConfig()
+			cnf.NodeID = i
+			cnf.ClusterID = TestClusterID
+			cnf.RaftAddresses = raftAddresses
+			cnf.NumShards = 30
+			cnf.ReplicationFactor = 3
+			cnf.DataDir = w.dataDir
+			cnf.TestServer = false
+			cnf.KafkaBrokers = brokerConfigs
+			cnf.NotifListenAddresses = notifAddresses
+			//cnf.Debug = true
+
+			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
+			// snapshotting - in real life these would be much higher
+			//cnf.DataSnapshotEntries = 10
+			//cnf.DataCompactionOverhead = 5
+			//cnf.SequenceSnapshotEntries = 10
+			//cnf.SequenceCompactionOverhead = 5
+
+			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -157,24 +170,22 @@ func (w *sqlTestsuite) setupPranaCluster(fakeCluster bool, numNodes int) {
 		}
 	}
 
-	wg := sync.WaitGroup{}
-	for _, prana := range w.pranaCluster {
-		wg.Add(1)
-		prana := prana
-		go func() {
-			err := prana.Start()
-			if err != nil {
-				log.Fatal(err)
-			}
-			wg.Done()
-		}()
-	}
-	wg.Wait()
+	w.startCluster()
 }
 
 func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
+	w.fakeCluster = fakeCluster
+	w.numNodes = numNodes
 	w.registerEncoders()
-	w.setupPranaCluster(fakeCluster, numNodes)
+	w.fakeKafka = kafka.NewFakeKafka()
+
+	dataDir, err := ioutil.TempDir("", "sql-test")
+	if err != nil {
+		log.Fatal(err)
+	}
+	w.dataDir = dataDir
+
+	w.setupPranaCluster()
 
 	files, err := ioutil.ReadDir("./testdata")
 	if err != nil {
@@ -231,13 +242,35 @@ func (w *sqlTestsuite) registerEncoder(encoder kafka.MessageEncoder) {
 	w.encoders[encoder.Name()] = encoder
 }
 
-func (w *sqlTestsuite) teardown() {
+func (w *sqlTestsuite) stopCluster() {
 	for _, prana := range w.pranaCluster {
 		err := prana.Stop()
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
+}
+
+func (w *sqlTestsuite) startCluster() {
+	// The nodes need to be started in parallel, as cluster.Start() shouldn't return until the cluster is
+	// available - i.e. all nodes are up. (Currently that is broken and there is a time.sleep but we should fix that)
+	wg := sync.WaitGroup{}
+	for _, prana := range w.pranaCluster {
+		wg.Add(1)
+		prana := prana
+		go func() {
+			err := prana.Start()
+			if err != nil {
+				log.Fatal(err)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
+func (w *sqlTestsuite) teardown() {
+	w.stopCluster()
 	if w.dataDir != "" {
 		err := os.RemoveAll(w.dataDir)
 		if err != nil {
@@ -294,6 +327,7 @@ func (st *sqlTest) run() {
 	}
 }
 
+//nolint:gocyclo
 func (st *sqlTest) runTestIteration(require *require.Assertions, commands []string, iter int) int {
 	log.Printf("Running test iteration %d", iter)
 	start := time.Now()
@@ -323,6 +357,12 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeCreateTopic(require, command)
 		} else if strings.HasPrefix(command, "--delete topic") {
 			st.executeDeleteTopic(require, command)
+		} else if strings.HasPrefix(command, "--reset offsets") {
+			st.executeResetOffets(require, command)
+		} else if strings.HasPrefix(command, "--restart cluster") {
+			st.executeRestartCluster()
+		} else if strings.HasPrefix(command, "--kafka fail") {
+			st.executeKafkaFail(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -373,7 +413,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
-		log.Println("Looking for table data at end of test")
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)
 		}, 30*time.Second, 100*time.Millisecond)
@@ -499,7 +538,6 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 					case common.TypeTimestamp:
 						val := common.NewTimestampFromString(part)
 						currDataSet.rows.AppendTimestampToColumn(i, val)
-						fmt.Println(val.String())
 					default:
 						require.Fail(fmt.Sprintf("unexpected data type %d", colType.Type))
 					}
@@ -519,7 +557,6 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
 	groupID := source.GenerateGroupID(TestClusterID, dataset.sourceInfo)
-	log.Println("Ingesting rows")
 	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, groupID, encoder)
 	require.NoError(err)
 	st.waitForProcessingToComplete(require)
@@ -559,6 +596,42 @@ func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command strin
 	err := st.testSuite.fakeKafka.DeleteTopic(topicName)
 	require.NoError(err)
 	log.Printf("Deleted topic %s ", topicName)
+}
+
+func (st *sqlTest) executeResetOffets(require *require.Assertions, command string) {
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 3, "Invalid reset offsets, should be --reset offsets topic_name")
+	topicName := parts[2]
+	topic, ok := st.testSuite.fakeKafka.GetTopic(topicName)
+	require.True(ok, fmt.Sprintf("no such topic %s", topicName))
+	err := topic.ResetOffsets()
+	require.NoError(err)
+}
+
+func (st *sqlTest) executeRestartCluster() {
+	st.testSuite.restartCluster()
+	st.prana = st.choosePrana()
+	st.session = st.createSession(st.prana)
+	st.topics = make([]*kafka.Topic, 0)
+}
+
+func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string) {
+	log.Println("Executing kafka fail")
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 5, "Invalid kafka fail, should be --kafka fail topic_name source_name fail_time")
+	topicName := parts[2]
+	sourceNae := parts[3]
+	sFailTime := parts[4]
+	failTime, err := strconv.ParseInt(sFailTime, 10, 64)
+	require.NoError(err)
+	dur := time.Millisecond * time.Duration(failTime)
+	srcInfo, ok := st.prana.GetMetaController().GetSource(TestSchemaName, sourceNae)
+	require.True(ok)
+	groupID := source.GenerateGroupID(TestClusterID, srcInfo)
+	err = st.testSuite.fakeKafka.InjectFailure(topicName, groupID, dur)
+	require.NoError(err)
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
@@ -608,6 +681,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 }
 
 func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
+	log.Println("Waiting for schemas the same")
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		// Wait for the schema meta data to be the same on each node. We need to do this because currently
 		// Applying DDL across the cluster is asynchronous. This will change once we implement MV activation
@@ -626,8 +700,9 @@ func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
 			}
 			schemaPrev = schemaNew
 		}
+		log.Printf("Schemas the same %v", schemaPrev)
 		return true, nil
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 5*time.Hour, 10*time.Millisecond)
 	require.NoError(err)
 	if !ok {
 		log.Println("Schemas different on nodes")
