@@ -191,6 +191,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) GetLock(prefix string) (bool, error) {
+	return false, nil
+}
+
+func (t *testCluster) ReleaseLock(prefix string) (bool, error) {
+	return false, nil
+}
+
 func (t *testCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
 }
 

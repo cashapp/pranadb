@@ -26,6 +26,8 @@ const (
 	// The dragon cluster id for the table sequence group
 	tableSequenceClusterID uint64 = 1
 
+	locksClusterID uint64 = 2
+
 	// Timeout on dragon calls
 	dragonCallTimeout = time.Second * 10
 
@@ -33,6 +35,8 @@ const (
 	remoteQueryTimeout = time.Second * 10
 
 	sequenceGroupSize = 3
+
+	locksGroupSize = 3
 
 	retryDelay = 10 * time.Millisecond
 
@@ -111,6 +115,45 @@ func (d *Dragon) GenerateTableID() (uint64, error) {
 	seqBuff := proposeRes.Data
 	seqVal, _ := common.ReadUint64FromBufferLE(seqBuff, 0)
 	return seqVal, nil
+}
+
+func (d *Dragon) GetLock(prefix string) (bool, error) {
+	return d.sendLockRequest(GetLockCommand, prefix)
+}
+
+func (d *Dragon) ReleaseLock(prefix string) (bool, error) {
+	return d.sendLockRequest(ReleaseLockCommand, prefix)
+}
+
+func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
+	cs := d.nh.GetNoOPSession(locksClusterID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
+
+	var buff []byte
+	buff = common.AppendStringToBufferLE(buff, command)
+	buff = common.AppendStringToBufferLE(buff, prefix)
+
+	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	if err != nil {
+		return false, err
+	}
+	if proposeRes.Value != locksStateMachineUpdatedOK {
+		return false, fmt.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
+	}
+	resBuff := proposeRes.Data
+	res := resBuff[0]
+	log.Printf("Call to %s %s returned %d", command, prefix, res)
+	var bRes bool
+	if res == LockSMResultTrue {
+		bRes = true
+	} else if res == LockSMResultFalse {
+		bRes = false
+	} else {
+		return false, fmt.Errorf("unexpected return value from lock request %d", res)
+	}
+	return bRes, nil
 }
 
 func (d *Dragon) GetAllShardIDs() []uint64 {
@@ -212,6 +255,11 @@ func (d *Dragon) Start() error {
 	d.nh = nh
 
 	err = d.joinSequenceGroup()
+	if err != nil {
+		return err
+	}
+
+	err = d.joinLockGroup()
 	if err != nil {
 		return err
 	}
@@ -465,6 +513,28 @@ func (d *Dragon) joinSequenceGroup() error {
 	return nil
 }
 
+func (d *Dragon) joinLockGroup() error {
+	rc := config.Config{
+		NodeID:             uint64(d.cnf.NodeID + 1),
+		ElectionRTT:        10,
+		HeartbeatRTT:       1,
+		CheckQuorum:        true,
+		SnapshotEntries:    uint64(d.cnf.LocksSnapshotEntries),
+		CompactionOverhead: uint64(d.cnf.LocksCompactionOverhead),
+		ClusterID:          locksClusterID,
+	}
+
+	initialMembers := make(map[uint64]string)
+	// Dragonboat nodes must start at 1, zero is not allowed
+	for i := 0; i < locksGroupSize; i++ {
+		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
+	}
+	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
+		return fmt.Errorf("failed to start locks dragonboat cluster %v", err)
+	}
+	return nil
+}
+
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
@@ -578,7 +648,7 @@ func (d *Dragon) proposeWithRetry(ctx context.Context,
 	})
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
-		panic("not a sm result")
+		panic(fmt.Sprintf("not a sm result %v", smRes))
 	}
 	return smRes, err
 }

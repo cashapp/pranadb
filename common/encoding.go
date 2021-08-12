@@ -153,8 +153,16 @@ func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp
 	return ts, off, nil
 }
 
-func ReadStringFromBuffer(buffer []byte, offset int) (val string, off int) {
+func ReadStringFromBufferLE(buffer []byte, offset int) (val string, off int) {
 	lu, offset := ReadUint32FromBufferLE(buffer, offset)
+	l := int(lu)
+	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
+	offset += l
+	return str, offset
+}
+
+func ReadStringFromBufferBE(buffer []byte, offset int) (val string, off int) {
+	lu, offset := ReadUint32FromBufferBE(buffer, offset)
 	l := int(lu)
 	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
 	offset += l

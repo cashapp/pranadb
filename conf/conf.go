@@ -7,6 +7,8 @@ const (
 	DefaultDataCompactionOverhead     = 2500
 	DefaultSequenceSnapshotEntries    = 1000
 	DefaultSequenceCompactionOverhead = 250
+	DefaultLocksSnapshotEntries       = 1000
+	DefaultLocksCompactionOverhead    = 250
 )
 
 type Config struct {
@@ -23,6 +25,8 @@ type Config struct {
 	DataCompactionOverhead     int
 	SequenceSnapshotEntries    int
 	SequenceCompactionOverhead int
+	LocksSnapshotEntries       int
+	LocksCompactionOverhead    int
 	Debug                      bool
 }
 
@@ -46,6 +50,8 @@ func NewConfig() *Config {
 		DataCompactionOverhead:     DefaultDataCompactionOverhead,
 		SequenceSnapshotEntries:    DefaultSequenceSnapshotEntries,
 		SequenceCompactionOverhead: DefaultSequenceCompactionOverhead,
+		LocksSnapshotEntries:       DefaultLocksSnapshotEntries,
+		LocksCompactionOverhead:    DefaultLocksCompactionOverhead,
 	}
 }
 

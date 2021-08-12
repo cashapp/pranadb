@@ -47,6 +47,10 @@ type Cluster interface {
 
 	RegisterMembershipListener(listener MembershipListener)
 
+	GetLock(prefix string) (bool, error)
+
+	ReleaseLock(prefix string) (bool, error)
+
 	Start() error
 
 	Stop() error
@@ -129,7 +133,7 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 		case common.TypeDouble:
 			args[i], offset = common.ReadFloat64FromBufferLE(buff, offset)
 		case common.TypeVarchar:
-			args[i], offset = common.ReadStringFromBuffer(buff, offset)
+			args[i], offset = common.ReadStringFromBufferLE(buff, offset)
 		case common.TypeDecimal:
 			args[i], offset, err = common.ReadDecimalFromBuffer(buff, offset, argType.DecPrecision, argType.DecScale)
 			if err != nil {
@@ -171,9 +175,9 @@ func (q *QueryExecutionInfo) Serialize() ([]byte, error) {
 
 func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	offset := 0
-	q.SessionID, offset = common.ReadStringFromBuffer(buff, offset)
-	q.SchemaName, offset = common.ReadStringFromBuffer(buff, offset)
-	q.Query, offset = common.ReadStringFromBuffer(buff, offset)
+	q.SessionID, offset = common.ReadStringFromBufferLE(buff, offset)
+	q.SchemaName, offset = common.ReadStringFromBufferLE(buff, offset)
+	q.Query, offset = common.ReadStringFromBufferLE(buff, offset)
 	q.PsID, offset = common.ReadInt64FromBufferLE(buff, offset)
 	var err error
 	q.PsArgs, offset, err = decodePsArgs(offset, buff)

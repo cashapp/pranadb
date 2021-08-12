@@ -13,7 +13,7 @@ const (
 	seqStateMachineUpdatedOK uint64 = 1
 )
 
-func (d *Dragon) newSequenceODStateMachine(clusterID uint64, nodeID uint64) statemachine.IOnDiskStateMachine {
+func (d *Dragon) newSequenceODStateMachine(clusterID uint64, _ uint64) statemachine.IOnDiskStateMachine {
 	return &sequenceODStateMachine{
 		dragon:  d,
 		shardID: clusterID,
@@ -32,9 +32,9 @@ func (s *sequenceODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	batch := s.dragon.pebble.NewBatch()
 	for i, entry := range entries {
-		seqName, _ := common.ReadStringFromBuffer(entry.Cmd, 0)
+		seqName, _ := common.ReadStringFromBufferLE(entry.Cmd, 0)
 		keyBuff := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, s.shardID, 16)
-		keyBuff = common.AppendStringToBufferLE(keyBuff, seqName)
+		keyBuff = common.KeyEncodeString(keyBuff, seqName)
 		v, err := localGet(s.dragon.pebble, keyBuff)
 		if err != nil {
 			return nil, err
