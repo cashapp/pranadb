@@ -114,7 +114,7 @@ func TestNotificationsRetryConnections(t *testing.T) {
 	defer stopClient(t, client)
 
 	numSent := 0
-	err = client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+	err = client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 	require.NoError(t, err)
 	numSent++
 	require.Equal(t, 3, client.numAvailableServers())
@@ -124,7 +124,7 @@ func TestNotificationsRetryConnections(t *testing.T) {
 	require.NoError(t, err)
 	start := time.Now()
 	for time.Now().Sub(start) < 5*time.Second {
-		err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 		require.NoError(t, err)
 		numSent++
 
@@ -142,7 +142,7 @@ func TestNotificationsRetryConnections(t *testing.T) {
 
 	start = time.Now()
 	for time.Now().Sub(start) < 5*time.Second {
-		err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 		require.NoError(t, err)
 		numSent++
 
@@ -157,7 +157,7 @@ func TestNotificationsRetryConnections(t *testing.T) {
 
 func sendAndReceiveNotif(t *testing.T, client *client, notif string, listeners []*notifListener) {
 	t.Helper()
-	err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: notif})
+	err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
 	require.NoError(t, err)
 	waitForNotifications(t, listeners, 1)
 	for _, listener := range listeners {
@@ -196,7 +196,7 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 		for j := 0; j < numNotifications; j++ {
 			notif := fmt.Sprintf("notif%d", j)
 			notifs = append(notifs, notif)
-			err := client.BroadcastNotification(&notifications.SessionClosedMessage{SessionId: notif})
+			err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
 			require.NoError(t, err)
 		}
 	}
@@ -251,13 +251,52 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 		notifs[i] = &notifications.SessionClosedMessage{
 			SessionId: str,
 		}
-		err := client.BroadcastNotification(notifs[i])
+		err := client.BroadcastOneway(notifs[i])
 		require.NoError(t, err)
 	}
 
 	waitForNotifications(t, notifListeners, len(notifsToSend))
 
 	return servers, notifListeners
+}
+
+func TestSyncBroadcast(t *testing.T) {
+	t.Helper()
+
+	numServers := 3
+
+	servers, listeners := startServers(t, numServers)
+	defer stopServers(t, servers...)
+	var listenAddresses []string
+	for _, server := range servers {
+		listenAddresses = append(listenAddresses, server.ListenAddress())
+	}
+
+	client := newClient(listenAddresses...)
+	err := client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	for i := 0; i < 10; i++ {
+		str := fmt.Sprintf("notif%d", i)
+		notif := &notifications.SessionClosedMessage{
+			SessionId: str,
+		}
+		err := client.BroadcastSync(notif)
+		require.NoError(t, err)
+
+		for j := 0; j < numServers; j++ {
+			list := listeners[j]
+			require.Equal(t, i+1, len(list.notifs))
+			not := list.notifs[len(list.notifs)-1]
+			snot, ok := not.(*notifications.SessionClosedMessage)
+			if !ok {
+				panic("not a session closed message")
+			}
+			require.Equal(t, str, snot.SessionId)
+		}
+	}
+
 }
 
 func TestMultipleNotificationTypes(t *testing.T) {
@@ -280,7 +319,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	defer stopClient(t, client)
 
 	scMessage := &notifications.SessionClosedMessage{SessionId: "foo"}
-	err = client.BroadcastNotification(scMessage)
+	err = client.BroadcastOneway(scMessage)
 	require.NoError(t, err)
 
 	ddlMessage := &notifications.DDLStatementInfo{
@@ -289,7 +328,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 		Sql:               "some sql",
 		TableSequences:    []uint64{1, 2, 3},
 	}
-	err = client.BroadcastNotification(ddlMessage)
+	err = client.BroadcastOneway(ddlMessage)
 	require.NoError(t, err)
 
 	waitForNotifications(t, []*notifListener{notifListener1}, 1)

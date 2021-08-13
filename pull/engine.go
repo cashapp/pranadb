@@ -20,7 +20,7 @@ import (
 type PullEngine struct {
 	lock               sync.RWMutex
 	started            bool
-	remoteSessionCache sync.Map // TODO if a node dies we need to remove all sessions for that node or they can be orphaned
+	remoteSessionCache sync.Map // TODO we should time out inactive sessions - otherwise can be orphaned if session.close notification didn't get through
 	cluster            cluster.Cluster
 	metaController     *meta.Controller
 	nodeID             int

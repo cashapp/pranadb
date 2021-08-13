@@ -23,7 +23,7 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	SchemaName:     SystemSchemaName,
 	Name:           TableDefTableName,
 	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
+	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name", "prepare"},
 	ColumnTypes: []common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
@@ -33,6 +33,7 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
+		common.TinyIntColumnType,
 	},
 }}
 
@@ -163,9 +164,8 @@ func (c *Controller) existsTable(schema *common.Schema, name string) error {
 	return nil
 }
 
-// RegisterSource adds a Source to the metadata controller, making it active. If persist is set, saves
-// the Source schema to cluster storage.
-func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool) error {
+// RegisterSource adds a Source to the metadata controller, making it active. It does not persist it
+func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
@@ -174,17 +174,20 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo, persist bool)
 		return err
 	}
 	schema.PutTable(sourceInfo.Name, sourceInfo)
-
-	if persist {
-		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
-			return err
-		}
-		if err = c.cluster.WriteBatch(wb); err != nil {
-			return err
-		}
-	}
 	return nil
+}
+
+// PersistSource adds the source to storage but does not add it in the in-memory metadata
+// It's added as pending=true
+func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepare bool) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepare), wb); err != nil {
+		return err
+	}
+	return c.cluster.WriteBatch(wb)
 }
 
 func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, persist bool) error {
@@ -199,7 +202,7 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 
 	if persist {
 		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, false), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {

@@ -160,20 +160,35 @@ func (c *connection) doReadLoop() {
 			if len(msgBuf) >= 4+msgLen {
 				// We got a whole message
 				msg := msgBuf[4 : 4+msgLen]
-				notification, err := DeserializeNotification(msg)
-				if err != nil {
+				nf := &NotificationMessage{}
+				if err := nf.deserialize(msg); err != nil {
 					c.loopCh <- err
 					return
 				}
-				listener := c.s.lookupNotificationListener(notification)
-				listener.HandleNotification(notification)
-				msgBuf = msgBuf[4+msgLen:]
+				listener := c.s.lookupNotificationListener(nf.notif)
+				listener.HandleNotification(nf.notif)
+				if nf.requiresResponse {
+					if err := c.sendResponse(nf); err != nil {
+						c.loopCh <- err
+						return
+					}
+				}
+				// We copy the slice otherwise the backing array won't be gc'd
+				msgBuf = common.CopyByteSlice(msgBuf[4+msgLen:])
 				msgLen = -1
 			} else {
 				break
 			}
 		}
 	}
+}
+
+func (c *connection) sendResponse(nf *NotificationMessage) error {
+	// The response is just the 8 bytes sequence in LE
+	buff := make([]byte, 0, 8)
+	buff = common.AppendUint64ToBufferLE(buff, uint64(nf.sequence))
+	_, err := c.conn.Write(buff)
+	return err
 }
 
 func (c *connection) stop() error {

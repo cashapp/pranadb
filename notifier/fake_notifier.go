@@ -29,7 +29,7 @@ func (f *FakeNotifier) RegisterNotificationListener(notificationType Notificatio
 	f.notifListeners[notificationType] = listener
 }
 
-func (f *FakeNotifier) BroadcastNotification(notif Notification) error {
+func (f *FakeNotifier) BroadcastOneway(notif Notification) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	listener, ok := f.notifListeners[TypeForNotification(notif)]
@@ -38,4 +38,8 @@ func (f *FakeNotifier) BroadcastNotification(notif Notification) error {
 	}
 	listener.HandleNotification(notif)
 	return nil
+}
+
+func (f *FakeNotifier) BroadcastSync(notif Notification) error {
+	return f.BroadcastOneway(notif)
 }

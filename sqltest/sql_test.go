@@ -680,6 +680,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	log.Printf("Statement %s execute time ms %d", statement, dur.Milliseconds())
 }
 
+// TODO can remove this method once all DDL is synchronous
 func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
 	log.Println("Waiting for schemas the same")
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {

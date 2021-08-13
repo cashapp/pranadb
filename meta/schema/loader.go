@@ -26,7 +26,7 @@ func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.Simpl
 
 func (l *Loader) Start() error {
 	rows, err := l.queryExec.ExecuteQuery("sys",
-		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name from tables order by id")
+		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare from tables order by id")
 	if err != nil {
 		return err
 	}
@@ -43,10 +43,14 @@ func (l *Loader) Start() error {
 		switch kind {
 		case meta.TableKindSource:
 			info := meta.DecodeSourceInfoRow(&row)
-			if err := l.meta.RegisterSource(info, false); err != nil {
+			// TODO prepare state!
+			if err := l.meta.RegisterSource(info); err != nil {
 				return err
 			}
 			if err := l.pushEngine.CreateSource(info); err != nil {
+				return err
+			}
+			if err := l.pushEngine.StartSource(info.ID); err != nil {
 				return err
 			}
 		case meta.TableKindMaterializedView:

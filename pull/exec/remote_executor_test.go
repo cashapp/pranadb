@@ -269,7 +269,7 @@ func (t *testCluster) RegisterShardListenerFactory(factory cluster.ShardListener
 	panic("should not be called")
 }
 
-func (t *testCluster) BroadcastNotification(notification notifier.Notification) error {
+func (t *testCluster) BroadcastOneway(notification notifier.Notification) error {
 	panic("should not be called")
 }
 

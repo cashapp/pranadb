@@ -7,6 +7,7 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/source"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
 )
+
+const remoteBatchRetryDelay = 2 * time.Second
 
 type PushEngine struct {
 	lock              sync.RWMutex
@@ -132,14 +135,31 @@ type shardListener struct {
 	sched   *sched.ShardScheduler
 }
 
+// RemoteWriteOccurred TODO we should also periodically call maybeHandleRemoteBatch as the call can fail if there
+// is no remote entity registered, i.e. the source or aggregate table hasn't been registered yet.
+// This could happen at startup when data is forwarded to a node but it hasn't completed loading all entities at startup
+// yet. In this case we want to retry
 func (s *shardListener) RemoteWriteOccurred() {
+	s.scheduleHandleRemoteBatch()
+}
+
+func (s *shardListener) scheduleHandleRemoteBatch() {
 	s.sched.ScheduleActionFireAndForget(s.maybeHandleRemoteBatch)
 }
 
 func (s *shardListener) maybeHandleRemoteBatch() error {
 	err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
 	if err != nil {
-		return err
+		// It's possible an error can occur in handling received rows if the source or aggregate table is not
+		// yet registered - this could be the case if rows are forwarded right after startup - in this case we can just
+		// retry
+		log.Printf("failed to handle received rows %v will retry after delay", err)
+		time.AfterFunc(remoteBatchRetryDelay, func() {
+			if err := s.maybeHandleRemoteBatch(); err != nil {
+				log.Printf("failed to process remote batch %v", err)
+			}
+		})
+		return nil
 	}
 	return s.p.mover.TransferData(s.shardID, true)
 }
@@ -210,6 +230,9 @@ func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
 func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
 	p.localShardsLock.RLock()
 	defer p.localShardsLock.RUnlock()
+	if len(p.localLeaderShards) == 0 {
+		return nil, errors.New("no local leader shards")
+	}
 	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
 	if err != nil {
 		return nil, err
@@ -422,7 +445,12 @@ func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
 }
 
 func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
-	src, err := p.createSource(sourceInfo)
+	_, err := p.createSource(sourceInfo)
+	return err
+}
+
+func (p *PushEngine) StartSource(sourceID uint64) error {
+	src, err := p.GetSource(sourceID)
 	if err != nil {
 		return err
 	}

@@ -15,7 +15,7 @@ const (
 )
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
-func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
+func EncodeSourceInfoToRow(info *common.SourceInfo, prepare bool) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindSource)
@@ -25,6 +25,11 @@ func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
 	rows.AppendNullToColumn(6)
 	rows.AppendNullToColumn(7)
+	if prepare {
+		rows.AppendInt64ToColumn(8, 1)
+	} else {
+		rows.AppendInt64ToColumn(8, 0)
+	}
 	row := rows.GetRow(0)
 	return &row
 }
@@ -38,7 +43,7 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 }
 
 // EncodeMaterializedViewInfoToRow encodes a common.MaterializedViewInfo into a database row.
-func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.Row {
+func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo, prepare bool) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindMaterializedView)
@@ -48,6 +53,11 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 	rows.AppendNullToColumn(5)
 	rows.AppendStringToColumn(6, info.Query)
 	rows.AppendNullToColumn(7)
+	if prepare {
+		rows.AppendInt64ToColumn(8, 1)
+	} else {
+		rows.AppendInt64ToColumn(8, 0)
+	}
 	row := rows.GetRow(0)
 	return &row
 }

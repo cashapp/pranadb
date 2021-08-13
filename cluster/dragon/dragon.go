@@ -144,7 +144,6 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	}
 	resBuff := proposeRes.Data
 	res := resBuff[0]
-	log.Printf("Call to %s %s returned %d", command, prefix, res)
 	var bRes bool
 	if res == LockSMResultTrue {
 		bRes = true
