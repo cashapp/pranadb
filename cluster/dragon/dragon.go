@@ -143,9 +143,8 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 		return false, fmt.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
 	}
 	resBuff := proposeRes.Data
-	res := resBuff[0]
 	var bRes bool
-	if res == LockSMResultTrue {
+	if res := resBuff[0]; res == LockSMResultTrue {
 		bRes = true
 	} else if res == LockSMResultFalse {
 		bRes = false

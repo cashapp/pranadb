@@ -200,6 +200,12 @@ func (s *Source) Stop() error {
 	return s.stop()
 }
 
+func (s *Source) IsRunning() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.started
+}
+
 func (s *Source) stop() error {
 	if !s.started {
 		panic("not started")

@@ -348,6 +348,7 @@ func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) 
 	return sched, ok
 }
 
+// RemoveSource removes the source but does not stop it, it should have been stopped first
 func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -356,8 +357,8 @@ func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool
 	if !ok {
 		return fmt.Errorf("no such source %d", sourceInfo.ID)
 	}
-	if err := src.Stop(); err != nil {
-		return err
+	if src.IsRunning() {
+		return errors.New("source is running")
 	}
 
 	delete(p.sources, sourceInfo.ID)

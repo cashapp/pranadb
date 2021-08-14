@@ -37,7 +37,7 @@ type DDLCommand interface {
 	// AfterCommit is called on the originating node only after all responses from commit have returned
 	AfterCommit() error
 
-	GetLockName() string
+	LockName() string
 }
 
 type DDLCommandType int
@@ -61,11 +61,13 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 	log.Printf("Creating ddl command with type: %v", commandType)
 	switch commandType {
 	case DDLCommandTypeCreateSource:
-		log.Printf("Return a create source command")
 		return NewCreateSourceCommand(e, schemaName, sql, tableSequences)
 	case DDLCommandTypeCreateMV:
 	case DDLCommandTypeDropSource:
+		return NewDropSourceCommand(e, schemaName, sql)
 	case DDLCommandTypeDropMV:
+	default:
+		panic("invalid ddl command")
 	}
 	return nil
 }
@@ -123,7 +125,7 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
-	lockName := command.GetLockName()
+	lockName := command.LockName()
 	id := atomic.AddInt64(&d.idSeq, 1)
 	commandKey := d.generateCommandKey(uint64(d.ce.cluster.GetNodeID()), uint64(id))
 	d.lock.Lock()

@@ -26,7 +26,7 @@ func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.Simpl
 
 func (l *Loader) Start() error {
 	rows, err := l.queryExec.ExecuteQuery("sys",
-		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare from tables order by id")
+		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare_state from tables order by id")
 	if err != nil {
 		return err
 	}

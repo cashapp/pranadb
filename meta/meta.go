@@ -17,13 +17,21 @@ const (
 	SourceOffsetsTableName = "offsets"
 )
 
+type PrepareState int
+
+const (
+	PrepareStateCommitted = iota
+	PrepareStateAdd
+	PrepareStateDelete
+)
+
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
 var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	ID:             common.SchemaTableID,
 	SchemaName:     SystemSchemaName,
 	Name:           TableDefTableName,
 	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name", "prepare"},
+	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name", "prepare_state"},
 	ColumnTypes: []common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
@@ -179,12 +187,12 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 
 // PersistSource adds the source to storage but does not add it in the in-memory metadata
 // It's added as pending=true
-func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepare bool) error {
+func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState PrepareState) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepare), wb); err != nil {
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepareState), wb); err != nil {
 		return err
 	}
 	return c.cluster.WriteBatch(wb)
@@ -234,7 +242,8 @@ func (c *Controller) RegisterInternalTable(info *common.InternalTableInfo, persi
 	return nil
 }
 
-func (c *Controller) RemoveSource(schemaName string, sourceName string, persist bool) error {
+// UnregisterSource removes the source from memory but does not delete it from storage
+func (c *Controller) UnregisterSource(schemaName string, sourceName string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
@@ -250,11 +259,12 @@ func (c *Controller) RemoveSource(schemaName string, sourceName string, persist 
 	}
 	schema.DeleteTable(sourceName)
 
-	if persist {
-		return c.deleteEntityWIthID(tbl.GetTableInfo().ID)
-	}
-
 	return nil
+}
+
+// DeleteSource removes the source from storage
+func (c *Controller) DeleteSource(sourceID uint64) error {
+	return c.deleteEntityWIthID(sourceID)
 }
 
 func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, persist bool) error {

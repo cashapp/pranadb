@@ -15,7 +15,7 @@ const (
 )
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
-func EncodeSourceInfoToRow(info *common.SourceInfo, prepare bool) *common.Row {
+func EncodeSourceInfoToRow(info *common.SourceInfo, prepareState PrepareState) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindSource)
@@ -25,11 +25,7 @@ func EncodeSourceInfoToRow(info *common.SourceInfo, prepare bool) *common.Row {
 	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
 	rows.AppendNullToColumn(6)
 	rows.AppendNullToColumn(7)
-	if prepare {
-		rows.AppendInt64ToColumn(8, 1)
-	} else {
-		rows.AppendInt64ToColumn(8, 0)
-	}
+	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }

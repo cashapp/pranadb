@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/meta"
 	"sync"
 )
 
@@ -35,7 +36,7 @@ func (c *CreateSourceCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateSourceCommand) GetLockName() string {
+func (c *CreateSourceCommand) LockName() string {
 	return c.schemaName + "/"
 }
 
@@ -68,7 +69,7 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	if err != nil {
 		return err
 	}
-	return c.e.metaController.PersistSource(c.sourceInfo, true)
+	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
 }
 
 func (c *CreateSourceCommand) OnPrepare() error {
@@ -112,7 +113,7 @@ func (c *CreateSourceCommand) AfterCommit() error {
 	defer c.lock.Unlock()
 
 	// Update row in metadata tables table to prepare=false
-	return c.e.metaController.PersistSource(c.sourceInfo, false)
+	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateCommitted)
 }
 
 func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.SourceInfo, error) {
