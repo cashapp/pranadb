@@ -2,12 +2,13 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/notifier"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/notifier"
 
 	"github.com/squareup/pranadb/sess"
 
@@ -155,7 +156,7 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 		return e.execPrepare(session, ast.Prepare)
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)
-	case ast.Drop != "":
+	case ast.Drop != nil:
 		exec, err := e.execDrop(session, ast.Drop, persist)
 		if err != nil {
 			return nil, err
@@ -261,19 +262,9 @@ func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExec
 	return dag, errors.MaybeAddStack(err)
 }
 
-func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (exec.PullExecutor, error) {
-	// TODO we should really use the parser to do this
-	sqlOrig := sql
-	sql = strings.ToLower(sql)
-	if strings.Index(sql, "drop ") != 0 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command %s", sqlOrig))
-	}
-	sql = sql[5:]
-	if strings.HasPrefix(sql, "source ") {
-		sourceName := sql[7:]
-		if sourceName == "" {
-			return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop source command %s no source name specified", sqlOrig))
-		}
+func (e *Executor) execDrop(session *sess.Session, drop *parser.Drop, persist bool) (exec.PullExecutor, error) {
+	if drop.Source {
+		sourceName := drop.Name
 		sourceInfo, ok := e.metaController.GetSource(session.Schema.Name, sourceName)
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
@@ -288,11 +279,8 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 		if err != nil {
 			return nil, err
 		}
-	} else if strings.HasPrefix(sql, "materialized view ") {
-		mvName := sql[18:]
-		if mvName == "" {
-			return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop materialized view command %s no materialized view name specified", sqlOrig))
-		}
+	} else if drop.MaterializedView {
+		mvName := drop.Name
 		mvInfo, ok := e.metaController.GetMaterializedView(session.Schema.Name, mvName)
 		if !ok {
 			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
@@ -308,7 +296,7 @@ func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (ex
 			return nil, err
 		}
 	} else {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command %s must be one of drop source <source_name> or drop materialized view <materialized_view_name>", sqlOrig))
+		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command"))
 	}
 	return exec.Empty, nil
 }
