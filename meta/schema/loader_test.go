@@ -32,11 +32,11 @@ func TestLoader(t *testing.T) {
 			name: "sources",
 			ddl: []ddl{{
 				schema: "location",
-				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) ) 
+				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) )
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
-                        headerencoding = "json",
+		               headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
@@ -57,7 +57,7 @@ func TestLoader(t *testing.T) {
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
-                        headerencoding = "json",
+		               headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
@@ -75,7 +75,7 @@ func TestLoader(t *testing.T) {
 					with (
 						brokername = "testbroker",
 						topicname = "testtopic",
-                        headerencoding = "json",
+		               headerencoding = "json",
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (

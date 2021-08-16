@@ -19,7 +19,7 @@ func NewPreallocSeqGen(seq []uint64) *PreAllocatedSeqGenerator {
 	}
 }
 
-func (p PreAllocatedSeqGenerator) GenerateSequence() uint64 {
+func (p *PreAllocatedSeqGenerator) GenerateSequence() uint64 {
 	if p.index >= len(p.sequences) {
 		panic("not enough sequence values")
 	}

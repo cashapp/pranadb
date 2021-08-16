@@ -2,6 +2,7 @@ package meta
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/squareup/pranadb/cluster"
@@ -185,14 +186,25 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	return nil
 }
 
-// PersistSource adds the source to storage but does not add it in the in-memory metadata
-// It's added as pending=true
 func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState PrepareState) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	log.Printf("Writing source to storage with id %d", sourceInfo.ID)
+
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepareState), wb); err != nil {
+		return err
+	}
+	return c.cluster.WriteBatch(wb)
+}
+
+func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, prepareState PrepareState) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, prepareState), wb); err != nil {
 		return err
 	}
 	return c.cluster.WriteBatch(wb)
@@ -209,8 +221,9 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	schema.PutTable(mvInfo.Name, mvInfo)
 
 	if persist {
+		log.Printf("Writing MV to storage with id %d", mvInfo.ID)
 		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, false), wb); err != nil {
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, PrepareStateCommitted), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -231,8 +244,9 @@ func (c *Controller) RegisterInternalTable(info *common.InternalTableInfo, persi
 	schema.PutTable(info.Name, info)
 
 	if persist {
+		log.Printf("Writing internal table to storage with id %d", info.ID)
 		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info), wb); err != nil {
+		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info, PrepareStateCommitted), wb); err != nil {
 			return err
 		}
 		if err = c.cluster.WriteBatch(wb); err != nil {
@@ -262,12 +276,18 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	return nil
 }
 
+// DeleteSource TODO remove these methods and add them to the source and MV structs
 // DeleteSource removes the source from storage
 func (c *Controller) DeleteSource(sourceID uint64) error {
 	return c.deleteEntityWIthID(sourceID)
 }
 
-func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, persist bool) error {
+// DeleteMaterializedView removes the mv from storage
+func (c *Controller) DeleteMaterializedView(mvID uint64) error {
+	return c.deleteEntityWIthID(mvID)
+}
+
+func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
@@ -282,11 +302,6 @@ func (c *Controller) RemoveMaterializedView(schemaName string, mvName string, pe
 		return fmt.Errorf("%s is not a materialized view", tbl)
 	}
 	schema.DeleteTable(mvName)
-
-	if persist {
-		return c.deleteEntityWIthID(tbl.GetTableInfo().ID)
-	}
-
 	return nil
 }
 

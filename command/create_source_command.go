@@ -76,7 +76,7 @@ func (c *CreateSourceCommand) OnPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// If receiving on prepare from broadcast on the originating node, sourceInfo will already be set
+	// If receiving on prepare from broadcast on the originating node, mvInfo will already be set
 	// this means we do not have to parse the ast twice!
 	if c.sourceInfo == nil {
 		ast, err := parser.Parse(c.sql)

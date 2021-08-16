@@ -98,14 +98,29 @@ func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 
 func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
 	id := seqGenerator.GenerateSequence()
-	// FIXME - this needs to be in the opposite order
-	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
+
+	log.Printf("MV id is %d", id)
+
+	mv, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
 	if err != nil {
 		return err
 	}
-	err = e.metaController.RegisterMaterializedView(mvInfo, persist)
-	if err != nil {
+	if err := e.pushEngine.ConnectMV(mv); err != nil {
 		return err
+	}
+	// Registers it in the PUSH ENGINE not the metacontroller
+	if err := e.pushEngine.RegisterMV(mv); err != nil {
+		return err
+	}
+
+	// TODO move these inside MV
+	if err = e.metaController.RegisterMaterializedView(mv.Info, persist); err != nil {
+		return err
+	}
+	for _, it := range mv.InternalTables {
+		if err = e.metaController.RegisterInternalTable(it, persist); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -153,6 +168,14 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			}
 			return exec.Empty, nil
 		}
+		if strings.HasPrefix(sql, "drop materialized view ") {
+			command := NewDropMVCommand(e, session.Schema.Name, sql)
+			err = e.ddlRunner.RunCommand(command)
+			if err != nil {
+				return nil, err
+			}
+			return exec.Empty, nil
+		}
 	}
 
 	switch {
@@ -162,17 +185,6 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 		return e.execPrepare(session, ast.Prepare)
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)
-	case ast.Drop != nil:
-		exec, err := e.execDrop(session, ast.Drop, persist)
-		if err != nil {
-			return nil, err
-		}
-		if persist {
-			if err := e.broadcastDDL(session.Schema.Name, sql, nil, DDLCommandTypeDropMV); err != nil {
-				return nil, err
-			}
-		}
-		return exec, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
 		var sequences []uint64
 		if persist {
@@ -246,39 +258,6 @@ func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExec
 	return dag, errors.MaybeAddStack(err)
 }
 
-func (e *Executor) execDrop(session *sess.Session, sql string, persist bool) (exec.PullExecutor, error) {
-	// TODO we should really use the parser to do this
-	sqlOrig := sql
-	sql = strings.ToLower(sql)
-	if strings.Index(sql, "drop ") != 0 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command %s", sqlOrig))
-	}
-	sql = sql[5:]
-	if strings.HasPrefix(sql, "materialized view ") {
-		mvName := sql[18:]
-		if mvName == "" {
-			return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop materialized view command %s no materialized view name specified", sqlOrig))
-		}
-		mvInfo, ok := e.metaController.GetMaterializedView(session.Schema.Name, mvName)
-		if !ok {
-			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
-		}
-		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SQLTest will think ddl is synced before data is deleted
-		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
-		if err != nil {
-			return nil, err
-		}
-		err = e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command"))
-	}
-	return exec.Empty, nil
-}
-
 func (e *Executor) execSelect(session *sess.Session, sql string) (exec.PullExecutor, error) {
 	dag, err := e.pullEngine.BuildPullQuery(session, sql)
 	return dag, errors.MaybeAddStack(err)
@@ -306,7 +285,7 @@ func (e *Executor) HandleNotification(notification notifier.Notification) {
 
 	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
 
-	if ddlStmt.CommandType == DDLCommandTypeCreateSource || ddlStmt.CommandType == DDLCommandTypeDropSource {
+	if ddlStmt.CommandType == DDLCommandTypeCreateSource || ddlStmt.CommandType == DDLCommandTypeDropSource || ddlStmt.CommandType == DDLCommandTypeDropMV {
 		e.ddlRunner.HandleNotification(notification)
 		return
 	}

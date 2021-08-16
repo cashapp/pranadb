@@ -66,6 +66,7 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 	case DDLCommandTypeDropSource:
 		return NewDropSourceCommand(e, schemaName, sql)
 	case DDLCommandTypeDropMV:
+		return NewDropMVCommand(e, schemaName, sql)
 	default:
 		panic("invalid ddl command")
 	}

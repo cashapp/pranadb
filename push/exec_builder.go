@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 
 	"github.com/pingcap/tidb/expression"
@@ -13,28 +14,32 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 )
 
-func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string, seqGenerator common.SeqGenerator) (queryDAG exec.PushExecutor, err error) {
+// Builds the push DAG but does not register anything in memory
+func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
+	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	// Build the physical plan
 	physicalPlan, _, err := pl.QueryToPlan(query, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
+	dag, internalTables, err := p.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Update schemas to the form we need
 	err = p.updateSchemas(dag, schema)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return dag, nil
+	return dag, internalTables, nil
 }
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string, seqGenerator common.SeqGenerator) (exec.PushExecutor, error) {
+func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string,
+	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+	var internalTables []*common.InternalTableInfo
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -54,7 +59,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		}
 		executor = exec.NewPushProjection(colNames, colTypes, exprs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	case *core.PhysicalSelection:
 		var exprs []*common.Expression
@@ -63,7 +68,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		}
 		executor = exec.NewPushSelect(colNames, colTypes, exprs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	case *core.PhysicalHashAgg:
 		var aggFuncs []*exec.AggregateFunctionInfo
@@ -72,7 +77,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		for _, aggFunc := range op.AggFuncs {
 			argExprs := aggFunc.Args
 			if len(argExprs) > 1 {
-				return nil, errors.New("more than one aggregate function arg")
+				return nil, nil, errors.New("more than one aggregate function arg")
 			}
 			var argExpr *common.Expression
 			if len(argExprs) == 1 {
@@ -95,7 +100,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
 			default:
-				return nil, fmt.Errorf("unexpected aggregate function %s", aggFunc.Name)
+				return nil, nil, fmt.Errorf("unexpected aggregate function %s", aggFunc.Name)
 			}
 			af := &exec.AggregateFunctionInfo{
 				FuncType: funcType,
@@ -112,13 +117,15 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		for i, expr := range op.GroupByItems {
 			col, ok := expr.(*expression.Column)
 			if !ok {
-				return nil, errors.New("group by expression not a column")
+				return nil, nil, errors.New("group by expression not a column")
 			}
 			groupByCols[i] = col.Index
 			pkCols[i] = col.Index + nonFirstRowFuncs
 		}
 
 		tableID := seqGenerator.GenerateSequence()
+
+		log.Printf("Agg table id is %d", tableID)
 
 		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
 		aggSequence++
@@ -136,12 +143,10 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			TableInfo:            tableInfo,
 			MaterializedViewName: queryName,
 		}
-		if err := p.meta.RegisterInternalTable(aggInfo, false); err != nil {
-			return nil, err
-		}
+		internalTables = append(internalTables, aggInfo)
 		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.cluster, p.sharder)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	case *core.PhysicalTableReader:
 		if len(op.TablePlans) != 1 {
@@ -150,41 +155,65 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 		tabPlan := op.TablePlans[0]
 		physTableScan, ok := tabPlan.(*core.PhysicalTableScan)
 		if !ok {
-			return nil, errors.New("expected PhysicalTableScan")
+			return nil, nil, errors.New("expected PhysicalTableScan")
 		}
 		tableName := physTableScan.Table.Name
 		executor, err = exec.NewTableScan(colTypes, tableName.L)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unexpected plan type %T", plan)
+		return nil, nil, fmt.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
+		childExecutor, it, err := p.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		internalTables = append(internalTables, it...)
 		if childExecutor != nil {
 			childExecutors = append(childExecutors, childExecutor)
 		}
 	}
 	exec.ConnectPushExecutors(childExecutors, executor)
-	return executor, nil
+	return executor, internalTables, nil
 }
 
-// TODO - do we need the schema information provided from the planner at all?? We could not bother setting it
 // The schema provided by the planner may not be the ones we need. We need to provide information
 // on key cols, which the planner does not provide, also we need to propagate keys through
 // projections which don't include the key columns. These are needed when subsequently
 // identifying a row when it changes
-// We also connect up any executors which consumer data from sources, materialized views, or remote receivers
-// to their feeders
 func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Schema) error {
 	for _, child := range executor.GetChildren() {
 		err := p.updateSchemas(child, schema)
+		if err != nil {
+			return err
+		}
+	}
+	switch op := executor.(type) {
+	case *exec.TableScan:
+		tableName := op.TableName
+		tbl, ok := schema.GetTable(tableName)
+		if !ok {
+			return fmt.Errorf("unknown source or materialized view %s", tableName)
+		}
+		tableInfo := tbl.GetTableInfo()
+		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
+	case *exec.Aggregator:
+		// Do nothing
+	default:
+		executor.ReCalcSchemaFromChildren()
+	}
+	return nil
+}
+
+// We connect up any executors which consumer data from sources, materialized views, or remote receivers
+// to their feeders
+func (p *PushEngine) connectToFeeders(executor exec.PushExecutor, schema *common.Schema) error {
+	for _, child := range executor.GetChildren() {
+		err := p.connectToFeeders(child, schema)
 		if err != nil {
 			return err
 		}
@@ -206,8 +235,6 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		default:
 			return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
 		}
-		tableInfo := tbl.GetTableInfo()
-		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
 	case *exec.Aggregator:
 		colTypes := op.GetChildren()[0].ColTypes()
 		rf := common.NewRowsFactory(colTypes)
@@ -217,8 +244,6 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 			RowsHandler: op,
 		}
 		p.remoteConsumers[op.AggTableInfo.ID] = rc
-	default:
-		executor.ReCalcSchemaFromChildren()
 	}
 	return nil
 }

@@ -31,7 +31,7 @@ type PushEngine struct {
 	started           bool
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
-	materializedViews map[uint64]*materializedView
+	materializedViews map[uint64]*MaterializedView
 	remoteConsumers   map[uint64]*remoteConsumer
 	mover             *mover.Mover
 	localLeaderShards []uint64
@@ -61,7 +61,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 func (p *PushEngine) createMaps() {
 	p.remoteConsumers = make(map[uint64]*remoteConsumer)
 	p.sources = make(map[uint64]*source.Source)
-	p.materializedViews = make(map[uint64]*materializedView)
+	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
 }
 
@@ -348,7 +348,7 @@ func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) 
 	return sched, ok
 }
 
-// RemoveSource removes the source but does not stop it, it should have been stopped first
+// RemoveSource removes the source and deletes it's data but does not stop it, it should have been stopped first
 func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -380,7 +380,8 @@ func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool
 	return nil
 }
 
-func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedViewInfo, deleteData bool) error {
+// RemoveMV removes the MV from the engine and deletes it's data, it should have disconnected first
+func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedViewInfo) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -389,19 +390,47 @@ func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedVi
 	if !ok {
 		return fmt.Errorf("cannot find materialized view with id %d", mvID)
 	}
-	err := p.disconnectMV(schema, mv.tableExecutor, deleteData)
+	err := p.disconnectOrDeleteDataForMV(schema, mv.tableExecutor, false, true)
 	if err != nil {
 		return err
 	}
 	delete(p.materializedViews, mvID)
 
-	if deleteData {
-		return p.deleteAllDataForTable(mvID)
-	}
+	return p.deleteAllDataForTable(mvID)
+}
+
+func (p *PushEngine) ConnectMV(mv *MaterializedView) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	return p.connectToFeeders(mv.tableExecutor, mv.schema)
+}
+
+func (p *PushEngine) RegisterMV(mv *MaterializedView) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	p.materializedViews[mv.Info.TableInfo.ID] = mv
+
 	return nil
 }
 
-func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor, deleteData bool) error {
+// DisconnectMV We can add a getMV method like getSource and call that from the dropmv command, keeping the engine impl lite
+// TODO move this inside MV struct
+// disconnects the MV and any agg tables from it's sources and as remote receivers
+func (p *PushEngine) DisconnectMV(schema *common.Schema, info *common.MaterializedViewInfo) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	mvID := info.TableInfo.ID
+	mv, ok := p.materializedViews[mvID]
+	if !ok {
+		return fmt.Errorf("cannot find materialized view with id %d", mvID)
+	}
+	return p.disconnectOrDeleteDataForMV(schema, mv.tableExecutor, true, false)
+}
+
+// TODO move this inside MV struct
+func (p *PushEngine) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
 
 	switch op := node.(type) {
 	case *exec.TableScan:
@@ -412,11 +441,15 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 		}
 		switch tbl := tbl.(type) {
 		case *common.SourceInfo:
-			source := p.sources[tbl.ID]
-			source.RemoveConsumingExecutor(node)
+			if disconnect {
+				source := p.sources[tbl.ID]
+				source.RemoveConsumingExecutor(node)
+			}
 		case *common.MaterializedViewInfo:
-			mv := p.materializedViews[tbl.ID]
-			mv.removeConsumingExecutor(node)
+			if disconnect {
+				mv := p.materializedViews[tbl.ID]
+				mv.removeConsumingExecutor(node)
+			}
 		default:
 			return fmt.Errorf("cannot disconnect %s: invalid table type", tbl)
 		}
@@ -431,7 +464,7 @@ func (p *PushEngine) disconnectMV(schema *common.Schema, node exec.PushExecutor,
 	}
 
 	for _, child := range node.GetChildren() {
-		err := p.disconnectMV(schema, child, deleteData)
+		err := p.disconnectOrDeleteDataForMV(schema, child, disconnect, deleteData)
 		if err != nil {
 			return err
 		}
