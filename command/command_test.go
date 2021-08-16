@@ -129,8 +129,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			seqGenerator := common.NewPreallocSeqGen([]uint64{1, 2})
-			executor, err := ce.executeSQLStatementInternal(s, test.query, true, seqGenerator)
+			executor, err := ce.ExecuteSQLStatement(s, test.query)
 			require.NoError(t, err)
 			actual, err := executor.GetRows(999)
 			require.NoError(t, err)
@@ -182,7 +181,6 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	require.NoError(t, err)
 	s := ce.CreateSession("test")
 
-	seqGenerator := common.NewPreallocSeqGen([]uint64{1, 2})
 	sql := `
 			create source sensor_readings(
 				sensor_id bigint,
@@ -206,7 +204,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
                 )
             )
 		`
-	_, err = ce.executeSQLStatementInternal(s, sql, true, seqGenerator)
+	_, err = ce.ExecuteSQLStatement(s, sql)
 	require.NoError(t, err)
 
 	src, ok := metaController.GetSource("test", "sensor_readings")

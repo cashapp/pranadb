@@ -5,6 +5,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/push"
 	"strings"
 	"sync"
 )
@@ -14,7 +15,7 @@ type DropMVCommand struct {
 	e          *Executor
 	schemaName string
 	sql        string
-	mvInfo     *common.MaterializedViewInfo
+	mv         *push.MaterializedView
 	schema     *common.Schema
 }
 
@@ -50,14 +51,14 @@ func (c *DropMVCommand) BeforePrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	mvInfo, err := c.getMVInfo()
+	mv, err := c.getMV()
 	if err != nil {
 		return err
 	}
-	c.mvInfo = mvInfo
+	c.mv = mv
 
 	// Update row in tables table to mark it as pending delete
-	return c.e.metaController.PersistMaterializedView(mvInfo, meta.PrepareStateDelete)
+	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateDelete)
 }
 
 func (c *DropMVCommand) OnPrepare() error {
@@ -66,14 +67,14 @@ func (c *DropMVCommand) OnPrepare() error {
 
 	// MV should be removed from in memory metadata and disconnected from it's sources and
 	// any aggregate tables disconnected as remote receivers
-	if c.mvInfo == nil {
-		mvInfo, err := c.getMVInfo()
+	if c.mv == nil {
+		mv, err := c.getMV()
 		if err != nil {
 			return err
 		}
-		c.mvInfo = mvInfo
+		c.mv = mv
 	}
-	if err := c.e.metaController.UnregisterMaterializedview(c.schemaName, c.mvInfo.Name); err != nil {
+	if err := c.e.metaController.UnregisterMaterializedview(c.schemaName, c.mv.Info.Name); err != nil {
 		return err
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)
@@ -81,7 +82,7 @@ func (c *DropMVCommand) OnPrepare() error {
 		return fmt.Errorf("no such schema %s", c.schemaName)
 	}
 	c.schema = schema
-	return c.e.pushEngine.DisconnectMV(schema, c.mvInfo)
+	return c.mv.Disconnect()
 }
 
 func (c *DropMVCommand) OnCommit() error {
@@ -90,7 +91,10 @@ func (c *DropMVCommand) OnCommit() error {
 
 	// Remove the mv from the push engine and delete all it's data
 	// Deleting the data could take some time
-	return c.e.pushEngine.RemoveMV(c.schema, c.mvInfo)
+	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
+		return err
+	}
+	return c.mv.Drop()
 }
 
 func (c *DropMVCommand) AfterCommit() error {
@@ -98,10 +102,10 @@ func (c *DropMVCommand) AfterCommit() error {
 	defer c.lock.Unlock()
 
 	// Delete the mv from the tables table
-	return c.e.metaController.DeleteMaterializedView(c.mvInfo.ID)
+	return c.e.metaController.DeleteMaterializedView(c.mv.Info, c.mv.InternalTables)
 }
 
-func (c *DropMVCommand) getMVInfo() (*common.MaterializedViewInfo, error) {
+func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 	// TODO we should really use the parser to do this
 	parts := strings.Split(c.sql, " ")
 	if len(parts) < 4 {
@@ -112,5 +116,6 @@ func (c *DropMVCommand) getMVInfo() (*common.MaterializedViewInfo, error) {
 	if !ok {
 		return nil, errors.MaybeAddStack(fmt.Errorf("unknown mv %s", mvName))
 	}
-	return mvInfo, nil
+	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
+	return mv, err
 }

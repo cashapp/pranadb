@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"log"
 	"sync"
@@ -57,20 +58,19 @@ func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	}
 }
 
-func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, sql string, tableSequences []uint64) DDLCommand {
-	log.Printf("Creating ddl command with type: %v", commandType)
+func NewDDLCommand(e *Executor, pl *parplan.Planner, commandType DDLCommandType, schema *common.Schema, sql string, tableSequences []uint64) DDLCommand {
 	switch commandType {
 	case DDLCommandTypeCreateSource:
-		return NewCreateSourceCommand(e, schemaName, sql, tableSequences)
+		return NewCreateSourceCommand(e, schema.Name, sql, tableSequences)
 	case DDLCommandTypeCreateMV:
+		return NewCreateMVCommand(e, pl, schema, sql, tableSequences)
 	case DDLCommandTypeDropSource:
-		return NewDropSourceCommand(e, schemaName, sql)
+		return NewDropSourceCommand(e, schema.Name, sql)
 	case DDLCommandTypeDropMV:
-		return NewDropMVCommand(e, schemaName, sql)
+		return NewDropMVCommand(e, schema.Name, sql)
 	default:
 		panic("invalid ddl command")
 	}
-	return nil
 }
 
 type DDLCommandRunner struct {
@@ -96,11 +96,13 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 		panic("not a ddl statement info")
 	}
 	skey := d.generateCommandKey(uint64(ddlInfo.GetOriginatingNodeId()), uint64(ddlInfo.GetCommandId()))
+	schema := d.ce.metaController.GetOrCreateSchema(ddlInfo.GetSchemaName())
+	pl := parplan.NewPlanner(schema, false)
 	if ddlInfo.GetPrepare() {
 		// If this comes in on the originating node the command will already be there
 		com, ok := d.commands[skey]
 		if !ok {
-			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(), ddlInfo.GetTableSequences())
+			com = NewDDLCommand(d.ce, pl, DDLCommandType(ddlInfo.CommandType), schema, ddlInfo.GetSql(), ddlInfo.GetTableSequences())
 			d.commands[skey] = com
 		}
 		if err := com.OnPrepare(); err != nil {

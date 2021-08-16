@@ -88,7 +88,11 @@ func (c *DropSourceCommand) OnCommit() error {
 
 	// Remove the source from the push engine and delete all it's data
 	// Deleting the data could take some time
-	return c.e.pushEngine.RemoveSource(c.sourceInfo, true)
+	src, err := c.e.pushEngine.RemoveSource(c.sourceInfo)
+	if err != nil {
+		return err
+	}
+	return src.Drop()
 }
 
 func (c *DropSourceCommand) AfterCommit() error {

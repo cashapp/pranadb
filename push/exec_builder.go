@@ -3,19 +3,17 @@ package push
 import (
 	"errors"
 	"fmt"
-	"log"
-	"reflect"
-
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
+	"log"
 )
 
 // Builds the push DAG but does not register anything in memory
-func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
+func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	// Build the physical plan
 	physicalPlan, _, err := pl.QueryToPlan(query, false)
@@ -23,12 +21,12 @@ func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common
 		return nil, nil, err
 	}
 	// Build initial dag from the plan
-	dag, internalTables, err := p.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
+	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Update schemas to the form we need
-	err = p.updateSchemas(dag, schema)
+	err = m.updateSchemas(dag, schema)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -37,7 +35,7 @@ func (p *PushEngine) buildPushQueryExecution(pl *parplan.Planner, schema *common
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string,
+func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	cols := plan.Schema().Columns
@@ -144,7 +142,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 			MaterializedViewName: queryName,
 		}
 		internalTables = append(internalTables, aggInfo)
-		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, p.cluster, p.sharder)
+		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -168,7 +166,7 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, it, err := p.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
+		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -185,9 +183,9 @@ func (p *PushEngine) buildPushDAG(plan core.PhysicalPlan, aggSequence int, query
 // on key cols, which the planner does not provide, also we need to propagate keys through
 // projections which don't include the key columns. These are needed when subsequently
 // identifying a row when it changes
-func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Schema) error {
+func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *common.Schema) error {
 	for _, child := range executor.GetChildren() {
-		err := p.updateSchemas(child, schema)
+		err := m.updateSchemas(child, schema)
 		if err != nil {
 			return err
 		}
@@ -205,45 +203,6 @@ func (p *PushEngine) updateSchemas(executor exec.PushExecutor, schema *common.Sc
 		// Do nothing
 	default:
 		executor.ReCalcSchemaFromChildren()
-	}
-	return nil
-}
-
-// We connect up any executors which consumer data from sources, materialized views, or remote receivers
-// to their feeders
-func (p *PushEngine) connectToFeeders(executor exec.PushExecutor, schema *common.Schema) error {
-	for _, child := range executor.GetChildren() {
-		err := p.connectToFeeders(child, schema)
-		if err != nil {
-			return err
-		}
-	}
-	switch op := executor.(type) {
-	case *exec.TableScan:
-		tableName := op.TableName
-		tbl, ok := schema.GetTable(tableName)
-		if !ok {
-			return fmt.Errorf("unknown source or materialized view %s", tableName)
-		}
-		switch tbl := tbl.(type) {
-		case *common.SourceInfo:
-			source := p.sources[tbl.GetTableInfo().ID]
-			source.AddConsumingExecutor(executor)
-		case *common.MaterializedViewInfo:
-			mv := p.materializedViews[tbl.GetTableInfo().ID]
-			mv.addConsumingExecutor(executor)
-		default:
-			return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
-		}
-	case *exec.Aggregator:
-		colTypes := op.GetChildren()[0].ColTypes()
-		rf := common.NewRowsFactory(colTypes)
-		rc := &remoteConsumer{
-			RowsFactory: rf,
-			ColTypes:    colTypes,
-			RowsHandler: op,
-		}
-		p.remoteConsumers[op.AggTableInfo.ID] = rc
 	}
 	return nil
 }

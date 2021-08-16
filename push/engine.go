@@ -32,7 +32,7 @@ type PushEngine struct {
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
 	materializedViews map[uint64]*MaterializedView
-	remoteConsumers   map[uint64]*remoteConsumer
+	remoteConsumers   map[uint64]*RemoteConsumer
 	mover             *mover.Mover
 	localLeaderShards []uint64
 	cluster           cluster.Cluster
@@ -41,6 +41,27 @@ type PushEngine struct {
 	rnd               *rand.Rand
 	cfg               *conf.Config
 	queryExec         common.SimpleQueryExec
+}
+
+// RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
+// e.g. a source or an aggregator
+// TODO we don't need this if we pass the [][]byte straight to the handler in the source/mv
+// which already knows these fields
+type RemoteConsumer struct {
+	RowsFactory *common.RowsFactory
+	ColTypes    []common.ColumnType
+	RowsHandler remoteRowsHandler
+}
+
+type shardListener struct {
+	shardID uint64
+	p       *PushEngine
+	sched   *sched.ShardScheduler
+}
+
+// TODO do we even need these?
+type remoteRowsHandler interface {
+	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
 }
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
@@ -56,28 +77,6 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 	}
 	engine.createMaps()
 	return &engine
-}
-
-func (p *PushEngine) createMaps() {
-	p.remoteConsumers = make(map[uint64]*remoteConsumer)
-	p.sources = make(map[uint64]*source.Source)
-	p.materializedViews = make(map[uint64]*MaterializedView)
-	p.schedulers = make(map[uint64]*sched.ShardScheduler)
-}
-
-// remoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
-// e.g. a source or an aggregator
-// TODO we don't need this if we pass the [][]byte straight to the handler in the source/mv
-// which already knows these fields
-type remoteConsumer struct {
-	RowsFactory *common.RowsFactory
-	ColTypes    []common.ColumnType
-	RowsHandler remoteRowsHandler
-}
-
-// TODO do we even need these?
-type remoteRowsHandler interface {
-	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
 }
 
 func (p *PushEngine) Start() error {
@@ -105,11 +104,90 @@ func (p *PushEngine) Stop() error {
 			return err
 		}
 	}
-	for _, sched := range p.schedulers {
-		sched.Stop()
+	for _, sh := range p.schedulers {
+		sh.Stop()
 	}
 	p.createMaps() // Clear the internal state
 	p.started = false
+	return nil
+}
+
+func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	source, ok := p.sources[sourceID]
+	if !ok {
+		return nil, errors.New("no such source")
+	}
+	return source, nil
+}
+
+func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	src, ok := p.sources[sourceInfo.ID]
+	if !ok {
+		return nil, fmt.Errorf("no such source %d", sourceInfo.ID)
+	}
+	if src.IsRunning() {
+		return nil, errors.New("source is running")
+	}
+
+	delete(p.sources, sourceInfo.ID)
+	delete(p.remoteConsumers, sourceInfo.ID)
+
+	return src, nil
+}
+
+func (p *PushEngine) RegisterRemoteConsumer(id uint64, rc *RemoteConsumer) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if _, ok := p.remoteConsumers[id]; ok {
+		return fmt.Errorf("remote consumer with id %d already registered", id)
+	}
+	p.remoteConsumers[id] = rc
+	return nil
+}
+
+func (p *PushEngine) UnregisterRemoteConsumer(id uint64) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	_, ok := p.remoteConsumers[id]
+	if !ok {
+		return fmt.Errorf("remote consumer with id %d not registered", id)
+	}
+	delete(p.remoteConsumers, id)
+	return nil
+}
+
+func (p *PushEngine) GetMaterializedView(mvID uint64) (*MaterializedView, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	mv, ok := p.materializedViews[mvID]
+	if !ok {
+		return nil, fmt.Errorf("no such materialized view %d", mvID)
+	}
+	return mv, nil
+}
+
+func (p *PushEngine) RemoveMV(mvID uint64) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	_, ok := p.materializedViews[mvID]
+	if !ok {
+		return fmt.Errorf("cannot find materialized view with id %d", mvID)
+	}
+	delete(p.materializedViews, mvID)
+	return nil
+}
+
+func (p *PushEngine) RegisterMV(mv *MaterializedView) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.materializedViews[mv.Info.TableInfo.ID] = mv
 	return nil
 }
 
@@ -118,21 +196,15 @@ func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
 	defer p.localShardsLock.Unlock()
-	sched := sched.NewShardScheduler(shardID)
-	sched.Start()
-	p.schedulers[shardID] = sched
+	sh := sched.NewShardScheduler(shardID)
+	sh.Start()
+	p.schedulers[shardID] = sh
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
 	return &shardListener{
 		shardID: shardID,
 		p:       p,
-		sched:   sched,
+		sched:   sh,
 	}
-}
-
-type shardListener struct {
-	shardID uint64
-	p       *PushEngine
-	sched   *sched.ShardScheduler
 }
 
 // RemoteWriteOccurred TODO we should also periodically call maybeHandleRemoteBatch as the call can fail if there
@@ -213,17 +285,6 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 		}
 	}
 	return nil
-}
-
-func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
-	source, ok := p.sources[sourceID]
-	if !ok {
-		return nil, errors.New("no such source")
-	}
-	return source, nil
 }
 
 // ChooseLocalScheduler chooses a local scheduler by hashing the key
@@ -348,150 +409,7 @@ func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) 
 	return sched, ok
 }
 
-// RemoveSource removes the source and deletes it's data but does not stop it, it should have been stopped first
-func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo, deleteData bool) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	src, ok := p.sources[sourceInfo.ID]
-	if !ok {
-		return fmt.Errorf("no such source %d", sourceInfo.ID)
-	}
-	if src.IsRunning() {
-		return errors.New("source is running")
-	}
-
-	delete(p.sources, sourceInfo.ID)
-	delete(p.remoteConsumers, sourceInfo.ID)
-
-	if deleteData {
-		// Delete the committed offsets for the source
-		startPrefix := common.AppendUint64ToBufferBE(nil, common.OffsetsTableID)
-		startPrefix = common.KeyEncodeString(startPrefix, sourceInfo.SchemaName)
-		startPrefix = common.KeyEncodeString(startPrefix, sourceInfo.Name)
-		endPrefix := common.IncrementBytesBigEndian(startPrefix)
-
-		if err := p.cluster.DeleteAllDataInRange(startPrefix, endPrefix); err != nil {
-			return err
-		}
-		// Delete the table data
-		return p.deleteAllDataForTable(sourceInfo.ID)
-	}
-	return nil
-}
-
-// RemoveMV removes the MV from the engine and deletes it's data, it should have disconnected first
-func (p *PushEngine) RemoveMV(schema *common.Schema, info *common.MaterializedViewInfo) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	mvID := info.TableInfo.ID
-	mv, ok := p.materializedViews[mvID]
-	if !ok {
-		return fmt.Errorf("cannot find materialized view with id %d", mvID)
-	}
-	err := p.disconnectOrDeleteDataForMV(schema, mv.tableExecutor, false, true)
-	if err != nil {
-		return err
-	}
-	delete(p.materializedViews, mvID)
-
-	return p.deleteAllDataForTable(mvID)
-}
-
-func (p *PushEngine) ConnectMV(mv *MaterializedView) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	return p.connectToFeeders(mv.tableExecutor, mv.schema)
-}
-
-func (p *PushEngine) RegisterMV(mv *MaterializedView) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	p.materializedViews[mv.Info.TableInfo.ID] = mv
-
-	return nil
-}
-
-// DisconnectMV We can add a getMV method like getSource and call that from the dropmv command, keeping the engine impl lite
-// TODO move this inside MV struct
-// disconnects the MV and any agg tables from it's sources and as remote receivers
-func (p *PushEngine) DisconnectMV(schema *common.Schema, info *common.MaterializedViewInfo) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	mvID := info.TableInfo.ID
-	mv, ok := p.materializedViews[mvID]
-	if !ok {
-		return fmt.Errorf("cannot find materialized view with id %d", mvID)
-	}
-	return p.disconnectOrDeleteDataForMV(schema, mv.tableExecutor, true, false)
-}
-
-// TODO move this inside MV struct
-func (p *PushEngine) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
-
-	switch op := node.(type) {
-	case *exec.TableScan:
-		tableName := op.TableName
-		tbl, ok := schema.GetTable(tableName)
-		if !ok {
-			return fmt.Errorf("unknown source or materialized view %s", tableName)
-		}
-		switch tbl := tbl.(type) {
-		case *common.SourceInfo:
-			if disconnect {
-				source := p.sources[tbl.ID]
-				source.RemoveConsumingExecutor(node)
-			}
-		case *common.MaterializedViewInfo:
-			if disconnect {
-				mv := p.materializedViews[tbl.ID]
-				mv.removeConsumingExecutor(node)
-			}
-		default:
-			return fmt.Errorf("cannot disconnect %s: invalid table type", tbl)
-		}
-	case *exec.Aggregator:
-		delete(p.remoteConsumers, op.AggTableInfo.ID)
-		if deleteData {
-			err := p.deleteAllDataForTable(op.AggTableInfo.ID)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	for _, child := range node.GetChildren() {
-		err := p.disconnectOrDeleteDataForMV(schema, child, disconnect, deleteData)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *PushEngine) deleteAllDataForTable(tableID uint64) error {
-	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
-	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
-	return p.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
-}
-
-func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) error {
-	_, err := p.createSource(sourceInfo)
-	return err
-}
-
-func (p *PushEngine) StartSource(sourceID uint64) error {
-	src, err := p.GetSource(sourceID)
-	if err != nil {
-		return err
-	}
-	return src.Start() // Outside the lock
-}
-
-func (p *PushEngine) createSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes
 
@@ -515,7 +433,7 @@ func (p *PushEngine) createSource(sourceInfo *common.SourceInfo) (*source.Source
 	}
 
 	rf := common.NewRowsFactory(colTypes)
-	rc := &remoteConsumer{
+	rc := &RemoteConsumer{
 		RowsFactory: rf,
 		ColTypes:    colTypes,
 		RowsHandler: src.TableExecutor(),
@@ -528,4 +446,11 @@ func (p *PushEngine) createSource(sourceInfo *common.SourceInfo) (*source.Source
 
 func (p *PushEngine) Mover() *mover.Mover {
 	return p.mover
+}
+
+func (p *PushEngine) createMaps() {
+	p.remoteConsumers = make(map[uint64]*RemoteConsumer)
+	p.sources = make(map[uint64]*source.Source)
+	p.materializedViews = make(map[uint64]*MaterializedView)
+	p.schedulers = make(map[uint64]*sched.ShardScheduler)
 }

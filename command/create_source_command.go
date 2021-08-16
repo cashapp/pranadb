@@ -7,6 +7,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/push/source"
 	"sync"
 )
 
@@ -18,6 +19,7 @@ type CreateSourceCommand struct {
 	tableSequences []uint64
 	ast            *parser.CreateSource
 	sourceInfo     *common.SourceInfo
+	source         *source.Source
 }
 
 func (c *CreateSourceCommand) CommandType() DDLCommandType {
@@ -92,7 +94,12 @@ func (c *CreateSourceCommand) OnPrepare() error {
 		}
 	}
 	// Create source in push engine so it can receive forwarded rows, do not activate consumers yet
-	return c.e.pushEngine.CreateSource(c.sourceInfo)
+	src, err := c.e.pushEngine.CreateSource(c.sourceInfo)
+	if err != nil {
+		return err
+	}
+	c.source = src
+	return nil
 }
 
 func (c *CreateSourceCommand) OnCommit() error {
@@ -100,7 +107,7 @@ func (c *CreateSourceCommand) OnCommit() error {
 	defer c.lock.Unlock()
 
 	// Activate the message consumers for the source
-	if err := c.e.pushEngine.StartSource(c.sourceInfo.ID); err != nil {
+	if err := c.source.Start(); err != nil {
 		return err
 	}
 

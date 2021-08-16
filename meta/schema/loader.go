@@ -25,6 +25,12 @@ func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.Simpl
 	}
 }
 
+type MVTables struct {
+	mvInfo         *common.MaterializedViewInfo
+	internalTables []*common.InternalTableInfo
+	sequences      []uint64
+}
+
 func (l *Loader) Start() error {
 	rows, err := l.queryExec.ExecuteQuery("sys",
 		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare_state from tables order by id")
@@ -32,12 +38,10 @@ func (l *Loader) Start() error {
 		return err
 	}
 
-	var mvs []*common.MaterializedViewInfo
 	type tableKey struct {
 		schemaName, tableName string
 	}
-	mvSequences := make(map[tableKey][]uint64)
-	var internalTables []*common.InternalTableInfo
+	mvTables := make(map[tableKey]*MVTables)
 
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -46,55 +50,57 @@ func (l *Loader) Start() error {
 		case meta.TableKindSource:
 			log.Println("Reading source from storage")
 			info := meta.DecodeSourceInfoRow(&row)
-			// TODO prepare state!
+			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {
 				return err
 			}
-			if err := l.pushEngine.CreateSource(info); err != nil {
+			src, err := l.pushEngine.CreateSource(info)
+			if err != nil {
 				return err
 			}
-			if err := l.pushEngine.StartSource(info.ID); err != nil {
+			if err := src.Start(); err != nil {
 				return err
 			}
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&row)
-			mvs = append(mvs, info)
-			mvSequences[tableKey{info.SchemaName, info.Name}] = []uint64{info.ID}
-			log.Printf("Reading mv from storage, id is %d", info.ID)
+			tk := tableKey{info.SchemaName, info.Name}
+			_, ok := mvTables[tk]
+			if ok {
+				return fmt.Errorf("mv %s %s already loaded", info.SchemaName, info.Name)
+			}
+			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
+			mvTables[tk] = mvt
 		case meta.TableKindInternal:
-
 			info := meta.DecodeInternalTableInfoRow(&row)
-			key := tableKey{info.SchemaName, info.MaterializedViewName}
-			mvSequences[key] = append(mvSequences[key], info.ID)
-			log.Printf("Reading internal table from storage, id is %d", info.ID)
-			internalTables = append(internalTables, info)
+			tk := tableKey{info.SchemaName, info.MaterializedViewName}
+			mvt, ok := mvTables[tk]
+			if !ok {
+				return fmt.Errorf("mv %s %s not loaded", info.SchemaName, info.Name)
+			}
+			mvt.sequences = append(mvt.sequences, info.ID)
+			mvt.internalTables = append(mvt.internalTables, info)
 		default:
 			return fmt.Errorf("unknown table kind %s", kind)
 		}
 	}
 
-	for _, internalInfo := range internalTables {
-		if err := l.meta.RegisterInternalTable(internalInfo, false); err != nil {
+	for _, mvt := range mvTables {
+		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
+		mv, err := push.CreateMaterializedView(
+			l.pushEngine,
+			parplan.NewPlanner(schema, false),
+			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvt.mvInfo.ID,
+			common.NewPreallocSeqGen(mvt.sequences))
+		if err != nil {
 			return err
 		}
-	}
-	for _, mvInfo := range mvs {
-		schema := l.meta.GetOrCreateSchema(mvInfo.SchemaName)
-		mv, err := l.pushEngine.CreateMaterializedView(
-			parplan.NewPlanner(schema, false),
-			schema, mvInfo.Name, mvInfo.Query, mvInfo.ID,
-			common.NewPreallocSeqGen(mvSequences[tableKey{mvInfo.SchemaName, mvInfo.Name}]))
-		if err := l.pushEngine.ConnectMV(mv); err != nil {
+		if err := mv.Connect(); err != nil {
 			return err
 		}
 		if err := l.pushEngine.RegisterMV(mv); err != nil {
 			return err
 		}
-		if err := l.meta.RegisterMaterializedView(mvInfo, false); err != nil {
-			return err
-		}
-
-		if err != nil {
+		if err := l.meta.RegisterMaterializedView(mvt.mvInfo, mvt.internalTables); err != nil {
 			return err
 		}
 	}

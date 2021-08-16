@@ -2,7 +2,6 @@ package meta
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/squareup/pranadb/cluster"
@@ -98,12 +97,6 @@ func (c *Controller) Stop() error {
 	return nil
 }
 
-func (c *Controller) registerSystemSchema() {
-	schema := c.getOrCreateSchema("sys")
-	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
-	schema.PutTable(SourceOffsetsTableInfo.Name, SourceOffsetsTableInfo)
-}
-
 func (c *Controller) GetMaterializedView(schemaName string, name string) (*common.MaterializedViewInfo, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -189,9 +182,6 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState PrepareState) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
-	log.Printf("Writing source to storage with id %d", sourceInfo.ID)
-
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepareState), wb); err != nil {
 		return err
@@ -199,18 +189,22 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState P
 	return c.cluster.WriteBatch(wb)
 }
 
-func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, prepareState PrepareState) error {
+func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo, prepareState PrepareState) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, prepareState), wb); err != nil {
 		return err
 	}
+	for _, info := range internalTables {
+		if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info, prepareState), wb); err != nil {
+			return err
+		}
+	}
 	return c.cluster.WriteBatch(wb)
 }
 
-func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, persist bool) error {
+func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema := c.getOrCreateSchema(mvInfo.SchemaName)
@@ -219,40 +213,21 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 		return err
 	}
 	schema.PutTable(mvInfo.Name, mvInfo)
-
-	if persist {
-		log.Printf("Writing MV to storage with id %d", mvInfo.ID)
-		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, PrepareStateCommitted), wb); err != nil {
-			return err
-		}
-		if err = c.cluster.WriteBatch(wb); err != nil {
+	for _, internalTable := range internalTables {
+		if err := c.registerInternalTable(internalTable); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *Controller) RegisterInternalTable(info *common.InternalTableInfo, persist bool) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
 	schema := c.getOrCreateSchema(info.SchemaName)
 	err := c.existsTable(schema, info.Name)
 	if err != nil {
 		return err
 	}
 	schema.PutTable(info.Name, info)
-
-	if persist {
-		log.Printf("Writing internal table to storage with id %d", info.ID)
-		wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-		if err = table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info, PrepareStateCommitted), wb); err != nil {
-			return err
-		}
-		if err = c.cluster.WriteBatch(wb); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -272,19 +247,23 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 		return fmt.Errorf("%s is not a source", tbl)
 	}
 	schema.DeleteTable(sourceName)
-
 	return nil
 }
 
-// DeleteSource TODO remove these methods and add them to the source and MV structs
-// DeleteSource removes the source from storage
 func (c *Controller) DeleteSource(sourceID uint64) error {
 	return c.deleteEntityWIthID(sourceID)
 }
 
-// DeleteMaterializedView removes the mv from storage
-func (c *Controller) DeleteMaterializedView(mvID uint64) error {
-	return c.deleteEntityWIthID(mvID)
+func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
+	if err := c.deleteEntityWIthID(mvInfo.ID); err != nil {
+		return err
+	}
+	for _, it := range internalTableIDs {
+		if err := c.deleteEntityWIthID(it.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string) error {
@@ -315,4 +294,10 @@ func (c *Controller) deleteEntityWIthID(tableID uint64) error {
 	wb.AddDelete(key)
 
 	return c.cluster.WriteBatch(wb)
+}
+
+func (c *Controller) registerSystemSchema() {
+	schema := c.getOrCreateSchema("sys")
+	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
+	schema.PutTable(SourceOffsetsTableInfo.Name, SourceOffsetsTableInfo)
 }

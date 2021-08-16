@@ -142,6 +142,42 @@ func (s *Source) Start() error {
 	return nil
 }
 
+func (s *Source) Stop() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.stop()
+}
+
+func (s *Source) IsRunning() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.started
+}
+
+func (s *Source) Drop() error {
+	// Delete the committed offsets for the source
+	offsetsStartPrefix := common.AppendUint64ToBufferBE(nil, common.OffsetsTableID)
+	offsetsStartPrefix = common.KeyEncodeString(offsetsStartPrefix, s.sourceInfo.SchemaName)
+	offsetsStartPrefix = common.KeyEncodeString(offsetsStartPrefix, s.sourceInfo.Name)
+	offsetsEndPrefix := common.IncrementBytesBigEndian(offsetsStartPrefix)
+
+	if err := s.cluster.DeleteAllDataInRange(offsetsStartPrefix, offsetsEndPrefix); err != nil {
+		return err
+	}
+	// Delete the table data
+	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
+	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)
+	return s.cluster.DeleteAllDataInRange(tableStartPrefix, tableEndPrefix)
+}
+
+func (s *Source) AddConsumingExecutor(executor exec.PushExecutor) {
+	s.tableExecutor.AddConsumingNode(executor)
+}
+
+func (s *Source) RemoveConsumingExecutor(executor exec.PushExecutor) {
+	s.tableExecutor.RemoveConsumingNode(executor)
+}
+
 func (s *Source) loadStartupCommittedOffsets() error {
 	rows, err := s.queryExec.ExecuteQuery("sys",
 		fmt.Sprintf("select partition_id, offset from %s where schema_name='%s' and source_name='%s'",
@@ -194,18 +230,6 @@ func (s *Source) consumerError(err error, clientError bool) {
 	}
 }
 
-func (s *Source) Stop() error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	return s.stop()
-}
-
-func (s *Source) IsRunning() bool {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	return s.started
-}
-
 func (s *Source) stop() error {
 	if !s.started {
 		panic("not started")
@@ -218,14 +242,6 @@ func (s *Source) stop() error {
 	s.msgConsumers = nil
 	s.started = false
 	return nil
-}
-
-func (s *Source) AddConsumingExecutor(executor exec.PushExecutor) {
-	s.tableExecutor.AddConsumingNode(executor)
-}
-
-func (s *Source) RemoveConsumingExecutor(executor exec.PushExecutor) {
-	s.tableExecutor.RemoveConsumingNode(executor)
 }
 
 func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, scheduler *sched.ShardScheduler,

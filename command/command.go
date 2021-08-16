@@ -4,18 +4,15 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/sess"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
@@ -29,9 +26,13 @@ type Executor struct {
 	pushEngine        *push.PushEngine
 	pullEngine        *pull.PullEngine
 	notifClient       notifier.Client
-	ddlExecLock       sync.Mutex
 	sessionIDSequence int64
 	ddlRunner         *DDLCommandRunner
+}
+
+type sessCloser struct {
+	clus        cluster.Cluster
+	notifClient notifier.Client
 }
 
 func NewCommandExecutor(
@@ -41,7 +42,7 @@ func NewCommandExecutor(
 	cluster cluster.Cluster,
 	notifClient notifier.Client,
 ) *Executor {
-	exec := &Executor{
+	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
@@ -49,9 +50,13 @@ func NewCommandExecutor(
 		notifClient:       notifClient,
 		sessionIDSequence: -1,
 	}
-	commandRunner := NewDDLCommandRunner(exec)
-	exec.ddlRunner = commandRunner
-	return exec
+	commandRunner := NewDDLCommandRunner(ex)
+	ex.ddlRunner = commandRunner
+	return ex
+}
+
+func (e *Executor) HandleNotification(notification notifier.Notification) {
+	e.ddlRunner.HandleNotification(notification)
 }
 
 func (e *Executor) Start() error {
@@ -68,81 +73,20 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	// concurrently
 	session.Lock.Lock()
 	defer session.Lock.Unlock()
-	return e.executeSQLStatementInternal(session, sql, true, nil)
-}
-
-func (e *Executor) CreateSession(schemaName string) *sess.Session {
-	schema := e.metaController.GetOrCreateSchema(schemaName)
-	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
-	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
-	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
-}
-
-type sessCloser struct {
-	clus        cluster.Cluster
-	notifClient notifier.Client
-}
-
-func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
-	shardIDs := s.clus.GetAllShardIDs()
-	for _, shardID := range shardIDs {
-		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
-		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
-		err := s.notifClient.BroadcastOneway(sessCloseMsg)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
-	id := seqGenerator.GenerateSequence()
-
-	log.Printf("MV id is %d", id)
-
-	mv, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
-	if err != nil {
-		return err
-	}
-	if err := e.pushEngine.ConnectMV(mv); err != nil {
-		return err
-	}
-	// Registers it in the PUSH ENGINE not the metacontroller
-	if err := e.pushEngine.RegisterMV(mv); err != nil {
-		return err
-	}
-
-	// TODO move these inside MV
-	if err = e.metaController.RegisterMaterializedView(mv.Info, persist); err != nil {
-		return err
-	}
-	for _, it := range mv.InternalTables {
-		if err = e.metaController.RegisterInternalTable(it, persist); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetPushEngine is only used in testing
-func (e *Executor) GetPushEngine() *push.PushEngine {
-	return e.pushEngine
-}
-
-func (e *Executor) GetPullEngine() *pull.PullEngine {
-	return e.pullEngine
-}
-
-//nolint:gocyclo
-func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
-	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.MaybeAddStack(err)
 	}
 
-	if ast.Create != nil && ast.Create.Source != nil {
+	switch {
+	case ast.Select != "":
+		dag, err := e.pullEngine.BuildPullQuery(session, sql)
+		return dag, errors.MaybeAddStack(err)
+	case ast.Prepare != "":
+		return e.execPrepare(session, ast.Prepare)
+	case ast.Execute != "":
+		return e.execExecute(session, ast.Execute)
+	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateSequences(1)
 		if err != nil {
 			return nil, err
@@ -153,8 +97,18 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			return nil, err
 		}
 		return exec.Empty, nil
-	}
-	if ast.Drop != "" {
+	case ast.Create != nil && ast.Create.MaterializedView != nil:
+		sequences, err := e.generateSequences(2)
+		if err != nil {
+			return nil, err
+		}
+		command := NewOriginatingCreateMVCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
+		}
+		return exec.Empty, nil
+	case ast.Drop != "":
 		// TODO we should really use the parser to do this
 		sql = strings.ToLower(sql)
 		space := regexp.MustCompile(`\s+`)
@@ -177,37 +131,36 @@ func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string
 			return exec.Empty, nil
 		}
 	}
+	return nil, fmt.Errorf("invalid statement %s", sql)
+}
 
-	switch {
-	case ast.Select != "":
-		return e.execSelect(session, ast.Select)
-	case ast.Prepare != "":
-		return e.execPrepare(session, ast.Prepare)
-	case ast.Execute != "":
-		return e.execExecute(session, ast.Execute)
-	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		var sequences []uint64
-		if persist {
-			// Materialized view needs 2 sequences
-			sequences, err = e.generateSequences(2)
-			if err != nil {
-				return nil, err
-			}
-			seqGenerator = common.NewPreallocSeqGen(sequences)
-		}
-		exec, err := e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, persist)
+func (e *Executor) CreateSession(schemaName string) *sess.Session {
+	schema := e.metaController.GetOrCreateSchema(schemaName)
+	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
+	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
+	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
+}
+
+func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
+	shardIDs := s.clus.GetAllShardIDs()
+	for _, shardID := range shardIDs {
+		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
+		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
+		err := s.notifClient.BroadcastOneway(sessCloseMsg)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if persist {
-			if err := e.broadcastDDL(session.Schema.Name, sql, sequences, DDLCommandTypeCreateMV); err != nil {
-				return nil, err
-			}
-		}
-		return exec, nil
-	default:
-		panic("unsupported query " + sql)
 	}
+	return nil
+}
+
+// GetPushEngine is only used in testing
+func (e *Executor) GetPushEngine() *push.PushEngine {
+	return e.pushEngine
+}
+
+func (e *Executor) GetPullEngine() *pull.PullEngine {
+	return e.pullEngine
 }
 
 func (e *Executor) generateSequences(numValues int) ([]uint64, error) {
@@ -256,48 +209,4 @@ func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExec
 	}
 	dag, err := e.pullEngine.ExecutePreparedStatement(session, psID, args)
 	return dag, errors.MaybeAddStack(err)
-}
-
-func (e *Executor) execSelect(session *sess.Session, sql string) (exec.PullExecutor, error) {
-	dag, err := e.pullEngine.BuildPullQuery(session, sql)
-	return dag, errors.MaybeAddStack(err)
-}
-
-func (e *Executor) execCreateMaterializedView(session *sess.Session, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator, persist bool) (exec.PullExecutor, error) {
-	err := e.createMaterializedView(session, mv.Name.String(), mv.Query.String(), seqGenerator, persist)
-	return exec.Empty, errors.MaybeAddStack(err)
-}
-
-func (e *Executor) broadcastDDL(schemaName string, sql string, sequences []uint64, commandType DDLCommandType) error {
-	statementInfo := &notifications.DDLStatementInfo{
-		OriginatingNodeId: int64(e.cluster.GetNodeID()),
-		SchemaName:        schemaName,
-		Sql:               sql,
-		TableSequences:    sequences,
-		CommandType:       int32(commandType),
-	}
-	return e.notifClient.BroadcastOneway(statementInfo)
-}
-
-func (e *Executor) HandleNotification(notification notifier.Notification) {
-	e.ddlExecLock.Lock()
-	defer e.ddlExecLock.Unlock()
-
-	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
-
-	if ddlStmt.CommandType == DDLCommandTypeCreateSource || ddlStmt.CommandType == DDLCommandTypeDropSource || ddlStmt.CommandType == DDLCommandTypeDropMV {
-		e.ddlRunner.HandleNotification(notification)
-		return
-	}
-
-	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
-	// Note this session does not need to be closed as it does not execute any pull queries
-	session := e.CreateSession(ddlStmt.SchemaName)
-	origNodeID := int(ddlStmt.OriginatingNodeId)
-	if origNodeID != e.cluster.GetNodeID() {
-		_, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
-		if err != nil {
-			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
-		}
-	}
 }

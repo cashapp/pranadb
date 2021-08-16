@@ -441,6 +441,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			}
 		}
 		require.Equal(0, len(topicNames), "Topics left at end of test run")
+
+		rows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from tables ")
+		require.NoError(err)
+		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
 	}
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
@@ -673,50 +677,10 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	} else {
 		// DDL statement
 		st.output.WriteString("Ok\n")
-		st.waitForSchemaSame(require)
 	}
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Printf("Statement %s execute time ms %d", statement, dur.Milliseconds())
-}
-
-// TODO can remove this method once all DDL is synchronous
-func (st *sqlTest) waitForSchemaSame(require *require.Assertions) {
-	log.Println("Waiting for schemas the same")
-	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		// Wait for the schema meta data to be the same on each node. We need to do this because currently
-		// Applying DDL across the cluster is asynchronous. This will change once we implement MV activation
-		// syncing
-		var schemaPrev *common.Schema
-		for _, s := range st.testSuite.pranaCluster {
-			schemaNew, ok := s.GetMetaController().GetSchema(TestSchemaName)
-			if !ok {
-				// Schema not created
-				return false, nil
-			}
-			if schemaPrev != nil {
-				if !schemaPrev.Equal(schemaNew) {
-					return false, nil
-				}
-			}
-			schemaPrev = schemaNew
-		}
-		log.Printf("Schemas the same %v", schemaPrev)
-		return true, nil
-	}, 5*time.Hour, 10*time.Millisecond)
-	require.NoError(err)
-	if !ok {
-		log.Println("Schemas different on nodes")
-		for i, s := range st.testSuite.pranaCluster {
-			schema, ook := s.GetMetaController().GetSchema(TestSchemaName)
-			if !ook {
-				log.Printf("No schema on node %d", i)
-			} else {
-				log.Printf("Node %d\n%v", i, schema)
-			}
-		}
-	}
-	require.True(ok)
 }
 
 func (st *sqlTest) choosePrana() *server.Server {
