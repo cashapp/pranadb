@@ -35,7 +35,6 @@ var (
 	selectPrefix  = regexp.MustCompile(`(?i)^select\s+`)
 	preparePrefix = regexp.MustCompile(`(?i)^prepare\s+`)
 	executePrefix = regexp.MustCompile(`(?i)^execute\s+`)
-	dropPrefix    = regexp.MustCompile(`(?i)^drop\s+`)
 )
 
 // Parse an SQL statement.
@@ -48,9 +47,6 @@ func Parse(sql string) (*AST, error) {
 	}
 	if executePrefix.MatchString(sql) {
 		return &AST{Execute: sql}, nil
-	}
-	if dropPrefix.MatchString(sql) {
-		return &AST{Drop: sql}, nil
 	}
 	ast := &AST{}
 	err := parser.ParseString("", sql, ast)

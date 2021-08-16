@@ -122,13 +122,20 @@ type Create struct {
 	Schema           string                  `| "SCHEMA" @Ident`
 }
 
+// Drop statement
+type Drop struct {
+	MaterializedView bool   ` (   @"MATERIALIZED" "VIEW"`
+	Source           bool   `   | @"SOURCE" )`
+	Name             string ` @Ident `
+}
+
 // AST root.
 type AST struct {
 	Select  string // Unaltered SELECT statement, if any.
 	Execute string // Unaltered EXECUTE statement, if any.
 	Prepare string // Unaltered PREPARE statement, if any.
-	Drop    string // Unaltered DROP statement, if any.
 
 	Use    string  `(  "USE" @Ident`
+	Drop   *Drop   ` | "DROP" @@ `
 	Create *Create ` | "CREATE" @@ ) ";"?`
 }

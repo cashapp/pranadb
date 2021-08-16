@@ -81,6 +81,14 @@ func TestParse(t *testing.T) {
 				},
 			},
 		}}, ""},
+		{
+			"DropSource", "DROP SOURCE test_source_1",
+			&AST{Drop: &Drop{Source: true, Name: "test_source_1"}}, "",
+		},
+		{
+			"DropMaterializedView", "DROP MATERIALIZED VIEW test_mv_1",
+			&AST{Drop: &Drop{MaterializedView: true, Name: "test_mv_1"}}, "",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
