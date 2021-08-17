@@ -238,7 +238,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	row := prepRows.GetRow(0)
 	psID := row.GetInt64(0)
 
-	ex, err := ce.ExecuteSQLStatement(s, fmt.Sprintf("execute %d wincanton", psID))
+	ex, err := ce.ExecuteSQLStatement(s, fmt.Sprintf(`execute %d "wincanton"`, psID))
 	require.NoError(t, err)
 	rowsAct, err := ex.GetRows(100)
 	require.NoError(t, err)
@@ -246,7 +246,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	act := rowsAct.GetRow(0)
 	commontest.RowsEqual(t, rows.GetRow(1), act, colTypes)
 
-	ex, err = ce.ExecuteSQLStatement(s, fmt.Sprintf("execute %d london", psID))
+	ex, err = ce.ExecuteSQLStatement(s, fmt.Sprintf(`execute %d "london"`, psID))
 	require.NoError(t, err)
 	rowsAct, err = ex.GetRows(100)
 	require.NoError(t, err)
