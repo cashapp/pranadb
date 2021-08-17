@@ -242,9 +242,10 @@ func (p *PullEngine) NumCachedSessions() (int, error) {
 	return numEntries, nil
 }
 
-func (p *PullEngine) HandleNotification(notification notifier.Notification) {
+func (p *PullEngine) HandleNotification(notification notifier.Notification) error {
 	sessCloseMsg := notification.(*notifications.SessionClosedMessage) // nolint: forcetypeassert
 	p.remoteSessionCache.Delete(sessCloseMsg.GetSessionId())
+	return nil
 }
 
 func CurrentQuery(session *sess.Session) exec.PullExecutor {

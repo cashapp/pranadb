@@ -55,8 +55,8 @@ func NewCommandExecutor(
 	return ex
 }
 
-func (e *Executor) HandleNotification(notification notifier.Notification) {
-	e.ddlRunner.HandleNotification(notification)
+func (e *Executor) HandleNotification(notification notifier.Notification) error {
+	return e.ddlRunner.HandleNotification(notification)
 }
 
 func (e *Executor) Start() error {
@@ -209,4 +209,8 @@ func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExec
 	}
 	dag, err := e.pullEngine.ExecutePreparedStatement(session, psID, args)
 	return dag, errors.MaybeAddStack(err)
+}
+
+func (e *Executor) RunningCommands() int {
+	return e.ddlRunner.runningCommands()
 }

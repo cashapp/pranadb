@@ -11,10 +11,11 @@ type TestNotificationListener struct {
 	notifs []notifier.Notification
 }
 
-func (t *TestNotificationListener) HandleNotification(notification notifier.Notification) {
+func (t *TestNotificationListener) HandleNotification(notification notifier.Notification) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.notifs = append(t.notifs, notification)
+	return nil
 }
 
 func (t *TestNotificationListener) getNotifs() []notifier.Notification {

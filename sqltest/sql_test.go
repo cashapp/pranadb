@@ -445,6 +445,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		rows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from tables ")
 		require.NoError(err)
 		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
+
+		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
+		require.Equal(0, prana.GetNotificationsServer().ConnectionCount(), "Notification server connections left at end of test run")
+		require.Equal(0, prana.GetNotificationsClient().ConnectionCount(), "Notification client connections left at end of test run")
 	}
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())

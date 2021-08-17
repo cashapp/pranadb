@@ -36,10 +36,13 @@ func (f *FakeNotifier) BroadcastOneway(notif Notification) error {
 	if !ok {
 		panic("no notification listener")
 	}
-	listener.HandleNotification(notif)
-	return nil
+	return listener.HandleNotification(notif)
 }
 
 func (f *FakeNotifier) BroadcastSync(notif Notification) error {
 	return f.BroadcastOneway(notif)
+}
+
+func (f *FakeNotifier) ConnectionCount() int {
+	return 0
 }

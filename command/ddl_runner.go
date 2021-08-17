@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -87,7 +86,7 @@ func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint6
 	return string(key)
 }
 
-func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification) {
+func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -106,25 +105,19 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 			d.commands[skey] = com
 		}
 		if err := com.OnPrepare(); err != nil {
-			log.Printf("Failed to prepare ddl command: %v", err)
-			// TODO do we really want to send back a response here -caller will think it succeeded
-			// We should probably send back pass/fail in sync broadcast response
-			return
+			return err
 		}
 	} else {
 		com, ok := d.commands[skey]
 		if !ok {
-			log.Printf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
-			return
+			return fmt.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		}
 		if err := com.OnCommit(); err != nil {
-			log.Printf("Failed to commit ddl command: %v", err)
-			// TODO do we really want to send back a response here -caller will think it succeeded
-			// We should probably send back pass/fail in sync broadcast response
-			return
+			return err
 		}
 		delete(d.commands, skey)
 	}
+	return nil
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
@@ -195,4 +188,10 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 		}
 		time.Sleep(schemaLockRetryDelay)
 	}
+}
+
+func (d *DDLCommandRunner) runningCommands() int {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	return len(d.commands)
 }
