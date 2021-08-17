@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/sess"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -108,28 +107,20 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, err
 		}
 		return exec.Empty, nil
-	case ast.Drop != "":
-		// TODO we should really use the parser to do this
-		sql = strings.ToLower(sql)
-		space := regexp.MustCompile(`\s+`)
-		sql = space.ReplaceAllString(sql, " ")
-		sql = strings.TrimLeft(sql, " ")
-		if strings.HasPrefix(sql, "drop source ") {
-			command := NewDropSourceCommand(e, session.Schema.Name, sql)
-			err = e.ddlRunner.RunCommand(command)
-			if err != nil {
-				return nil, err
-			}
-			return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.Source:
+		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
 		}
-		if strings.HasPrefix(sql, "drop materialized view ") {
-			command := NewDropMVCommand(e, session.Schema.Name, sql)
-			err = e.ddlRunner.RunCommand(command)
-			if err != nil {
-				return nil, err
-			}
-			return exec.Empty, nil
+		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.MaterializedView:
+		command := NewOriginatingDropMVCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
 		}
+		return exec.Empty, nil
 	}
 	return nil, fmt.Errorf("invalid statement %s", sql)
 }

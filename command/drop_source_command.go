@@ -2,10 +2,10 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"strings"
 	"sync"
 )
 
@@ -14,6 +14,7 @@ type DropSourceCommand struct {
 	e          *Executor
 	schemaName string
 	sql        string
+	sourceName string
 	sourceInfo *common.SourceInfo
 }
 
@@ -35,6 +36,15 @@ func (c *DropSourceCommand) TableSequences() []uint64 {
 
 func (c *DropSourceCommand) LockName() string {
 	return c.schemaName + "/"
+}
+
+func NewOriginatingDropSourceCommand(e *Executor, schemaName string, sql string, sourceName string) *DropSourceCommand {
+	return &DropSourceCommand{
+		e:          e,
+		schemaName: schemaName,
+		sql:        sql,
+		sourceName: sourceName,
+	}
 }
 
 func NewDropSourceCommand(e *Executor, schemaName string, sql string) *DropSourceCommand {
@@ -104,15 +114,19 @@ func (c *DropSourceCommand) AfterCommit() error {
 }
 
 func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
-	// TODO we should really use the parser to do this
-	parts := strings.Split(c.sql, " ")
-	if len(parts) < 3 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop statement %s", c.sql))
+	if c.sourceName == "" {
+		ast, err := parser.Parse(c.sql)
+		if err != nil {
+			return nil, err
+		}
+		if ast.Drop == nil && !ast.Drop.Source {
+			return nil, fmt.Errorf("not a drop source command %s", c.sql)
+		}
+		c.sourceName = ast.Drop.Name
 	}
-	sourceName := parts[2]
-	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, sourceName)
+	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {
-		return nil, errors.MaybeAddStack(fmt.Errorf("unknown source %s", sourceName))
+		return nil, errors.MaybeAddStack(fmt.Errorf("unknown source %s", c.sourceName))
 	}
 	return sourceInfo, nil
 }

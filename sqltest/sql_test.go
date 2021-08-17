@@ -32,7 +32,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+var TestPrefix = "basic_source"
 
 var TestSchemaName = "test"
 
@@ -422,7 +422,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		require.True(ok, "table data left at end of test")
 
-		log.Printf("Waiting for num sessions to get to zero on node %d", prana.GetCluster().GetNodeID())
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			num, err := prana.GetPullEngine().NumCachedSessions()
 			if err != nil {
@@ -447,8 +446,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
-		require.Equal(0, prana.GetNotificationsServer().ConnectionCount(), "Notification server connections left at end of test run")
-		require.Equal(0, prana.GetNotificationsClient().ConnectionCount(), "Notification client connections left at end of test run")
 	}
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())

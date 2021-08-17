@@ -20,7 +20,6 @@ type Client interface {
 	BroadcastSync(notif Notification) error
 	Start() error
 	Stop() error
-	ConnectionCount() int
 }
 
 func NewClient(heartbeatInterval time.Duration, serverAddresses ...string) Client {
@@ -370,10 +369,4 @@ func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error
 		return nil
 	}
 	panic("unexpected message type")
-}
-
-func (c *client) ConnectionCount() int {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return len(c.connections)
 }

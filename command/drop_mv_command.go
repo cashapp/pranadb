@@ -2,11 +2,11 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/push"
-	"strings"
 	"sync"
 )
 
@@ -15,6 +15,7 @@ type DropMVCommand struct {
 	e          *Executor
 	schemaName string
 	sql        string
+	mvName     string
 	mv         *push.MaterializedView
 	schema     *common.Schema
 }
@@ -37,6 +38,15 @@ func (c *DropMVCommand) TableSequences() []uint64 {
 
 func (c *DropMVCommand) LockName() string {
 	return c.schemaName + "/"
+}
+
+func NewOriginatingDropMVCommand(e *Executor, schemaName string, sql string, mvName string) *DropMVCommand {
+	return &DropMVCommand{
+		e:          e,
+		schemaName: schemaName,
+		sql:        sql,
+		mvName:     mvName,
+	}
 }
 
 func NewDropMVCommand(e *Executor, schemaName string, sql string) *DropMVCommand {
@@ -106,15 +116,21 @@ func (c *DropMVCommand) AfterCommit() error {
 }
 
 func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
-	// TODO we should really use the parser to do this
-	parts := strings.Split(c.sql, " ")
-	if len(parts) < 4 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop statement %s", c.sql))
+
+	if c.mvName == "" {
+		ast, err := parser.Parse(c.sql)
+		if err != nil {
+			return nil, err
+		}
+		if ast.Drop == nil && !ast.Drop.MaterializedView {
+			return nil, fmt.Errorf("not a drop materialized view command %s", c.sql)
+		}
+		c.mvName = ast.Drop.Name
 	}
-	mvName := parts[3]
-	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, mvName)
+
+	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, c.mvName)
 	if !ok {
-		return nil, errors.MaybeAddStack(fmt.Errorf("unknown mv %s", mvName))
+		return nil, errors.MaybeAddStack(fmt.Errorf("unknown mv %s", c.mvName))
 	}
 	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
 	return mv, err

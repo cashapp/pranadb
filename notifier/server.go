@@ -20,8 +20,6 @@ type Server interface {
 	Stop() error
 
 	RegisterNotificationListener(notificationType NotificationType, listener NotificationListener)
-
-	ConnectionCount() int
 }
 
 func NewServer(listenAddress string) Server {
@@ -195,13 +193,4 @@ func (c *connection) stop() error {
 		return errors.WithStack(errors.New("connection channel was closed"))
 	}
 	return err
-}
-
-func (s *server) ConnectionCount() int {
-	count := 0
-	s.connections.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
 }
