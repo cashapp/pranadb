@@ -14,21 +14,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/push/source"
-
-	"github.com/squareup/pranadb/table"
-
-	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/sess"
-
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/server"
+	"github.com/squareup/pranadb/sess"
+	"github.com/squareup/pranadb/table"
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development

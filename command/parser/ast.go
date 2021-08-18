@@ -124,18 +124,24 @@ type Create struct {
 
 // Drop statement
 type Drop struct {
-	MaterializedView bool   ` (   @"MATERIALIZED" "VIEW"`
-	Source           bool   `   | @"SOURCE" )`
-	Name             string ` @Ident `
+	MaterializedView bool   `(   @"MATERIALIZED" "VIEW"`
+	Source           bool   `  | @"SOURCE" )`
+	Name             string `@Ident `
+}
+
+// Execute statement.
+type Execute struct {
+	PsID int64    `@Number`
+	Args []string `(@String | @Number)*`
 }
 
 // AST root.
 type AST struct {
 	Select  string // Unaltered SELECT statement, if any.
-	Execute string // Unaltered EXECUTE statement, if any.
 	Prepare string // Unaltered PREPARE statement, if any.
 
-	Use    string  `(  "USE" @Ident`
-	Drop   *Drop   ` | "DROP" @@ `
-	Create *Create ` | "CREATE" @@ ) ";"?`
+	Use     string   `(  "USE" @Ident`
+	Execute *Execute ` | "EXECUTE" @@`
+	Drop    *Drop    ` | "DROP" @@ `
+	Create  *Create  ` | "CREATE" @@ ) ";"?`
 }

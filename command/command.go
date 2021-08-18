@@ -2,21 +2,19 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/notifier"
-	"github.com/squareup/pranadb/sess"
-	"strconv"
 	"strings"
 	"sync/atomic"
 
-	"github.com/squareup/pranadb/errors"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
+	"github.com/squareup/pranadb/sess"
 )
 
 type Executor struct {
@@ -83,7 +81,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return dag, errors.MaybeAddStack(err)
 	case ast.Prepare != "":
 		return e.execPrepare(session, ast.Prepare)
-	case ast.Execute != "":
+	case ast.Execute != nil:
 		return e.execExecute(session, ast.Execute)
 	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateSequences(1)
@@ -177,28 +175,12 @@ func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExec
 	return dag, errors.MaybeAddStack(err)
 }
 
-func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExecutor, error) {
-	// TODO we should really use the parser to do this
-	sql = strings.ToLower(sql)
-	if strings.Index(sql, "execute ") != 0 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid execute command %s", sql))
+func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (exec.PullExecutor, error) {
+	args := make([]interface{}, len(execute.Args))
+	for i := range args {
+		args[i] = execute.Args[i]
 	}
-	sql = sql[8:]
-	// The rest of the command should be a space separated list tokens, the first one is the prepared statement id
-	// The others are the args of the prepared statement
-	parts := strings.Split(sql, " ")
-	if len(parts) == 0 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid execute command %s no prepared statement id", sql))
-	}
-	psID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return nil, errors.MaybeAddStack(err)
-	}
-	args := make([]interface{}, len(parts)-1)
-	for i := 1; i < len(parts); i++ {
-		args[i-1] = parts[i]
-	}
-	dag, err := e.pullEngine.ExecutePreparedStatement(session, psID, args)
+	dag, err := e.pullEngine.ExecutePreparedStatement(session, execute.PsID, args)
 	return dag, errors.MaybeAddStack(err)
 }
 

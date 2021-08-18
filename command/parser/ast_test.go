@@ -89,6 +89,14 @@ func TestParse(t *testing.T) {
 			"DropMaterializedView", "DROP MATERIALIZED VIEW test_mv_1",
 			&AST{Drop: &Drop{MaterializedView: true, Name: "test_mv_1"}}, "",
 		},
+		{
+			"ExecutePreparedStatement", `EXECUTE 8 432 123.32 "hello world"`,
+			&AST{Execute: &Execute{PsID: 8, Args: []string{"432", "123.32", "hello world"}}}, "",
+		},
+		{
+			"ExecutePreparedStatementNoArgs", `EXECUTE 8`,
+			&AST{Execute: &Execute{PsID: 8}}, "",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

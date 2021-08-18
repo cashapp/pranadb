@@ -53,7 +53,7 @@ prepare select * from test_source_1 where col4 > ? order by col0;
 execute 5 25000000.88;
 
 prepare select * from test_source_1 where col5 > ? order by col0;
-execute 6 str5;
+execute 6 "str5";
 
 -- ps with two params;
 prepare select * from test_source_1 where col0 > ? and col1 > ? order by col0;
@@ -61,11 +61,11 @@ execute 7 6 800;
 
 -- ps with params for all cols;
 prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
-execute 8 6 600 6000 6234.4321 62345678.99 str6;
+execute 8 6 600 6000 6234.4321 62345678.99 "str6";
 
 --close session;
 -- ps should now be closed as session was closed;
-execute 8 6 600 6000 6234.4321 62345678.99 str6;
+execute 8 6 600 6000 6234.4321 62345678.99 "str6";
 
 drop source test_source_1;
 
