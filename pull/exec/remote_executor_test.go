@@ -191,6 +191,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) CreateSnapshot() (cluster.Snapshot, error) {
+	return nil, nil
+}
+
+func (t *testCluster) LocalScanWithSnapshot(snapshot cluster.Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
+	return nil, nil
+}
+
 func (t *testCluster) GetLock(prefix string) (bool, error) {
 	return false, nil
 }

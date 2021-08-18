@@ -27,6 +27,20 @@ type FakeCluster struct {
 	locks                        map[string]struct{} // TODO use a trie
 }
 
+type snapshot struct {
+	btree *btree.BTree
+}
+
+func (s snapshot) Close() {
+}
+
+func (f *FakeCluster) CreateSnapshot() (Snapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cloned := f.btree.Clone()
+	return &snapshot{btree: cloned}, nil
+}
+
 func (f *FakeCluster) GetLock(prefix string) (bool, error) {
 	f.lockslock.Lock()
 	defer f.lockslock.Unlock()
@@ -213,7 +227,19 @@ func (f *FakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte)
 	return nil
 }
 
+func (f *FakeCluster) LocalScanWithSnapshot(sn Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+	s, ok := sn.(*snapshot)
+	if !ok {
+		panic("not a snapshot")
+	}
+	return f.localScanWithBtree(s.btree, startKeyPrefix, endKeyPrefix, limit)
+}
+
 func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+	return f.localScanWithBtree(f.btree, startKeyPrefix, endKeyPrefix, limit)
+}
+
+func (f *FakeCluster) localScanWithBtree(bt *btree.BTree, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
@@ -233,7 +259,7 @@ func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limi
 		count++
 		return limit == -1 || count < limit
 	}
-	f.btree.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
+	bt.AscendGreaterOrEqual(&kvWrapper{key: startKeyPrefix}, resFunc)
 	return result, nil
 }
 

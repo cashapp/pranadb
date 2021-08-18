@@ -68,6 +68,16 @@ type Dragon struct {
 	membershipListener           cluster.MembershipListener
 }
 
+type snapshot struct {
+	pebbleSnapshot *pebble.Snapshot
+}
+
+func (s *snapshot) Close() {
+	if err := s.pebbleSnapshot.Close(); err != nil {
+		log.Printf("failed to close snapshot %v", err)
+	}
+}
+
 func init() {
 	// This should be customizable, but these are good defaults
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
@@ -343,12 +353,34 @@ func (d *Dragon) LocalGet(key []byte) ([]byte, error) {
 	return localGet(d.pebble, key)
 }
 
+func (d *Dragon) CreateSnapshot() (cluster.Snapshot, error) {
+	snap := d.pebble.NewSnapshot()
+	return &snapshot{pebbleSnapshot: snap}, nil
+}
+
+func (d *Dragon) LocalScanWithSnapshot(sn cluster.Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
+	if startKeyPrefix == nil {
+		panic("startKeyPrefix cannot be nil")
+	}
+	snap, ok := sn.(*snapshot)
+	if !ok {
+		panic("not a snapshot")
+	}
+	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
+	iter := snap.pebbleSnapshot.NewIter(iterOptions)
+	return d.scanWithIter(iter, startKeyPrefix, limit)
+}
+
 func (d *Dragon) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}
 	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
 	iter := d.pebble.NewIter(iterOptions)
+	return d.scanWithIter(iter, startKeyPrefix, limit)
+}
+
+func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	iter.SeekGE(startKeyPrefix)
 	count := 0
 	var pairs []cluster.KVPair

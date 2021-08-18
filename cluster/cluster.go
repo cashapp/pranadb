@@ -26,6 +26,10 @@ type Cluster interface {
 	// endKeyPrefix is exclusive
 	LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
 
+	CreateSnapshot() (Snapshot, error)
+
+	LocalScanWithSnapshot(snapshot Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
+
 	GetNodeID() int
 
 	GetAllShardIDs() []uint64
@@ -54,6 +58,10 @@ type Cluster interface {
 	Start() error
 
 	Stop() error
+}
+
+type Snapshot interface {
+	Close()
 }
 
 type QueryExecutionInfo struct {

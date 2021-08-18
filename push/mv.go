@@ -188,3 +188,77 @@ func (m *MaterializedView) connect(executor exec.PushExecutor) error {
 	}
 	return nil
 }
+
+func (m *MaterializedView) Fill() error {
+	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
+	if err != nil {
+		return err
+	}
+	fillTableID, err := m.cluster.GenerateTableID()
+	if err != nil {
+		return err
+	}
+
+	// TODO!!!! locking here?????????
+	shardIDs := m.pe.localLeaderShards
+
+	chans := make([]chan error, len(tes))
+	for i, tableExec := range tes {
+		ts := tss[i]
+		ch := make(chan error, 1)
+		chans[i] = ch
+		// Execute in parallel
+		te := tableExec
+		go func() {
+			err := te.FillTo(ts, shardIDs, m.pe.mover, fillTableID)
+			ch <- err
+		}()
+	}
+
+	for _, ch := range chans {
+		err, ok := <-ch
+		if !ok {
+			panic("channel was closed")
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.TableExecutor, []*exec.TableScan, error) {
+	var tes []*exec.TableExecutor
+	var tss []*exec.TableScan
+	ts, ok := ex.(*exec.TableScan)
+	if ok {
+		tbl, ok := m.schema.GetTable(ts.TableName)
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown source or materialized view %s", ts.TableName)
+		}
+		switch tbl := tbl.(type) {
+		case *common.SourceInfo:
+			source, err := m.pe.GetSource(tbl.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			tes = append(tes, source.TableExecutor())
+		case *common.MaterializedViewInfo:
+			mv, err := m.pe.GetMaterializedView(tbl.ID)
+			if err != nil {
+				return nil, nil, err
+			}
+			tes = append(tes, mv.tableExecutor)
+		}
+		tss = append(tss, ts)
+	}
+	for _, child := range ex.GetChildren() {
+		te, ts, err := m.getFeedingExecutors(child)
+		if err != nil {
+			return nil, nil, err
+		}
+		tes = append(tes, te...)
+		tss = append(tss, ts...)
+	}
+	return tes, tss, nil
+}
