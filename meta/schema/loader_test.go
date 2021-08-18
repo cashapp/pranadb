@@ -28,70 +28,70 @@ func TestLoader(t *testing.T) {
 		name string
 		ddl  []ddl
 	}{
-		{
-			name: "sources",
-			ddl: []ddl{{
-				schema: "location",
-				queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) ) 
-					with (
-						brokername = "testbroker",
-						topicname = "testtopic",
-                        headerencoding = "json",
-						keyencoding = "json",
-						valueencoding = "json",
-						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2"
-						)
-						properties = (
-							"prop1" = "val1",
-							"prop2" = "val2"
-						)
-					)
-					`},
-			}, {
-				schema: "hollywood",
-				queries: []string{
-					`create source actor(id bigint, name varchar, age int, primary key (id) )
-					with (
-						brokername = "testbroker",
-						topicname = "testtopic",
-                        headerencoding = "json",
-						keyencoding = "json",
-						valueencoding = "json",
-						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2"
-						)
-						properties = (
-							"prop1" = "val1",
-							"prop2" = "val2"
-						)
-					)
-				`,
-					`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))
-					with (
-						brokername = "testbroker",
-						topicname = "testtopic",
-                        headerencoding = "json",
-						keyencoding = "json",
-						valueencoding = "json",
-						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2",
-							"v.v3"
-						)
-						properties = (
-							"prop1" = "val1",
-							"prop2" = "val2"
-						)
-					)`,
-				},
-			}},
-		},
+		//{
+		//	name: "sources",
+		//	ddl: []ddl{{
+		//		schema: "location",
+		//		queries: []string{`create source location(id bigint, x varchar, y varchar, primary key (id) )
+		//			with (
+		//				brokername = "testbroker",
+		//				topicname = "testtopic",
+		//               headerencoding = "json",
+		//				keyencoding = "json",
+		//				valueencoding = "json",
+		//				columnselectors = (
+		//					"k.k0",
+		//					"v.v1",
+		//					"v.v2"
+		//				)
+		//				properties = (
+		//					"prop1" = "val1",
+		//					"prop2" = "val2"
+		//				)
+		//			)
+		//			`},
+		//	}, {
+		//		schema: "hollywood",
+		//		queries: []string{
+		//			`create source actor(id bigint, name varchar, age int, primary key (id) )
+		//			with (
+		//				brokername = "testbroker",
+		//				topicname = "testtopic",
+		//               headerencoding = "json",
+		//				keyencoding = "json",
+		//				valueencoding = "json",
+		//				columnselectors = (
+		//					"k.k0",
+		//					"v.v1",
+		//					"v.v2"
+		//				)
+		//				properties = (
+		//					"prop1" = "val1",
+		//					"prop2" = "val2"
+		//				)
+		//			)
+		//		`,
+		//			`create source movies(id bigint, title varchar, director varchar, year int, primary key (id))
+		//			with (
+		//				brokername = "testbroker",
+		//				topicname = "testtopic",
+		//               headerencoding = "json",
+		//				keyencoding = "json",
+		//				valueencoding = "json",
+		//				columnselectors = (
+		//					"k.k0",
+		//					"v.v1",
+		//					"v.v2",
+		//					"v.v3"
+		//				)
+		//				properties = (
+		//					"prop1" = "val1",
+		//					"prop2" = "val2"
+		//				)
+		//			)`,
+		//		},
+		//	}},
+		//},
 		{
 			name: "mvs",
 			ddl: []ddl{{

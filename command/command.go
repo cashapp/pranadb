@@ -2,22 +2,16 @@ package command
 
 import (
 	"fmt"
-	"log"
+	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/sess"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
-	"github.com/squareup/pranadb/notifier"
-
-	"github.com/squareup/pranadb/sess"
-
-	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
@@ -31,8 +25,13 @@ type Executor struct {
 	pushEngine        *push.PushEngine
 	pullEngine        *pull.PullEngine
 	notifClient       notifier.Client
-	ddlExecLock       sync.Mutex
 	sessionIDSequence int64
+	ddlRunner         *DDLCommandRunner
+}
+
+type sessCloser struct {
+	clus        cluster.Cluster
+	notifClient notifier.Client
 }
 
 func NewCommandExecutor(
@@ -42,7 +41,7 @@ func NewCommandExecutor(
 	cluster cluster.Cluster,
 	notifClient notifier.Client,
 ) *Executor {
-	return &Executor{
+	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
@@ -50,6 +49,13 @@ func NewCommandExecutor(
 		notifClient:       notifClient,
 		sessionIDSequence: -1,
 	}
+	commandRunner := NewDDLCommandRunner(ex)
+	ex.ddlRunner = commandRunner
+	return ex
+}
+
+func (e *Executor) HandleNotification(notification notifier.Notification) error {
+	return e.ddlRunner.HandleNotification(notification)
 }
 
 func (e *Executor) Start() error {
@@ -66,7 +72,57 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	// concurrently
 	session.Lock.Lock()
 	defer session.Lock.Unlock()
-	return e.executeSQLStatementInternal(session, sql, true, nil)
+	ast, err := parser.Parse(sql)
+	if err != nil {
+		return nil, errors.MaybeAddStack(err)
+	}
+
+	switch {
+	case ast.Select != "":
+		dag, err := e.pullEngine.BuildPullQuery(session, sql)
+		return dag, errors.MaybeAddStack(err)
+	case ast.Prepare != "":
+		return e.execPrepare(session, ast.Prepare)
+	case ast.Execute != "":
+		return e.execExecute(session, ast.Execute)
+	case ast.Create != nil && ast.Create.Source != nil:
+		sequences, err := e.generateSequences(1)
+		if err != nil {
+			return nil, err
+		}
+		command := NewOriginatingCreateSourceCommand(e, session.Schema.Name, sql, sequences, ast.Create.Source)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
+		}
+		return exec.Empty, nil
+	case ast.Create != nil && ast.Create.MaterializedView != nil:
+		sequences, err := e.generateSequences(2)
+		if err != nil {
+			return nil, err
+		}
+		command := NewOriginatingCreateMVCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
+		}
+		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.Source:
+		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
+		}
+		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.MaterializedView:
+		command := NewOriginatingDropMVCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, err
+		}
+		return exec.Empty, nil
+	}
+	return nil, fmt.Errorf("invalid statement %s", sql)
 }
 
 func (e *Executor) CreateSession(schemaName string) *sess.Session {
@@ -76,59 +132,15 @@ func (e *Executor) CreateSession(schemaName string) *sess.Session {
 	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
 }
 
-type sessCloser struct {
-	clus        cluster.Cluster
-	notifClient notifier.Client
-}
-
 func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 	shardIDs := s.clus.GetAllShardIDs()
 	for _, shardID := range shardIDs {
 		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
 		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
-		err := s.notifClient.BroadcastNotification(sessCloseMsg)
+		err := s.notifClient.BroadcastOneway(sessCloseMsg)
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func (e *Executor) createSource(schemaName string, name string, colNames []string, colTypes []common.ColumnType,
-	pkCols []int, topicInfo *common.TopicInfo, seqGenerator common.SeqGenerator, persist bool) error {
-
-	id := seqGenerator.GenerateSequence()
-
-	tableInfo := common.TableInfo{
-		ID:             id,
-		SchemaName:     schemaName,
-		Name:           name,
-		PrimaryKeyCols: pkCols,
-		ColumnNames:    colNames,
-		ColumnTypes:    colTypes,
-		IndexInfos:     nil,
-	}
-	sourceInfo := common.SourceInfo{
-		TableInfo: &tableInfo,
-		TopicInfo: topicInfo,
-	}
-	err := e.pushEngine.CreateSource(&sourceInfo)
-	if err != nil {
-		return err
-	}
-	return e.metaController.RegisterSource(&sourceInfo, persist)
-}
-
-func (e *Executor) createMaterializedView(session *sess.Session, name string, query string, seqGenerator common.SeqGenerator, persist bool) error {
-	id := seqGenerator.GenerateSequence()
-	// FIXME - this needs to be in the opposite order
-	mvInfo, err := e.pushEngine.CreateMaterializedView(session.PushPlanner(), session.Schema, name, query, id, seqGenerator)
-	if err != nil {
-		return err
-	}
-	err = e.metaController.RegisterMaterializedView(mvInfo, persist)
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -140,78 +152,6 @@ func (e *Executor) GetPushEngine() *push.PushEngine {
 
 func (e *Executor) GetPullEngine() *pull.PullEngine {
 	return e.pullEngine
-}
-
-//nolint:gocyclo
-func (e *Executor) executeSQLStatementInternal(session *sess.Session, sql string, persist bool,
-	seqGenerator common.SeqGenerator) (exec.PullExecutor, error) {
-	ast, err := parser.Parse(sql)
-	if err != nil {
-		return nil, errors.MaybeAddStack(err)
-	}
-	switch {
-	case ast.Select != "":
-		return e.execSelect(session, ast.Select)
-	case ast.Prepare != "":
-		return e.execPrepare(session, ast.Prepare)
-	case ast.Execute != "":
-		return e.execExecute(session, ast.Execute)
-	case ast.Drop != nil:
-		exec, err := e.execDrop(session, ast.Drop, persist)
-		if err != nil {
-			return nil, err
-		}
-		if persist {
-			if err := e.broadcastDDL(session.Schema.Name, sql, nil); err != nil {
-				return nil, err
-			}
-		}
-		return exec, nil
-	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		var sequences []uint64
-		if persist {
-			// Materialized view needs 2 sequences
-			sequences, err = e.generateSequences(2)
-			if err != nil {
-				return nil, err
-			}
-			seqGenerator = common.NewPreallocSeqGen(sequences)
-		}
-		exec, err := e.execCreateMaterializedView(session, ast.Create.MaterializedView, seqGenerator, persist)
-		if err != nil {
-			return nil, err
-		}
-		if persist {
-			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
-				return nil, err
-			}
-		}
-		return exec, nil
-
-	case ast.Create != nil && ast.Create.Source != nil:
-		var sequences []uint64
-		if persist {
-			// Source needs 1 sequence
-			sequences, err = e.generateSequences(1)
-			if err != nil {
-				return nil, err
-			}
-			seqGenerator = common.NewPreallocSeqGen(sequences)
-		}
-		exec, err := e.execCreateSource(session.Schema.Name, ast.Create.Source, seqGenerator, persist)
-		if err != nil {
-			return nil, err
-		}
-		if persist {
-			if err := e.broadcastDDL(session.Schema.Name, sql, sequences); err != nil {
-				return nil, err
-			}
-		}
-		return exec, nil
-
-	default:
-		panic("unsupported query " + sql)
-	}
 }
 
 func (e *Executor) generateSequences(numValues int) ([]uint64, error) {
@@ -262,154 +202,6 @@ func (e *Executor) execExecute(session *sess.Session, sql string) (exec.PullExec
 	return dag, errors.MaybeAddStack(err)
 }
 
-func (e *Executor) execDrop(session *sess.Session, drop *parser.Drop, persist bool) (exec.PullExecutor, error) {
-	if drop.Source {
-		sourceName := drop.Name
-		sourceInfo, ok := e.metaController.GetSource(session.Schema.Name, sourceName)
-		if !ok {
-			return nil, errors.MaybeAddStack(fmt.Errorf("source not found %s", sourceName))
-		}
-		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SQLTest will think ddl is synced before data is deleted
-		err := e.pushEngine.RemoveSource(sourceInfo, persist)
-		if err != nil {
-			return nil, err
-		}
-		err = e.metaController.RemoveSource(session.Schema.Name, sourceName, persist)
-		if err != nil {
-			return nil, err
-		}
-	} else if drop.MaterializedView {
-		mvName := drop.Name
-		mvInfo, ok := e.metaController.GetMaterializedView(session.Schema.Name, mvName)
-		if !ok {
-			return nil, errors.MaybeAddStack(fmt.Errorf("materialized view not found %s", mvName))
-		}
-		// TODO Until we implement proper DDL syncing we need to remove the data from storage before removing from meta controller
-		// otherwise SQLTest will think ddl is synced before data is deleted
-		err := e.pushEngine.RemoveMV(session.Schema, mvInfo, persist)
-		if err != nil {
-			return nil, err
-		}
-		err = e.metaController.RemoveMaterializedView(session.Schema.Name, mvName, persist)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, errors.MaybeAddStack(fmt.Errorf("invalid drop command"))
-	}
-	return exec.Empty, nil
-}
-
-func (e *Executor) execSelect(session *sess.Session, sql string) (exec.PullExecutor, error) {
-	dag, err := e.pullEngine.BuildPullQuery(session, sql)
-	return dag, errors.MaybeAddStack(err)
-}
-
-func (e *Executor) execCreateMaterializedView(session *sess.Session, mv *parser.CreateMaterializedView, seqGenerator common.SeqGenerator, persist bool) (exec.PullExecutor, error) {
-	err := e.createMaterializedView(session, mv.Name.String(), mv.Query.String(), seqGenerator, persist)
-	return exec.Empty, errors.MaybeAddStack(err)
-}
-
-func (e *Executor) execCreateSource(schemaName string, src *parser.CreateSource, seqGenerator common.SeqGenerator, persist bool) (exec.PullExecutor, error) {
-	var (
-		colNames []string
-		colTypes []common.ColumnType
-		colIndex = map[string]int{}
-		pkCols   []int
-	)
-	for i, option := range src.Options {
-		switch {
-		case option.Column != nil:
-			// Convert AST column definition to a ColumnType.
-			col := option.Column
-			colIndex[col.Name] = i
-			colNames = append(colNames, col.Name)
-			colType, err := col.ToColumnType()
-			if err != nil {
-				return nil, errors.MaybeAddStack(err)
-			}
-			colTypes = append(colTypes, colType)
-
-		case option.PrimaryKey != "":
-			index, ok := colIndex[option.PrimaryKey]
-			if !ok {
-				return nil, fmt.Errorf("invalid primary key column %q", option.PrimaryKey)
-			}
-			pkCols = append(pkCols, index)
-
-		default:
-			panic(repr.String(option))
-		}
-	}
-
-	headerEncoding := common.KafkaEncodingFromString(src.TopicInformation.HeaderEncoding)
-	if headerEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.HeaderEncoding)
-	}
-	keyEncoding := common.KafkaEncodingFromString(src.TopicInformation.KeyEncoding)
-	if keyEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.KeyEncoding)
-	}
-	valueEncoding := common.KafkaEncodingFromString(src.TopicInformation.ValueEncoding)
-	if valueEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", src.TopicInformation.ValueEncoding)
-	}
-	props := src.TopicInformation.Properties
-	propsMap := make(map[string]string, len(props))
-	for _, prop := range props {
-		propsMap[prop.Key] = prop.Value
-	}
-
-	cs := src.TopicInformation.ColSelectors
-	colSelectors := make([]string, len(cs))
-	for i := 0; i < len(cs); i++ {
-		colSelectors[i] = cs[i]
-	}
-	lc := len(colSelectors)
-	if lc > 0 && lc != len(colTypes) {
-		return nil, errors.NewUserErrorF(errors.WrongNumberColumnSelectors,
-			"if specified, number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
-	}
-
-	topicInfo := &common.TopicInfo{
-		BrokerName:     src.TopicInformation.BrokerName,
-		TopicName:      src.TopicInformation.TopicName,
-		HeaderEncoding: headerEncoding,
-		KeyEncoding:    keyEncoding,
-		ValueEncoding:  valueEncoding,
-		ColSelectors:   colSelectors,
-		Properties:     propsMap,
-	}
-	if err := e.createSource(schemaName, src.Name, colNames, colTypes, pkCols, topicInfo, seqGenerator, persist); err != nil {
-		return nil, errors.MaybeAddStack(err)
-	}
-	return exec.Empty, nil
-}
-
-func (e *Executor) broadcastDDL(schemaName string, sql string, sequences []uint64) error {
-	statementInfo := &notifications.DDLStatementInfo{
-		OriginatingNodeId: int64(e.cluster.GetNodeID()),
-		SchemaName:        schemaName,
-		Sql:               sql,
-		TableSequences:    sequences,
-	}
-	return e.notifClient.BroadcastNotification(statementInfo)
-}
-
-func (e *Executor) HandleNotification(notification notifier.Notification) {
-	e.ddlExecLock.Lock()
-	defer e.ddlExecLock.Unlock()
-
-	ddlStmt := notification.(*notifications.DDLStatementInfo) // nolint: forcetypeassert
-	seqGenerator := common.NewPreallocSeqGen(ddlStmt.TableSequences)
-	// Note this session does not need to be closed as it does not execute any pull queries
-	session := e.CreateSession(ddlStmt.SchemaName)
-	origNodeID := int(ddlStmt.OriginatingNodeId)
-	if origNodeID != e.cluster.GetNodeID() {
-		_, err := e.executeSQLStatementInternal(session, ddlStmt.Sql, false, seqGenerator)
-		if err != nil {
-			log.Printf("Failed to execute broadcast DDL %s for %s %v", ddlStmt.Sql, ddlStmt.SchemaName, err)
-		}
-	}
+func (e *Executor) RunningCommands() int {
+	return e.ddlRunner.runningCommands()
 }

@@ -64,6 +64,11 @@ func (m *MessageConsumer) partitionsRevoked() error {
 
 	// We wait for any processing to complete on the poll loop
 
+	// FIXME - it is not sufficient to just wait for the pool loop to stop.
+	// Some time after the poll loop has stopped messages wil be forwarded async to other nodes.
+	// If owner of partitions changes during rebalance then messages processed from the new owner consumer
+	// could be forwarded before the messages processed by the earlier consumer.
+	// To deal with this case we should add an extra delay in here
 	m.waitForPollLoopToStop()
 	return nil
 }

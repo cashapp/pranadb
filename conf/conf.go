@@ -1,12 +1,18 @@
 package conf
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 const (
 	DefaultDataSnapshotEntries        = 10000
 	DefaultDataCompactionOverhead     = 2500
 	DefaultSequenceSnapshotEntries    = 1000
 	DefaultSequenceCompactionOverhead = 250
+	DefaultLocksSnapshotEntries       = 1000
+	DefaultLocksCompactionOverhead    = 250
+	DefaultNotifierHeartbeatInterval  = 5 * time.Second
 )
 
 type Config struct {
@@ -23,7 +29,10 @@ type Config struct {
 	DataCompactionOverhead     int
 	SequenceSnapshotEntries    int
 	SequenceCompactionOverhead int
+	LocksSnapshotEntries       int
+	LocksCompactionOverhead    int
 	Debug                      bool
+	NotifierHeartbeatInterval  time.Duration
 }
 
 type BrokerConfigs map[string]BrokerConfig // Key is broker name which is referred to in the source descriptor
@@ -46,6 +55,9 @@ func NewConfig() *Config {
 		DataCompactionOverhead:     DefaultDataCompactionOverhead,
 		SequenceSnapshotEntries:    DefaultSequenceSnapshotEntries,
 		SequenceCompactionOverhead: DefaultSequenceCompactionOverhead,
+		LocksSnapshotEntries:       DefaultLocksSnapshotEntries,
+		LocksCompactionOverhead:    DefaultLocksCompactionOverhead,
+		NotifierHeartbeatInterval:  DefaultNotifierHeartbeatInterval,
 	}
 }
 

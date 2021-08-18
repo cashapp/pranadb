@@ -30,7 +30,7 @@ func TypeForNotification(notification Notification) NotificationType {
 type Notification = proto.Message
 
 type NotificationListener interface {
-	HandleNotification(notification Notification)
+	HandleNotification(notification Notification) error
 }
 
 func SerializeNotification(notification Notification) ([]byte, error) {

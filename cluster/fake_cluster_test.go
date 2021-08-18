@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"testing"
 
@@ -188,4 +189,84 @@ func TestRestart(t *testing.T) {
 	require.NotNil(t, res)
 
 	require.Equal(t, string(value), string(res))
+}
+
+func TestGetReleaseLock(t *testing.T) {
+	clust := startFakeCluster(t)
+	defer stopClustFunc(t, clust)
+
+	ok, err := clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema2")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.GetLock("/")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.GetLock("/")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.ReleaseLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.ReleaseLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/")
+	require.NoError(t, err)
+	require.True(t, ok)
+	log.Println("Ok here we go")
+	ok, err = clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.ReleaseLock("/")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.ReleaseLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+}
+
+func TestLocksRestart(t *testing.T) {
+	clust := startFakeCluster(t)
+	stopClustFunc(t, clust)
+
+	ok, err := clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema3")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.ReleaseLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	err = clust.Stop()
+	require.NoError(t, err)
+	err = clust.Start()
+	require.NoError(t, err)
+	defer stopClustFunc(t, clust)
+
+	ok, err = clust.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = clust.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = clust.GetLock("/schema3")
+	require.NoError(t, err)
+	require.False(t, ok)
 }

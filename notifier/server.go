@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
+	"log"
 	"net"
 	"sync"
 )
 
 const (
-	readBuffSize = 8 * 1024
+	readBuffSize      = 8 * 1024
+	messageHeaderSize = 5 // 1 byte message type, 4 bytes length
 )
 
 type Server interface {
@@ -32,13 +34,14 @@ func newServer(listenAddress string) *server {
 }
 
 type server struct {
-	listenAddress  string
-	listener       net.Listener
-	started        bool
-	lock           sync.RWMutex
-	acceptLoopCh   chan struct{}
-	connections    sync.Map
-	notifListeners sync.Map
+	listenAddress     string
+	listener          net.Listener
+	started           bool
+	lock              sync.RWMutex
+	acceptLoopCh      chan struct{}
+	connections       sync.Map
+	notifListeners    sync.Map
+	responsesDisabled common.AtomicBool
 }
 
 func (s *server) Start() error {
@@ -124,6 +127,11 @@ func (s *server) removeConnection(conn *connection) {
 	s.connections.Delete(conn)
 }
 
+// DisableResponses is used to disable responses - for testing only
+func (s *server) DisableResponses() {
+	s.responsesDisabled.Set(true)
+}
+
 type connection struct {
 	s      *server
 	conn   net.Conn
@@ -136,44 +144,44 @@ func (c *connection) start() {
 }
 
 func (c *connection) readLoop() {
-	c.doReadLoop()
+	readMessage(c.handleMessage, c.loopCh, c.conn)
 	c.s.removeConnection(c)
 }
 
-func (c *connection) doReadLoop() {
-	var msgBuf []byte
-	readBuff := make([]byte, readBuffSize)
-	msgLen := -1
-	for {
-		n, err := c.conn.Read(readBuff)
-		if err != nil {
-			// Connection closed
-			c.loopCh <- nil
-			return
+func (c *connection) handleMessage(msgType messageType, msg []byte) error {
+
+	if msgType == heartbeatMessageType {
+		if !c.s.responsesDisabled.Get() {
+			return writeMessage(heartbeatMessageType, nil, c.conn)
 		}
-		msgBuf = append(msgBuf, readBuff[0:n]...)
-		for len(msgBuf) >= 4 {
-			if msgLen == -1 {
-				u, _ := common.ReadUint32FromBufferLE(msgBuf, 0)
-				msgLen = int(u)
-			}
-			if len(msgBuf) >= 4+msgLen {
-				// We got a whole message
-				msg := msgBuf[4 : 4+msgLen]
-				notification, err := DeserializeNotification(msg)
-				if err != nil {
-					c.loopCh <- err
-					return
-				}
-				listener := c.s.lookupNotificationListener(notification)
-				listener.HandleNotification(notification)
-				msgBuf = msgBuf[4+msgLen:]
-				msgLen = -1
-			} else {
-				break
-			}
+		return nil
+	}
+	nf := &NotificationMessage{}
+	if err := nf.deserialize(msg); err != nil {
+		return err
+	}
+	listener := c.s.lookupNotificationListener(nf.notif)
+	err := listener.HandleNotification(nf.notif)
+	ok := true
+	if err != nil {
+		log.Printf("Failed to handle notification %v", err)
+		ok = false
+	}
+	if nf.requiresResponse && !c.s.responsesDisabled.Get() {
+		if err := c.sendResponse(nf, ok); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (c *connection) sendResponse(nf *NotificationMessage, ok bool) error {
+	resp := &NotificationResponse{
+		sequence: nf.sequence,
+		ok:       ok,
+	}
+	buff := resp.serialize(nil)
+	return writeMessage(notificationResponseMessageType, buff, c.conn)
 }
 
 func (c *connection) stop() error {

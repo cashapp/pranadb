@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"log"
 	"time"
 )
 
@@ -14,14 +13,12 @@ var timestampBase = time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
 
 // IngestRows ingests rows given schema and source name - convenience method for use in tests
 func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, groupID string, encoder MessageEncoder) error {
-	log.Println("Ingesting rows - getting topics and initial counts")
 	topicName := sourceInfo.TopicInfo.TopicName
 	topic, ok := f.GetTopic(topicName)
 	if !ok {
 		return fmt.Errorf("cannot find topic %s", topicName)
 	}
 	ingestedStart, _ := topic.TotalMessages(groupID)
-	log.Println("ingesting the rows")
 	timestamp := timestampBase
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -31,7 +28,6 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 		}
 		timestamp = timestamp.Add(1 * time.Second)
 	}
-	log.Println("ingested all rows")
 	// And we wait for all offsets to be committed
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ingested, committed := topic.TotalMessages(groupID)
@@ -48,7 +44,6 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	if !ok {
 		return errors.New("messages not committed within timeout")
 	}
-	log.Println("waited for them to be committed")
 	return nil
 }
 

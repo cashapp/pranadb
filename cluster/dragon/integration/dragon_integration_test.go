@@ -25,13 +25,16 @@ const (
 	numShards = 10
 )
 
+var dataDir string
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Short() {
 		log.Println("-short: skipped")
 		return
 	}
-	dataDir, err := ioutil.TempDir("", "dragon-test")
+	var err error
+	dataDir, err = ioutil.TempDir("", "dragon-test")
 	if err != nil {
 		panic("failed to create temp dir")
 	}
@@ -183,6 +186,83 @@ func TestGetAllShardIDs(t *testing.T) {
 		allShardIds := dragonCluster[i].GetAllShardIDs()
 		require.Equal(t, numShards, len(allShardIds))
 	}
+}
+
+func TestGetReleaseLock(t *testing.T) {
+	dragon0 := dragonCluster[0]
+	dragon1 := dragonCluster[1]
+	ok, err := dragon0.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon1.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon0.GetLock("/schema2")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon0.GetLock("/")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon1.GetLock("/")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon1.ReleaseLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon0.ReleaseLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon0.GetLock("/")
+	require.NoError(t, err)
+	require.True(t, ok)
+	log.Println("Ok here we go")
+	ok, err = dragon1.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon1.ReleaseLock("/")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.ReleaseLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+}
+
+func TestLocksRestart(t *testing.T) {
+	dragon0 := dragonCluster[0]
+	dragon1 := dragonCluster[1]
+	ok, err := dragon0.GetLock("/schema1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.GetLock("/schema3")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.ReleaseLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	stopDragonCluster()
+	dragonCluster, err = startDragonCluster(dataDir)
+	require.NoError(t, err)
+
+	dragon0 = dragonCluster[0]
+	dragon1 = dragonCluster[1]
+	ok, err = dragon0.GetLock("/schema1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = dragon1.GetLock("/schema2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = dragon1.GetLock("/schema3")
+	require.NoError(t, err)
+	require.False(t, ok)
 }
 
 func stopDragonCluster() {

@@ -82,7 +82,7 @@ func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
 				rows.AppendFloat64ToColumn(colIndex, val)
 			case TypeVarchar:
 				var val string
-				val, offset = ReadStringFromBuffer(buffer, offset)
+				val, offset = ReadStringFromBufferLE(buffer, offset)
 				rows.AppendStringToColumn(colIndex, val)
 			case TypeTimestamp:
 				var (

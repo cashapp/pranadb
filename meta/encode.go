@@ -11,11 +11,11 @@ var tableInfoRowsFactory = common.NewRowsFactory(TableDefTableInfo.ColumnTypes)
 const (
 	TableKindSource           = "source"
 	TableKindMaterializedView = "materialized_view"
-	TableKindAggregation      = "aggregation"
+	TableKindInternal         = "internal"
 )
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
-func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
+func EncodeSourceInfoToRow(info *common.SourceInfo, prepareState PrepareState) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindSource)
@@ -25,6 +25,7 @@ func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
 	rows.AppendNullToColumn(6)
 	rows.AppendNullToColumn(7)
+	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }
@@ -38,7 +39,7 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 }
 
 // EncodeMaterializedViewInfoToRow encodes a common.MaterializedViewInfo into a database row.
-func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.Row {
+func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo, prepareState PrepareState) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindMaterializedView)
@@ -48,6 +49,7 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 	rows.AppendNullToColumn(5)
 	rows.AppendStringToColumn(6, info.Query)
 	rows.AppendNullToColumn(7)
+	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }
@@ -62,16 +64,17 @@ func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo
 }
 
 // EncodeInternalTableInfoToRow encodes a common.InternalTableInfo into a database row.
-func EncodeInternalTableInfoToRow(info *common.InternalTableInfo) *common.Row {
+func EncodeInternalTableInfoToRow(info *common.InternalTableInfo, prepareState PrepareState) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
-	rows.AppendStringToColumn(1, TableKindAggregation)
+	rows.AppendStringToColumn(1, TableKindInternal)
 	rows.AppendStringToColumn(2, info.SchemaName)
 	rows.AppendStringToColumn(3, info.Name)
 	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
 	rows.AppendNullToColumn(5)
 	rows.AppendNullToColumn(6)
 	rows.AppendStringToColumn(7, info.MaterializedViewName)
+	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }

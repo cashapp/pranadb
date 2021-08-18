@@ -38,7 +38,7 @@ func NewServer(config conf.Config) (*Server, error) {
 			return nil, err
 		}
 		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = notifier.NewClient(config.NotifListenAddresses...)
+		notifClient = notifier.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -167,4 +167,8 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 
 func (s *Server) GetNotificationsClient() notifier.Client {
 	return s.notifClient
+}
+
+func (s *Server) GetNotificationsServer() notifier.Server {
+	return s.notifServer
 }

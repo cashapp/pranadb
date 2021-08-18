@@ -7,11 +7,12 @@ const (
 	ReceiverTableID             = 3
 	ReceiverSequenceTableID     = 4
 	SequenceGeneratorTableID    = 5
-	LastLogIndexReceivedTableID = 6
-	SyncTableID                 = 7
+	LocksTableID                = 6
+	LastLogIndexReceivedTableID = 7
+	SyncTableID                 = 8
 	// SchemaTableID stores table schemas
-	SchemaTableID  = 8
-	OffsetsTableID = 9
+	SchemaTableID  = 9
+	OffsetsTableID = 10
 
 	UserTableIDBase = 1000
 )

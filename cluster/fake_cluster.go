@@ -23,6 +23,31 @@ type FakeCluster struct {
 	shardListenerFactory         ShardListenerFactory
 	shardListeners               map[uint64]ShardListener
 	membershipListener           MembershipListener
+	lockslock                    sync.Mutex
+	locks                        map[string]struct{} // TODO use a trie
+}
+
+func (f *FakeCluster) GetLock(prefix string) (bool, error) {
+	f.lockslock.Lock()
+	defer f.lockslock.Unlock()
+	for k := range f.locks {
+		if strings.HasPrefix(k, prefix) || strings.HasPrefix(prefix, k) {
+			return false, nil
+		}
+	}
+	f.locks[prefix] = struct{}{}
+	return true, nil
+}
+
+func (f *FakeCluster) ReleaseLock(prefix string) (bool, error) {
+	f.lockslock.Lock()
+	defer f.lockslock.Unlock()
+	_, ok := f.locks[prefix]
+	if !ok {
+		return false, nil
+	}
+	delete(f.locks, prefix)
+	return true, nil
 }
 
 func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
@@ -32,6 +57,7 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		allShardIds:    genAllShardIds(numShards),
 		btree:          btree.New(3),
 		shardListeners: make(map[uint64]ShardListener),
+		locks:          make(map[string]struct{}),
 	}
 }
 

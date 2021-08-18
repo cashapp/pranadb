@@ -191,6 +191,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) GetLock(prefix string) (bool, error) {
+	return false, nil
+}
+
+func (t *testCluster) ReleaseLock(prefix string) (bool, error) {
+	return false, nil
+}
+
 func (t *testCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
 }
 
@@ -261,7 +269,7 @@ func (t *testCluster) RegisterShardListenerFactory(factory cluster.ShardListener
 	panic("should not be called")
 }
 
-func (t *testCluster) BroadcastNotification(notification notifier.Notification) error {
+func (t *testCluster) BroadcastOneway(notification notifier.Notification) error {
 	panic("should not be called")
 }
 

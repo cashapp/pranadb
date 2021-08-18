@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
+	"log"
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
@@ -24,58 +25,86 @@ func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.Simpl
 	}
 }
 
+type MVTables struct {
+	mvInfo         *common.MaterializedViewInfo
+	internalTables []*common.InternalTableInfo
+	sequences      []uint64
+}
+
 func (l *Loader) Start() error {
 	rows, err := l.queryExec.ExecuteQuery("sys",
-		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name from tables order by id")
+		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare_state from tables order by id")
 	if err != nil {
 		return err
 	}
 
-	var mvs []*common.MaterializedViewInfo
 	type tableKey struct {
 		schemaName, tableName string
 	}
-	mvSequences := make(map[tableKey][]uint64)
+	mvTables := make(map[tableKey]*MVTables)
 
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		kind := row.GetString(1)
 		switch kind {
 		case meta.TableKindSource:
+			log.Println("Reading source from storage")
 			info := meta.DecodeSourceInfoRow(&row)
-			if err := l.meta.RegisterSource(info, false); err != nil {
+			// TODO check prepare state and restart command if pending
+			if err := l.meta.RegisterSource(info); err != nil {
 				return err
 			}
-			if err := l.pushEngine.CreateSource(info); err != nil {
+			src, err := l.pushEngine.CreateSource(info)
+			if err != nil {
+				return err
+			}
+			if err := src.Start(); err != nil {
 				return err
 			}
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&row)
-			mvs = append(mvs, info)
-			mvSequences[tableKey{info.SchemaName, info.Name}] = []uint64{info.ID}
-		case meta.TableKindAggregation:
+			tk := tableKey{info.SchemaName, info.Name}
+			_, ok := mvTables[tk]
+			if ok {
+				return fmt.Errorf("mv %s %s already loaded", info.SchemaName, info.Name)
+			}
+			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
+			mvTables[tk] = mvt
+		case meta.TableKindInternal:
 			info := meta.DecodeInternalTableInfoRow(&row)
-			key := tableKey{info.SchemaName, info.MaterializedViewName}
-			mvSequences[key] = append(mvSequences[key], info.ID)
+			tk := tableKey{info.SchemaName, info.MaterializedViewName}
+			mvt, ok := mvTables[tk]
+			if !ok {
+				return fmt.Errorf("mv %s %s not loaded", info.SchemaName, info.Name)
+			}
+			mvt.sequences = append(mvt.sequences, info.ID)
+			mvt.internalTables = append(mvt.internalTables, info)
 		default:
 			return fmt.Errorf("unknown table kind %s", kind)
 		}
 	}
 
-	// Create materialized views. Aggregations are also created automatically.
-	for _, mv := range mvs {
-		schema := l.meta.GetOrCreateSchema(mv.SchemaName)
-		if err := l.meta.RegisterMaterializedView(mv, false); err != nil {
-			return err
-		}
-		_, err = l.pushEngine.CreateMaterializedView(
+	for _, mvt := range mvTables {
+		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
+		mv, err := push.CreateMaterializedView(
+			l.pushEngine,
 			parplan.NewPlanner(schema, false),
-			schema, mv.Name, mv.Query, mv.ID,
-			common.NewPreallocSeqGen(mvSequences[tableKey{mv.SchemaName, mv.Name}]))
+			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvt.mvInfo.ID,
+			common.NewPreallocSeqGen(mvt.sequences))
 		if err != nil {
 			return err
 		}
+		if err := mv.Connect(); err != nil {
+			return err
+		}
+		if err := l.pushEngine.RegisterMV(mv); err != nil {
+			return err
+		}
+		if err := l.meta.RegisterMaterializedView(mvt.mvInfo, mvt.internalTables); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }
 
