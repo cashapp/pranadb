@@ -2,15 +2,17 @@ package notifier
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/stretchr/testify/require"
-	"math/rand"
-	"sync"
-	"testing"
-	"time"
+	"go.uber.org/zap/zaptest"
 )
 
 // We test primarily with SessionClosedMessage as this allows us to pass simply an arbitrarily sized string so we can
@@ -82,7 +84,7 @@ func TestNotificationStopServer(t *testing.T) {
 	for _, server := range servers {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -112,7 +114,7 @@ func TestNotificationsRetryConnections(t *testing.T) {
 	for _, server := range servers {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -185,8 +187,9 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 	numClients := 10
 	clients := make([]*client, 10)
 
+	logger := zaptest.NewLogger(t)
 	for i := 0; i < numClients; i++ {
-		client := newClient(heartbeatInterval, listenAddresses...)
+		client := newClient(logger, heartbeatInterval, listenAddresses...)
 		err := client.Start()
 		require.NoError(t, err)
 		clients[i] = client
@@ -244,7 +247,7 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -270,7 +273,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	notifListener1 := &notifListener{}
 	notifListener2 := &notifListener{}
 
-	server := newServer("localhost:7888")
+	server := newServer("localhost:7888", zaptest.NewLogger(t))
 	defer stopServers(t, server)
 	server.RegisterNotificationListener(NotificationTypeDDLStatement, notifListener1)
 	server.RegisterNotificationListener(NotificationTypeCloseSession, notifListener2)
@@ -278,7 +281,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, "localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -320,7 +323,7 @@ func TestSyncBroadcast(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -361,7 +364,7 @@ func TestBroadcastSyncServerUnavailable(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -398,7 +401,7 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(zaptest.NewLogger(t), heartbeatInterval, listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -460,10 +463,11 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 	t.Helper()
 	servers := make([]*server, numServers)
 	notifListeners := make([]*notifListener, numServers)
+	logger := zaptest.NewLogger(t)
 	for i := 0; i < numServers; i++ {
 		listenPort := 7888 + i
 		listenAddress := fmt.Sprintf("localhost:%d", listenPort)
-		server := newServer(listenAddress)
+		server := newServer(listenAddress, logger)
 		notifListener := &notifListener{}
 		server.RegisterNotificationListener(NotificationTypeCloseSession, notifListener)
 		notifListeners[i] = notifListener

@@ -2,10 +2,14 @@ package server
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/conf"
-	"log"
 	"net/http" //nolint:stylecheck
+	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
+	//nolint:gosec
+	_ "net/http/pprof" //nolint:stylecheck
 	"sync"
+
+	"github.com/squareup/pranadb/conf"
+	"go.uber.org/zap"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
@@ -16,10 +20,6 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-
-	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
-	//nolint:gosec
-	_ "net/http/pprof" //nolint:stylecheck
 )
 
 func NewServer(config conf.Config) (*Server, error) {
@@ -37,8 +37,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		if err != nil {
 			return nil, err
 		}
-		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = notifier.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
+		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID], config.Logger)
+		notifClient = notifier.NewClient(config.Logger, config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -49,7 +49,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
+	schemaLoader := schema.NewLoader(config.Logger, metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
 
 	services := []service{
@@ -119,7 +119,9 @@ func (s *Server) Start() error {
 
 	if s.conf.Debug {
 		go func() {
-			log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil))
+			if err := http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil); err != nil {
+				s.conf.Logger.Error("server exited", zap.Error(err))
+			}
 		}()
 	}
 

@@ -2,9 +2,11 @@ package wire
 
 import (
 	"context"
-	"github.com/squareup/pranadb/conf"
 	"net"
 	"testing"
+
+	"github.com/squareup/pranadb/conf"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -15,15 +17,17 @@ import (
 )
 
 func TestServer(t *testing.T) {
+	logger := zaptest.NewLogger(t)
 	psrv, err := server.NewServer(conf.Config{
 		NodeID:     0,
 		NumShards:  10,
 		TestServer: true,
+		Logger:     logger,
 	})
 	require.NoError(t, err)
-	srv := grpc.NewServer(RegisterSessionManager())
+	srv := grpc.NewServer(RegisterSessionManager(logger))
 	defer srv.Stop()
-	service.RegisterPranaDBServiceServer(srv, New(psrv))
+	service.RegisterPranaDBServiceServer(srv, New(psrv, logger))
 	l := bufconn.Listen(1024 * 1024)
 	defer l.Close()
 	go func() {

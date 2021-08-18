@@ -4,13 +4,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/conf"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/conf"
 
 	dragon "github.com/squareup/pranadb/cluster/dragon"
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ var dataDir string
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Short() {
-		log.Println("-short: skipped")
+		fmt.Println("-short: skipped integration test")
 		return
 	}
 	var err error
@@ -159,7 +159,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 
 	require.Equal(t, expected, len(res))
 	for i, kvPair := range res {
-		log.Printf("key is: %s", string(kvPair.Key))
+		t.Logf("key is: %s", string(kvPair.Key))
 		expectedK := fmt.Sprintf("foo-06/bar-%02d", i)
 		expectedV := fmt.Sprintf("somevalue%02d", i)
 		require.Equal(t, expectedK, string(kvPair.Key))
@@ -218,7 +218,7 @@ func TestGetReleaseLock(t *testing.T) {
 	ok, err = dragon0.GetLock("/")
 	require.NoError(t, err)
 	require.True(t, ok)
-	log.Println("Ok here we go")
+	t.Log("Ok here we go")
 	ok, err = dragon1.GetLock("/schema1")
 	require.NoError(t, err)
 	require.False(t, ok)

@@ -2,13 +2,16 @@ package push
 
 import (
 	"fmt"
+	"reflect"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
+	"go.uber.org/zap"
+
 	//"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
-	"reflect"
 )
 
 type MaterializedView struct {
@@ -19,6 +22,7 @@ type MaterializedView struct {
 	cluster        cluster.Cluster
 	InternalTables []*common.InternalTableInfo
 	sharder        *sharder.Sharder
+	logger         *zap.Logger
 }
 
 // CreateMaterializedView creates the materialized view but does not register it in memory
@@ -30,6 +34,7 @@ func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.
 		schema:  schema,
 		cluster: pe.cluster,
 		sharder: pe.sharder,
+		logger:  pe.cfg.Logger,
 	}
 	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
 	if err != nil {

@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/squareup/pranadb/conf"
-	"log"
 	"net"
+
+	"github.com/squareup/pranadb/conf"
+	"go.uber.org/zap"
 
 	"github.com/alecthomas/kong"
 	konghcl "github.com/alecthomas/kong-hcl"
@@ -24,17 +25,19 @@ var cli struct {
 func main() {
 	kctx := kong.Parse(&cli, kong.Configuration(konghcl.Loader, "~/.pranadb.conf", "/etc/pranadb.conf"))
 
-	log.Printf("Starting PranaDB server on %s", cli.Bind)
+	logger := conf.NewLogger()
+	zap.ReplaceGlobals(logger)
+	logger.Info("Starting PranaDB server", zap.String("bind", cli.Bind))
 
 	l, err := net.Listen("tcp", cli.Bind)
 	kctx.FatalIfErrorf(err)
 
 	// TODO parse conf file into Config
-	psrv, err := server.NewServer(*(conf.NewTestConfig(0)))
+	psrv, err := server.NewServer(*(conf.NewTestConfig(0, logger)))
 	kctx.FatalIfErrorf(err)
-	pgsrv := wire.New(psrv)
+	pgsrv := wire.New(psrv, logger)
 
-	gsrv := grpc.NewServer(wire.RegisterSessionManager())
+	gsrv := grpc.NewServer(wire.RegisterSessionManager(logger))
 	reflection.Register(gsrv)
 	service.RegisterPranaDBServiceServer(gsrv, pgsrv)
 	err = gsrv.Serve(l)

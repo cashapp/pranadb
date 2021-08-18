@@ -6,6 +6,8 @@ import (
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/squareup/pranadb/notifier"
 
@@ -128,7 +130,7 @@ func TestLoader(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			clus := cluster.NewFakeCluster(1, 1)
 			notifier := notifier.NewFakeNotifier()
-			metaController, executor := runServer(t, clus, notifier)
+			metaController, executor, _ := runServer(t, clus, notifier)
 			expectedSchemas := make(map[string]*common.Schema)
 			for _, ddl := range test.ddl {
 				numTables := 0
@@ -150,11 +152,11 @@ func TestLoader(t *testing.T) {
 
 			// Restart the server
 			_ = clus.Stop()
-			metaController, executor = runServer(t, clus, notifier)
+			metaController, executor, logger := runServer(t, clus, notifier)
 			_, ok := metaController.GetSchema("test")
 			require.False(t, ok)
 
-			loader := NewLoader(metaController, executor.GetPushEngine(), executor.GetPullEngine())
+			loader := NewLoader(logger, metaController, executor.GetPushEngine(), executor.GetPullEngine())
 			require.NoError(t, loader.Start())
 
 			for _, schema := range test.ddl {
@@ -167,7 +169,7 @@ func TestLoader(t *testing.T) {
 	}
 }
 
-func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier) (*meta.Controller, *command.Executor) {
+func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier) (*meta.Controller, *command.Executor, *zap.Logger) {
 	t.Helper()
 	fakeKafka := kafka.NewFakeKafka()
 	_, err := fakeKafka.CreateTopic("testtopic", 10)
@@ -175,7 +177,8 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	config := conf.NewTestConfig(fakeKafka.ID)
+	logger := zaptest.NewLogger(t)
+	config := conf.NewTestConfig(fakeKafka.ID, logger)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
@@ -193,5 +196,5 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	err = shardr.Start()
 	require.NoError(t, err)
 
-	return metaController, ce
+	return metaController, ce, logger
 }

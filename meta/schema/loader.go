@@ -2,11 +2,12 @@ package schema
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
-	"log"
+	"go.uber.org/zap"
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
@@ -15,10 +16,12 @@ type Loader struct {
 	meta       *meta.Controller
 	pushEngine *push.PushEngine
 	queryExec  common.SimpleQueryExec
+	logger     *zap.Logger
 }
 
-func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.SimpleQueryExec) *Loader {
+func NewLoader(logger *zap.Logger, m *meta.Controller, push *push.PushEngine, queryExec common.SimpleQueryExec) *Loader {
 	return &Loader{
+		logger:     logger,
 		meta:       m,
 		pushEngine: push,
 		queryExec:  queryExec,
@@ -48,7 +51,7 @@ func (l *Loader) Start() error {
 		kind := row.GetString(1)
 		switch kind {
 		case meta.TableKindSource:
-			log.Println("Reading source from storage")
+			l.logger.Info("Reading source from storage")
 			info := meta.DecodeSourceInfoRow(&row)
 			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {

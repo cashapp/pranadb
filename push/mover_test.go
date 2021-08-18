@@ -2,8 +2,10 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/conf"
 	"testing"
+
+	"github.com/squareup/pranadb/conf"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/table"
@@ -354,7 +356,7 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	clus := cluster.NewFakeCluster(1, 10)
 	metaController := meta.NewController(clus)
 	shard := sharder.NewSharder(clus)
-	config := conf.NewTestConfig(0)
+	config := conf.NewTestConfig(0, zaptest.NewLogger(t))
 	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{})
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})

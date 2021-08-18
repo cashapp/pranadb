@@ -3,9 +3,10 @@ package kafka
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"time"
 )
 
 // For ingested rows, timestamp starts at this value and increments by one second for each row
@@ -32,7 +33,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ingested, committed := topic.TotalMessages(groupID)
 		// All the messages have been ingested and committed
-		//log.Printf("start committed %d ingested %d committed %d ingested %d", c, ingestedStart, committed, ingested)
+		//zap.S().Debugf("start committed %d ingested %d committed %d ingested %d", c, ingestedStart, committed, ingested)
 		if (ingested-ingestedStart == rows.RowCount()) && (ingested-committed) == 0 {
 			return true, nil
 		}

@@ -3,11 +3,12 @@ package common
 import (
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
+
+	"go.uber.org/zap"
 )
 
 type ByteSliceMap struct {
@@ -58,7 +59,7 @@ func InvokeCloser(closer io.Closer) {
 	if closer != nil {
 		err := closer.Close()
 		if err != nil {
-			log.Printf("failed to close closer %v", err)
+			zap.L().Info("failed to close closer", zap.Error(err))
 		}
 	}
 }

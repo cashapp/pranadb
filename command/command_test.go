@@ -13,6 +13,7 @@ import (
 	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/meta"
@@ -36,7 +37,7 @@ func TestCommandExecutorExecuteStatement(t *testing.T) {
 	require.NoError(t, err)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	config := conf.NewTestConfig(fakeKafka.ID)
+	config := conf.NewTestConfig(fakeKafka.ID, zaptest.NewLogger(t))
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
@@ -162,7 +163,7 @@ func TestCommandExecutorPrepareQuery(t *testing.T) {
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
-	config := conf.NewTestConfig(fakeKafka.ID)
+	config := conf.NewTestConfig(fakeKafka.ID, zaptest.NewLogger(t))
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
 	fakeNotifier := notifier.NewFakeNotifier()
 	ce := NewCommandExecutor(metaController, pushEngine, pullEngine, clus, fakeNotifier)

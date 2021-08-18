@@ -2,15 +2,16 @@ package kafka
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/sharder"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/sharder"
+	"go.uber.org/zap"
 )
 
 const maxBufferedMessagesPerPartition = 10000
@@ -268,7 +269,7 @@ func (g *Group) checkInjectFailure() error {
 	if g.failureEnd != nil {
 
 		if time.Now().Sub(*g.failureEnd) >= 0 {
-			log.Println("Failure injection has ended")
+			zap.L().Info("Failure injection has ended")
 			g.failureEnd = nil
 			return nil
 		}

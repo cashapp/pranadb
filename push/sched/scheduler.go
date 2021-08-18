@@ -1,8 +1,9 @@
 package sched
 
 import (
-	"log"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 type ShardScheduler struct {
@@ -10,6 +11,7 @@ type ShardScheduler struct {
 	actions  chan *actionHolder
 	stopLock sync.Mutex
 	stopped  bool
+	logger   *zap.Logger
 }
 
 type Action func() error
@@ -19,10 +21,11 @@ type actionHolder struct {
 	errChan chan error
 }
 
-func NewShardScheduler(shardID uint64) *ShardScheduler {
+func NewShardScheduler(shardID uint64, logger *zap.Logger) *ShardScheduler {
 	return &ShardScheduler{
 		shardID: shardID,
 		actions: make(chan *actionHolder, 100), // TODO make configurable
+		logger:  logger,
 	}
 }
 
@@ -51,7 +54,7 @@ func (s *ShardScheduler) runLoop() {
 		if holder.errChan != nil {
 			holder.errChan <- err
 		} else if err != nil {
-			log.Printf("Failed to execute action: %v", err)
+			s.logger.Error("Failed to execute action", zap.Error(err))
 		}
 	}
 }

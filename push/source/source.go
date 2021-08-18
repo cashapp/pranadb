@@ -2,6 +2,9 @@ package source
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
@@ -9,9 +12,7 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
-	"log"
-	"sync"
-	"time"
+	"go.uber.org/zap"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -49,6 +50,7 @@ type Source struct {
 	lock                    sync.Mutex
 	lastRestartDelay        time.Duration
 	started                 bool
+	logger                  *zap.Logger
 }
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
@@ -78,7 +80,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		msgProvFact = kafka.NewCfltMessageProviderFactory(ti.TopicName, props, groupID)
+		msgProvFact = kafka.NewCfltMessageProviderFactory(ti.TopicName, props, groupID, cfg.Logger)
 	default:
 		return nil, errors.NewUserErrorF(errors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
@@ -92,6 +94,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
 		startupCommittedOffsets: make(map[int32]int64),
+		logger:                  cfg.Logger,
 	}, nil
 }
 
@@ -130,7 +133,7 @@ func (s *Source) Start() error {
 		if err != nil {
 			return err
 		}
-		consumer, err := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
+		consumer, err := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets, s.logger)
 		if err != nil {
 			return err
 		}
@@ -206,7 +209,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 	if !s.started {
 		return
 	}
-	log.Printf("Failure in consumer %v source will be stopped", err)
+	s.logger.Error("Failure in consumer, source will be stopped", zap.Error(err))
 	if err2 := s.stop(); err2 != nil {
 		return
 	}
@@ -220,11 +223,11 @@ func (s *Source) consumerError(err error, clientError bool) {
 		} else {
 			delay = initialRestartDelay
 		}
-		log.Printf("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
+		s.logger.Sugar().Warn("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
 		time.AfterFunc(delay, func() {
 			err := s.Start()
 			if err != nil {
-				log.Printf("Failed to start source %v", err)
+				s.logger.Error("Failed to start source", zap.Error(err))
 			}
 		})
 	}

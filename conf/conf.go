@@ -3,6 +3,8 @@ package conf
 import (
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -33,6 +35,7 @@ type Config struct {
 	LocksCompactionOverhead    int
 	Debug                      bool
 	NotifierHeartbeatInterval  time.Duration
+	Logger                     *zap.Logger
 }
 
 type BrokerConfigs map[string]BrokerConfig // Key is broker name which is referred to in the source descriptor
@@ -58,10 +61,11 @@ func NewConfig() *Config {
 		LocksSnapshotEntries:       DefaultLocksSnapshotEntries,
 		LocksCompactionOverhead:    DefaultLocksCompactionOverhead,
 		NotifierHeartbeatInterval:  DefaultNotifierHeartbeatInterval,
+		Logger:                     NewLogger(),
 	}
 }
 
-func NewTestConfig(fakeKafkaID int64) *Config {
+func NewTestConfig(fakeKafkaID int64, logger *zap.Logger) *Config {
 	return &Config{
 		NodeID:     0,
 		NumShards:  10,
@@ -74,5 +78,14 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 				},
 			},
 		},
+		Logger: logger,
 	}
+}
+
+func NewLogger() *zap.Logger {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	return logger
 }

@@ -3,7 +3,6 @@ package table
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"log"
 )
 
 func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *cluster.WriteBatch) error {
@@ -35,7 +34,6 @@ func LookupInPk(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int
 		return nil, err
 	}
 
-	log.Printf("Looking up key %v in table %d", buffer, tableInfo.ID)
 	buffRes, err := storage.LocalGet(buffer)
 	if err != nil {
 		return nil, err
@@ -43,7 +41,6 @@ func LookupInPk(tableInfo *common.TableInfo, key common.Key, keyColIndexes []int
 	if buffRes == nil {
 		return nil, nil
 	}
-	log.Printf("Got k:%v v:%v", buffer, buffRes)
 
 	rows := rowsFactory.NewRows(1)
 	err = common.DecodeRow(buffRes, tableInfo.ColumnTypes, rows)

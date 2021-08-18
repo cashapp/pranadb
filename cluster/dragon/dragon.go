@@ -3,17 +3,18 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/lni/dragonboat/v3/client"
-	"github.com/squareup/pranadb/conf"
-	"log"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/lni/dragonboat/v3/client"
+	"github.com/squareup/pranadb/conf"
+	"go.uber.org/zap"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/logger"
+	dblogger "github.com/lni/dragonboat/v3/logger"
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/pkg/errors"
@@ -47,7 +48,7 @@ func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
-	dragon := Dragon{cnf: cnf}
+	dragon := Dragon{cnf: cnf, logger: cnf.Logger}
 	dragon.generateNodesAndShards(cnf.NumShards, cnf.ReplicationFactor)
 	return &dragon, nil
 }
@@ -55,6 +56,7 @@ func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
 type Dragon struct {
 	lock                         sync.RWMutex
 	cnf                          conf.Config
+	logger                       *zap.Logger
 	ingestDir                    string
 	pebble                       *pebble.DB
 	nh                           *dragonboat.NodeHost
@@ -70,11 +72,11 @@ type Dragon struct {
 
 func init() {
 	// This should be customizable, but these are good defaults
-	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
-	logger.GetLogger("raft").SetLevel(logger.ERROR)
-	logger.GetLogger("rsm").SetLevel(logger.ERROR)
-	logger.GetLogger("transport").SetLevel(logger.WARNING)
-	logger.GetLogger("grpc").SetLevel(logger.WARNING)
+	dblogger.GetLogger("dragonboat").SetLevel(dblogger.WARNING)
+	dblogger.GetLogger("raft").SetLevel(dblogger.ERROR)
+	dblogger.GetLogger("rsm").SetLevel(dblogger.ERROR)
+	dblogger.GetLogger("transport").SetLevel(dblogger.WARNING)
+	dblogger.GetLogger("grpc").SetLevel(dblogger.WARNING)
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -268,7 +270,7 @@ func (d *Dragon) Start() error {
 	}
 
 	d.started = true
-	log.Printf("Dragon node %d started", d.cnf.NodeID)
+	d.logger.Info("Dragon node started", zap.Int("nodeID", d.cnf.NodeID))
 	return nil
 }
 
@@ -646,7 +648,7 @@ func (d *Dragon) proposeWithRetry(ctx context.Context,
 	})
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
-		panic(fmt.Sprintf("not a sm result %v", smRes))
+		panic(fmt.Sprintf("not a sm result %+v", smRes))
 	}
 	return smRes, err
 }
@@ -663,7 +665,7 @@ func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
 	go func() {
 		err := d.nodeRemovedFromCluster(int(info.NodeID-1), info.ClusterID)
 		if err != nil {
-			log.Printf("failed to remove node from cluster %v", err)
+			d.logger.Info("failed to remove node from cluster", zap.Error(err))
 		}
 	}()
 }

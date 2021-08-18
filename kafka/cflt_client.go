@@ -2,18 +2,20 @@ package kafka
 
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"log"
+	"go.uber.org/zap"
+
 	"sync"
 	"time"
 )
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
 
-func NewCfltMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewCfltMessageProviderFactory(topicName string, props map[string]string, groupID string, logger *zap.Logger) MessageProviderFactory {
 	return &CfltMessageProviderFactory{
 		topicName: topicName,
 		props:     props,
 		groupID:   groupID,
+		logger:    logger,
 	}
 }
 
@@ -21,6 +23,7 @@ type CfltMessageProviderFactory struct {
 	topicName string
 	props     map[string]string
 	groupID   string
+	logger    *zap.Logger
 }
 
 func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
@@ -37,7 +40,7 @@ func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, e
 	if err != nil {
 		return nil, err
 	}
-	kmp := &KafkaMessageProvider{}
+	kmp := &KafkaMessageProvider{logger: krpf.logger}
 	if err := consumer.Subscribe(krpf.topicName, kmp.RebalanceOccurred); err != nil {
 		return nil, err
 	}
@@ -51,6 +54,7 @@ type KafkaMessageProvider struct {
 	topicName string
 	paCb      PartitionsCallback
 	prCb      PartitionsCallback
+	logger    *zap.Logger
 }
 
 func (k *KafkaMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
@@ -65,7 +69,7 @@ func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kaf
 	k.lock.Lock()
 	defer k.lock.Unlock()
 	// TODO prevent getMessage until some time after rebalance event
-	log.Printf("Rebalance occurred %s", event.String())
+	k.logger.Info("Rebalance occurred", zap.String("event", event.String()))
 
 	switch event.(type) {
 	case kafka.AssignedPartitions:

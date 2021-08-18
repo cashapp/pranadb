@@ -2,9 +2,9 @@ package wire
 
 import (
 	"context"
-	"log"
 	"sync"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 
@@ -19,10 +19,10 @@ var (
 )
 
 // SetSession associated with the current client connection.
-func SetSession(ctx context.Context, session *sess.Session) {
+func SetSession(ctx context.Context, logger *zap.Logger, session *sess.Session) {
 	sm := sessionManagerFromContext(ctx)
 	sessionKey := sessionKeyFromContext(ctx)
-	log.Printf("Created session for %s", sessionKey)
+	logger.Info("Created session", zap.String("sessionKey", sessionKey))
 	sm.sessions.Store(sessionKey, session)
 }
 
@@ -39,11 +39,12 @@ func SessionFromContext(ctx context.Context) *sess.Session {
 
 type sessionManager struct {
 	sessions sync.Map
+	logger   *zap.Logger
 }
 
 // RegisterSessionManager is passed to grpc.NewServer() to register the SessionManager.
-func RegisterSessionManager() grpc.ServerOption {
-	return grpc.StatsHandler(&sessionManager{})
+func RegisterSessionManager(logger *zap.Logger) grpc.ServerOption {
+	return grpc.StatsHandler(&sessionManager{logger: logger})
 }
 
 var _ stats.Handler = &sessionManager{}
@@ -59,14 +60,14 @@ func (s *sessionManager) TagConn(ctx context.Context, info *stats.ConnTagInfo) c
 	sessionKey := info.RemoteAddr.String()
 	ctx = context.WithValue(ctx, sessionConnKey, sessionKey)
 	ctx = context.WithValue(ctx, sessionListenerKey, s)
-	log.Printf("Created session for %s", sessionKey)
+	s.logger.Info("Created session", zap.String("sessionKey", sessionKey))
 	return ctx
 }
 
 func (s *sessionManager) HandleConn(ctx context.Context, connStats stats.ConnStats) {
 	if _, ok := connStats.(*stats.ConnEnd); ok {
 		sessionKey := sessionKeyFromContext(ctx)
-		log.Printf("Closed session for %s", sessionKey)
+		s.logger.Info("Closed session", zap.String("sessionKey", sessionKey))
 		s.sessions.Delete(sessionKey)
 	}
 }

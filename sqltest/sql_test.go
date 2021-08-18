@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"sort"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
@@ -93,17 +93,17 @@ func (w *sqlTestsuite) TestSQL() {
 }
 
 func (w *sqlTestsuite) restartCluster() {
-	log.Println("Restarting cluster")
+	zap.S().Info("Restarting cluster")
 	w.stopCluster()
-	log.Println("Stopped cluster")
+	zap.S().Info("Stopped cluster")
 	w.startCluster()
-	log.Println("Restarted it")
+	zap.S().Info("Restarted it")
 }
 
 func (w *sqlTestsuite) setupPranaCluster() {
 
 	if w.fakeCluster && w.numNodes != 1 {
-		log.Fatal("fake cluster only supports one node")
+		zap.S().Fatal("fake cluster only supports one node")
 	}
 
 	brokerConfigs := map[string]conf.BrokerConfig{
@@ -123,9 +123,10 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			NumShards:    10,
 			TestServer:   true,
 			KafkaBrokers: brokerConfigs,
+			Logger:       zap.L(),
 		})
 		if err != nil {
-			log.Fatal(err)
+			zap.S().Fatal(err)
 		}
 		w.pranaCluster[0] = s
 	} else {
@@ -161,7 +162,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 			s, err := server.NewServer(*cnf)
 			if err != nil {
-				log.Fatal(err)
+				zap.S().Fatal(err)
 			}
 			w.pranaCluster[i] = s
 		}
@@ -178,7 +179,7 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 
 	dataDir, err := ioutil.TempDir("", "sql-test")
 	if err != nil {
-		log.Fatal(err)
+		zap.S().Fatal(err)
 	}
 	w.dataDir = dataDir
 
@@ -186,7 +187,7 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 
 	files, err := ioutil.ReadDir("./testdata")
 	if err != nil {
-		log.Fatal(err)
+		zap.S().Fatal(err)
 	}
 	sort.SliceStable(files, func(i, j int) bool {
 		return strings.Compare(files[i].Name(), files[j].Name()) < 0
@@ -199,12 +200,12 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 			continue
 		}
 		if !strings.HasSuffix(fileName, "_test_data.txt") && !strings.HasSuffix(fileName, "_test_out.txt") && !strings.HasSuffix(fileName, "_test_script.txt") {
-			log.Fatalf("test file %s has invalid name. test files should be of the form <test_name>_test_data.txt, <test_name>_test_script.txt or <test_name>_test_out.txt,", fileName)
+			zap.S().Fatalf("test file %s has invalid name. test files should be of the form <test_name>_test_data.txt, <test_name>_test_script.txt or <test_name>_test_out.txt,", fileName)
 		}
 		if (currTestName == "") || !strings.HasPrefix(fileName, currTestName) {
 			index := strings.Index(fileName, "_test_")
 			if index == -1 {
-				log.Fatalf("invalid test file %s", fileName)
+				zap.S().Fatalf("invalid test file %s", fileName)
 			}
 			currTestName = fileName[:index]
 			currSQLTest = &sqlTest{testName: currTestName, testSuite: w, rnd: rand.New(rand.NewSource(time.Now().UTC().UnixNano()))}
@@ -243,7 +244,7 @@ func (w *sqlTestsuite) stopCluster() {
 	for _, prana := range w.pranaCluster {
 		err := prana.Stop()
 		if err != nil {
-			log.Fatal(err)
+			zap.S().Fatal(err)
 		}
 	}
 }
@@ -258,7 +259,7 @@ func (w *sqlTestsuite) startCluster() {
 		go func() {
 			err := prana.Start()
 			if err != nil {
-				log.Fatal(err)
+				zap.S().Fatal(err)
 			}
 			wg.Done()
 		}()
@@ -271,7 +272,7 @@ func (w *sqlTestsuite) teardown() {
 	if w.dataDir != "" {
 		err := os.RemoveAll(w.dataDir)
 		if err != nil {
-			log.Fatal(err)
+			zap.S().Fatal(err)
 		}
 	}
 }
@@ -295,7 +296,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.Printf("Running sql test %s", st.testName)
+	zap.S().Infof("Running sql test %s", st.testName)
 
 	require := st.testSuite.suite.Require()
 
@@ -326,7 +327,7 @@ func (st *sqlTest) run() {
 
 //nolint:gocyclo
 func (st *sqlTest) runTestIteration(require *require.Assertions, commands []string, iter int) int {
-	log.Printf("Running test iteration %d", iter)
+	zap.S().Infof("Running test iteration %d", iter)
 	start := time.Now()
 	st.prana = st.choosePrana()
 	st.session = st.createSession(st.prana)
@@ -369,7 +370,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 	}
 
-	log.Printf("Test output is:\n%s", st.output.String())
+	zap.S().Infof("Test output is:\n%s", st.output.String())
 
 	outfile, closeFunc := openFile("./testdata/" + st.outFile)
 	defer closeFunc()
@@ -431,9 +432,9 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		topicNames := st.testSuite.fakeKafka.GetTopicNames()
 		if len(topicNames) > 0 {
-			log.Println("Topics left at end of test run - please make sure you delete them at the end of your script")
+			zap.S().Info("Topics left at end of test run - please make sure you delete them at the end of your script")
 			for _, name := range topicNames {
-				log.Printf("Topic %s", name)
+				zap.S().Infof("Topic %s", name)
 			}
 		}
 		require.Equal(0, len(topicNames), "Topics left at end of test run")
@@ -445,7 +446,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
 	}
 	dur := end.Sub(start)
-	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
+	zap.S().Infof("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
 
@@ -458,7 +459,7 @@ func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Serv
 		require.NoError(err)
 		if displayRows && len(pairs) > 0 {
 			for _, pair := range pairs {
-				log.Printf("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
+				zap.S().Infof("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
 			}
 			require.Equal(0, len(pairs), fmt.Sprintf("Table data left at end of test for shard %d", shardID))
 		}
@@ -553,7 +554,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 }
 
 func (st *sqlTest) executeLoadData(require *require.Assertions, command string) {
-	log.Printf("Executing load data %s", command)
+	zap.S().Infof("Executing load data %s", command)
 	start := time.Now()
 	datasetName := command[12:]
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
@@ -564,7 +565,7 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	st.waitForProcessingToComplete(require)
 	end := time.Now()
 	dur := end.Sub(start)
-	log.Printf("Load data %s execute time ms %d", command, dur.Milliseconds())
+	zap.S().Infof("Load data %s execute time ms %d", command, dur.Milliseconds())
 }
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
@@ -587,7 +588,7 @@ func (st *sqlTest) executeCreateTopic(require *require.Assertions, command strin
 	}
 	_, err := st.testSuite.fakeKafka.CreateTopic(topicName, int(partitions))
 	require.NoError(err)
-	log.Printf("Created topic %s partitions %d", topicName, partitions)
+	zap.S().Infof("Created topic %s partitions %d", topicName, partitions)
 }
 
 func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command string) {
@@ -597,7 +598,7 @@ func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command strin
 	topicName := parts[2]
 	err := st.testSuite.fakeKafka.DeleteTopic(topicName)
 	require.NoError(err)
-	log.Printf("Deleted topic %s ", topicName)
+	zap.S().Infof("Deleted topic %s ", topicName)
 }
 
 func (st *sqlTest) executeResetOffets(require *require.Assertions, command string) {
@@ -619,7 +620,7 @@ func (st *sqlTest) executeRestartCluster() {
 }
 
 func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string) {
-	log.Println("Executing kafka fail")
+	zap.S().Info("Executing kafka fail")
 	parts := strings.Split(command, " ")
 	lp := len(parts)
 	require.True(lp == 5, "Invalid kafka fail, should be --kafka fail topic_name source_name fail_time")
@@ -644,13 +645,13 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 }
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
-	log.Printf("sqltest execute statement %s", statement)
+	zap.S().Infof("sqltest execute statement %s", statement)
 	start := time.Now()
 	exec, err := st.prana.GetCommandExecutor().ExecuteSQLStatement(st.session, statement)
 	if err != nil {
 		ue, ok := err.(errors.UserError)
 		if ok {
-			log.Printf("failed to execute statement %s %v", statement, ue)
+			zap.S().Infof("failed to execute statement %s %v", statement, ue)
 			st.output.WriteString(ue.Error() + "\n")
 			return
 		}
@@ -678,7 +679,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	}
 	end := time.Now()
 	dur := end.Sub(start)
-	log.Printf("Statement %s execute time ms %d", statement, dur.Milliseconds())
+	zap.S().Infof("Statement %s execute time ms %d", statement, dur.Milliseconds())
 }
 
 func (st *sqlTest) choosePrana() *server.Server {
@@ -706,11 +707,11 @@ func trimBothEnds(str string) string {
 func openFile(fileName string) (*os.File, func()) {
 	file, err := os.Open(fileName)
 	if err != nil {
-		log.Fatal(err)
+		zap.S().Fatal(err)
 	}
 	closeFunc := func() {
 		if err = file.Close(); err != nil {
-			log.Fatal(err)
+			zap.S().Fatal(err)
 		}
 	}
 	return file, closeFunc

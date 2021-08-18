@@ -2,11 +2,12 @@ package notifier
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/common"
-	"log"
 	"net"
 	"sync"
+
+	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/common"
+	"go.uber.org/zap"
 )
 
 const (
@@ -22,14 +23,15 @@ type Server interface {
 	RegisterNotificationListener(notificationType NotificationType, listener NotificationListener)
 }
 
-func NewServer(listenAddress string) Server {
-	return newServer(listenAddress)
+func NewServer(listenAddress string, logger *zap.Logger) Server {
+	return newServer(listenAddress, logger)
 }
 
-func newServer(listenAddress string) *server {
+func newServer(listenAddress string, logger *zap.Logger) *server {
 	return &server{
 		listenAddress: listenAddress,
 		acceptLoopCh:  make(chan struct{}, 1),
+		logger:        logger,
 	}
 }
 
@@ -42,6 +44,7 @@ type server struct {
 	connections       sync.Map
 	notifListeners    sync.Map
 	responsesDisabled common.AtomicBool
+	logger            *zap.Logger
 }
 
 func (s *server) Start() error {
@@ -68,8 +71,9 @@ func (s *server) acceptLoop() {
 			break
 		}
 		c := &connection{
-			conn: conn,
-			s:    s,
+			conn:   conn,
+			s:      s,
+			logger: s.logger,
 		}
 		s.connections.Store(c, struct{}{})
 		c.start()
@@ -136,6 +140,7 @@ type connection struct {
 	s      *server
 	conn   net.Conn
 	loopCh chan error
+	logger *zap.Logger
 }
 
 func (c *connection) start() {
@@ -164,7 +169,7 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	err := listener.HandleNotification(nf.notif)
 	ok := true
 	if err != nil {
-		log.Printf("Failed to handle notification %v", err)
+		c.logger.Error("Failed to handle notification", zap.Error(err))
 		ok = false
 	}
 	if nf.requiresResponse && !c.s.responsesDisabled.Get() {

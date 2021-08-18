@@ -3,7 +3,9 @@ package wire
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -19,17 +21,18 @@ import (
 // Server over gRPC.
 type Server struct {
 	server *server.Server
+	logger *zap.Logger
 }
 
-func New(server *server.Server) *Server {
-	return &Server{server}
+func New(server *server.Server, logger *zap.Logger) *Server {
+	return &Server{server, logger}
 }
 
 var _ service.PranaDBServiceServer = &Server{}
 
 func (s *Server) Use(ctx context.Context, request *service.UseRequest) (*emptypb.Empty, error) {
 	session := s.server.GetCommandExecutor().CreateSession(request.Schema)
-	SetSession(ctx, session)
+	SetSession(ctx, s.logger, session)
 	return &emptypb.Empty{}, nil
 }
 
@@ -43,7 +46,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	// Have we switched schemas?
 	if newSession != nil {
 		session = newSession
-		SetSession(stream.Context(), session)
+		SetSession(stream.Context(), s.logger, session)
 		if executor == nil {
 			return nil
 		}

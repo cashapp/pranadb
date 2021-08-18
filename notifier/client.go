@@ -1,14 +1,16 @@
 package notifier
 
 import (
-	"github.com/golang/protobuf/proto"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/common"
-	"log"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/common"
+	"go.uber.org/zap"
 )
 
 const (
@@ -22,12 +24,13 @@ type Client interface {
 	Stop() error
 }
 
-func NewClient(heartbeatInterval time.Duration, serverAddresses ...string) Client {
-	return newClient(heartbeatInterval, serverAddresses...)
+func NewClient(logger *zap.Logger, heartbeatInterval time.Duration, serverAddresses ...string) Client {
+	return newClient(logger, heartbeatInterval, serverAddresses...)
 }
 
-func newClient(heartbeatInterval time.Duration, serverAddresses ...string) *client {
+func newClient(logger *zap.Logger, heartbeatInterval time.Duration, serverAddresses ...string) *client {
 	return &client{
+		logger:             logger,
 		serverAddresses:    serverAddresses,
 		connections:        make(map[string]*clientConnection),
 		unavailableServers: make(map[string]time.Time),
@@ -46,6 +49,7 @@ type client struct {
 	responseChannels   sync.Map
 	msgSeq             int64
 	heartbeatInterval  time.Duration
+	logger             *zap.Logger
 }
 
 func (c *client) connectionClosed(conn *clientConnection) {
@@ -63,7 +67,7 @@ func (c *client) makeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
 	// Unavailable ones will be retried after a delay
-	log.Printf("Server became unavailable %s", serverAddress)
+	c.logger.Info("Server became unavailable", zap.String("addr", serverAddress))
 	delete(c.connections, serverAddress)
 	delete(c.availableServers, serverAddress)
 	c.unavailableServers[serverAddress] = time.Now()
@@ -107,7 +111,7 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 		for serverAddress, failTime := range c.unavailableServers {
 			if now.Sub(failTime) >= connectionRetryBackoff {
 				// Put the server back in the available set
-				log.Printf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
+				c.logger.Sugar().Warn("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
 				delete(c.unavailableServers, serverAddress)
 				c.availableServers[serverAddress] = struct{}{}
 			}
@@ -133,6 +137,7 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 				client:        c,
 				serverAddress: serverAddress,
 				conn:          nc,
+				logger:        c.logger,
 			}
 			clientConn.start()
 			c.connections[serverAddress] = clientConn
@@ -294,6 +299,7 @@ type clientConnection struct {
 	loopCh        chan error
 	hbTimer       atomic.Value
 	hbReceived    common.AtomicBool
+	logger        *zap.Logger
 }
 
 func (cc *clientConnection) setHbTimer(t *time.Timer) {
@@ -321,7 +327,7 @@ func (cc *clientConnection) stop() {
 	}
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
-		log.Printf("Failed to close connection %v", err)
+		cc.logger.Warn("Failed to close connection", zap.Error(err))
 	}
 	<-cc.loopCh
 	cc.client.connectionClosed(cc)
@@ -329,7 +335,7 @@ func (cc *clientConnection) stop() {
 
 func (cc *clientConnection) sendHeartbeat() {
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
-		log.Printf("failed to send heartbeat %v", err)
+		cc.logger.Error("failed to send heartbeat", zap.Error(err))
 		cc.heartbeatFailed()
 		return
 	}
@@ -338,7 +344,7 @@ func (cc *clientConnection) sendHeartbeat() {
 		if cc.hbReceived.Get() {
 			cc.sendHeartbeat()
 		} else {
-			log.Printf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
+			cc.logger.Error(fmt.Sprintf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds()))
 			cc.heartbeatFailed()
 		}
 	})

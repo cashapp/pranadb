@@ -4,7 +4,8 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/sched"
-	"log"
+	"go.uber.org/zap"
+
 	"time"
 )
 
@@ -19,10 +20,11 @@ type MessageConsumer struct {
 	started                 common.AtomicBool
 	running                 common.AtomicBool
 	messageParser           *MessageParser
+	logger                  *zap.Logger
 }
 
 func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
-	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) (*MessageConsumer, error) {
+	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64, logger *zap.Logger) (*MessageConsumer, error) {
 	lcm := make(map[int32]int64)
 	for k, v := range startupCommitOffsets {
 		lcm[k] = v
@@ -171,8 +173,13 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.
 			// In this case we log a warning, and ignore the message, the offset will be committed
-			log.Printf("Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
-				" Message will be ignored", m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
+			m.logger.Warn("Duplicate message delivery attempted. Message will be ignored.",
+				zap.Int("node", m.source.cluster.GetNodeID()),
+				zap.String("schema", m.source.sourceInfo.SchemaName),
+				zap.String("source", m.source.sourceInfo.Name),
+				zap.String("topic", m.source.sourceInfo.TopicInfo.TopicName),
+				zap.Int32("partition", partID),
+				zap.Int64("offset", msg.PartInfo.Offset))
 			continue
 		}
 

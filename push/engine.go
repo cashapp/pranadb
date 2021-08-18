@@ -3,14 +3,15 @@ package push
 import (
 	"errors"
 	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/source"
-	"log"
-	"math/rand"
-	"sync"
-	"time"
+	"go.uber.org/zap"
 
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/table"
@@ -57,6 +58,7 @@ type shardListener struct {
 	shardID uint64
 	p       *PushEngine
 	sched   *sched.ShardScheduler
+	logger  *zap.Logger
 }
 
 // TODO do we even need these?
@@ -196,7 +198,7 @@ func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
 	defer p.localShardsLock.Unlock()
-	sh := sched.NewShardScheduler(shardID)
+	sh := sched.NewShardScheduler(shardID, p.cfg.Logger)
 	sh.Start()
 	p.schedulers[shardID] = sh
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
@@ -204,6 +206,7 @@ func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 		shardID: shardID,
 		p:       p,
 		sched:   sh,
+		logger:  p.cfg.Logger,
 	}
 }
 
@@ -225,10 +228,10 @@ func (s *shardListener) maybeHandleRemoteBatch() error {
 		// It's possible an error can occur in handling received rows if the source or aggregate table is not
 		// yet registered - this could be the case if rows are forwarded right after startup - in this case we can just
 		// retry
-		log.Printf("failed to handle received rows %v will retry after delay", err)
+		s.logger.Warn("failed to handle received rows, will retry after delay", zap.Error(err))
 		time.AfterFunc(remoteBatchRetryDelay, func() {
 			if err := s.maybeHandleRemoteBatch(); err != nil {
-				log.Printf("failed to process remote batch %v", err)
+				s.logger.Error("failed to process remote batch %v", zap.Error(err))
 			}
 		})
 		return nil

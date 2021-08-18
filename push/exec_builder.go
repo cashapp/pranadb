@@ -3,13 +3,14 @@ package push
 import (
 	"errors"
 	"fmt"
+
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
-	"log"
+	"go.uber.org/zap"
 )
 
 // Builds the push DAG but does not register anything in memory
@@ -123,7 +124,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 
 		tableID := seqGenerator.GenerateSequence()
 
-		log.Printf("Agg table id is %d", tableID)
+		m.logger.Info("Agg table created", zap.Uint64("tableID", tableID))
 
 		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
 		aggSequence++

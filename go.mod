@@ -24,6 +24,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tikv/pd v1.1.0-beta.0.20210323123936-c8fa72502f16 // indirect
+	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.23.0
