@@ -43,6 +43,7 @@ func (c *CreateMVCommand) LockName() string {
 }
 
 func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string, tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
+	pl.RefreshInfoSchema()
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
@@ -54,6 +55,7 @@ func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *com
 }
 
 func NewCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createMVSQL string, tableSequences []uint64) *CreateMVCommand {
+	pl.RefreshInfoSchema()
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
@@ -91,16 +93,19 @@ func (c *CreateMVCommand) OnPrepare() error {
 		c.mv = mv
 	}
 
-	// TODO Build the MV state from it's sources
-
-	return nil
+	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
+	// during the MV fill process. This must be done on all nodes before we start the fill
+	// We we do not join the MV up to it's feeding sources or MVs at this point
+	return c.mv.Connect(false, true)
 }
 
 func (c *CreateMVCommand) OnCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if err := c.mv.Connect(); err != nil {
+	// Fill the MV from it's feeding sources and MVs
+	// Before the fill completes the MV will be connected to it's feeding sources or MVs
+	if err := c.mv.Fill(); err != nil {
 		return err
 	}
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {

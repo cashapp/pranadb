@@ -79,9 +79,11 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 
 	switch {
 	case ast.Select != "":
+		session.PullPlanner().RefreshInfoSchema()
 		dag, err := e.pullEngine.BuildPullQuery(session, sql)
 		return dag, errors.MaybeAddStack(err)
 	case ast.Prepare != "":
+		session.PullPlanner().RefreshInfoSchema()
 		return e.execPrepare(session, ast.Prepare)
 	case ast.Execute != "":
 		return e.execExecute(session, ast.Execute)

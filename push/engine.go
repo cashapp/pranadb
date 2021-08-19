@@ -322,17 +322,20 @@ func (p *PushEngine) checkForRowsToForward() error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *PushEngine) WaitForProcessingToComplete() error {
 
+	log.Println("Waiting for schedulers to stop")
 	err := p.waitForSchedulers()
 	if err != nil {
 		return err
 	}
 
+	log.Println("Waiting for no rows in forwarder table")
 	// Wait for no rows in the forwarder table
 	err = p.waitForNoRowsInTable(common.ForwarderTableID)
 	if err != nil {
 		return err
 	}
 
+	log.Println("Waiting for no rows in receiver table")
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
@@ -349,7 +352,7 @@ func (p *PushEngine) waitForSchedulers() error {
 	// Wait for schedulers to complete processing anything they're doing
 	chans := make([]chan struct{}, 0, len(p.schedulers))
 	for _, sched := range p.schedulers {
-		ch := make(chan struct{})
+		ch := make(chan struct{}, 1)
 		chans = append(chans, ch)
 		sched.ScheduleAction(func() error {
 			ch <- struct{}{}
@@ -370,7 +373,7 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, err
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 30*time.Second, 100*time.Millisecond)
 	if !ok {
 		return errors.New("timed out waiting for condition")
 	}
@@ -453,4 +456,18 @@ func (p *PushEngine) createMaps() {
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
+}
+
+func (p *PushEngine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	schedulers := make(map[uint64]*sched.ShardScheduler, len(p.localLeaderShards))
+	for _, lls := range p.localLeaderShards {
+		sched, ok := p.schedulers[lls]
+		if !ok {
+			return nil, fmt.Errorf("no scheduler for local leader shard %d", lls)
+		}
+		schedulers[lls] = sched
+	}
+	return schedulers, nil
 }

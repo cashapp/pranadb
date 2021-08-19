@@ -87,8 +87,6 @@ func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64,
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
 	session.PullPlanner().SetPSArgs(args)
-	// And we need to refresh the info schema - so the query works against the state of the database metadata as of now
-	session.PullPlanner().RefreshInfoSchema()
 	// We also need to set them on the queryinfo - this is what gets passed remotely to the target node
 	session.QueryInfo.PsArgs = args
 	if ps.Dag == nil {
@@ -125,7 +123,6 @@ func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (exec.P
 	qi.SchemaName = session.Schema.Name
 	qi.Query = query
 	qi.IsPs = false
-	session.PullPlanner().RefreshInfoSchema()
 	return p.buildPullQueryExecutionFromQuery(session, query, false, false)
 }
 

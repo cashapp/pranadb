@@ -46,8 +46,9 @@ type Cluster interface {
 
 	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
-	// DeleteAllDataInRange deletes all data in the specified ranges. Ranges do not contain the shard id
-	DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error
+	DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error
+
+	DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
 	RegisterMembershipListener(listener MembershipListener)
 

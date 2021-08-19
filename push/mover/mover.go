@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
+	"log"
 	"sync"
 )
 
@@ -181,7 +182,12 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 			return err
 		}
 	}
-	return m.cluster.WriteBatch(batch)
+	err = m.cluster.WriteBatch(batch)
+	if err != nil {
+		return err
+	}
+	log.Printf("Committed remote batch on shard %d", receivingShardID)
+	return nil
 }
 
 // TODO consider caching sequences in memory to avoid reading from storage each time

@@ -161,13 +161,13 @@ func (s *Source) Drop() error {
 	offsetsStartPrefix = common.KeyEncodeString(offsetsStartPrefix, s.sourceInfo.Name)
 	offsetsEndPrefix := common.IncrementBytesBigEndian(offsetsStartPrefix)
 
-	if err := s.cluster.DeleteAllDataInRange(offsetsStartPrefix, offsetsEndPrefix); err != nil {
+	if err := s.cluster.DeleteAllDataInRangeForAllShards(offsetsStartPrefix, offsetsEndPrefix); err != nil {
 		return err
 	}
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)
-	return s.cluster.DeleteAllDataInRange(tableStartPrefix, tableEndPrefix)
+	return s.cluster.DeleteAllDataInRangeForAllShards(tableStartPrefix, tableEndPrefix)
 }
 
 func (s *Source) AddConsumingExecutor(executor exec.PushExecutor) {

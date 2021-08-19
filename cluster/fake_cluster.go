@@ -199,29 +199,42 @@ func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
 	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
-func (f *FakeCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+func (f *FakeCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	for _, shardID := range f.allShardIds {
-		startPref := make([]byte, 0, 16)
-		startPref = common.AppendUint64ToBufferBE(startPref, shardID)
-		startPref = append(startPref, startPrefix...)
+	return f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix)
+}
 
-		endPref := make([]byte, 0, 16)
-		endPref = common.AppendUint64ToBufferBE(endPref, shardID)
-		endPref = append(endPref, endPrefix...)
+func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
+	startPref := make([]byte, 0, 16)
+	startPref = common.AppendUint64ToBufferBE(startPref, shardID)
+	startPref = append(startPref, startPrefix...)
 
-		pairs, err := f.LocalScan(startPref, endPref, -1)
+	endPref := make([]byte, 0, 16)
+	endPref = common.AppendUint64ToBufferBE(endPref, shardID)
+	endPref = append(endPref, endPrefix...)
+
+	pairs, err := f.LocalScan(startPref, endPref, -1)
+	if err != nil {
+		return err
+	}
+	for _, pair := range pairs {
+		err := f.deleteInternal(&kvWrapper{
+			key: pair.Key,
+		})
 		if err != nil {
 			return err
 		}
-		for _, pair := range pairs {
-			err := f.deleteInternal(&kvWrapper{
-				key: pair.Key,
-			})
-			if err != nil {
-				return err
-			}
+	}
+	return nil
+}
+
+func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	for _, shardID := range f.allShardIds {
+		if err := f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix); err != nil {
+			return err
 		}
 	}
 	return nil

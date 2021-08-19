@@ -1,7 +1,7 @@
 package sharder
 
 import (
-	"github.com/squareup/pranadb/common"
+	"crypto/sha256"
 	"hash/fnv"
 	"sync"
 	"sync/atomic"
@@ -51,20 +51,13 @@ func (s *Sharder) computeHashShard(key []byte, shardIDs []uint64) (uint64, error
 }
 
 func Hash(key []byte) (uint32, error) {
-	// TODO consistent hashing when the cluster is not fixed size
-	h1 := fnv.New64a()
-	_, err := h1.Write(key)
-	if err != nil {
-		return 0, err
-	}
-	v1 := h1.Sum64()
-	b := common.AppendUint64ToBufferLE(nil, v1)
-	// hash it again to get a good distribution - I found a single hash can result in poorly distributed
-	// values when the input was incrementing
-	// TODO maybe find a better hash algo - maybe use a crypto hash, but.. performance?
+	// TODO we use a crypto hash to get a good distribution but there could be a better way. This might be slow.
+	// I found that just using a non crypto hash like fnv resulted in very poorly distributed shards
+	hasher := sha256.New()
+	hasher.Write(key)
+	res := hasher.Sum(nil)
 	h2 := fnv.New32()
-	_, err = h2.Write(b)
-	if err != nil {
+	if _, err := h2.Write(res); err != nil {
 		return 0, err
 	}
 	return h2.Sum32(), nil

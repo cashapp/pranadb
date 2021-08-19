@@ -219,7 +219,11 @@ func (t *testCluster) reset() {
 	}
 }
 
-func (t *testCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+func (t *testCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
+	panic("should not be called")
+}
+
+func (t *testCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
 	panic("should not be called")
 }
 

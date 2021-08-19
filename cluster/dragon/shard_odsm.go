@@ -2,13 +2,12 @@ package dragon
 
 import (
 	"fmt"
-	"io"
-
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
+	"io"
 )
 
 const (
@@ -165,6 +164,7 @@ func (s *ShardOnDiskStateMachine) handleRemoveNode(bytes []byte) {
 }
 
 func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes []byte) error {
+
 	offset := 1
 	lsp, offset := common.ReadUint32FromBufferLE(bytes, offset)
 	lenStartPrefix := int(lsp)

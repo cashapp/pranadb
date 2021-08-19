@@ -57,8 +57,8 @@ func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.
 
 // Connect connects up any executors which consumer data from sources, materialized views, or remote receivers
 // to their feeders
-func (m *MaterializedView) Connect() error {
-	return m.connect(m.tableExecutor)
+func (m *MaterializedView) Connect(addConsuming bool, registerRemote bool) error {
+	return m.connect(m.tableExecutor, addConsuming, registerRemote)
 }
 
 func (m *MaterializedView) Disconnect() error {
@@ -128,7 +128,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 func (m *MaterializedView) deleteMvTableData(tableID uint64) error {
 	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
 	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
-	err := m.cluster.DeleteAllDataInRange(startPrefix, endPrefix)
+	err := m.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix)
 	if err != nil {
 		return err
 	}
@@ -143,47 +143,51 @@ func (m *MaterializedView) removeConsumingExecutor(executor exec.PushExecutor) {
 	m.tableExecutor.RemoveConsumingNode(executor)
 }
 
-func (m *MaterializedView) connect(executor exec.PushExecutor) error {
+func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool, registerRemote bool) error {
 	for _, child := range executor.GetChildren() {
-		err := m.connect(child)
+		err := m.connect(child, addConsuming, registerRemote)
 		if err != nil {
 			return err
 		}
 	}
 	switch op := executor.(type) {
 	case *exec.TableScan:
-		tableName := op.TableName
-		tbl, ok := m.schema.GetTable(tableName)
-		if !ok {
-			return fmt.Errorf("unknown source or materialized view %s", tableName)
-		}
-		switch tbl := tbl.(type) {
-		case *common.SourceInfo:
-			source, err := m.pe.GetSource(tbl.ID)
-			if err != nil {
-				return err
+		if addConsuming {
+			tableName := op.TableName
+			tbl, ok := m.schema.GetTable(tableName)
+			if !ok {
+				return fmt.Errorf("unknown source or materialized view %s", tableName)
 			}
-			source.AddConsumingExecutor(executor)
-		case *common.MaterializedViewInfo:
-			mv, err := m.pe.GetMaterializedView(tbl.ID)
-			if err != nil {
-				return err
+			switch tbl := tbl.(type) {
+			case *common.SourceInfo:
+				source, err := m.pe.GetSource(tbl.ID)
+				if err != nil {
+					return err
+				}
+				source.AddConsumingExecutor(executor)
+			case *common.MaterializedViewInfo:
+				mv, err := m.pe.GetMaterializedView(tbl.ID)
+				if err != nil {
+					return err
+				}
+				mv.addConsumingExecutor(executor)
+			default:
+				return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
 			}
-			mv.addConsumingExecutor(executor)
-		default:
-			return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
 		}
 	case *exec.Aggregator:
-		colTypes := op.GetChildren()[0].ColTypes()
-		rf := common.NewRowsFactory(colTypes)
-		rc := &RemoteConsumer{
-			RowsFactory: rf,
-			ColTypes:    colTypes,
-			RowsHandler: op,
-		}
-		err := m.pe.RegisterRemoteConsumer(op.AggTableInfo.ID, rc)
-		if err != nil {
-			return err
+		if registerRemote {
+			colTypes := op.GetChildren()[0].ColTypes()
+			rf := common.NewRowsFactory(colTypes)
+			rc := &RemoteConsumer{
+				RowsFactory: rf,
+				ColTypes:    colTypes,
+				RowsHandler: op,
+			}
+			err := m.pe.RegisterRemoteConsumer(op.AggTableInfo.ID, rc)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -199,8 +203,11 @@ func (m *MaterializedView) Fill() error {
 		return err
 	}
 
-	// TODO!!!! locking here?????????
-	shardIDs := m.pe.localLeaderShards
+	// TODO if cluster membership changes while fill is in process we need to abort process and start again
+	schedulers, err := m.pe.GetLocalLeaderSchedulers()
+	if err != nil {
+		return err
+	}
 
 	chans := make([]chan error, len(tes))
 	for i, tableExec := range tes {
@@ -210,7 +217,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, shardIDs, m.pe.mover, fillTableID)
+			err := te.FillTo(ts, schedulers, m.pe.mover, fillTableID)
 			ch <- err
 		}()
 	}

@@ -368,7 +368,11 @@ func (d *Dragon) LocalScanWithSnapshot(sn cluster.Snapshot, startKeyPrefix []byt
 	}
 	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
 	iter := snap.pebbleSnapshot.NewIter(iterOptions)
-	return d.scanWithIter(iter, startKeyPrefix, limit)
+	pairs, err := d.scanWithIter(iter, startKeyPrefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pairs, nil
 }
 
 func (d *Dragon) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
@@ -404,46 +408,49 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 	return pairs, nil
 }
 
-func (d *Dragon) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
+	// Remember, key must be in big-endian order
+	startPrefixWithShard := make([]byte, 0, 16)
+	startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
+	startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
+
+	endPrefixWithShard := make([]byte, 0, 16)
+	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
+	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+
+	cs := d.nh.GetNoOPSession(theShardID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
+	defer cancel()
+
+	var buff []byte
+	buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
+
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefixWithShard)))
+	buff = append(buff, startPrefixWithShard...)
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
+	buff = append(buff, endPrefixWithShard...)
+
+	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	if err != nil {
+		return err
+	}
+	if proposeRes.Value != shardStateMachineResponseOK {
+		return fmt.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
+	}
+	return nil
+}
+
+func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
 
 	chans := make([]chan error, len(d.allShards))
 	for i, shardID := range d.allShards {
-
 		ch := make(chan error, 1)
 		chans[i] = ch
-
 		theShardID := shardID
 		go func() {
-			// Remember, key must be in big-endian order
-			startPrefixWithShard := make([]byte, 0, 16)
-			startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
-			startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
-
-			endPrefixWithShard := make([]byte, 0, 16)
-			endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
-			endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
-
-			cs := d.nh.GetNoOPSession(theShardID)
-
-			ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-			defer cancel()
-
-			var buff []byte
-			buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
-
-			buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefixWithShard)))
-			buff = append(buff, startPrefixWithShard...)
-			buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
-			buff = append(buff, endPrefixWithShard...)
-
-			proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
-			if err != nil {
-				ch <- err
-			}
-			if proposeRes.Value != shardStateMachineResponseOK {
-				ch <- fmt.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
-			}
-			ch <- nil
+			err := d.DeleteAllDataInRangeForShard(theShardID, startPrefix, endPrefix)
+			ch <- err
 		}()
 	}
 
