@@ -29,7 +29,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = "basic_source"
+var TestPrefix = ""
 
 var TestSchemaName = "test"
 
@@ -150,7 +150,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.TestServer = false
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
-			//cnf.Debug = true
+			cnf.Debug = true
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -360,6 +360,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeRestartCluster()
 		} else if strings.HasPrefix(command, "--kafka fail") {
 			st.executeKafkaFail(require, command)
+		} else if strings.HasPrefix(command, "--wait for rows") {
+			st.executeWaitForRows(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -447,6 +449,54 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	dur := end.Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
+}
+
+func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
+	log.Printf("Waiting for %d rows in table %s", numRows, tableName)
+	schema, ok := st.prana.GetMetaController().GetSchema(TestSchemaName)
+	require.True(ok, "can't find test schema")
+	tab, ok := schema.GetTable(tableName)
+	require.True(ok, fmt.Sprintf("can't find table %s", tableName))
+	tabInfo := tab.GetTableInfo()
+	totRows := 0
+	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+		var err error
+		totRows, err = st.getAllRowsInTable(tabInfo.ID)
+		require.NoError(err)
+		return totRows == numRows, nil
+	}, 5*time.Hour, 500*time.Millisecond)
+	require.NoError(err)
+	if !ok {
+		for _, prana := range st.testSuite.pranaCluster {
+			lls, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
+			require.NoError(err)
+			var ss []uint64
+			for sid := range lls {
+				ss = append(ss, sid)
+			}
+		}
+	}
+	require.True(ok, "Timed out waiting for %d rows in table %s there are %d", numRows, tableName, totRows)
+}
+
+func (st *sqlTest) getAllRowsInTable(tableID uint64) (int, error) {
+	totRows := 0
+	for _, prana := range st.testSuite.pranaCluster {
+		scheds, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
+		if err != nil {
+			return 0, err
+		}
+		for shardID := range scheds {
+			keyStartPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
+			keyEndPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
+			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100000)
+			if err != nil {
+				return 0, err
+			}
+			totRows += len(pairs)
+		}
+	}
+	return totRows, nil
 }
 
 func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Server, displayRows bool) (bool, error) {
@@ -553,7 +603,20 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 }
 
 func (st *sqlTest) executeLoadData(require *require.Assertions, command string) {
-	log.Printf("Executing load data %s", command)
+	log.Printf("Executing %s", command)
+	noWait := strings.HasSuffix(command, "no wait")
+	if noWait {
+		command = command[:len(command)-8]
+	}
+	// If no wait we run the load data asynchronously
+	if noWait {
+		go st.doLoadData(require, command)
+	} else {
+		st.doLoadData(require, command)
+	}
+}
+
+func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 	start := time.Now()
 	datasetName := command[12:]
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
@@ -636,6 +699,18 @@ func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string)
 	require.NoError(err)
 }
 
+func (st *sqlTest) executeWaitForRows(require *require.Assertions, command string) {
+	command = command[16:]
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 2, "Invalid wait for rows, should be --wait for rows table_name num_rows")
+	tableName := parts[0]
+	sNumRows := parts[1]
+	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
+	require.NoError(err)
+	st.waitUntilRowsInTable(require, tableName, int(numrows))
+}
+
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 	for _, prana := range st.testSuite.pranaCluster {
 		err := prana.GetPushEngine().WaitForProcessingToComplete()
@@ -678,7 +753,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	}
 	end := time.Now()
 	dur := end.Sub(start)
-	log.Printf("Statement %s execute time ms %d", statement, dur.Milliseconds())
+	log.Printf("Statement execute time ms %d", dur.Milliseconds())
 }
 
 func (st *sqlTest) choosePrana() *server.Server {

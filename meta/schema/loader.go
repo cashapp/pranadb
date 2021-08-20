@@ -94,7 +94,7 @@ func (l *Loader) Start() error {
 		if err != nil {
 			return err
 		}
-		if err := mv.Connect(); err != nil {
+		if err := mv.Connect(true, true); err != nil {
 			return err
 		}
 		if err := l.pushEngine.RegisterMV(mv); err != nil {

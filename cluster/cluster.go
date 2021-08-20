@@ -26,6 +26,10 @@ type Cluster interface {
 	// endKeyPrefix is exclusive
 	LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
 
+	CreateSnapshot() (Snapshot, error)
+
+	LocalScanWithSnapshot(snapshot Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
+
 	GetNodeID() int
 
 	GetAllShardIDs() []uint64
@@ -42,8 +46,9 @@ type Cluster interface {
 
 	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
-	// DeleteAllDataInRange deletes all data in the specified ranges. Ranges do not contain the shard id
-	DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error
+	DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error
+
+	DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
 	RegisterMembershipListener(listener MembershipListener)
 
@@ -54,6 +59,10 @@ type Cluster interface {
 	Start() error
 
 	Stop() error
+}
+
+type Snapshot interface {
+	Close()
 }
 
 type QueryExecutionInfo struct {

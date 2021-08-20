@@ -191,6 +191,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) CreateSnapshot() (cluster.Snapshot, error) {
+	return nil, nil
+}
+
+func (t *testCluster) LocalScanWithSnapshot(snapshot cluster.Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
+	return nil, nil
+}
+
 func (t *testCluster) GetLock(prefix string) (bool, error) {
 	return false, nil
 }
@@ -211,7 +219,11 @@ func (t *testCluster) reset() {
 	}
 }
 
-func (t *testCluster) DeleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+func (t *testCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
+	panic("should not be called")
+}
+
+func (t *testCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
 	panic("should not be called")
 }
 
