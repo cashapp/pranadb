@@ -25,7 +25,7 @@ type NotificationResponse struct {
 	ok       bool
 }
 
-type messageHandler func(msgType messageType, msg []byte) error
+type messageHandler func(msgType messageType, msg []byte)
 
 func (n *NotificationMessage) serialize(buff []byte) ([]byte, error) {
 	var rrb byte
@@ -74,7 +74,7 @@ func (n *NotificationResponse) serialize(buff []byte) []byte {
 	return buff
 }
 
-func (n *NotificationResponse) deserialize(buff []byte) error {
+func (n *NotificationResponse) deserialize(buff []byte) {
 	offset := 0
 	if bok := buff[offset]; bok == 1 {
 		n.ok = true
@@ -86,7 +86,6 @@ func (n *NotificationResponse) deserialize(buff []byte) error {
 	offset++
 	seq, _ := common.ReadUint64FromBufferLE(buff, offset)
 	n.sequence = int64(seq)
-	return nil
 }
 
 func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
@@ -120,10 +119,8 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn) {
 			if len(msgBuf) >= messageHeaderSize+msgLen {
 				// We got a whole message
 				msg := msgBuf[messageHeaderSize : messageHeaderSize+msgLen]
-				if err := handler(msgType, msg); err != nil {
-					ch <- err
-					return
-				}
+				msg = common.CopyByteSlice(msg)
+				handler(msgType, msg)
 				// We copy the slice otherwise the backing array won't be gc'd
 				msgBuf = common.CopyByteSlice(msgBuf[messageHeaderSize+msgLen:])
 				msgLen = -1

@@ -45,14 +45,7 @@ func TestMultipleNotificationsDifferentSizes(t *testing.T) {
 	servers, listeners := testNotifications(t, 3, notifsToSend...)
 	defer stopServers(t, servers...)
 
-	for _, listener := range listeners {
-		recNotifs := listener.Notifications()
-		require.Equal(t, numNotifs, len(recNotifs))
-		for i, exp := range notifsToSend {
-			recNotif := recNotifs[i].(*notifications.SessionClosedMessage) //nolint: forcetypeassert
-			require.Equal(t, exp, recNotif.SessionId)
-		}
-	}
+	notificationsReceived(t, listeners, notifsToSend...)
 }
 
 func TestBigNotification(t *testing.T) {
@@ -66,12 +59,7 @@ func TestBigNotification(t *testing.T) {
 	servers, listeners := testNotifications(t, 3, string(notif))
 	defer stopServers(t, servers...)
 
-	for _, listener := range listeners {
-		recNotifs := listener.Notifications()
-		require.Equal(t, 1, len(recNotifs))
-		recNotif := recNotifs[0].(*notifications.SessionClosedMessage) //nolint: forcetypeassert
-		require.Equal(t, string(notif), recNotif.SessionId)
-	}
+	notificationsReceived(t, listeners, string(notif))
 }
 
 func TestNotificationStopServer(t *testing.T) {
@@ -164,12 +152,7 @@ func sendAndReceiveNotif(t *testing.T, client *client, notif string, listeners [
 	err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
 	require.NoError(t, err)
 	waitForNotifications(t, listeners, 1)
-	for _, listener := range listeners {
-		recNotifs := listener.Notifications()
-		require.Equal(t, 1, len(recNotifs))
-		recNotif := recNotifs[0].(*notifications.SessionClosedMessage) //nolint: forcetypeassert
-		require.Equal(t, notif, recNotif.SessionId)
-	}
+	notificationsReceived(t, listeners, notif)
 }
 
 func TestNotificationsMultipleConnections(t *testing.T) {
@@ -208,14 +191,7 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 	totNotifs := numNotifications * numClients
 	waitForNotifications(t, listeners, totNotifs)
 
-	for _, listener := range listeners {
-		recNotifs := listener.Notifications()
-		require.Equal(t, totNotifs, len(recNotifs))
-		for i, expNotif := range notifs {
-			recNotif := recNotifs[i].(*notifications.SessionClosedMessage) //nolint: forcetypeassert
-			require.Equal(t, expNotif, recNotif.SessionId)
-		}
-	}
+	notificationsReceived(t, listeners, notifs...)
 }
 
 func testSimpleNotification(t *testing.T, numServers int) {
@@ -225,12 +201,7 @@ func testSimpleNotification(t *testing.T, numServers int) {
 	servers, listeners := testNotifications(t, numServers, notif)
 	defer stopServers(t, servers...)
 
-	for _, listener := range listeners {
-		recNotifs := listener.Notifications()
-		require.Equal(t, 1, len(recNotifs))
-		recNotif := recNotifs[0].(*notifications.SessionClosedMessage) //nolint: forcetypeassert
-		require.Equal(t, notif, recNotif.SessionId)
-	}
+	notificationsReceived(t, listeners, notif)
 }
 
 func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]*server, []*notifListener) {
@@ -500,4 +471,21 @@ func (n *notifListener) ClearNotifs() {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	n.notifs = nil
+}
+
+func notificationsReceived(t *testing.T, listeners []*notifListener, expectedNotifs ...string) {
+	t.Helper()
+	for _, listener := range listeners {
+		recNotifs := listener.Notifications()
+		require.Equal(t, len(expectedNotifs), len(recNotifs))
+		recNotifsMap := map[string]struct{}{}
+		for _, recNotif := range recNotifs {
+			scNotif := recNotif.(*notifications.SessionClosedMessage) //nolint: forcetypeassert
+			recNotifsMap[scNotif.SessionId] = struct{}{}
+		}
+		for _, expNotif := range expectedNotifs {
+			_, ok := recNotifsMap[expNotif]
+			require.True(t, ok)
+		}
+	}
 }

@@ -355,18 +355,16 @@ func (cc *clientConnection) heartbeatReceived() {
 	cc.hbReceived.Set(true)
 }
 
-func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error {
+func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) {
 	if msgType == heartbeatMessageType {
 		cc.heartbeatReceived()
-		return nil
+		return
 	}
 	if msgType == notificationResponseMessageType {
 		resp := &NotificationResponse{}
-		if err := resp.deserialize(msg); err != nil {
-			return err
-		}
+		resp.deserialize(msg)
 		cc.client.responseReceived(cc, resp)
-		return nil
+		return
 	}
 	panic("unexpected message type")
 }

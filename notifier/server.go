@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	readBuffSize      = 8 * 1024
-	messageHeaderSize = 5 // 1 byte message type, 4 bytes length
+	readBuffSize                   = 8 * 1024
+	messageHeaderSize              = 5 // 1 byte message type, 4 bytes length
+	maxConcurrentMsgsPerConnection = 10
 )
 
 type Server interface {
@@ -67,10 +68,7 @@ func (s *server) acceptLoop() {
 			// Ok - was closed
 			break
 		}
-		c := &connection{
-			conn: conn,
-			s:    s,
-		}
+		c := s.newConnection(conn)
 		s.connections.Store(c, struct{}{})
 		c.start()
 	}
@@ -132,33 +130,69 @@ func (s *server) DisableResponses() {
 	s.responsesDisabled.Set(true)
 }
 
+func (s *server) newConnection(conn net.Conn) *connection {
+	return &connection{
+		s:              s,
+		conn:           conn,
+		handleMsgCh:    make(chan []byte, maxConcurrentMsgsPerConnection),
+		readLoopExitCh: make(chan error, 1),
+	}
+}
+
 type connection struct {
-	s      *server
-	conn   net.Conn
-	loopCh chan error
+	s              *server
+	conn           net.Conn
+	readLoopExitCh chan error
+	handleMsgCh    chan []byte
+	msgsInProgress sync.WaitGroup
 }
 
 func (c *connection) start() {
-	c.loopCh = make(chan error, 10)
 	go c.readLoop()
+	go c.handleMessageLoop()
+}
+
+// We execute all messages (other than heartbeat) on a different goroutine, and we use a channel to limit the number
+// concurrently executing
+func (c *connection) handleMessageLoop() {
+	for {
+		msg, ok := <-c.handleMsgCh
+		if !ok {
+			// channel was closed
+			return
+		}
+		go c.handleMessageAsync(msg)
+	}
 }
 
 func (c *connection) readLoop() {
-	readMessage(c.handleMessage, c.loopCh, c.conn)
+	readMessage(c.handleMessage, c.readLoopExitCh, c.conn)
 	c.s.removeConnection(c)
 }
 
-func (c *connection) handleMessage(msgType messageType, msg []byte) error {
-
+func (c *connection) handleMessage(msgType messageType, msg []byte) {
 	if msgType == heartbeatMessageType {
 		if !c.s.responsesDisabled.Get() {
-			return writeMessage(heartbeatMessageType, nil, c.conn)
+			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
+				log.Printf("failed to write heartbeat %v", err)
+			}
 		}
-		return nil
+		return
 	}
+	c.msgsInProgress.Add(1)
+	c.handleMsgCh <- msg
+}
+
+func (c *connection) handleMessageAsync(msg []byte) {
+	c.doHandleMessageAsync(msg)
+	c.msgsInProgress.Done()
+}
+
+func (c *connection) doHandleMessageAsync(msg []byte) {
 	nf := &NotificationMessage{}
 	if err := nf.deserialize(msg); err != nil {
-		return err
+		log.Printf("Failed to deserialize notification %v", err)
+		return
 	}
 	listener := c.s.lookupNotificationListener(nf.notif)
 	err := listener.HandleNotification(nf.notif)
@@ -169,10 +203,9 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	}
 	if nf.requiresResponse && !c.s.responsesDisabled.Get() {
 		if err := c.sendResponse(nf, ok); err != nil {
-			return err
+			log.Printf("failed to send response %v", err)
 		}
 	}
-	return nil
 }
 
 func (c *connection) sendResponse(nf *NotificationMessage, ok bool) error {
@@ -181,16 +214,19 @@ func (c *connection) sendResponse(nf *NotificationMessage, ok bool) error {
 		ok:       ok,
 	}
 	buff := resp.serialize(nil)
-	return writeMessage(notificationResponseMessageType, buff, c.conn)
+	err := writeMessage(notificationResponseMessageType, buff, c.conn)
+	return err
 }
 
 func (c *connection) stop() error {
 	if err := c.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
 	}
-	err, ok := <-c.loopCh
+	err, ok := <-c.readLoopExitCh
 	if !ok {
 		return errors.WithStack(errors.New("connection channel was closed"))
 	}
+	c.msgsInProgress.Wait() // Wait for all messages to be processed
+	close(c.handleMsgCh)
 	return err
 }
