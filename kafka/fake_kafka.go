@@ -526,8 +526,6 @@ func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, e
 }
 
 func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {
-	//f.lock.Lock()
-	//defer f.lock.Unlock()
 	if f.subscriber == nil {
 		return errors.New("not started")
 	}
