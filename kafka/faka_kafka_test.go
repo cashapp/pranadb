@@ -79,7 +79,7 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub, err := topic.CreateSubscriber(groupID)
+	sub, err := topic.CreateSubscriber(groupID, nil, nil)
 	require.NoError(t, err)
 
 	receivedMsgs := map[string]*Message{}
@@ -111,10 +111,10 @@ func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub1, err := topic.CreateSubscriber(groupID)
+	sub1, err := topic.CreateSubscriber(groupID, nil, nil)
 	require.NoError(t, err)
 
-	sub2, err := topic.CreateSubscriber(groupID)
+	sub2, err := topic.CreateSubscriber(groupID, nil, nil)
 	require.NoError(t, err)
 
 	receivedMsgs := map[string]*Message{}
@@ -159,10 +159,10 @@ func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
 	sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID1 := "group1"
-	sub1, err := topic.CreateSubscriber(groupID1)
+	sub1, err := topic.CreateSubscriber(groupID1, nil, nil)
 	require.NoError(t, err)
 
-	sub2, err := topic.CreateSubscriber(groupID1)
+	sub2, err := topic.CreateSubscriber(groupID1, nil, nil)
 	require.NoError(t, err)
 
 	group1, ok := topic.getGroup(groupID1)

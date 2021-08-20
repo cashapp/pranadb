@@ -153,7 +153,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, schedulers map[uint64]*sched.Sha
 	t.filling = true
 	t.fillTableID = fillTableID
 
-	// Start the fill - this takes a snapshot and fills from there
+	// start the fill - this takes a snapshot and fills from there
 	ch, err := t.startFillFromSnapshot(pe, schedulers, mover)
 	if err != nil {
 		t.lock.Unlock()
