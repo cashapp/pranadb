@@ -4,7 +4,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"log"
 	"sync"
 )
 
@@ -186,7 +185,6 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	if err != nil {
 		return err
 	}
-	log.Printf("Committed remote batch on shard %d", receivingShardID)
 	return nil
 }
 
