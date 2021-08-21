@@ -130,12 +130,12 @@ func (s *Source) Start() error {
 		if err != nil {
 			return err
 		}
+
 		consumer, err := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
 		if err != nil {
 			return err
 		}
 		s.msgConsumers = append(s.msgConsumers, consumer)
-		consumer.Start()
 	}
 
 	s.started = true

@@ -183,7 +183,7 @@ func (t *Topic) calcPartition(message *Message) (int, error) {
 	return partID, nil
 }
 
-func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
+func (t *Topic) CreateSubscriber(groupID string, paCB PartitionsCallback, prCB PartitionsCallback) (*Subscriber, error) {
 	group, ok := t.getGroup(groupID)
 	if !ok {
 		t.lock.Lock()
@@ -194,7 +194,7 @@ func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
 		}
 		t.lock.Unlock()
 	}
-	return group.createSubscriber(t, group)
+	return group.createSubscriber(t, group, paCB, prCB)
 }
 
 func (t *Topic) ResetOffsets() error {
@@ -277,7 +277,7 @@ func (g *Group) checkInjectFailure() error {
 	return nil
 }
 
-func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
+func (g *Group) createSubscriber(t *Topic, group *Group, paCB PartitionsCallback, prCB PartitionsCallback) (*Subscriber, error) {
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
 	if err := g.quiesceConsumers(); err != nil {
@@ -286,6 +286,8 @@ func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
 	subscriber := &Subscriber{
 		topic: t,
 		group: group,
+		paCB:  paCB,
+		prCB:  prCB,
 	}
 	g.subscribers = append(g.subscribers, subscriber)
 	if err := g.rebalance(); err != nil {
@@ -316,7 +318,7 @@ func (g *Group) commitOffsets(offsets map[int32]int64) error {
 
 func (g *Group) quiesceConsumers() error {
 	// We first call the subscribers that rebalance is about to occur - this gives them a chance to
-	// commit offsets - this must be done outside of the group subscribersLock
+	// commit offsets
 	for _, subscriber := range g.subscribers {
 		if subscriber.prCB != nil {
 			if err := subscriber.prCB(); err != nil {
@@ -409,14 +411,6 @@ type Subscriber struct {
 	paCB       PartitionsCallback
 }
 
-func (c *Subscriber) setPartitionsAssignedCb(cb PartitionsCallback) {
-	c.paCB = cb
-}
-
-func (c *Subscriber) setPartitionsRevokedCb(cb PartitionsCallback) {
-	c.prCB = cb
-}
-
 func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
 	return c.group.commitOffsets(offsets)
 }
@@ -492,35 +486,67 @@ func (fmpf *FakeMessageProviderFactory) NewMessageProvider() (MessageProvider, e
 	if !ok {
 		return nil, fmt.Errorf("no such topic %s", fmpf.topicName)
 	}
-	subscriber, err := topic.CreateSubscriber(fmpf.groupID)
-	if err != nil {
-		return nil, err
-	}
 	return &FakeMessageProvider{
-		subscriber: subscriber,
-		topicName:  fmpf.topicName,
+		topic:   topic,
+		groupID: fmpf.groupID,
 	}, nil
 }
 
 type FakeMessageProvider struct {
 	subscriber *Subscriber
-	topicName  string
+	topic      *Topic
+	groupID    string
+	started    bool
+	lock       sync.Mutex
+	prCB       PartitionsCallback
+	paCB       PartitionsCallback
 }
 
 func (f *FakeMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
-	f.subscriber.setPartitionsAssignedCb(cb)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.paCB = cb
 }
 
 func (f *FakeMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
-	f.subscriber.setPartitionsRevokedCb(cb)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	f.prCB = cb
 }
 
 func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	if f.subscriber == nil {
+		// This is ok, we must start the message consumer before the we start the message provider
+		// so there is a window where the subscriber is not set.
+		return nil, nil
+	}
 	return f.subscriber.GetMessage(pollTimeout)
 }
 
 func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {
+	if f.subscriber == nil {
+		return errors.New("not started")
+	}
 	return f.subscriber.commitOffsets(offsets)
+}
+
+func (f *FakeMessageProvider) Start() error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	if f.started {
+		return nil
+	}
+	if f.prCB == nil || f.paCB == nil {
+		return errors.New("callbacks must be set before message provider is started")
+	}
+	subscriber, err := f.topic.CreateSubscriber(f.groupID, f.paCB, f.prCB)
+	if err != nil {
+		return err
+	}
+	f.subscriber = subscriber
+	return nil
 }
 
 func (f *FakeMessageProvider) Stop() error {

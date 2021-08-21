@@ -10,6 +10,7 @@ type MessageProvider interface {
 	GetMessage(pollTimeout time.Duration) (*Message, error)
 	CommitOffsets(offsets map[int32]int64) error
 	Stop() error
+	Start() error
 	SetPartitionsAssignedCb(cb PartitionsCallback)
 	SetPartitionsRevokedCb(cb PartitionsCallback)
 }

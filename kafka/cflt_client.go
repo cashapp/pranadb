@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/pkg/errors"
 	"log"
 	"sync"
 	"time"
@@ -24,24 +25,8 @@ type CfltMessageProviderFactory struct {
 }
 
 func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
-	cm := &kafka.ConfigMap{}
-	for k, v := range krpf.props {
-		if err := cm.SetKey(k, v); err != nil {
-			return nil, err
-		}
-	}
-	if err := cm.SetKey("group.id", krpf.groupID); err != nil {
-		return nil, err
-	}
-	consumer, err := kafka.NewConsumer(cm)
-	if err != nil {
-		return nil, err
-	}
 	kmp := &KafkaMessageProvider{}
-	if err := consumer.Subscribe(krpf.topicName, kmp.RebalanceOccurred); err != nil {
-		return nil, err
-	}
-	kmp.consumer = consumer
+	kmp.krpf = krpf
 	return kmp, nil
 }
 
@@ -51,13 +36,18 @@ type KafkaMessageProvider struct {
 	topicName string
 	paCb      PartitionsCallback
 	prCb      PartitionsCallback
+	krpf      *CfltMessageProviderFactory
 }
 
 func (k *KafkaMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
+	k.lock.Lock()
+	defer k.lock.Unlock()
 	k.paCb = cb
 }
 
 func (k *KafkaMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
+	k.lock.Lock()
+	defer k.lock.Unlock()
 	k.prCb = cb
 }
 
@@ -90,6 +80,9 @@ func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kaf
 func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
 	k.lock.Lock()
 	defer k.lock.Unlock()
+	if k.consumer == nil {
+		return nil, nil
+	}
 	msg, err := k.consumer.ReadMessage(pollTimeout)
 	if err != nil {
 		return nil, err
@@ -132,4 +125,31 @@ func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
 
 func (k *KafkaMessageProvider) Stop() error {
 	return k.consumer.Close()
+}
+
+func (k *KafkaMessageProvider) Start() error {
+	k.lock.Lock()
+	defer k.lock.Unlock()
+	if k.prCb == nil || k.paCb == nil {
+		return errors.New("callbacks must be set before starting message provider")
+	}
+	cm := &kafka.ConfigMap{}
+	for k, v := range k.krpf.props {
+		if err := cm.SetKey(k, v); err != nil {
+			return err
+		}
+	}
+	if err := cm.SetKey("group.id", k.krpf.groupID); err != nil {
+		return err
+	}
+	consumer, err := kafka.NewConsumer(cm)
+	if err != nil {
+		return err
+	}
+	kmp := &KafkaMessageProvider{}
+	if err := consumer.Subscribe(k.krpf.topicName, kmp.RebalanceOccurred); err != nil {
+		return err
+	}
+	kmp.consumer = consumer
+	return nil
 }

@@ -43,11 +43,24 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	}
 	msgProvider.SetPartitionsAssignedCb(mc.partitionsAssigned)
 	msgProvider.SetPartitionsRevokedCb(mc.partitionsRevoked)
+
+	// It's important that the message consumer is started before the message provider
+	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is started,
+	// and then the consumer is started, which starts the poll loop, but rebalancing is still in progress.
+	// Messages can then be consumed and committed before rebalancing is complete which can result in out of order
+	// commits, if another consumer has started and has committed around the same time.
+	// If the message provider is not set by the time the consumer has called getMessage first time, it will simply
+	// return nil, which is ok
+	mc.start()
+
+	// Starting the provider actually subscribes
+	if err := msgProvider.Start(); err != nil {
+		return nil, err
+	}
 	return mc, nil
 }
 
 func (m *MessageConsumer) partitionsAssigned() error {
-
 	if !m.running.CompareAndSet(false, true) {
 		return nil
 	}
@@ -64,7 +77,7 @@ func (m *MessageConsumer) partitionsRevoked() error {
 
 	// We wait for any processing to complete on the poll loop
 
-	// FIXME - it is not sufficient to just wait for the pool loop to stop.
+	// TODO - it is not sufficient to just wait for the pool loop to stop.
 	// Some time after the poll loop has stopped messages wil be forwarded async to other nodes.
 	// If owner of partitions changes during rebalance then messages processed from the new owner consumer
 	// could be forwarded before the messages processed by the earlier consumer.
@@ -73,13 +86,10 @@ func (m *MessageConsumer) partitionsRevoked() error {
 	return nil
 }
 
-func (m *MessageConsumer) Start() {
-	if !m.started.CompareAndSet(false, true) {
-		return
-	}
-	if m.running.CompareAndSet(false, true) {
-		go m.pollLoop()
-	}
+func (m *MessageConsumer) start() {
+	m.started.Set(true)
+	m.running.Set(true)
+	go m.pollLoop()
 }
 
 func (m *MessageConsumer) Stop() error {
