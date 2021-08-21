@@ -28,11 +28,20 @@ Test scripts can also contain SQL comments which begin with `--`.
 We define some special comments which do special things when they are encountered. This allows us to do lots of powerful
 things in tests. Here are the currently supported special comment directives:
 
-* `--load_data <dataset_name>;`. This loads the dataset with the specified name
-* `--repeat <n>;` This repeats the test `n` times in a loop. Very useful for reproducing non-deterministic test
-  failures. If there's a repeat directive, it must be the first line in a script.
+* `--load_data dataset_name;` This loads the dataset with the specified name
+* `--repeat n;` This repeats the test `n` times in a loop. Very useful for reproducing non-deterministic test failures.
+  If there's a repeat directive, it must be the first line in a script.
 * `--close session;` This closes the current SQL session at that point. A new session will then be created for the next
   statement. Used for testing scope of prepared statements.
+* `--create topic topic_name;` Creates a topic on the Fake Kafka used by SqlTest with the specified name
+* `--delete topic topic_name;` Deletes a topic on the Fake Kafka used by SqlTest with the specified name
+* `--reset offsets topic_name;` Resets the committed offsets for the specified topic
+* `--restart cluster;` Restarts the Prana cluster
+* `--kafka fail fail_time;` Tells the Fake Kafka to return errors when attempts to get messages or commit offsets are
+  made. Errors are returned for `fail_time` milliseconds, then normal operation is resumed.
+* `--wait for rows table_name num_rows;` Waits for `num_rows` rows to be present in the specified table before
+  proceeding.
+  `table_name` is the name of the source or materialized view.
 
 ### Note on prepared statements
 
