@@ -9,12 +9,29 @@ import (
 // Empty executor.
 var Empty = &StaticRows{rows: common.NewRows(nil, 0)}
 
+var OK = NewSingleStringRow("ok")
+
 type StaticRows struct {
 	pullExecutorBase
 	rows *common.Rows
 }
 
 var _ PullExecutor = &StaticRows{}
+
+var singleStringRowsFactory = createSingleStringRowsFactory()
+var singleStringColNames = []string{"__internal__"}
+
+func createSingleStringRowsFactory() *common.RowsFactory {
+	singleStringColTypes := []common.ColumnType{common.VarcharColumnType}
+
+	return common.NewRowsFactory(singleStringColTypes)
+}
+
+func NewSingleStringRow(message string) *StaticRows {
+	rows := singleStringRowsFactory.NewRows(1)
+	rows.AppendStringToColumn(0, message)
+	return NewStaticRows(singleStringColNames, rows)
+}
 
 // NewStaticRow creates a static single row result.
 func NewStaticRow(values ...interface{}) *StaticRows {

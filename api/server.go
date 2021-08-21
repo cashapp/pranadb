@@ -1,43 +1,85 @@
-// Package wire contains the over-the-wire gRPC server for PranaDB.
-package wire
+// Package api contains the over-the-wire gRPC server for PranaDB.
+package api
 
 import (
-	"context"
+	"fmt"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
+	"github.com/squareup/pranadb/command"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+	"log"
+	"net"
+	"sync"
+	"sync/atomic"
 
-	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
-	"github.com/squareup/pranadb/pull/exec"
-	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sess"
 )
 
 // Server over gRPC.
 type Server struct {
-	server *server.Server
+	lock          sync.Mutex
+	started       bool
+	ce            *command.Executor
+	serverAddress string
+	gsrv          *grpc.Server
+	errorSequence int64
 }
 
-func New(server *server.Server) *Server {
-	return &Server{server}
+func NewAPIServer(ce *command.Executor, serverAddress string) *Server {
+	return &Server{
+		ce:            ce,
+		serverAddress: serverAddress,
+	}
+}
+
+func (s *Server) Start() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.started {
+		return nil
+	}
+	list, err := net.Listen("tcp", s.serverAddress)
+	if err != nil {
+		return err
+	}
+	s.gsrv = grpc.NewServer(RegisterSessionManager())
+	reflection.Register(s.gsrv)
+	service.RegisterPranaDBServiceServer(s.gsrv, s)
+	s.started = true
+	go s.startServer(list)
+	return nil
+}
+
+func (s *Server) startServer(list net.Listener) {
+	err := s.gsrv.Serve(list) //nolint:ifshort
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.started = false
+	if err != nil {
+		log.Printf("grpc server listen failed: %v", err)
+	}
+}
+
+func (s *Server) Stop() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if !s.started {
+		return nil
+	}
+	s.gsrv.Stop()
+	return nil
 }
 
 var _ service.PranaDBServiceServer = &Server{}
 
-func (s *Server) Use(ctx context.Context, request *service.UseRequest) (*emptypb.Empty, error) {
-	session := s.server.GetCommandExecutor().CreateSession(request.Schema)
-	SetSession(ctx, session)
-	return &emptypb.Empty{}, nil
-}
-
 func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error {
 	session := SessionFromContext(stream.Context())
-	newSession, executor, err := s.processQuery(session, in.Query)
+	newSession, executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
 	if err != nil {
-		return err
+		seq := atomic.AddInt64(&s.errorSequence, 1)
+		log.Printf("failed to execute statement %v statement error sequence %d", err, seq)
+		return fmt.Errorf("internal error in processing SQL statement. Please consult server logs for details. Statement Error sequence %d", seq)
 	}
 
 	// Have we switched schemas?
@@ -47,10 +89,6 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		if executor == nil {
 			return nil
 		}
-	}
-
-	if session == nil {
-		return status.Errorf(codes.FailedPrecondition, "no schema selected - USE <schema>")
 	}
 
 	// First send column definitions.
@@ -96,30 +134,4 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		}
 	}
 	return nil
-}
-
-func (s *Server) processQuery(session *sess.Session, query string) (*sess.Session, exec.PullExecutor, error) {
-	ast, err := parser.Parse(query)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	switch {
-	case ast.Use != "":
-		newSession := s.server.GetCommandExecutor().CreateSession(ast.Use)
-		return newSession, exec.NewStaticRow(), nil
-
-	case ast.Create != nil && ast.Create.Schema != "":
-		newSession := s.server.GetCommandExecutor().CreateSession(ast.Create.Schema)
-		return newSession, exec.NewStaticRow(), nil
-
-	default:
-		if session == nil {
-			return nil, nil, status.Errorf(codes.FailedPrecondition, "no schema selected - USE <schema>")
-		}
-		exec, err := s.server.GetCommandExecutor().ExecuteSQLStatement(session, query)
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
-		return nil, exec, nil
-	}
 }

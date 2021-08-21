@@ -30,7 +30,7 @@ message Column {
 
 // Issue a query.
 message ExecuteSQLStatementRequest {
-  string query = 1;
+  string statement = 1;
   // Size of each page of results returned when paginating.
   int32 page_size = 2;
 }
@@ -58,8 +58,6 @@ message UseRequest {
 }
 
 service PranaDBService {
-  // Use a schema.
-  rpc Use(UseRequest) returns (google.protobuf.Empty);
   // Execute SQL and return results.
   rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
 }

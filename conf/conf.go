@@ -33,6 +33,8 @@ type Config struct {
 	LocksCompactionOverhead    int
 	Debug                      bool
 	NotifierHeartbeatInterval  time.Duration
+	EnableAPIServer            bool
+	APIServerListenAddress     string
 }
 
 type BrokerConfigs map[string]BrokerConfig // Key is broker name which is referred to in the source descriptor

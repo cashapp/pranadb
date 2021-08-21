@@ -3,6 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/cmd/cli"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -20,16 +21,14 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/table"
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+var TestPrefix = "basic_source"
 
 var TestSchemaName = "test"
 
@@ -38,6 +37,8 @@ var TestClusterID = 12345678
 var lock sync.Mutex
 
 var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+
+const apiServerListenAddressBase = 63701
 
 type sqlTestsuite struct {
 	fakeCluster  bool
@@ -118,11 +119,13 @@ func (w *sqlTestsuite) setupPranaCluster() {
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
 		s, err := server.NewServer(conf.Config{
-			NodeID:       0,
-			ClusterID:    TestClusterID,
-			NumShards:    10,
-			TestServer:   true,
-			KafkaBrokers: brokerConfigs,
+			NodeID:                 0,
+			ClusterID:              TestClusterID,
+			NumShards:              10,
+			TestServer:             true,
+			KafkaBrokers:           brokerConfigs,
+			EnableAPIServer:        true,
+			APIServerListenAddress: fmt.Sprintf("localhost:%d", apiServerListenAddressBase),
 		})
 		if err != nil {
 			log.Fatal(err)
@@ -151,6 +154,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
 			cnf.Debug = true
+			cnf.EnableAPIServer = true
+			cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase+i)
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -285,8 +290,8 @@ type sqlTest struct {
 	output       *strings.Builder
 	rnd          *rand.Rand
 	prana        *server.Server
-	session      *sess.Session
 	topics       []*kafka.Topic
+	cli          *cli.Cli
 }
 
 func (st *sqlTest) run() {
@@ -329,8 +334,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	log.Printf("Running test iteration %d", iter)
 	start := time.Now()
 	st.prana = st.choosePrana()
-	st.session = st.createSession(st.prana)
 	st.output = &strings.Builder{}
+	st.cli = st.createCli(require)
 	numIters := 1
 	for i, command := range commands {
 		st.output.WriteString(command + ";\n")
@@ -357,7 +362,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		} else if strings.HasPrefix(command, "--reset offsets") {
 			st.executeResetOffets(require, command)
 		} else if strings.HasPrefix(command, "--restart cluster") {
-			st.executeRestartCluster()
+			st.executeRestartCluster(require)
 		} else if strings.HasPrefix(command, "--kafka fail") {
 			st.executeKafkaFail(require, command)
 		} else if strings.HasPrefix(command, "--wait for rows") {
@@ -383,7 +388,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 	end := time.Now()
 
-	err = st.session.Close()
+	err = st.cli.Stop()
 	require.NoError(err)
 
 	for _, topic := range st.topics {
@@ -631,10 +636,10 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 }
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
-	// Closes then recreates the session
-	err := st.session.Close()
+	// Closes then recreates the cli
+	err := st.cli.Stop()
 	require.NoError(err)
-	st.session = st.createSession(st.prana)
+	st.cli = st.createCli(require)
 }
 
 func (st *sqlTest) executeCreateTopic(require *require.Assertions, command string) {
@@ -674,10 +679,12 @@ func (st *sqlTest) executeResetOffets(require *require.Assertions, command strin
 	require.NoError(err)
 }
 
-func (st *sqlTest) executeRestartCluster() {
+func (st *sqlTest) executeRestartCluster(require *require.Assertions) {
+	err := st.cli.Stop()
+	require.NoError(err)
 	st.testSuite.restartCluster()
 	st.prana = st.choosePrana()
-	st.session = st.createSession(st.prana)
+	st.cli = st.createCli(require)
 	st.topics = make([]*kafka.Topic, 0)
 }
 
@@ -721,35 +728,10 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	exec, err := st.prana.GetCommandExecutor().ExecuteSQLStatement(st.session, statement)
-	if err != nil {
-		ue, ok := err.(errors.UserError)
-		if ok {
-			log.Printf("failed to execute statement %s %v", statement, ue)
-			st.output.WriteString(ue.Error() + "\n")
-			return
-		}
-	}
+	resChan, err := st.cli.ExecuteStatement(statement)
 	require.NoError(err)
-	rows, err := exec.GetRows(100000)
-	require.NoError(err)
-	lowerStatement := strings.ToLower(statement)
-
-	if strings.HasPrefix(lowerStatement, "select ") || strings.HasPrefix(lowerStatement, "execute") {
-		// Query results
-		for i := 0; i < rows.RowCount(); i++ {
-			row := rows.GetRow(i)
-			st.output.WriteString(row.String() + "\n")
-		}
-		st.output.WriteString(fmt.Sprintf("%d rows returned\n", rows.RowCount()))
-	} else if strings.HasPrefix(lowerStatement, "prepare") {
-		// Write out the prepared statement id
-		row := rows.GetRow(0)
-		psID := row.GetInt64(0)
-		st.output.WriteString(fmt.Sprintf("%d\n", psID))
-	} else {
-		// DDL statement
-		st.output.WriteString("Ok\n")
+	for line := range resChan {
+		st.output.WriteString(line + "\n")
 	}
 	end := time.Now()
 	dur := end.Sub(start)
@@ -768,8 +750,15 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createSession(prana *server.Server) *sess.Session {
-	return prana.GetCommandExecutor().CreateSession(TestSchemaName)
+func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
+	// We connect to a random Prana
+	prana := st.choosePrana()
+	id := prana.GetCluster().GetNodeID()
+	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
+	cli := cli.NewCli(apiServerAddress)
+	err := cli.Start()
+	require.NoError(err)
+	return cli
 }
 
 func trimBothEnds(str string) string {
