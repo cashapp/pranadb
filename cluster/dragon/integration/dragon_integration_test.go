@@ -4,13 +4,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/conf"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
 
 	dragon "github.com/squareup/pranadb/cluster/dragon"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ var dataDir string
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Short() {
-		log.Println("-short: skipped")
+		log.Infof("-short: skipped")
 		return
 	}
 	var err error

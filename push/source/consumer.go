@@ -1,10 +1,10 @@
 package source
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/sched"
-	"log"
 	"time"
 )
 
@@ -181,7 +181,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.
 			// In this case we log a warning, and ignore the message, the offset will be committed
-			log.Printf("Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
+			log.Warnf("Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
 				" Message will be ignored", m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
 			continue
 		}

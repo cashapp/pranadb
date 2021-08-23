@@ -2,25 +2,25 @@ package server
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/api"
-	"github.com/squareup/pranadb/conf"
-	"log"
 	"net/http" //nolint:stylecheck
+	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
+	//nolint:gosec
+	_ "net/http/pprof" //nolint:stylecheck
 	"sync"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/api"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/meta/schema"
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
-
-	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
-	//nolint:gosec
-	_ "net/http/pprof" //nolint:stylecheck
 )
 
 func NewServer(config conf.Config) (*Server, error) {
@@ -127,11 +127,13 @@ func (s *Server) Start() error {
 
 	if s.conf.Debug {
 		go func() {
-			log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil))
+			if err := http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil); err != nil {
+				log.Errorf("http server exited with error: %v", err)
+			}
 		}()
 	}
 
-	log.Printf("Prana server %d started", s.nodeID)
+	log.Infof("Prana server %d started", s.nodeID)
 
 	return nil
 }
