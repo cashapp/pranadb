@@ -255,3 +255,12 @@ func (s *Server) checkExpiredSessions() {
 	})
 	s.scheduleExpiredSessionsCheck()
 }
+
+func (s *Server) SessionCount() int {
+	count := 0
+	s.sessions.Range(func(_, _ interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}

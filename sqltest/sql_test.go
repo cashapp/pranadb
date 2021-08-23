@@ -381,8 +381,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	log.Println("TEST OUTPUT=========================\n" + st.output.String())
 	log.Println("END TEST OUTPUT=====================")
 
-	err := st.cli.Stop()
-	require.NoError(err)
+	st.closeClient(require)
 
 	for _, topic := range st.topics {
 		err := st.testSuite.fakeKafka.DeleteTopic(topic.Name)
@@ -400,7 +399,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
-		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)
 		}, 5*time.Second, 100*time.Millisecond)
 		require.NoError(err)
@@ -433,6 +432,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
+
+		require.Equal(0, prana.GetAPIServerr().SessionCount(), "API Server sessions left at end of test run")
 	}
 
 	outfile, closeFunc := openFile("./testdata/" + st.outFile)
@@ -628,11 +629,15 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
 	// Closes then recreates the cli
+	st.closeClient(require)
+	st.cli = st.createCli(require)
+}
+
+func (st *sqlTest) closeClient(require *require.Assertions) {
 	err := st.cli.CloseSession(st.sessionID)
 	require.NoError(err)
 	err = st.cli.Stop()
 	require.NoError(err)
-	st.cli = st.createCli(require)
 }
 
 func (st *sqlTest) executeCreateTopic(require *require.Assertions, command string) {
@@ -673,8 +678,7 @@ func (st *sqlTest) executeResetOffets(require *require.Assertions, command strin
 }
 
 func (st *sqlTest) executeRestartCluster(require *require.Assertions) {
-	err := st.cli.Stop()
-	require.NoError(err)
+	st.closeClient(require)
 	st.testSuite.restartCluster()
 	st.prana = st.choosePrana()
 	st.cli = st.createCli(require)

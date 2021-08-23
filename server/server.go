@@ -177,3 +177,7 @@ func (s *Server) GetNotificationsClient() notifier.Client {
 func (s *Server) GetNotificationsServer() notifier.Server {
 	return s.notifServer
 }
+
+func (s *Server) GetAPIServerr() *api.Server {
+	return s.apiServer
+}
