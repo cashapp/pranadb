@@ -22,11 +22,13 @@ type RemoteExecutor struct {
 	ShardIDs       []uint64
 }
 
-func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecutionInfo, colTypes []common.ColumnType, schemaName string, cluster cluster.Cluster) *RemoteExecutor {
+func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecutionInfo, colNames []string, colTypes []common.ColumnType, schemaName string, cluster cluster.Cluster) *RemoteExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colTypes:    colTypes,
-		rowsFactory: rf,
+		colNames:       colNames,
+		colTypes:       colTypes,
+		simpleColNames: common.ToSimpleColNames(colNames),
+		rowsFactory:    rf,
 	}
 	re := RemoteExecutor{
 		pullExecutorBase: base,

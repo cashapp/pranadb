@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push"
 	"sync"
 )
@@ -54,8 +54,9 @@ func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *com
 	}
 }
 
-func NewCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createMVSQL string, tableSequences []uint64) *CreateMVCommand {
-	pl.RefreshInfoSchema()
+func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tableSequences []uint64) *CreateMVCommand {
+	schema := e.metaController.GetOrCreateSchema(schemaName)
+	pl := parplan.NewPlanner(schema, false)
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
@@ -132,7 +133,7 @@ func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 	ast, err := parser.Parse(c.createMVSQL)
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, perrors.MaybeAddStack(err)
 	}
 	if ast.Create == nil || ast.Create.MaterializedView == nil {
 		return nil, fmt.Errorf("not a create materialized view %s", c.createMVSQL)

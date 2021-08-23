@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
-	"log"
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
@@ -48,7 +47,6 @@ func (l *Loader) Start() error {
 		kind := row.GetString(1)
 		switch kind {
 		case meta.TableKindSource:
-			log.Println("Reading source from storage")
 			info := meta.DecodeSourceInfoRow(&row)
 			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {

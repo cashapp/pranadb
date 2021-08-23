@@ -45,6 +45,10 @@ func (r *rowProvider) ColNames() []string {
 	return nil
 }
 
+func (r *rowProvider) SimpleColNames() []string {
+	return nil
+}
+
 func (r *rowProvider) ColTypes() []common.ColumnType {
 	return nil
 }

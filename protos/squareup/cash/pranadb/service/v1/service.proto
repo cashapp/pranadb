@@ -30,9 +30,10 @@ message Column {
 
 // Issue a query.
 message ExecuteSQLStatementRequest {
-  string statement = 1;
+  string session_id = 1;
+  string statement = 2;
   // Size of each page of results returned when paginating.
-  int32 page_size = 2;
+  int32 page_size = 3;
 }
 
 // Column definitions sent prior to a set of Pages.
@@ -57,7 +58,25 @@ message UseRequest {
   string schema = 1;
 }
 
+message CreateSessionRequest {
+}
+
+message CreateSessionResponse {
+  string session_id = 1;
+}
+
+message CloseSessionRequest {
+  string session_id = 1;
+}
+
+message HeartbeatRequest {
+  string session_id = 1;
+}
+
 service PranaDBService {
+  rpc CreateSession(google.protobuf.Empty) returns (CreateSessionResponse);
+  rpc CloseSession(CloseSessionRequest) returns (google.protobuf.Empty);
+  rpc Heartbeat(HeartbeatRequest) returns (google.protobuf.Empty);
   // Execute SQL and return results.
   rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
 }

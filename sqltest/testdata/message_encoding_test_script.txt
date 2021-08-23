@@ -3,6 +3,9 @@
 -- TEST1 - string encoded key, top level JSON encoded value;
 
 --create topic testtopic;
+
+use test;
+
 create source test_source_1(
     col0 bigint,
     col1 tinyint,

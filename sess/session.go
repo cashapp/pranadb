@@ -27,15 +27,20 @@ type Session struct {
 	sessCloser   RemoteSessionCloser
 }
 
-func NewSession(id string, schema *common.Schema, sessCloser RemoteSessionCloser) *Session {
+func NewSession(id string, sessCloser RemoteSessionCloser) *Session {
 	return &Session{
 		ID:           id,
-		Schema:       schema,
 		PsCache:      make(map[int64]*PreparedStatement),
 		QueryInfo:    new(cluster.QueryExecutionInfo),
 		stmtSequence: -1,
 		sessCloser:   sessCloser,
 	}
+}
+
+func (s *Session) UseSchema(schema *common.Schema) {
+	s.Schema = schema
+	s.pushPlanner = nil
+	s.pullPlanner = nil
 }
 
 func (s *Session) PullPlanner() *parplan.Planner {

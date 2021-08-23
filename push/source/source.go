@@ -3,9 +3,9 @@ package source
 import (
 	"fmt"
 	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
@@ -59,14 +59,14 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	ti := sourceInfo.TopicInfo
 	if ti == nil {
 		// TODO not sure if we need this... parser should catch it?
-		return nil, errors.NewUserErrorF(errors.MissingTopicInfo, "No topic info configured for source %s", sourceInfo.Name)
+		return nil, perrors.NewPranaErrorf(perrors.MissingTopicInfo, "No topic info configured for source %s", sourceInfo.Name)
 	}
 	if cfg.KafkaBrokers == nil {
-		return nil, errors.NewUserError(errors.MissingKafkaBrokers, "No Kafka brokers configured")
+		return nil, perrors.NewPranaError(perrors.MissingKafkaBrokers, "No Kafka brokers configured")
 	}
 	brokerConf, ok := cfg.KafkaBrokers[ti.BrokerName]
 	if !ok {
-		return nil, errors.NewUserErrorF(errors.UnknownBrokerName, "Unknown broker. Name: %s", ti.BrokerName)
+		return nil, perrors.NewPranaErrorf(perrors.UnknownBrokerName, "Unknown broker. Name: %s", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
 	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
@@ -80,7 +80,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewCfltMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
-		return nil, errors.NewUserErrorF(errors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
+		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
 	return &Source{
 		sourceInfo:              sourceInfo,

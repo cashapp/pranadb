@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/cmd/cli"
+	cli2 "github.com/squareup/pranadb/cli"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/chzyer/readline"
@@ -18,26 +20,59 @@ var arguments struct {
 }
 
 func main() {
-	kctx := kong.Parse(&arguments)
+	cm := &cliMain{}
+	cm.run()
+}
 
-	cl := cli.NewCli(arguments.Addr)
-	err := cl.Start()
-	kctx.FatalIfErrorf(err)
-	defer func() {
-		if err := cl.Stop(); err != nil {
-			// Ignore
+type cliMain struct {
+	cl        *cli2.Cli
+	kctx      *kong.Context
+	sessionID string
+}
+
+func (c *cliMain) run() {
+	err := c.doRun()
+	if c.sessionID != "" {
+		if err := c.cl.CloseSession(c.sessionID); err != nil {
+			log.Printf("failed to close session %v", err)
 		}
-	}()
+	}
+	if c.cl != nil {
+		if err := c.cl.Stop(); err != nil {
+			log.Printf("failed to close cli %v", err)
+		}
+	}
+	c.kctx.FatalIfErrorf(err)
+}
+
+func (c *cliMain) doRun() error {
+	c.kctx = kong.Parse(&arguments)
+
+	cl := cli2.NewCli(arguments.Addr, time.Second*5)
+	if err := cl.Start(); err != nil {
+		return err
+	}
+	c.cl = cl
+
+	session, err := cl.CreateSession()
+	if err != nil {
+		return err
+	}
+	c.sessionID = session
 
 	home, err := os.UserHomeDir()
-	kctx.FatalIfErrorf(err)
+	if err != nil {
+		return err
+	}
 
 	rl, err := readline.NewEx(&readline.Config{
 		HistoryFile:            filepath.Join(home, ".prana.history"),
 		DisableAutoSaveHistory: true,
 		VimMode:                arguments.VI,
 	})
-	kctx.FatalIfErrorf(err)
+	if err != nil {
+		return err
+	}
 	for {
 		// Gather multi-line statement terminated by a ;
 		rl.SetPrompt("pranadb> ")
@@ -45,9 +80,11 @@ func main() {
 		for {
 			line, err := rl.Readline()
 			if err == io.EOF {
-				kctx.Exit(0)
+				return nil
 			}
-			kctx.FatalIfErrorf(err)
+			if err != nil {
+				return err
+			}
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
@@ -61,15 +98,14 @@ func main() {
 		statement := strings.Join(cmd, " ")
 		_ = rl.SaveHistory(statement)
 
-		err = sendStatement(statement, cl)
-		if err != nil {
-			kctx.Errorf("%s", err)
+		if err := c.sendStatement(statement, cl); err != nil {
+			return err
 		}
 	}
 }
 
-func sendStatement(statement string, cli *cli.Cli) error {
-	ch, err := cli.ExecuteStatement(statement)
+func (c *cliMain) sendStatement(statement string, cli *cli2.Cli) error {
+	ch, err := cli.ExecuteStatement(c.sessionID, statement)
 	if err != nil {
 		return err
 	}

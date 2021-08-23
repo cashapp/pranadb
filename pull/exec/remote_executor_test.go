@@ -123,11 +123,11 @@ func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colTypes, "sys", tc)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colNames, colTypes, "sys", tc)
 	require.Len(t, re.clusterGetters, 1)
 	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
 
-	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colTypes, "sys", tc)
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc)
 	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
@@ -171,7 +171,7 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool
 		IsPs: ps,
 	}
 
-	return NewRemoteExecutor(nil, queryInfo, colTypes, "test-schema", tc), allRows, tc
+	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc), allRows, tc
 }
 
 func generateRow(t *testing.T, index int, rows *common.Rows) {

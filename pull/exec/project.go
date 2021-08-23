@@ -14,9 +14,10 @@ type PullProjection struct {
 func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColumns []*common.Expression) (*PullProjection, error) {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
+		colNames:       colNames,
+		colTypes:       colTypes,
+		simpleColNames: common.ToSimpleColNames(colNames),
+		rowsFactory:    rf,
 	}
 	return &PullProjection{
 		pullExecutorBase: base,

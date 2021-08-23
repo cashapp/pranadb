@@ -14,9 +14,10 @@ type PullSelect struct {
 func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) *PullSelect {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
+		colNames:       colNames,
+		colTypes:       colTypes,
+		simpleColNames: common.ToSimpleColNames(colNames),
+		rowsFactory:    rf,
 	}
 	return &PullSelect{
 		pullExecutorBase: base,

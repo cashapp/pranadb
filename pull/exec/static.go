@@ -1,15 +1,11 @@
 package exec
 
 import (
-	"strconv"
-
 	"github.com/squareup/pranadb/common"
 )
 
 // Empty executor.
 var Empty = &StaticRows{rows: common.NewRows(nil, 0)}
-
-var OK = NewSingleStringRow("ok")
 
 type StaticRows struct {
 	pullExecutorBase
@@ -18,39 +14,17 @@ type StaticRows struct {
 
 var _ PullExecutor = &StaticRows{}
 
-var singleStringRowsFactory = createSingleStringRowsFactory()
-var singleStringColNames = []string{"__internal__"}
-
-func createSingleStringRowsFactory() *common.RowsFactory {
-	singleStringColTypes := []common.ColumnType{common.VarcharColumnType}
-
-	return common.NewRowsFactory(singleStringColTypes)
-}
-
-func NewSingleStringRow(message string) *StaticRows {
-	rows := singleStringRowsFactory.NewRows(1)
-	rows.AppendStringToColumn(0, message)
-	return NewStaticRows(singleStringColNames, rows)
-}
-
-// NewStaticRow creates a static single row result.
-func NewStaticRow(values ...interface{}) *StaticRows {
-	row := common.InferRow(values...)
-	rows := common.NewRows(row.ColumnTypes(), 1)
-	colNames := make([]string, len(values))
-	for i := 0; i < len(values); i++ {
-		colNames[i] = strconv.Itoa(i)
-	}
-	rows.AppendRow(row)
-	return NewStaticRows(colNames, rows)
-}
-
-// NewStaticRows creates a static set of rows.
-func NewStaticRows(colNames []string, rows *common.Rows) *StaticRows {
+func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
+	colTypes := []common.ColumnType{common.BigIntColumnType}
+	rf := common.NewRowsFactory(colTypes)
+	rows := rf.NewRows(1)
+	rows.AppendInt64ToColumn(0, val)
+	colNames := []string{colName}
 	return &StaticRows{
 		pullExecutorBase: pullExecutorBase{
-			colTypes: rows.ColumnTypes(),
-			colNames: colNames,
+			colTypes:       rows.ColumnTypes(),
+			colNames:       colNames,
+			simpleColNames: colNames,
 		},
 		rows: rows,
 	}

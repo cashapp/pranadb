@@ -3,7 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/cmd/cli"
+	cli2 "github.com/squareup/pranadb/cli"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -28,7 +28,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = "basic_source"
+var TestPrefix = ""
 
 var TestSchemaName = "test"
 
@@ -118,15 +118,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
-		s, err := server.NewServer(conf.Config{
-			NodeID:                 0,
-			ClusterID:              TestClusterID,
-			NumShards:              10,
-			TestServer:             true,
-			KafkaBrokers:           brokerConfigs,
-			EnableAPIServer:        true,
-			APIServerListenAddress: fmt.Sprintf("localhost:%d", apiServerListenAddressBase),
-		})
+		cnf := conf.NewConfig()
+		cnf.NodeID = 0
+		cnf.ClusterID = TestClusterID
+		cnf.NumShards = 10
+		cnf.TestServer = true
+		cnf.KafkaBrokers = brokerConfigs
+		cnf.EnableAPIServer = true
+		cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase)
+		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -291,7 +291,8 @@ type sqlTest struct {
 	rnd          *rand.Rand
 	prana        *server.Server
 	topics       []*kafka.Topic
-	cli          *cli.Cli
+	cli          *cli2.Cli
+	sessionID    string
 }
 
 func (st *sqlTest) run() {
@@ -343,6 +344,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		if command == "" {
 			continue
 		}
+		log.Printf("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
 		} else if strings.HasPrefix(command, "--close session") {
@@ -376,19 +378,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 	}
 
-	log.Printf("Test output is:\n%s", st.output.String())
+	log.Println("TEST OUTPUT=========================\n" + st.output.String())
+	log.Println("END TEST OUTPUT=====================")
 
-	outfile, closeFunc := openFile("./testdata/" + st.outFile)
-	defer closeFunc()
-	b, err := ioutil.ReadAll(outfile)
-	require.NoError(err)
-	expectedOutput := string(b)
-	actualOutput := st.output.String()
-	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
-
-	end := time.Now()
-
-	err = st.cli.Stop()
+	err := st.cli.Stop()
 	require.NoError(err)
 
 	for _, topic := range st.topics {
@@ -400,26 +393,16 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	// or materialized views and no data in the database and nothing in the remote session caches
 	for _, prana := range st.testSuite.pranaCluster {
 
-		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-			testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
-			require.True(ok)
-			if testSchema.LenTables() != 0 {
-				return false, nil
-			}
-			err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
-			if err != nil {
-				return false, err
-			}
-			return true, nil
-		}, 5*time.Second, 10*time.Millisecond)
-		require.NoError(err)
-		require.True(ok)
+		// Script should delete all it's table and MV. Once they are all deleted the schema will automatically
+		// be removed, so should not exist at end of test
+		sch, ok := prana.GetMetaController().GetSchema(TestSchemaName)
+		require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
 
 		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)
-		}, 30*time.Second, 100*time.Millisecond)
+		}, 5*time.Second, 100*time.Millisecond)
 		require.NoError(err)
 		if !ok {
 			_, _ = st.tableDataLeft(require, prana, true)
@@ -451,7 +434,16 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
 	}
-	dur := end.Sub(start)
+
+	outfile, closeFunc := openFile("./testdata/" + st.outFile)
+	defer closeFunc()
+	b, err := ioutil.ReadAll(outfile)
+	require.NoError(err)
+	expectedOutput := string(b)
+	actualOutput := st.output.String()
+	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
+
+	dur := time.Now().Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
@@ -608,7 +600,6 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 }
 
 func (st *sqlTest) executeLoadData(require *require.Assertions, command string) {
-	log.Printf("Executing %s", command)
 	noWait := strings.HasSuffix(command, "no wait")
 	if noWait {
 		command = command[:len(command)-8]
@@ -637,7 +628,9 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
 	// Closes then recreates the cli
-	err := st.cli.Stop()
+	err := st.cli.CloseSession(st.sessionID)
+	require.NoError(err)
+	err = st.cli.Stop()
 	require.NoError(err)
 	st.cli = st.createCli(require)
 }
@@ -726,11 +719,11 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 }
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
-	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	resChan, err := st.cli.ExecuteStatement(statement)
+	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
 	require.NoError(err)
 	for line := range resChan {
+		log.Printf("output:%s", line)
 		st.output.WriteString(line + "\n")
 	}
 	end := time.Now()
@@ -750,14 +743,17 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
+func (st *sqlTest) createCli(require *require.Assertions) *cli2.Cli {
 	// We connect to a random Prana
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
-	cli := cli.NewCli(apiServerAddress)
+	cli := cli2.NewCli(apiServerAddress, 5*time.Second)
 	err := cli.Start()
 	require.NoError(err)
+	sessID, err := cli.CreateSession()
+	require.NoError(err)
+	st.sessionID = sessID
 	return cli
 }
 

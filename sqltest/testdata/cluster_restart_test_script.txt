@@ -1,6 +1,7 @@
 -- Tests restarting the cluster and verifying all sources, MVs and data are still there;
 
 --create topic testtopic1;
+use test;
 create source test_source_1(
     col0 bigint,
     col1 tinyint,
@@ -77,6 +78,8 @@ select * from test_mv_2 order by col0;
 
 --restart cluster;
 
+use test;
+
 select * from test_source_1 order by col0;
 select * from test_mv_1 order by col0;
 
@@ -95,6 +98,8 @@ select * from test_source_2 order by col0;
 select * from test_mv_2 order by col0;
 
 --restart cluster;
+
+use test;
 
 select * from test_source_1 order by col0;
 select * from test_mv_1 order by col0;

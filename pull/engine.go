@@ -7,9 +7,9 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	errors2 "github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/notifier"
+	errors2 "github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/sess"
@@ -77,13 +77,13 @@ func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exe
 	psID := session.GeneratePSId()
 	ps := session.CreatePreparedStatement(psID, sql, tiAst)
 	session.PsCache[psID] = ps
-	return exec.NewStaticRow(psID), nil
+	return exec.NewSingleValueBigIntRow(psID, "PS_ID"), nil
 }
 
 func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
 	ps, ok := session.PsCache[psID]
 	if !ok {
-		return nil, errors2.NewUserErrorF(errors2.PreparedStatementDoesNotExist, "cannot find prepared statement with id %d", psID)
+		return nil, errors2.NewPranaErrorf(errors2.PreparedStatementDoesNotExist, "cannot find prepared statement with id %d", psID)
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
 	session.PullPlanner().SetPSArgs(args)
@@ -135,7 +135,8 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 	s, ok := p.getCachedSession(queryInfo.SessionID)
 	newSession := false
 	if !ok {
-		s = sess.NewSession(queryInfo.SessionID, schema, nil)
+		s = sess.NewSession(queryInfo.SessionID, nil)
+		s.UseSchema(schema)
 		newSession = true
 	}
 	// We lock the session, not because of concurrent access but because we need a memory barrier
@@ -294,7 +295,8 @@ func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common
 	if !ok {
 		return nil, fmt.Errorf("no such schema %s", schemaName)
 	}
-	sess := sess.NewSession("", schema, nil)
+	sess := sess.NewSession("", nil)
+	sess.UseSchema(schema)
 	exec, err := p.BuildPullQuery(sess, query)
 	if err != nil {
 		return nil, err

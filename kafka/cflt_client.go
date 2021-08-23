@@ -3,7 +3,6 @@ package kafka
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/pkg/errors"
-	"log"
 	"sync"
 	"time"
 )
@@ -54,9 +53,6 @@ func (k *KafkaMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
 func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
 	k.lock.Lock()
 	defer k.lock.Unlock()
-	// TODO prevent getMessage until some time after rebalance event
-	log.Printf("Rebalance occurred %s", event.String())
-
 	switch event.(type) {
 	case kafka.AssignedPartitions:
 		if k.paCb == nil {
@@ -73,7 +69,6 @@ func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kaf
 			return err
 		}
 	}
-
 	return nil
 }
 

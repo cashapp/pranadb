@@ -52,7 +52,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
-	apiServer := api.NewAPIServer(commandExecutor, config.APIServerListenAddress)
+	apiServer := api.NewAPIServer(commandExecutor, config)
 
 	services := []service{
 		notifServer,
