@@ -2,6 +2,7 @@ package conf
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"time"
 )
 
@@ -41,13 +42,82 @@ type Config struct {
 	APIServerSessionCheckInterval time.Duration
 }
 
+func (c *Config) Validate() error { //nolint:gocyclo
+	if c.NodeID < 0 {
+		return perrors.NewInvalidConfigurationError("NodeID must be >= 0")
+	}
+	if c.ClusterID < 0 {
+		return perrors.NewInvalidConfigurationError("ClusterID must be >= 0")
+	}
+	if c.NumShards < 1 {
+		return perrors.NewInvalidConfigurationError("NumShards must be >= 1")
+	}
+	if len(c.KafkaBrokers) == 0 {
+		return perrors.NewInvalidConfigurationError("KafkaBrokers must be specified")
+	}
+	for bName, kb := range c.KafkaBrokers {
+		if kb.ClientType == BrokerClientTypeUnknown {
+			return perrors.NewInvalidConfigurationError(fmt.Sprintf("KafkaBroker %s, invalid ClientType, must be %d or %d",
+				bName, BrokerClientFake, BrokerClientDefault))
+		}
+	}
+	if c.NotifierHeartbeatInterval < 1*time.Second {
+		return perrors.NewInvalidConfigurationError(fmt.Sprintf("NotifierHeartbeatInterval must be >= %d", time.Second))
+	}
+	if c.EnableAPIServer {
+		if c.APIServerListenAddress == "" {
+			return perrors.NewInvalidConfigurationError("APIServerListenAddress must be specified")
+		}
+		if c.APIServerSessionTimeout < 5*time.Second {
+			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionTimeout must be >= %d", 5*time.Second))
+		}
+		if c.APIServerSessionCheckInterval < 1*time.Second {
+			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionCheckInterval must be >= %d", time.Second))
+		}
+	}
+	if !c.TestServer {
+		if c.DataDir == "" {
+			return perrors.NewInvalidConfigurationError("DataDir must be specified")
+		}
+		if c.ReplicationFactor < 3 {
+			return perrors.NewInvalidConfigurationError("ReplicationFactor must be >= 3")
+		}
+		if len(c.RaftAddresses) < c.ReplicationFactor {
+			return perrors.NewInvalidConfigurationError("Number of RaftAddresses must be >= ReplicationFactor")
+		}
+		if len(c.NotifListenAddresses) != len(c.RaftAddresses) {
+			return perrors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of NotifListenerAddresses")
+		}
+		if c.DataSnapshotEntries < 10 {
+			return perrors.NewInvalidConfigurationError("DataSnapshotEntries must be >= 10")
+		}
+		if c.DataCompactionOverhead < 5 {
+			return perrors.NewInvalidConfigurationError("DataCompactionOverhead must be >= 5")
+		}
+		if c.SequenceSnapshotEntries < 10 {
+			return perrors.NewInvalidConfigurationError("SequenceSnapshotEntries must be >= 10")
+		}
+		if c.SequenceCompactionOverhead < 5 {
+			return perrors.NewInvalidConfigurationError("SequenceCompactionOverhead must be >= 5")
+		}
+		if c.LocksSnapshotEntries < 10 {
+			return perrors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= 10")
+		}
+		if c.LocksCompactionOverhead < 5 {
+			return perrors.NewInvalidConfigurationError("LocksCompactionOverhead must be >= 5")
+		}
+	}
+	return nil
+}
+
 type BrokerConfigs map[string]BrokerConfig // Key is broker name which is referred to in the source descriptor
 
 type BrokerClientType int
 
 const (
-	BrokerClientFake    BrokerClientType = 1
-	BrokerClientDefault                  = 2
+	BrokerClientTypeUnknown                  = 0
+	BrokerClientFake        BrokerClientType = 1
+	BrokerClientDefault                      = 2
 )
 
 type BrokerConfig struct {
@@ -55,7 +125,7 @@ type BrokerConfig struct {
 	Properties map[string]string
 }
 
-func NewConfig() *Config {
+func NewDefaultConfig() *Config {
 	return &Config{
 		DataSnapshotEntries:           DefaultDataSnapshotEntries,
 		DataCompactionOverhead:        DefaultDataCompactionOverhead,

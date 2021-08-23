@@ -10,6 +10,7 @@ const (
 	SchemaNotInUse
 	InvalidStatement
 	UnknownSessionID
+	InvalidConfiguration
 
 	PreparedStatementDoesNotExist
 	UnknownBrokerName
@@ -33,26 +34,30 @@ func NewInvalidStatementError(msg string) PranaError {
 }
 
 func NewUnknownSessionIDError(sessionID string) PranaError {
-	return NewPranaError(UnknownSessionID, fmt.Sprintf("Unknown session ID %s", sessionID))
+	return NewPranaErrorf(UnknownSessionID, "Unknown session ID %s", sessionID)
+}
+
+func NewInvalidConfigurationError(msg string) PranaError {
+	return NewPranaErrorf(InvalidConfiguration, "Invalid configuration: %s", msg)
 }
 
 func NewPranaErrorf(errorCode ErrorCode, msgFormat string, args ...interface{}) PranaError {
 	msg := fmt.Sprintf(fmt.Sprintf("PDB%04d - %s", errorCode, msgFormat), args...)
-	return PranaError{code: errorCode, msg: msg}
+	return PranaError{Code: errorCode, Msg: msg}
 }
 
 func NewPranaError(errorCode ErrorCode, msg string) PranaError {
-	return PranaError{code: errorCode, msg: msg}
+	return PranaError{Code: errorCode, Msg: msg}
 }
 
 // PranaError is any kind of error that is exposed to the user via external interfaces like the CLI
 type PranaError struct {
-	code ErrorCode
-	msg  string
+	Code ErrorCode
+	Msg  string
 }
 
 func (u PranaError) Error() string {
-	return u.msg
+	return u.Msg
 }
 
 func MaybeAddStack(err error) error {

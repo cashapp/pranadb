@@ -118,7 +118,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
-		cnf := conf.NewConfig()
+		cnf := conf.NewDefaultConfig()
 		cnf.NodeID = 0
 		cnf.ClusterID = TestClusterID
 		cnf.NumShards = 10
@@ -143,7 +143,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			"localhost:63303",
 		}
 		for i := 0; i < w.numNodes; i++ {
-			cnf := conf.NewConfig()
+			cnf := conf.NewDefaultConfig()
 			cnf.NodeID = i
 			cnf.ClusterID = TestClusterID
 			cnf.RaftAddresses = raftAddresses

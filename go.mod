@@ -27,4 +27,5 @@ require (
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.23.0
+	muzzammil.xyz/jsonc v0.0.0-20201229145248-615b0916ca38 // indirect
 )

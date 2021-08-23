@@ -24,6 +24,9 @@ import (
 )
 
 func NewServer(config conf.Config) (*Server, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
 	var clus cluster.Cluster
 	var notifClient notifier.Client
 	var notifServer notifier.Server
@@ -180,4 +183,8 @@ func (s *Server) GetNotificationsServer() notifier.Server {
 
 func (s *Server) GetAPIServerr() *api.Server {
 	return s.apiServer
+}
+
+func (s *Server) GetConfig() conf.Config {
+	return s.conf
 }

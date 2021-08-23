@@ -155,7 +155,7 @@ use test;
 0 rows returned
 -- ps should now be closed as session was closed;
 execute 8 6 600 6000 6234.4321 62345678.99 "str6";
-Failed to execute statement: PDB0004 - cannot find prepared statement with id 8
+Failed to execute statement: PDB0005 - cannot find prepared statement with id 8
 
 drop source test_source_1;
 0 rows returned

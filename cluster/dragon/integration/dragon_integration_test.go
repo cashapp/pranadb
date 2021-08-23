@@ -285,7 +285,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
-		cnf := conf.NewConfig()
+		cnf := conf.NewDefaultConfig()
 		cnf.NodeID = i
 		cnf.ClusterID = 123
 		cnf.RaftAddresses = nodeAddresses
