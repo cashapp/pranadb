@@ -37,7 +37,7 @@ type Config struct {
 	Debug                         bool
 	NotifierHeartbeatInterval     time.Duration
 	EnableAPIServer               bool
-	APIServerListenAddress        string
+	APIServerListenAddresses      []string
 	APIServerSessionTimeout       time.Duration
 	APIServerSessionCheckInterval time.Duration
 }
@@ -65,8 +65,8 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		return perrors.NewInvalidConfigurationError(fmt.Sprintf("NotifierHeartbeatInterval must be >= %d", time.Second))
 	}
 	if c.EnableAPIServer {
-		if c.APIServerListenAddress == "" {
-			return perrors.NewInvalidConfigurationError("APIServerListenAddress must be specified")
+		if len(c.APIServerListenAddresses) == 0 {
+			return perrors.NewInvalidConfigurationError("APIServerListenAddresses must be specified")
 		}
 		if c.APIServerSessionTimeout < 5*time.Second {
 			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionTimeout must be >= %d", 5*time.Second))
@@ -76,6 +76,9 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		}
 	}
 	if !c.TestServer {
+		if c.NodeID >= len(c.RaftAddresses) {
+			return perrors.NewInvalidConfigurationError("NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)")
+		}
 		if c.DataDir == "" {
 			return perrors.NewInvalidConfigurationError("DataDir must be specified")
 		}
@@ -88,11 +91,17 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if len(c.NotifListenAddresses) != len(c.RaftAddresses) {
 			return perrors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of NotifListenerAddresses")
 		}
+		if c.EnableAPIServer && len(c.APIServerListenAddresses) != len(c.RaftAddresses) {
+			return perrors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of APIServerListenAddresses")
+		}
 		if c.DataSnapshotEntries < 10 {
 			return perrors.NewInvalidConfigurationError("DataSnapshotEntries must be >= 10")
 		}
 		if c.DataCompactionOverhead < 5 {
 			return perrors.NewInvalidConfigurationError("DataCompactionOverhead must be >= 5")
+		}
+		if c.DataCompactionOverhead > c.DataSnapshotEntries {
+			return perrors.NewInvalidConfigurationError("DataSnapshotEntries must be >= DataCompactionOverhead")
 		}
 		if c.SequenceSnapshotEntries < 10 {
 			return perrors.NewInvalidConfigurationError("SequenceSnapshotEntries must be >= 10")
@@ -100,11 +109,17 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if c.SequenceCompactionOverhead < 5 {
 			return perrors.NewInvalidConfigurationError("SequenceCompactionOverhead must be >= 5")
 		}
+		if c.SequenceCompactionOverhead > c.SequenceSnapshotEntries {
+			return perrors.NewInvalidConfigurationError("SequenceSnapshotEntries must be >= SequenceCompactionOverhead")
+		}
 		if c.LocksSnapshotEntries < 10 {
 			return perrors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= 10")
 		}
 		if c.LocksCompactionOverhead < 5 {
 			return perrors.NewInvalidConfigurationError("LocksCompactionOverhead must be >= 5")
+		}
+		if c.LocksCompactionOverhead > c.LocksSnapshotEntries {
+			return perrors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= LocksCompactionOverhead")
 		}
 	}
 	return nil

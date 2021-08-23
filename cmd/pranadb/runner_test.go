@@ -15,16 +15,18 @@ import (
 )
 
 func TestRunnerConfigAllFieldsSpecified(t *testing.T) {
-	cnf := createConfigWithAllFields()
-	b, err := json.MarshalIndent(cnf, " ", " ")
+	cnfExpected := createConfigWithAllFields()
+	cnfExpected.NodeID = 2
+	cnfToWrite := cnfExpected
+	cnfToWrite.NodeID = 12345 // Node id is not taken from the config file
+	b, err := json.MarshalIndent(cnfToWrite, " ", " ")
 	require.NoError(t, err)
-	testRunner(t, b, cnf)
+	testRunner(t, b, cnfExpected, 2)
 }
 
 func TestParseConfigWithComments(t *testing.T) {
 	jsonWithComments := `
 	{
-	  "NodeID": 1, // this is the node id
 	  "ClusterID": 12345, // and this is the clusterid
 /* These 
 are the raft addresses
@@ -61,15 +63,21 @@ are the raft addresses
 	  "Debug": true,
 	  "NotifierHeartbeatInterval": 76000000000,
 	  "EnableAPIServer": true,
-	  "APIServerListenAddress": "localhost:4567",
+	  "APIServerListenAddresses": [
+	   "addr7",
+	   "addr8",
+	   "addr9"
+	  ],
 	  "APIServerSessionTimeout": 41000000000,
 	  "APIServerSessionCheckInterval": 6000000000
 	 }
 `
-	testRunner(t, []byte(jsonWithComments), createConfigWithAllFields())
+	cnfExpected := createConfigWithAllFields()
+	cnfExpected.NodeID = 2
+	testRunner(t, []byte(jsonWithComments), cnfExpected, 2)
 }
 
-func testRunner(t *testing.T, b []byte, cnf conf.Config) {
+func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
 	t.Helper()
 	dataDir, err := ioutil.TempDir("", "runner-test")
 	require.NoError(t, err)
@@ -80,7 +88,7 @@ func testRunner(t *testing.T, b []byte, cnf conf.Config) {
 	require.NoError(t, err)
 
 	r := &runner{}
-	args := []string{"-conf", fName}
+	args := []string{"-conf", fName, "-node", fmt.Sprintf("%d", nodeID)}
 	r.run(args, false)
 
 	actualConfig := r.getServer().GetConfig()
@@ -95,7 +103,6 @@ func removeDataDir(dataDir string) {
 
 func createConfigWithAllFields() conf.Config {
 	return conf.Config{
-		NodeID:               1,
 		ClusterID:            12345,
 		RaftAddresses:        []string{"addr1", "addr2", "addr3"},
 		NotifListenAddresses: []string{"addr4", "addr5", "addr6"},
@@ -120,7 +127,7 @@ func createConfigWithAllFields() conf.Config {
 		Debug:                         true,
 		NotifierHeartbeatInterval:     76 * time.Second,
 		EnableAPIServer:               true,
-		APIServerListenAddress:        "localhost:4567",
+		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,
 		APIServerSessionCheckInterval: 6 * time.Second,
 	}

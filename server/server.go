@@ -131,6 +131,8 @@ func (s *Server) Start() error {
 		}()
 	}
 
+	log.Printf("Prana server %d started", s.nodeID)
+
 	return nil
 }
 

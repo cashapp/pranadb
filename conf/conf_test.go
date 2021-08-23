@@ -64,7 +64,7 @@ func invalidNotifierHeartbeatInterval() Config {
 func invalidAPIServerListenAddress() Config {
 	cnf := confAllFields
 	cnf.EnableAPIServer = true
-	cnf.APIServerListenAddress = ""
+	cnf.APIServerListenAddresses = nil
 	return cnf
 }
 
@@ -97,6 +97,13 @@ func invalidRaftAddressesConfig() Config {
 func raftAndNotifListenerAddressedDifferentLengthConfig() Config {
 	cnf := confAllFields
 	cnf.NotifListenAddresses = append(cnf.NotifListenAddresses, "someotheraddresss")
+	return cnf
+}
+
+func raftAndAPIServerListenerAddressedDifferentLengthConfig() Config {
+	cnf := confAllFields
+	cnf.EnableAPIServer = true
+	cnf.APIServerListenAddresses = append(cnf.APIServerListenAddresses, "someotheraddresss")
 	return cnf
 }
 
@@ -136,6 +143,33 @@ func invalidLocksCompactionOverhead() Config {
 	return cnf
 }
 
+func dataCompactionGreaterThanDataSnapshotEntries() Config {
+	cnf := confAllFields
+	cnf.DataSnapshotEntries = 10
+	cnf.DataCompactionOverhead = 11
+	return cnf
+}
+
+func sequenceCompactionGreaterThanDataSnapshotEntries() Config {
+	cnf := confAllFields
+	cnf.SequenceSnapshotEntries = 10
+	cnf.SequenceCompactionOverhead = 11
+	return cnf
+}
+
+func locksCompactionGreaterThanDataSnapshotEntries() Config {
+	cnf := confAllFields
+	cnf.LocksSnapshotEntries = 10
+	cnf.LocksCompactionOverhead = 11
+	return cnf
+}
+
+func NodeIDOutOfRangeConf() Config {
+	cnf := confAllFields
+	cnf.NodeID = len(cnf.RaftAddresses)
+	return cnf
+}
+
 var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
 	{"PDB0004 - Invalid configuration: ClusterID must be >= 0", invalidClusterIDConf()},
@@ -144,18 +178,23 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB0004 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
 	{"PDB0004 - Invalid configuration: NotifierHeartbeatInterval must be >= 1000000000", invalidNotifierHeartbeatInterval()},
-	{"PDB0004 - Invalid configuration: APIServerListenAddress must be specified", invalidAPIServerListenAddress()},
+	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
 	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 5000000000", invalidAPIServerSessionTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 1000000000", invalidAPIServerSessionCheckInterval()},
+	{"PDB0004 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB0004 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
 	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
 	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be same as number of NotifListenerAddresses", raftAndNotifListenerAddressedDifferentLengthConfig()},
+	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be same as number of APIServerListenAddresses", raftAndAPIServerListenerAddressedDifferentLengthConfig()},
 	{"PDB0004 - Invalid configuration: DataSnapshotEntries must be >= 10", invalidDataSnapshotEntries()},
 	{"PDB0004 - Invalid configuration: DataCompactionOverhead must be >= 5", invalidDataCompactionOverhead()},
 	{"PDB0004 - Invalid configuration: SequenceSnapshotEntries must be >= 10", invalidSequenceSnapshotEntries()},
 	{"PDB0004 - Invalid configuration: SequenceCompactionOverhead must be >= 5", invalidSequenceCompactionOverhead()},
 	{"PDB0004 - Invalid configuration: LocksSnapshotEntries must be >= 10", invalidLocksSnapshotEntries()},
 	{"PDB0004 - Invalid configuration: LocksCompactionOverhead must be >= 5", invalidLocksCompactionOverhead()},
+	{"PDB0004 - Invalid configuration: DataSnapshotEntries must be >= DataCompactionOverhead", dataCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB0004 - Invalid configuration: SequenceSnapshotEntries must be >= SequenceCompactionOverhead", sequenceCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB0004 - Invalid configuration: LocksSnapshotEntries must be >= LocksCompactionOverhead", locksCompactionGreaterThanDataSnapshotEntries()},
 }
 
 func TestValidate(t *testing.T) {
@@ -195,7 +234,7 @@ var confAllFields = Config{
 	Debug:                         true,
 	NotifierHeartbeatInterval:     76 * time.Second,
 	EnableAPIServer:               true,
-	APIServerListenAddress:        "localhost:4567",
+	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 	APIServerSessionTimeout:       41 * time.Second,
 	APIServerSessionCheckInterval: 6 * time.Second,
 }

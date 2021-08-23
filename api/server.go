@@ -40,7 +40,7 @@ type Server struct {
 func NewAPIServer(ce *command.Executor, cfg conf.Config) *Server {
 	return &Server{
 		ce:                   ce,
-		serverAddress:        cfg.APIServerListenAddress,
+		serverAddress:        cfg.APIServerListenAddresses[cfg.NodeID],
 		expSessCheckInterval: cfg.APIServerSessionCheckInterval,
 		sessTimeout:          cfg.APIServerSessionTimeout,
 	}
