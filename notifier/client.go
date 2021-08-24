@@ -3,8 +3,8 @@ package notifier
 import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -63,7 +63,7 @@ func (c *client) makeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
 	// Unavailable ones will be retried after a delay
-	log.Printf("Server became unavailable %s", serverAddress)
+	log.Errorf("Server became unavailable %s", serverAddress)
 	delete(c.connections, serverAddress)
 	delete(c.availableServers, serverAddress)
 	c.unavailableServers[serverAddress] = time.Now()
@@ -107,7 +107,7 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 		for serverAddress, failTime := range c.unavailableServers {
 			if now.Sub(failTime) >= connectionRetryBackoff {
 				// Put the server back in the available set
-				log.Printf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
+				log.Warnf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
 				delete(c.unavailableServers, serverAddress)
 				c.availableServers[serverAddress] = struct{}{}
 			}
@@ -321,7 +321,7 @@ func (cc *clientConnection) stop() {
 	}
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
-		log.Printf("Failed to close connection %v", err)
+		log.Errorf("Failed to close connection %v", err)
 	}
 	<-cc.loopCh
 	cc.client.connectionClosed(cc)
@@ -329,7 +329,7 @@ func (cc *clientConnection) stop() {
 
 func (cc *clientConnection) sendHeartbeat() {
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
-		log.Printf("failed to send heartbeat %v", err)
+		log.Errorf("failed to send heartbeat %v", err)
 		cc.heartbeatFailed()
 		return
 	}
@@ -338,7 +338,7 @@ func (cc *clientConnection) sendHeartbeat() {
 		if cc.hbReceived.Get() {
 			cc.sendHeartbeat()
 		} else {
-			log.Printf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
+			log.Warnf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
 			cc.heartbeatFailed()
 		}
 	})

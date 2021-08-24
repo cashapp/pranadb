@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/cli"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -94,11 +94,11 @@ func (w *sqlTestsuite) TestSQL() {
 }
 
 func (w *sqlTestsuite) restartCluster() {
-	log.Println("Restarting cluster")
+	log.Infof("Restarting cluster")
 	w.stopCluster()
-	log.Println("Stopped cluster")
+	log.Infof("Stopped cluster")
 	w.startCluster()
-	log.Println("Restarted it")
+	log.Infof("Restarted it")
 }
 
 func (w *sqlTestsuite) setupPranaCluster() {
@@ -307,7 +307,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.Printf("Running sql test %s", st.testName)
+	log.Infof("Running sql test %s", st.testName)
 
 	require := st.testSuite.suite.Require()
 
@@ -338,7 +338,7 @@ func (st *sqlTest) run() {
 
 //nolint:gocyclo
 func (st *sqlTest) runTestIteration(require *require.Assertions, commands []string, iter int) int {
-	log.Printf("Running test iteration %d", iter)
+	log.Infof("Running test iteration %d", iter)
 	start := time.Now()
 	st.prana = st.choosePrana()
 	st.output = &strings.Builder{}
@@ -426,9 +426,9 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		topicNames := st.testSuite.fakeKafka.GetTopicNames()
 		if len(topicNames) > 0 {
-			log.Println("Topics left at end of test run - please make sure you delete them at the end of your script")
+			log.Infof("Topics left at end of test run - please make sure you delete them at the end of your script")
 			for _, name := range topicNames {
-				log.Printf("Topic %s", name)
+				log.Infof("Topic %s", name)
 			}
 		}
 		require.Equal(0, len(topicNames), "Topics left at end of test run")
@@ -451,12 +451,12 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
 
 	dur := time.Now().Sub(start)
-	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
+	log.Infof("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
-	log.Printf("Waiting for %d rows in table %s", numRows, tableName)
+	log.Infof("Waiting for %d rows in table %s", numRows, tableName)
 	schema, ok := st.prana.GetMetaController().GetSchema(TestSchemaName)
 	require.True(ok, "can't find test schema")
 	tab, ok := schema.GetTable(tableName)
@@ -512,7 +512,7 @@ func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Serv
 		require.NoError(err)
 		if displayRows && len(pairs) > 0 {
 			for _, pair := range pairs {
-				log.Printf("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
+				log.Infof("%s v:%v", common.DumpDataKey(pair.Key), pair.Value)
 			}
 			require.Equal(0, len(pairs), fmt.Sprintf("Table data left at end of test for shard %d", shardID))
 		}
@@ -630,7 +630,7 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 	st.waitForProcessingToComplete(require)
 	end := time.Now()
 	dur := end.Sub(start)
-	log.Printf("Load data %s execute time ms %d", command, dur.Milliseconds())
+	log.Infof("Load data %s execute time ms %d", command, dur.Milliseconds())
 }
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
@@ -659,7 +659,7 @@ func (st *sqlTest) executeCreateTopic(require *require.Assertions, command strin
 	}
 	_, err := st.testSuite.fakeKafka.CreateTopic(topicName, int(partitions))
 	require.NoError(err)
-	log.Printf("Created topic %s partitions %d", topicName, partitions)
+	log.Infof("Created topic %s partitions %d", topicName, partitions)
 }
 
 func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command string) {
@@ -669,7 +669,7 @@ func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command strin
 	topicName := parts[2]
 	err := st.testSuite.fakeKafka.DeleteTopic(topicName)
 	require.NoError(err)
-	log.Printf("Deleted topic %s ", topicName)
+	log.Infof("Deleted topic %s ", topicName)
 }
 
 func (st *sqlTest) executeResetOffets(require *require.Assertions, command string) {
@@ -692,7 +692,7 @@ func (st *sqlTest) executeRestartCluster(require *require.Assertions) {
 }
 
 func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string) {
-	log.Println("Executing kafka fail")
+	log.Infof("Executing kafka fail")
 	parts := strings.Split(command, " ")
 	lp := len(parts)
 	require.True(lp == 5, "Invalid kafka fail, should be --kafka fail topic_name source_name fail_time")
@@ -738,7 +738,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	}
 	end := time.Now()
 	dur := end.Sub(start)
-	log.Printf("Statement execute time ms %d", dur.Milliseconds())
+	log.Infof("Statement execute time ms %d", dur.Milliseconds())
 }
 
 func (st *sqlTest) choosePrana() *server.Server {

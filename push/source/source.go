@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/meta"
@@ -9,7 +10,6 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
-	"log"
 	"sync"
 	"time"
 
@@ -206,7 +206,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 	if !s.started {
 		return
 	}
-	log.Printf("Failure in consumer %v source will be stopped", err)
+	log.Errorf("Failure in consumer %v source will be stopped", err)
 	if err2 := s.stop(); err2 != nil {
 		return
 	}
@@ -220,11 +220,11 @@ func (s *Source) consumerError(err error, clientError bool) {
 		} else {
 			delay = initialRestartDelay
 		}
-		log.Printf("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
+		log.Warnf("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
 		time.AfterFunc(delay, func() {
 			err := s.Start()
 			if err != nil {
-				log.Printf("Failed to start source %v", err)
+				log.Errorf("Failed to start source %v", err)
 			}
 		})
 	}

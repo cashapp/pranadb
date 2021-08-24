@@ -1,7 +1,7 @@
 package sched
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
@@ -97,7 +97,7 @@ func (s *ShardScheduler) runLoop() {
 		if holder.errChan != nil {
 			holder.errChan <- err
 		} else if err != nil {
-			log.Printf("Failed to execute action: %v", err)
+			log.Errorf("Failed to execute action: %v", err)
 		}
 	}
 }

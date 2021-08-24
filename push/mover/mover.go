@@ -1,10 +1,11 @@
 package mover
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"sync"
 )
 
 type RawRowHandler interface {
