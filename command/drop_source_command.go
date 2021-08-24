@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/perrors"
 	"sync"
 )
 
@@ -126,7 +126,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 	}
 	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {
-		return nil, errors.MaybeAddStack(fmt.Errorf("unknown source %s", c.sourceName))
+		return nil, perrors.MaybeAddStack(fmt.Errorf("unknown source %s", c.sourceName))
 	}
 	return sourceInfo, nil
 }

@@ -5,8 +5,8 @@ import (
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/source"
 	"sync"
 )
@@ -83,7 +83,7 @@ func (c *CreateSourceCommand) OnPrepare() error {
 	if c.sourceInfo == nil {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
-			return errors.MaybeAddStack(err)
+			return perrors.MaybeAddStack(err)
 		}
 		if ast.Create == nil || ast.Create.Source == nil {
 			return fmt.Errorf("not a create source %s", c.sql)
@@ -139,7 +139,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			colNames = append(colNames, col.Name)
 			colType, err := col.ToColumnType()
 			if err != nil {
-				return nil, errors.MaybeAddStack(err)
+				return nil, perrors.MaybeAddStack(err)
 			}
 			colTypes = append(colTypes, colType)
 
@@ -157,15 +157,15 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 
 	headerEncoding := common.KafkaEncodingFromString(ast.TopicInformation.HeaderEncoding)
 	if headerEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.HeaderEncoding)
+		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.HeaderEncoding)
 	}
 	keyEncoding := common.KafkaEncodingFromString(ast.TopicInformation.KeyEncoding)
 	if keyEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.KeyEncoding)
+		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.KeyEncoding)
 	}
 	valueEncoding := common.KafkaEncodingFromString(ast.TopicInformation.ValueEncoding)
 	if valueEncoding == common.EncodingUnknown {
-		return nil, errors.NewUserErrorF(errors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.ValueEncoding)
+		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.ValueEncoding)
 	}
 	props := ast.TopicInformation.Properties
 	propsMap := make(map[string]string, len(props))
@@ -180,7 +180,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 	lc := len(colSelectors)
 	if lc > 0 && lc != len(colTypes) {
-		return nil, errors.NewUserErrorF(errors.WrongNumberColumnSelectors,
+		return nil, perrors.NewPranaErrorf(perrors.WrongNumberColumnSelectors,
 			"if specified, number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
 	}
 

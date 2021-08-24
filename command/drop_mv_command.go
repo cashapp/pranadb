@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push"
 	"sync"
 )
@@ -84,7 +84,11 @@ func (c *DropMVCommand) OnPrepare() error {
 		}
 		c.mv = mv
 	}
-	if err := c.e.metaController.UnregisterMaterializedview(c.schemaName, c.mv.Info.Name); err != nil {
+	var itNames []string
+	for _, it := range c.mv.InternalTables {
+		itNames = append(itNames, it.Name)
+	}
+	if err := c.e.metaController.UnregisterMaterializedview(c.schemaName, c.mv.Info.Name, itNames); err != nil {
 		return err
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)
@@ -130,7 +134,7 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 
 	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, c.mvName)
 	if !ok {
-		return nil, errors.MaybeAddStack(fmt.Errorf("unknown mv %s", c.mvName))
+		return nil, perrors.MaybeAddStack(fmt.Errorf("unknown mv %s", c.mvName))
 	}
 	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
 	return mv, err

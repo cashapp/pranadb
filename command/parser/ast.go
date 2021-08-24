@@ -119,7 +119,6 @@ type TopicInfoProperty struct {
 type Create struct {
 	MaterializedView *CreateMaterializedView `  "MATERIALIZED" "VIEW" @@`
 	Source           *CreateSource           `| "SOURCE" @@`
-	Schema           string                  `| "SCHEMA" @Ident`
 }
 
 // Drop statement

@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"testing"
 
@@ -222,7 +221,6 @@ func TestGetReleaseLock(t *testing.T) {
 	ok, err = clust.GetLock("/")
 	require.NoError(t, err)
 	require.True(t, ok)
-	log.Println("Ok here we go")
 	ok, err = clust.GetLock("/schema1")
 	require.NoError(t, err)
 	require.False(t, ok)

@@ -2,14 +2,15 @@ package command
 
 import (
 	"fmt"
+	"github.com/alecthomas/participle/v2"
 	"strings"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
@@ -65,26 +66,43 @@ func (e *Executor) Stop() error {
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
+//nolint:gocyclo
 func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
 	// Sessions cannot be accessed concurrently and we also need a memory barrier even if they're not accessed
 	// concurrently
 	session.Lock.Lock()
 	defer session.Lock.Unlock()
+
 	ast, err := parser.Parse(sql)
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		_, ok := err.(participle.Error)
+		if ok {
+			return nil, perrors.NewInvalidStatementError(err.Error())
+		}
+		return nil, err
+	}
+
+	if session.Schema == nil && ast.Use == "" {
+		return nil, perrors.NewSchemaNotInUseError()
+	}
+
+	if session.Schema != nil && session.Schema.IsDeleted() {
+		schema := e.metaController.GetOrCreateSchema(session.Schema.Name)
+		session.UseSchema(schema)
 	}
 
 	switch {
 	case ast.Select != "":
 		session.PullPlanner().RefreshInfoSchema()
 		dag, err := e.pullEngine.BuildPullQuery(session, sql)
-		return dag, errors.MaybeAddStack(err)
+		return dag, perrors.MaybeAddStack(err)
 	case ast.Prepare != "":
 		session.PullPlanner().RefreshInfoSchema()
-		return e.execPrepare(session, ast.Prepare)
+		ex, err := e.execPrepare(session, ast.Prepare)
+		return ex, err
 	case ast.Execute != nil:
-		return e.execExecute(session, ast.Execute)
+		ex, err := e.execExecute(session, ast.Execute)
+		return ex, err
 	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateSequences(1)
 		if err != nil {
@@ -121,15 +139,16 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, err
 		}
 		return exec.Empty, nil
+	case ast.Use != "":
+		return e.execUse(session, ast.Use)
 	}
 	return nil, fmt.Errorf("invalid statement %s", sql)
 }
 
-func (e *Executor) CreateSession(schemaName string) *sess.Session {
-	schema := e.metaController.GetOrCreateSchema(schemaName)
+func (e *Executor) CreateSession() *sess.Session {
 	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
 	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
-	return sess.NewSession(sessionID, schema, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
+	return sess.NewSession(sessionID, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
 }
 
 func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
@@ -170,20 +189,28 @@ func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExec
 	// TODO we should really use the parser to do this
 	sql = strings.ToLower(sql)
 	if strings.Index(sql, "prepare ") != 0 {
-		return nil, errors.MaybeAddStack(fmt.Errorf("in valid prepare command %s", sql))
+		return nil, perrors.MaybeAddStack(fmt.Errorf("in valid prepare command %s", sql))
 	}
 	sql = sql[8:]
 	dag, err := e.pullEngine.PrepareSQLStatement(session, sql)
-	return dag, errors.MaybeAddStack(err)
+	return dag, perrors.MaybeAddStack(err)
 }
 
 func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (exec.PullExecutor, error) {
+	session.PullPlanner().RefreshInfoSchema()
 	args := make([]interface{}, len(execute.Args))
 	for i := range args {
 		args[i] = execute.Args[i]
 	}
 	dag, err := e.pullEngine.ExecutePreparedStatement(session, execute.PsID, args)
-	return dag, errors.MaybeAddStack(err)
+	return dag, perrors.MaybeAddStack(err)
+}
+
+func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {
+	// TODO auth checks
+	schema := e.metaController.GetOrCreateSchema(schemaName)
+	session.UseSchema(schema)
+	return exec.Empty, nil
 }
 
 func (e *Executor) RunningCommands() int {

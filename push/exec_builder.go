@@ -9,7 +9,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
-	"log"
 )
 
 // Builds the push DAG but does not register anything in memory
@@ -122,8 +121,6 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		}
 
 		tableID := seqGenerator.GenerateSequence()
-
-		log.Printf("Agg table id is %d", tableID)
 
 		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
 		aggSequence++

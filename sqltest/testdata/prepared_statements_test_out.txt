@@ -1,6 +1,8 @@
 -- Prepared Statements tests;
 
 --create topic testtopic;
+use test;
+0 rows returned
 create source test_source_1(
     col0 bigint,
     col1 tinyint,
@@ -28,105 +30,134 @@ create source test_source_1(
         "prop2" = "val2"
     )
 );
-Ok
+0 rows returned
 
 --load data dataset_1;
 
 -- ps with no params;
 prepare select * from test_source_1 where col0 > 5 order by col0;
-0
+|PS_ID|
+|0|
+1 rows returned
 execute 0;
-|6|600|6000|6234.432100|62345678.99|str6|
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|6|600|6000|6234.4321|62345678.99|str6|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 5 rows returned
 
 -- now test each col type;
 
 prepare select * from test_source_1 where col0 > ? order by col0;
-1
+|PS_ID|
+|1|
+1 rows returned
 execute 1 6;
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 4 rows returned
 
 prepare select * from test_source_1 where col1 > ? order by col0;
-2
+|PS_ID|
+|2|
+1 rows returned
 execute 2 300;
-|4|400|4000|4234.432100|42345678.99|str4|
-|5|500|5000|5234.432100|52345678.99|str5|
-|6|600|6000|6234.432100|62345678.99|str6|
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|4|400|4000|4234.4321|42345678.99|str4|
+|5|500|5000|5234.4321|52345678.99|str5|
+|6|600|6000|6234.4321|62345678.99|str6|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 7 rows returned
 
 prepare select * from test_source_1 where col2 > ? order by col0;
-3
+|PS_ID|
+|3|
+1 rows returned
 execute 3 7000;
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 3 rows returned
 
 prepare select * from test_source_1 where col3 > ? order by col0;
-4
+|PS_ID|
+|4|
+1 rows returned
 execute 4 6123.65;
-|6|600|6000|6234.432100|62345678.99|str6|
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|6|600|6000|6234.4321|62345678.99|str6|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 5 rows returned
 
 prepare select * from test_source_1 where col4 > ? order by col0;
-5
+|PS_ID|
+|5|
+1 rows returned
 execute 5 25000000.88;
-|3|300|3000|3234.432100|32345678.99|str3|
-|4|400|4000|4234.432100|42345678.99|str4|
-|5|500|5000|5234.432100|52345678.99|str5|
-|6|600|6000|6234.432100|62345678.99|str6|
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|3|300|3000|3234.4321|32345678.99|str3|
+|4|400|4000|4234.4321|42345678.99|str4|
+|5|500|5000|5234.4321|52345678.99|str5|
+|6|600|6000|6234.4321|62345678.99|str6|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 8 rows returned
 
 prepare select * from test_source_1 where col5 > ? order by col0;
-6
+|PS_ID|
+|6|
+1 rows returned
 execute 6 "str5";
-|6|600|6000|6234.432100|62345678.99|str6|
-|7|700|7000|7234.432100|72345678.99|str7|
-|8|800|8000|8234.432100|82345678.99|str8|
-|9|900|9000|9234.432100|92345678.99|str9|
+|col0|col1|col2|col3|col4|col5|
+|6|600|6000|6234.4321|62345678.99|str6|
+|7|700|7000|7234.4321|72345678.99|str7|
+|8|800|8000|8234.4321|82345678.99|str8|
+|9|900|9000|9234.4321|92345678.99|str9|
 4 rows returned
 
 -- ps with two params;
 prepare select * from test_source_1 where col0 > ? and col1 > ? order by col0;
-7
+|PS_ID|
+|7|
+1 rows returned
 execute 7 6 800;
-|9|900|9000|9234.432100|92345678.99|str9|
-|10|1000|10000|10234.432100|93345678.99|str10|
+|col0|col1|col2|col3|col4|col5|
+|9|900|9000|9234.4321|92345678.99|str9|
+|10|1000|10000|10234.4321|93345678.99|str10|
 2 rows returned
 
 -- ps with params for all cols;
 prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
-8
+|PS_ID|
+|8|
+1 rows returned
 execute 8 6 600 6000 6234.4321 62345678.99 "str6";
-|6|600|6000|6234.432100|62345678.99|str6|
+|col0|col1|col2|col3|col4|col5|
+|6|600|6000|6234.4321|62345678.99|str6|
 1 rows returned
 
 --close session;
+use test;
+0 rows returned
 -- ps should now be closed as session was closed;
 execute 8 6 600 6000 6234.4321 62345678.99 "str6";
-cannot find prepared statement with id 8
+Failed to execute statement: PDB0004 - cannot find prepared statement with id 8
 
 drop source test_source_1;
-Ok
+0 rows returned
 
 --delete topic testtopic;

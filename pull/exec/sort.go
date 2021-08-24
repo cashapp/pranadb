@@ -21,9 +21,10 @@ type PullSort struct {
 func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, sortByExpressions []*common.Expression) *PullSort {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
+		colNames:       colNames,
+		colTypes:       colTypes,
+		simpleColNames: common.ToSimpleColNames(colNames),
+		rowsFactory:    rf,
 	}
 	return &PullSort{
 		pullExecutorBase:  base,

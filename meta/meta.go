@@ -247,6 +247,7 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 		return fmt.Errorf("%s is not a source", tbl)
 	}
 	schema.DeleteTable(sourceName)
+	c.maybeDeleteSchema(schema)
 	return nil
 }
 
@@ -266,7 +267,7 @@ func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo,
 	return nil
 }
 
-func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string) error {
+func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string, internalTables []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
@@ -281,18 +282,26 @@ func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string
 		return fmt.Errorf("%s is not a materialized view", tbl)
 	}
 	schema.DeleteTable(mvName)
+	for _, it := range internalTables {
+		tbl, ok := schema.GetTable(it)
+		if !ok {
+			return fmt.Errorf("no such internal table %s", it)
+		}
+		if _, ok := tbl.(*common.InternalTableInfo); !ok {
+			return fmt.Errorf("%s is not an internal table", tbl)
+		}
+		schema.DeleteTable(it)
+	}
+	c.maybeDeleteSchema(schema)
 	return nil
 }
 
 func (c *Controller) deleteEntityWIthID(tableID uint64) error {
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(tableID))
-
 	wb.AddDelete(key)
-
 	return c.cluster.WriteBatch(wb)
 }
 
@@ -300,4 +309,12 @@ func (c *Controller) registerSystemSchema() {
 	schema := c.getOrCreateSchema("sys")
 	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
 	schema.PutTable(SourceOffsetsTableInfo.Name, SourceOffsetsTableInfo)
+}
+
+// Schema are removed once they have no more tables
+func (c *Controller) maybeDeleteSchema(schema *common.Schema) {
+	if schema.LenTables() == 0 {
+		delete(c.schemas, schema.Name)
+		schema.SetDeleted()
+	}
 }

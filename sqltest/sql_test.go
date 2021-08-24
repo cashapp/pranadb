@@ -3,6 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
+	"github.com/squareup/pranadb/cli"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -20,11 +21,9 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -38,6 +37,8 @@ var TestClusterID = 12345678
 var lock sync.Mutex
 
 var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+
+const apiServerListenAddressBase = 63701
 
 type sqlTestsuite struct {
 	fakeCluster  bool
@@ -117,13 +118,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
-		s, err := server.NewServer(conf.Config{
-			NodeID:       0,
-			ClusterID:    TestClusterID,
-			NumShards:    10,
-			TestServer:   true,
-			KafkaBrokers: brokerConfigs,
-		})
+		cnf := conf.NewConfig()
+		cnf.NodeID = 0
+		cnf.ClusterID = TestClusterID
+		cnf.NumShards = 10
+		cnf.TestServer = true
+		cnf.KafkaBrokers = brokerConfigs
+		cnf.EnableAPIServer = true
+		cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase)
+		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -151,6 +154,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
 			cnf.Debug = true
+			cnf.EnableAPIServer = true
+			cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase+i)
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -285,8 +290,9 @@ type sqlTest struct {
 	output       *strings.Builder
 	rnd          *rand.Rand
 	prana        *server.Server
-	session      *sess.Session
 	topics       []*kafka.Topic
+	cli          *cli.Cli
+	sessionID    string
 }
 
 func (st *sqlTest) run() {
@@ -329,8 +335,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	log.Printf("Running test iteration %d", iter)
 	start := time.Now()
 	st.prana = st.choosePrana()
-	st.session = st.createSession(st.prana)
 	st.output = &strings.Builder{}
+	st.cli = st.createCli(require)
 	numIters := 1
 	for i, command := range commands {
 		st.output.WriteString(command + ";\n")
@@ -338,6 +344,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		if command == "" {
 			continue
 		}
+		log.Printf("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
 		} else if strings.HasPrefix(command, "--close session") {
@@ -357,7 +364,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		} else if strings.HasPrefix(command, "--reset offsets") {
 			st.executeResetOffets(require, command)
 		} else if strings.HasPrefix(command, "--restart cluster") {
-			st.executeRestartCluster()
+			st.executeRestartCluster(require)
 		} else if strings.HasPrefix(command, "--kafka fail") {
 			st.executeKafkaFail(require, command)
 		} else if strings.HasPrefix(command, "--wait for rows") {
@@ -371,20 +378,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 	}
 
-	log.Printf("Test output is:\n%s", st.output.String())
+	log.Println("TEST OUTPUT=========================\n" + st.output.String())
+	log.Println("END TEST OUTPUT=====================")
 
-	outfile, closeFunc := openFile("./testdata/" + st.outFile)
-	defer closeFunc()
-	b, err := ioutil.ReadAll(outfile)
-	require.NoError(err)
-	expectedOutput := string(b)
-	actualOutput := st.output.String()
-	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
-
-	end := time.Now()
-
-	err = st.session.Close()
-	require.NoError(err)
+	st.closeClient(require)
 
 	for _, topic := range st.topics {
 		err := st.testSuite.fakeKafka.DeleteTopic(topic.Name)
@@ -395,26 +392,16 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	// or materialized views and no data in the database and nothing in the remote session caches
 	for _, prana := range st.testSuite.pranaCluster {
 
-		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-			testSchema, ok := prana.GetMetaController().GetSchema(TestSchemaName)
-			require.True(ok)
-			if testSchema.LenTables() != 0 {
-				return false, nil
-			}
-			err := prana.GetPushEngine().VerifyNoSourcesOrMVs()
-			if err != nil {
-				return false, err
-			}
-			return true, nil
-		}, 5*time.Second, 10*time.Millisecond)
-		require.NoError(err)
-		require.True(ok)
+		// Script should delete all it's table and MV. Once they are all deleted the schema will automatically
+		// be removed, so should not exist at end of test
+		sch, ok := prana.GetMetaController().GetSchema(TestSchemaName)
+		require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
 
 		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
-		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)
-		}, 30*time.Second, 100*time.Millisecond)
+		}, 5*time.Second, 100*time.Millisecond)
 		require.NoError(err)
 		if !ok {
 			_, _ = st.tableDataLeft(require, prana, true)
@@ -445,8 +432,19 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
+
+		require.Equal(0, prana.GetAPIServerr().SessionCount(), "API Server sessions left at end of test run")
 	}
-	dur := end.Sub(start)
+
+	outfile, closeFunc := openFile("./testdata/" + st.outFile)
+	defer closeFunc()
+	b, err := ioutil.ReadAll(outfile)
+	require.NoError(err)
+	expectedOutput := string(b)
+	actualOutput := st.output.String()
+	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
+
+	dur := time.Now().Sub(start)
 	log.Printf("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
@@ -603,7 +601,6 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 }
 
 func (st *sqlTest) executeLoadData(require *require.Assertions, command string) {
-	log.Printf("Executing %s", command)
 	noWait := strings.HasSuffix(command, "no wait")
 	if noWait {
 		command = command[:len(command)-8]
@@ -631,10 +628,16 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
 }
 
 func (st *sqlTest) executeCloseSession(require *require.Assertions) {
-	// Closes then recreates the session
-	err := st.session.Close()
+	// Closes then recreates the cli
+	st.closeClient(require)
+	st.cli = st.createCli(require)
+}
+
+func (st *sqlTest) closeClient(require *require.Assertions) {
+	err := st.cli.CloseSession(st.sessionID)
 	require.NoError(err)
-	st.session = st.createSession(st.prana)
+	err = st.cli.Stop()
+	require.NoError(err)
 }
 
 func (st *sqlTest) executeCreateTopic(require *require.Assertions, command string) {
@@ -674,10 +677,11 @@ func (st *sqlTest) executeResetOffets(require *require.Assertions, command strin
 	require.NoError(err)
 }
 
-func (st *sqlTest) executeRestartCluster() {
+func (st *sqlTest) executeRestartCluster(require *require.Assertions) {
+	st.closeClient(require)
 	st.testSuite.restartCluster()
 	st.prana = st.choosePrana()
-	st.session = st.createSession(st.prana)
+	st.cli = st.createCli(require)
 	st.topics = make([]*kafka.Topic, 0)
 }
 
@@ -719,37 +723,12 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 }
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
-	log.Printf("sqltest execute statement %s", statement)
 	start := time.Now()
-	exec, err := st.prana.GetCommandExecutor().ExecuteSQLStatement(st.session, statement)
-	if err != nil {
-		ue, ok := err.(errors.UserError)
-		if ok {
-			log.Printf("failed to execute statement %s %v", statement, ue)
-			st.output.WriteString(ue.Error() + "\n")
-			return
-		}
-	}
+	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
 	require.NoError(err)
-	rows, err := exec.GetRows(100000)
-	require.NoError(err)
-	lowerStatement := strings.ToLower(statement)
-
-	if strings.HasPrefix(lowerStatement, "select ") || strings.HasPrefix(lowerStatement, "execute") {
-		// Query results
-		for i := 0; i < rows.RowCount(); i++ {
-			row := rows.GetRow(i)
-			st.output.WriteString(row.String() + "\n")
-		}
-		st.output.WriteString(fmt.Sprintf("%d rows returned\n", rows.RowCount()))
-	} else if strings.HasPrefix(lowerStatement, "prepare") {
-		// Write out the prepared statement id
-		row := rows.GetRow(0)
-		psID := row.GetInt64(0)
-		st.output.WriteString(fmt.Sprintf("%d\n", psID))
-	} else {
-		// DDL statement
-		st.output.WriteString("Ok\n")
+	for line := range resChan {
+		log.Printf("output:%s", line)
+		st.output.WriteString(line + "\n")
 	}
 	end := time.Now()
 	dur := end.Sub(start)
@@ -768,8 +747,18 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createSession(prana *server.Server) *sess.Session {
-	return prana.GetCommandExecutor().CreateSession(TestSchemaName)
+func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
+	// We connect to a random Prana
+	prana := st.choosePrana()
+	id := prana.GetCluster().GetNodeID()
+	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
+	cli := cli.NewCli(apiServerAddress, 5*time.Second)
+	err := cli.Start()
+	require.NoError(err)
+	sessID, err := cli.CreateSession()
+	require.NoError(err)
+	st.sessionID = sessID
+	return cli
 }
 
 func trimBothEnds(str string) string {

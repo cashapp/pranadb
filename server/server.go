@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/api"
 	"github.com/squareup/pranadb/conf"
 	"log"
 	"net/http" //nolint:stylecheck
@@ -51,6 +52,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
+	apiServer := api.NewAPIServer(commandExecutor, config)
 
 	services := []service{
 		notifServer,
@@ -61,6 +63,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		pushEngine,
 		pullEngine,
 		schemaLoader,
+		apiServer,
 	}
 
 	server := Server{
@@ -75,6 +78,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader:    schemaLoader,
 		notifServer:     notifServer,
 		notifClient:     notifClient,
+		apiServer:       apiServer,
 		services:        services,
 	}
 	return &server, nil
@@ -92,6 +96,7 @@ type Server struct {
 	schemaLoader    *schema.Loader
 	notifServer     notifier.Server
 	notifClient     notifier.Client
+	apiServer       *api.Server
 	services        []service
 	started         bool
 	conf            conf.Config
@@ -171,4 +176,8 @@ func (s *Server) GetNotificationsClient() notifier.Client {
 
 func (s *Server) GetNotificationsServer() notifier.Server {
 	return s.notifServer
+}
+
+func (s *Server) GetAPIServerr() *api.Server {
+	return s.apiServer
 }

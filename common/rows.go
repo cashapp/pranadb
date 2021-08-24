@@ -234,3 +234,13 @@ func (r *Row) String() string {
 
 	return sb.String()
 }
+
+// ToSimpleColNames converts a column name of the form schema.table.col to col
+func ToSimpleColNames(colNames []string) []string {
+	sCols := make([]string, len(colNames))
+	for i, col := range colNames {
+		parts := strings.Split(col, ".")
+		sCols[i] = parts[len(parts)-1]
+	}
+	return sCols
+}

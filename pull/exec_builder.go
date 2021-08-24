@@ -105,7 +105,7 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 				return nil, err
 			}
 		}
-		executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colTypes, schema.Name, p.cluster)
+		executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
 	case *core.PhysicalTableScan:
 		if !remote {
 			panic("table scans only used on remote queries")
