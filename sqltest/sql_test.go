@@ -3,7 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	cli2 "github.com/squareup/pranadb/cli"
+	"github.com/squareup/pranadb/cli"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -291,7 +291,7 @@ type sqlTest struct {
 	rnd          *rand.Rand
 	prana        *server.Server
 	topics       []*kafka.Topic
-	cli          *cli2.Cli
+	cli          *cli.Cli
 	sessionID    string
 }
 
@@ -747,12 +747,12 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createCli(require *require.Assertions) *cli2.Cli {
+func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
 	// We connect to a random Prana
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
-	cli := cli2.NewCli(apiServerAddress, 5*time.Second)
+	cli := cli.NewCli(apiServerAddress, 5*time.Second)
 	err := cli.Start()
 	require.NoError(err)
 	sessID, err := cli.CreateSession()

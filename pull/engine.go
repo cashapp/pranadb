@@ -9,7 +9,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/notifier"
-	errors2 "github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/sess"
@@ -83,7 +83,7 @@ func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exe
 func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
 	ps, ok := session.PsCache[psID]
 	if !ok {
-		return nil, errors2.NewPranaErrorf(errors2.PreparedStatementDoesNotExist, "cannot find prepared statement with id %d", psID)
+		return nil, perrors.NewPranaErrorf(perrors.PreparedStatementDoesNotExist, "cannot find prepared statement with id %d", psID)
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
 	session.PullPlanner().SetPSArgs(args)
