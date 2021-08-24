@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/squareup/pranadb/conf"
-	"github.com/stretchr/testify/require"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -12,6 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/conf"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRunnerConfigAllFieldsSpecified(t *testing.T) {
@@ -69,7 +70,10 @@ are the raft addresses
 	   "addr9"
 	  ],
 	  "APIServerSessionTimeout": 41000000000,
-	  "APIServerSessionCheckInterval": 6000000000
+	  "APIServerSessionCheckInterval": 6000000000,
+      "LogFormat": "json",
+      "LogLevel": "info",
+      "LogFile": "-"
 	 }
 `
 	cnfExpected := createConfigWithAllFields()
@@ -89,7 +93,7 @@ func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
 
 	r := &runner{}
 	args := []string{"-conf", fName, "-node", fmt.Sprintf("%d", nodeID)}
-	r.run(args, false)
+	require.NoError(t, r.run(args, false))
 
 	actualConfig := r.getServer().GetConfig()
 	require.Equal(t, cnf, actualConfig)
@@ -130,5 +134,8 @@ func createConfigWithAllFields() conf.Config {
 		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,
 		APIServerSessionCheckInterval: 6 * time.Second,
+		LogFormat:                     "json",
+		LogLevel:                      "info",
+		LogFile:                       "-",
 	}
 }
