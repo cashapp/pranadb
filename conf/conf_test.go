@@ -71,14 +71,14 @@ func invalidAPIServerListenAddress() Config {
 func invalidAPIServerSessionTimeout() Config {
 	cnf := confAllFields
 	cnf.EnableAPIServer = true
-	cnf.APIServerSessionTimeout = 5*time.Second - 1
+	cnf.APIServerSessionTimeout = 1*time.Second - 1
 	return cnf
 }
 
 func invalidAPIServerSessionCheckInterval() Config {
 	cnf := confAllFields
 	cnf.EnableAPIServer = true
-	cnf.APIServerSessionCheckInterval = 1*time.Second - 1
+	cnf.APIServerSessionCheckInterval = 100*time.Millisecond - 1
 	return cnf
 }
 
@@ -179,8 +179,8 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
 	{"PDB0004 - Invalid configuration: NotifierHeartbeatInterval must be >= 1000000000", invalidNotifierHeartbeatInterval()},
 	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
-	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 5000000000", invalidAPIServerSessionTimeout()},
-	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 1000000000", invalidAPIServerSessionCheckInterval()},
+	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 1000000000", invalidAPIServerSessionTimeout()},
+	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 100000000", invalidAPIServerSessionCheckInterval()},
 	{"PDB0004 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB0004 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
 	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
