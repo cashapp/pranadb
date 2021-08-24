@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -245,4 +246,14 @@ func stripgRPCPrefix(err error) error {
 		return fmt.Errorf("Failed to execute statement: %s", msg)
 	}
 	return err
+}
+
+// used in testing
+func (c *Cli) disableHeartbeats() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.heartbeatSendInterval = math.MaxInt64
+	if c.heartbeatTimer != nil {
+		c.heartbeatTimer.Stop()
+	}
 }

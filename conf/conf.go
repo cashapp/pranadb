@@ -68,11 +68,11 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if len(c.APIServerListenAddresses) == 0 {
 			return perrors.NewInvalidConfigurationError("APIServerListenAddresses must be specified")
 		}
-		if c.APIServerSessionTimeout < 5*time.Second {
-			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionTimeout must be >= %d", 5*time.Second))
+		if c.APIServerSessionTimeout < 1*time.Second {
+			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionTimeout must be >= %d", 1*time.Second))
 		}
-		if c.APIServerSessionCheckInterval < 1*time.Second {
-			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionCheckInterval must be >= %d", time.Second))
+		if c.APIServerSessionCheckInterval < 100*time.Millisecond {
+			return perrors.NewInvalidConfigurationError(fmt.Sprintf("APIServerSessionCheckInterval must be >= %d", 100*time.Millisecond))
 		}
 	}
 	if !c.TestServer {
