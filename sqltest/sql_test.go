@@ -38,7 +38,7 @@ var lock sync.Mutex
 
 var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
 
-const apiServerListenAddressBase = 63701
+const apiServerListenAddressBase = 63401
 
 type sqlTestsuite struct {
 	fakeCluster  bool
@@ -115,17 +115,18 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			},
 		},
 	}
-
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
-		cnf := conf.NewConfig()
+		cnf := conf.NewDefaultConfig()
 		cnf.NodeID = 0
 		cnf.ClusterID = TestClusterID
 		cnf.NumShards = 10
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
-		cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase)
+		cnf.APIServerListenAddresses = []string{
+			"localhost:63401",
+		}
 		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
@@ -142,8 +143,13 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			"localhost:63302",
 			"localhost:63303",
 		}
+		apiServerListenAddresses := []string{
+			"localhost:63401",
+			"localhost:63402",
+			"localhost:63403",
+		}
 		for i := 0; i < w.numNodes; i++ {
-			cnf := conf.NewConfig()
+			cnf := conf.NewDefaultConfig()
 			cnf.NodeID = i
 			cnf.ClusterID = TestClusterID
 			cnf.RaftAddresses = raftAddresses
@@ -155,7 +161,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.NotifListenAddresses = notifAddresses
 			cnf.Debug = true
 			cnf.EnableAPIServer = true
-			cnf.APIServerListenAddress = fmt.Sprintf("localhost:%d", apiServerListenAddressBase+i)
+			cnf.APIServerListenAddresses = apiServerListenAddresses
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher

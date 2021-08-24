@@ -31,16 +31,14 @@ const (
 	// Timeout on dragon calls
 	dragonCallTimeout = time.Second * 10
 
-	// Timeout on remote queries
-	remoteQueryTimeout = time.Second * 10
+	// timeout for initial shard call - allows nodes to startup
+	initialShardTimeout = 15 * time.Minute
 
 	sequenceGroupSize = 3
 
 	locksGroupSize = 3
 
-	retryDelay = 10 * time.Millisecond
-
-	executeRetryTimeout = 10 * time.Second
+	retryDelay = 100 * time.Millisecond
 )
 
 func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
@@ -66,6 +64,7 @@ type Dragon struct {
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
+	firstShardAccessed           sync.Map
 }
 
 type snapshot struct {
@@ -109,13 +108,10 @@ func (d *Dragon) GetNodeID() int {
 func (d *Dragon) GenerateTableID() (uint64, error) {
 	cs := d.nh.GetNoOPSession(tableSequenceClusterID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
-
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, "table")
 
-	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
 		return 0, err
 	}
@@ -138,14 +134,11 @@ func (d *Dragon) ReleaseLock(prefix string) (bool, error) {
 func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	cs := d.nh.GetNoOPSession(locksClusterID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
-
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, command)
 	buff = common.AppendStringToBufferLE(buff, prefix)
 
-	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
 		return false, err
 	}
@@ -185,17 +178,18 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		panic("invalid shard cluster id")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), remoteQueryTimeout)
-	defer cancel()
-
 	queryRequest, err := queryInfo.Serialize()
 	if err != nil {
 		return nil, err
 	}
 
+	timeout := d.getTimeout(queryInfo.ShardID)
 	res, err := d.executeWithRetry(func() (interface{}, error) {
-		return d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
-	})
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
+		cancel()
+		return res, err
+	}, timeout)
 
 	if err != nil {
 		return nil, errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.ClusterID, queryInfo.Query, err))
@@ -278,7 +272,6 @@ func (d *Dragon) Start() error {
 	}
 
 	d.started = true
-	log.Printf("Dragon node %d started", d.cnf.NodeID)
 	return nil
 }
 
@@ -327,9 +320,6 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	*/
 	cs := d.nh.GetNoOPSession(batch.ShardID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
-
 	var buff []byte
 	if batch.NotifyRemote {
 		buff = append(buff, shardStateMachineCommandForwardWrite)
@@ -338,7 +328,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	}
 	buff = batch.Serialize(buff)
 
-	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
 		return err
 	}
@@ -420,9 +410,6 @@ func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 
 	cs := d.nh.GetNoOPSession(theShardID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
-
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
 
@@ -431,7 +418,7 @@ func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
 	buff = append(buff, endPrefixWithShard...)
 
-	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
 		return err
 	}
@@ -639,13 +626,11 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 
 	cs := d.nh.GetNoOPSession(shardID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), dragonCallTimeout)
-	defer cancel()
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandRemoveNode)
 	buff = common.AppendUint32ToBufferLE(buff, uint32(nodeID))
 
-	proposeRes, err := d.proposeWithRetry(ctx, cs, buff)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
 
 	if err != nil {
 		return err
@@ -661,7 +646,7 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 
 // It's expected to get cluster not ready from time to time, we should retry in this case
 // See https://github.com/lni/dragonboat/issues/183
-func (d *Dragon) executeWithRetry(f func() (interface{}, error)) (interface{}, error) {
+func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Duration) (interface{}, error) {
 	start := time.Now()
 	for {
 		res, err := f()
@@ -671,23 +656,40 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error)) (interface{}, e
 		if err != dragonboat.ErrClusterNotReady {
 			return nil, err
 		}
-		if time.Now().Sub(start) >= executeRetryTimeout {
+		if time.Now().Sub(start) >= timeout {
 			return nil, err
 		}
 		time.Sleep(retryDelay)
 	}
 }
 
-func (d *Dragon) proposeWithRetry(ctx context.Context,
-	session *client.Session, cmd []byte) (statemachine.Result, error) {
+func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemachine.Result, error) {
+	timeout := d.getTimeout(session.ClusterID)
 	r, err := d.executeWithRetry(func() (interface{}, error) {
-		return d.nh.SyncPropose(ctx, session, cmd)
-	})
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		res, err := d.nh.SyncPropose(ctx, session, cmd)
+		cancel()
+		return res, err
+	}, timeout)
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
 		panic(fmt.Sprintf("not a sm result %v", smRes))
 	}
 	return smRes, err
+}
+
+func (d *Dragon) getTimeout(shardID uint64) time.Duration {
+	_, initialised := d.firstShardAccessed.Load(shardID)
+	var res time.Duration
+	if !initialised {
+		// The first time a shard is accessed after startup the other nodes of the cluster might not be up yet
+		// so we use a much longer timeout to give other nodes time to start, otherwise we use a shorter timeout
+		res = initialShardTimeout
+	} else {
+		res = dragonCallTimeout
+	}
+	d.firstShardAccessed.Store(shardID, struct{}{})
+	return res
 }
 
 // ISystemEventListener implementation

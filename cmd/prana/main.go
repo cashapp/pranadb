@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	cli2 "github.com/squareup/pranadb/cli"
+	"github.com/squareup/pranadb/cli"
 	"io"
 	"log"
 	"os"
@@ -25,7 +25,7 @@ func main() {
 }
 
 type cliMain struct {
-	cl        *cli2.Cli
+	cl        *cli.Cli
 	kctx      *kong.Context
 	sessionID string
 }
@@ -48,7 +48,7 @@ func (c *cliMain) run() {
 func (c *cliMain) doRun() error {
 	c.kctx = kong.Parse(&arguments)
 
-	cl := cli2.NewCli(arguments.Addr, time.Second*5)
+	cl := cli.NewCli(arguments.Addr, time.Second*5)
 	if err := cl.Start(); err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (c *cliMain) doRun() error {
 	}
 }
 
-func (c *cliMain) sendStatement(statement string, cli *cli2.Cli) error {
+func (c *cliMain) sendStatement(statement string, cli *cli.Cli) error {
 	ch, err := cli.ExecuteStatement(c.sessionID, statement)
 	if err != nil {
 		return err
