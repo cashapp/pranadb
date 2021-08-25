@@ -92,7 +92,7 @@ func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
 	require.NoError(t, err)
 
 	r := &runner{}
-	args := []string{"-conf", fName, "-node", fmt.Sprintf("%d", nodeID)}
+	args := []string{"--config", fName, "--node", fmt.Sprintf("%d", nodeID)}
 	require.NoError(t, r.run(args, false))
 
 	actualConfig := r.getServer().GetConfig()
@@ -134,8 +134,5 @@ func createConfigWithAllFields() conf.Config {
 		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,
 		APIServerSessionCheckInterval: 6 * time.Second,
-		LogFormat:                     "json",
-		LogLevel:                      "info",
-		LogFile:                       "-",
 	}
 }

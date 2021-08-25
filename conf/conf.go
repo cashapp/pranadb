@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/perrors"
 )
 
@@ -42,9 +41,6 @@ type Config struct {
 	APIServerListenAddresses      []string
 	APIServerSessionTimeout       time.Duration
 	APIServerSessionCheckInterval time.Duration
-	LogFile                       string
-	LogLevel                      string
-	LogFormat                     string
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -56,11 +52,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	}
 	if c.NumShards < 1 {
 		return perrors.NewInvalidConfigurationError("NumShards must be >= 1")
-	}
-	if c.LogLevel != "" {
-		if _, err := logrus.ParseLevel(c.LogLevel); err != nil {
-			return perrors.NewInvalidConfigurationError("LogLevel must be one of trace, debug, info, warn, or error")
-		}
 	}
 	if len(c.KafkaBrokers) == 0 {
 		return perrors.NewInvalidConfigurationError("KafkaBrokers must be specified")

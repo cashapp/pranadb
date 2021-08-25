@@ -24,6 +24,9 @@ import (
 )
 
 func NewServer(config conf.Config) (*Server, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
 	var clus cluster.Cluster
 	var notifClient notifier.Client
 	var notifServer notifier.Server
