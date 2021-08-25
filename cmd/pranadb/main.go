@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/json"
+	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	log "github.com/sirupsen/logrus"
@@ -14,9 +15,9 @@ import (
 )
 
 type cli struct {
-	Config string      `help:"Path to config file" type:"existingfile" required:""`
-	Node   int         `help:"ID of the node"`
-	Log    plog.Config `help:"Configuration for the logger" embed:"" prefix:"log-"`
+	Config kong.ConfigFlag `help:"Path to config file" type:"existingfile" required:""`
+	Log    plog.Config     `help:"Configuration for the logger" embed:"" prefix:"log-"`
+	Server conf.Config     `help:"Server configuration" embed:"" prefix:""`
 }
 
 func main() {
@@ -33,7 +34,7 @@ type runner struct {
 
 func (r *runner) run(args []string, start bool) error {
 	cfg := cli{}
-	parser, err := kong.New(&cfg)
+	parser, err := kong.New(&cfg, kong.Configuration(JSONCResolver))
 	if err != nil {
 		return err
 	}
@@ -45,18 +46,7 @@ func (r *runner) run(args []string, start bool) error {
 		return err
 	}
 
-	b, err := ioutil.ReadFile(cfg.Config)
-	if err != nil {
-		return err
-	}
-	serverCfg := conf.Config{}
-	// We use jsonc as it supports comments in JSON
-	b = jsonc.ToJSON(b)
-	if err := json.Unmarshal(b, &serverCfg); err != nil {
-		return err
-	}
-	serverCfg.NodeID = cfg.Node
-	s, err := server.NewServer(serverCfg)
+	s, err := server.NewServer(cfg.Server)
 	if err != nil {
 		return err
 	}
@@ -71,4 +61,38 @@ func (r *runner) run(args []string, start bool) error {
 
 func (r *runner) getServer() *server.Server {
 	return r.server
+}
+
+// JSONCResolver returns a Resolver that retrieves values from a JSONC source.
+func JSONCResolver(r io.Reader) (kong.Resolver, error) {
+	values := map[string]interface{}{}
+	data, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = jsonc.Unmarshal(data, &values)
+	if err != nil {
+		return nil, err
+	}
+	var f kong.ResolverFunc = func(context *kong.Context, parent *kong.Path, flag *kong.Flag) (interface{}, error) {
+		name := strings.ReplaceAll(flag.Name, "-", "_")
+		raw, ok := values[name]
+		if ok {
+			return raw, nil
+		}
+		raw = values
+		for _, part := range strings.Split(name, ".") {
+			if values, ok := raw.(map[string]interface{}); ok {
+				raw, ok = values[part]
+				if !ok {
+					return nil, nil
+				}
+			} else {
+				return nil, nil
+			}
+		}
+		return raw, nil
+	}
+
+	return f, nil
 }

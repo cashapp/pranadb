@@ -20,27 +20,27 @@ const (
 )
 
 type Config struct {
-	NodeID                        int
-	ClusterID                     int // All nodes in a Prana cluster must share the same ClusterID
-	RaftAddresses                 []string
-	NotifListenAddresses          []string
-	NumShards                     int
-	ReplicationFactor             int
-	DataDir                       string
-	TestServer                    bool
-	KafkaBrokers                  BrokerConfigs
-	DataSnapshotEntries           int
-	DataCompactionOverhead        int
-	SequenceSnapshotEntries       int
-	SequenceCompactionOverhead    int
-	LocksSnapshotEntries          int
-	LocksCompactionOverhead       int
-	Debug                         bool
-	NotifierHeartbeatInterval     time.Duration
-	EnableAPIServer               bool
-	APIServerListenAddresses      []string
-	APIServerSessionTimeout       time.Duration
-	APIServerSessionCheckInterval time.Duration
+	NodeID                        int           `json:"node_id,omitempty"`
+	ClusterID                     int           `json:"cluster_id,omitempty"` // All nodes in a Prana cluster must share the same ClusterID
+	RaftAddresses                 []string      `json:"raft_addresses,omitempty"`
+	NotifListenAddresses          []string      `json:"notif_listen_addresses,omitempty"`
+	NumShards                     int           `json:"num_shards,omitempty"`
+	ReplicationFactor             int           `json:"replication_factor,omitempty"`
+	DataDir                       string        `json:"data_dir,omitempty"`
+	TestServer                    bool          `json:"test_server,omitempty"`
+	KafkaBrokers                  BrokerConfigs `json:"kafka_brokers,omitempty"`
+	DataSnapshotEntries           int           `json:"data_snapshot_entries,omitempty"`
+	DataCompactionOverhead        int           `json:"data_compaction_overhead,omitempty"`
+	SequenceSnapshotEntries       int           `json:"sequence_snapshot_entries,omitempty"`
+	SequenceCompactionOverhead    int           `json:"sequence_compaction_overhead,omitempty"`
+	LocksSnapshotEntries          int           `json:"locks_snapshot_entries,omitempty"`
+	LocksCompactionOverhead       int           `json:"locks_compaction_overhead,omitempty"`
+	Debug                         bool          `json:"debug,omitempty"`
+	NotifierHeartbeatInterval     time.Duration `json:"notifier_heartbeat_interval,omitempty"`
+	EnableAPIServer               bool          `json:"enable_api_server,omitempty"`
+	APIServerListenAddresses      []string      `json:"api_server_listen_addresses,omitempty"`
+	APIServerSessionTimeout       time.Duration `json:"api_server_session_timeout,omitempty"`
+	APIServerSessionCheckInterval time.Duration `json:"api_server_session_check_interval,omitempty"`
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -137,8 +137,8 @@ const (
 )
 
 type BrokerConfig struct {
-	ClientType BrokerClientType
-	Properties map[string]string
+	ClientType BrokerClientType  `json:"client_type,omitempty"`
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 func NewDefaultConfig() *Config {
