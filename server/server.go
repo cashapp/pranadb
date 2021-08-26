@@ -185,7 +185,7 @@ func (s *Server) GetNotificationsServer() notifier.Server {
 	return s.notifServer
 }
 
-func (s *Server) GetAPIServerr() *api.Server {
+func (s *Server) GetAPIServer() *api.Server {
 	return s.apiServer
 }
 

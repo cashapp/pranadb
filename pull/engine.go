@@ -2,7 +2,6 @@ package pull
 
 import (
 	"fmt"
-	"github.com/cznic/mathutil"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
@@ -20,7 +19,7 @@ import (
 type PullEngine struct {
 	lock               sync.RWMutex
 	started            bool
-	remoteSessionCache sync.Map // TODO we should time out inactive sessions - otherwise can be orphaned if session.close notification didn't get through
+	remoteSessionCache sync.Map
 	cluster            cluster.Cluster
 	metaController     *meta.Controller
 	nodeID             int
@@ -188,6 +187,11 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 		if len(s.PsCache) != 0 || s.CurrentQuery != nil {
 			p.remoteSessionCache.Store(queryInfo.SessionID, s)
 		}
+	} else {
+		// We can delete the session if there are no more prepared statements or if current query is complete
+		if len(s.PsCache) != 0 && s.CurrentQuery != nil {
+			p.remoteSessionCache.Delete(queryInfo.SessionID)
+		}
 	}
 	return rows, err
 }
@@ -301,11 +305,21 @@ func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common
 	if err != nil {
 		return nil, err
 	}
-	// The query is one shot, so remote session will not be stored, so session does not need to be closed
-	// and have close broadcast
-	rows, err = exec.GetRows(mathutil.MaxInt)
-	if err != nil {
-		return nil, err
+	limit := 1000
+	for {
+		r, err := exec.GetRows(limit)
+		if err != nil {
+			return nil, err
+		}
+		if rows == nil {
+			rows = r
+		} else {
+			rows.AppendAll(r)
+		}
+		if r.RowCount() < limit {
+			break
+		}
 	}
+	// No need to close session as no prepared statements
 	return rows, nil
 }

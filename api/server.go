@@ -21,6 +21,8 @@ import (
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
+
+	pingerrors "github.com/pingcap/errors"
 )
 
 // Server over gRPC.
@@ -148,6 +150,12 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	if err != nil {
 		_, ok := err.(perrors.PranaError)
 		if !ok {
+			err = findCause(err)
+			e, ok := err.(*pingerrors.Error)
+			if ok {
+				msg := e.GetMsg()
+				return perrors.NewInvalidStatementError(msg)
+			}
 			// For internal errors we don't return internal error messages to the CLI as this would leak
 			// server implementation details. Instead we generate a sequence number and add that to the message
 			// and log the internal error in the server logs with the sequence number so it can be looked up
@@ -263,4 +271,29 @@ func (s *Server) SessionCount() int {
 		return true
 	})
 	return count
+}
+
+func (s *Server) GetListenAddress() string {
+	return s.serverAddress
+}
+
+// standard cause recursion is broken for pingcap errors so we have to do it ourselves
+func findCause(err error) error {
+	type causer interface {
+		Cause() error
+	}
+
+	for err != nil {
+		cause, ok := err.(causer)
+		if !ok {
+			break
+		}
+		// pingcap cause can return nil
+		newErr := cause.Cause()
+		if newErr == nil {
+			return err
+		}
+		err = newErr
+	}
+	return err
 }

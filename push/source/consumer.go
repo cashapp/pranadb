@@ -19,6 +19,8 @@ type MessageConsumer struct {
 	started                 common.AtomicBool
 	running                 common.AtomicBool
 	messageParser           *MessageParser
+
+	rebalancing common.AtomicBool
 }
 
 func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
@@ -61,6 +63,9 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 }
 
 func (m *MessageConsumer) partitionsAssigned() error {
+	if !m.rebalancing.Get() {
+		panic("not rebalancing")
+	}
 	if !m.running.CompareAndSet(false, true) {
 		return nil
 	}
@@ -69,6 +74,19 @@ func (m *MessageConsumer) partitionsAssigned() error {
 	return nil
 }
 
+/*
+partitions revoked and assigned are called on the poll loop with the confluent go client
+
+we should assume they're always called this way, this is good in a way as cb will only be invoked when getMessage is called
+so we know there are no messages waiting to be committed.
+
+so we don't need to do anything in partition assigned and revoked
+
+and in the fake consumer, if a consumer is added or removed, then we first set revoking=true on each consumer, we allow
+offsets to be committed at this point, then when the next call to getMessage comes in on each consumer and all are calling
+getMessage then we block them on a waitgroup, we now know offsets have been committed, then we can do the rebalance
+*/
+
 func (m *MessageConsumer) partitionsRevoked() error {
 	// Re-balancing is about to occur - the Kafka client should guarantee this is called before rebalancing actually
 	// happens - it gives the consumer a chance to finish processing any messages and to commit any offsets.
@@ -76,13 +94,26 @@ func (m *MessageConsumer) partitionsRevoked() error {
 	// partitions and commit an offset in the same partition before this one had committed theirs.
 
 	// We wait for any processing to complete on the poll loop
+	m.rebalancing.Set(true)
+
+	// We have to wait for poll loop to stop on a different goroutine as this callback is called from the poll loop
+	// with the confluent client
+	if m.running.CompareAndSet(true, false) {
+		go func() {
+			_, ok := <-m.loopCh
+			if !ok {
+				panic("channel closed")
+			}
+			m.rebalancing.Set(false)
+		}()
+	}
 
 	// TODO - it is not sufficient to just wait for the pool loop to stop.
 	// Some time after the poll loop has stopped messages wil be forwarded async to other nodes.
 	// If owner of partitions changes during rebalance then messages processed from the new owner consumer
 	// could be forwarded before the messages processed by the earlier consumer.
 	// To deal with this case we should add an extra delay in here
-	m.waitForPollLoopToStop()
+
 	return nil
 }
 
@@ -96,14 +127,13 @@ func (m *MessageConsumer) Stop() error {
 	if !m.started.CompareAndSet(true, false) {
 		return nil
 	}
-	// unsubscribe happens here
-	err := m.msgProvider.Stop()
 
 	// If called from a consumer error it will be called on the poll loop and the consumer error will
 	// have already set running to false
 	m.waitForPollLoopToStop()
 
-	return err
+	// unsubscribe happens here
+	return m.msgProvider.Stop()
 }
 
 func (m *MessageConsumer) waitForPollLoopToStop() {
@@ -133,6 +163,9 @@ func (m *MessageConsumer) pollLoop() {
 			return
 		}
 		if len(messages) != 0 {
+
+			log.Printf("Got batch of %d messages", len(messages))
+
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
 			if err != nil {
@@ -166,6 +199,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		if msg == nil {
 			break
 		}
+		log.Printf("Got message from message provider %s", string(msg.Key))
 
 		partID := msg.PartInfo.PartitionID
 
@@ -173,10 +207,15 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		var ok bool
 		lastOffset, ok = m.startupCommittedOffsets[partID]
 		if !ok {
-			lastOffset = 0
+			lastOffset = -1
+		} else {
+			// The committed offset is actually one more than the last offset seen. Yes this is weird, but
+			// it's consistent with how you commit offsets in Kafka (you specify 1 + the last offset you processed)
+			// So, to get the last offset actually seen, we subtract 1
+			lastOffset--
 		}
 
-		offsetsToCommit[partID] = msg.PartInfo.Offset
+		offsetsToCommit[partID] = msg.PartInfo.Offset + 1
 		if msg.PartInfo.Offset <= lastOffset {
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.

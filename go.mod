@@ -15,6 +15,7 @@ require (
 	github.com/golang/protobuf v1.4.3
 	github.com/google/btree v1.0.0
 	github.com/lni/dragonboat/v3 v3.3.4
+	github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3 // indirect
 	github.com/pingcap/kvproto v0.0.0-20210507054410-a8152f8a876c
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
 	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf

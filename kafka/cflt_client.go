@@ -1,8 +1,10 @@
 package kafka
 
 import (
+	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/pkg/errors"
+	"log"
 	"sync"
 	"time"
 )
@@ -26,6 +28,7 @@ type CfltMessageProviderFactory struct {
 func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
 	kmp := &KafkaMessageProvider{}
 	kmp.krpf = krpf
+	kmp.topicName = krpf.topicName
 	return kmp, nil
 }
 
@@ -51,24 +54,7 @@ func (k *KafkaMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
 }
 
 func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	switch event.(type) {
-	case kafka.AssignedPartitions:
-		if k.paCb == nil {
-			panic("No PartitionsAssignedCallback set")
-		}
-		if err := k.paCb(); err != nil {
-			return err
-		}
-	case kafka.RevokedPartitions:
-		if k.prCb == nil {
-			panic("No PartitionsRevokedCallback set")
-		}
-		if err := k.prCb(); err != nil {
-			return err
-		}
-	}
+	log.Printf("rebalance event received in consumer %v %p", event, k)
 	return nil
 }
 
@@ -78,32 +64,40 @@ func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, 
 	if k.consumer == nil {
 		return nil, nil
 	}
-	msg, err := k.consumer.ReadMessage(pollTimeout)
-	if err != nil {
-		return nil, err
+
+	ev := k.consumer.Poll(int(pollTimeout.Milliseconds()))
+	if ev == nil {
+		return nil, nil
 	}
-	headers := make([]MessageHeader, len(msg.Headers))
-	for i, hdr := range msg.Headers {
-		headers[i] = MessageHeader{
-			Key:   hdr.Key,
-			Value: hdr.Value,
+	switch e := ev.(type) {
+	case *kafka.Message:
+		msg := e
+		headers := make([]MessageHeader, len(msg.Headers))
+		for i, hdr := range msg.Headers {
+			headers[i] = MessageHeader{
+				Key:   hdr.Key,
+				Value: hdr.Value,
+			}
 		}
+		m := &Message{
+			PartInfo: PartInfo{
+				PartitionID: msg.TopicPartition.Partition,
+				Offset:      int64(msg.TopicPartition.Offset),
+			},
+			TimeStamp: msg.Timestamp,
+			Key:       msg.Key,
+			Value:     msg.Value,
+			Headers:   headers,
+		}
+		return m, nil
+	case kafka.Error:
+		return nil, e
+	default:
+		return nil, fmt.Errorf("unexpected result from poll %v", e)
 	}
-	m := &Message{
-		PartInfo: PartInfo{
-			PartitionID: msg.TopicPartition.Partition,
-			Offset:      int64(msg.TopicPartition.Offset),
-		},
-		TimeStamp: msg.Timestamp,
-		Key:       msg.Key,
-		Value:     msg.Value,
-		Headers:   headers,
-	}
-	return m, nil
 }
 
 func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
-	// TODO a bit clunky - can this be optimised to avoid the copying?
 	offsets := make([]kafka.TopicPartition, len(offsetsMap))
 	i := 0
 	for partID, offset := range offsetsMap {
@@ -115,11 +109,17 @@ func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
 		i++
 	}
 	_, err := k.consumer.CommitOffsets(offsets)
+	if err == nil {
+		log.Printf("committed offsets %v", offsetsMap)
+	}
 	return err
 }
 
 func (k *KafkaMessageProvider) Stop() error {
-	return k.consumer.Close()
+	k.lock.Lock()
+	defer k.lock.Unlock()
+	err := k.consumer.Close()
+	return err
 }
 
 func (k *KafkaMessageProvider) Start() error {
@@ -128,23 +128,24 @@ func (k *KafkaMessageProvider) Start() error {
 	if k.prCb == nil || k.paCb == nil {
 		return errors.New("callbacks must be set before starting message provider")
 	}
-	cm := &kafka.ConfigMap{}
+
+	cm := &kafka.ConfigMap{
+		"group.id":           k.krpf.groupID,
+		"auto.offset.reset":  "earliest",
+		"enable.auto.commit": false,
+	}
 	for k, v := range k.krpf.props {
 		if err := cm.SetKey(k, v); err != nil {
 			return err
 		}
 	}
-	if err := cm.SetKey("group.id", k.krpf.groupID); err != nil {
-		return err
-	}
 	consumer, err := kafka.NewConsumer(cm)
 	if err != nil {
 		return err
 	}
-	kmp := &KafkaMessageProvider{}
-	if err := consumer.Subscribe(k.krpf.topicName, kmp.RebalanceOccurred); err != nil {
+	if err := consumer.Subscribe(k.krpf.topicName, k.RebalanceOccurred); err != nil {
 		return err
 	}
-	kmp.consumer = consumer
+	k.consumer = consumer
 	return nil
 }

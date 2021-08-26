@@ -3,7 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/cli"
+	"github.com/squareup/pranadb/client"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -297,7 +297,7 @@ type sqlTest struct {
 	rnd          *rand.Rand
 	prana        *server.Server
 	topics       []*kafka.Topic
-	cli          *cli.Cli
+	cli          *client.Client
 	sessionID    string
 }
 
@@ -439,7 +439,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
 
-		require.Equal(0, prana.GetAPIServerr().SessionCount(), "API Server sessions left at end of test run")
+		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
 	}
 
 	outfile, closeFunc := openFile("./testdata/" + st.outFile)
@@ -468,7 +468,7 @@ func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName s
 		totRows, err = st.getAllRowsInTable(tabInfo.ID)
 		require.NoError(err)
 		return totRows == numRows, nil
-	}, 5*time.Hour, 500*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	if !ok {
 		for _, prana := range st.testSuite.pranaCluster {
@@ -753,12 +753,12 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
+func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	// We connect to a random Prana
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
-	cli := cli.NewCli(apiServerAddress, 5*time.Second)
+	cli := client.NewClient(apiServerAddress, 5*time.Second)
 	err := cli.Start()
 	require.NoError(err)
 	sessID, err := cli.CreateSession()

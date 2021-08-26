@@ -2,11 +2,14 @@ package exec
 
 import (
 	"fmt"
+	"github.com/cznic/mathutil"
 	"sort"
 	"strings"
 
 	"github.com/squareup/pranadb/common"
 )
+
+const childCallLimit = 1000
 
 // PullSort - a simple in memory sort executor
 // TODO this won't work for large resultsets - we need to store in chunks on disk and use a multi-way merge sort in
@@ -16,6 +19,7 @@ type PullSort struct {
 	sortByExpressions []*common.Expression
 	rows              *common.Rows
 	descending        []bool
+	rowIndex          int
 }
 
 func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, sortByExpressions []*common.Expression) *PullSort {
@@ -29,53 +33,73 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 	return &PullSort{
 		pullExecutorBase:  base,
 		sortByExpressions: sortByExpressions,
-		rows:              rf.NewRows(1000),
 		descending:        desc,
 	}
 }
 
-func (p PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
+func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 
-	for {
-		// We call getRows on the child until there are no more rows to get
-		batch, err := p.GetChildren()[0].GetRows(limit)
+	if p.rows == nil {
+		unsorted := p.rowsFactory.NewRows(childCallLimit)
+		for {
+			// We call getRows on the child until there are no more rows to get
+			batch, err := p.GetChildren()[0].GetRows(childCallLimit)
+			if err != nil {
+				return nil, err
+			}
+			rc := batch.RowCount()
+			if rc == 0 {
+				break
+			}
+			if unsorted.RowCount()+rc > OrderByMaxRows {
+				// TODO needs test
+				return nil, fmt.Errorf("query with order by cannot return more than %d rows", OrderByMaxRows)
+			}
+			unsorted.AppendAll(batch)
+			if rc < limit {
+				break
+			}
+		}
+
+		if unsorted.RowCount() < 2 {
+			return unsorted, nil
+		}
+
+		rows, err := p.sortRows(unsorted)
 		if err != nil {
 			return nil, err
 		}
-		rc := batch.RowCount()
-		if rc == 0 {
-			break
-		}
-		if p.rows.RowCount()+rc > OrderByMaxRows {
-			return nil, fmt.Errorf("query with order by cannot return more than %d rows", OrderByMaxRows)
-		}
-		p.rows.AppendAll(batch)
-		if rc < limit {
-			break
-		}
+		p.rows = rows
 	}
 
-	numRows := p.rows.RowCount()
-	if numRows == 0 {
-		return p.rows, nil
+	// TODO we should implement a Slice() method on rows so we don't need to copy
+	rowsLeft := p.rows.RowCount() - p.rowIndex
+	rowsToGet := mathutil.Min(rowsLeft, limit)
+	res := p.rowsFactory.NewRows(rowsToGet)
+	for i := p.rowIndex; i < p.rowIndex+rowsToGet; i++ {
+		res.AppendRow(p.rows.GetRow(i))
 	}
+	p.rowIndex += rowsToGet
 
+	return res, nil
+}
+
+func (p *PullSort) sortRows(unsorted *common.Rows) (*common.Rows, error) {
+	numRows := unsorted.RowCount()
 	indexes := make([]int, numRows)
 	for i := range indexes {
 		indexes[i] = i
 	}
-
 	var err error
-
 	sort.SliceStable(indexes, func(i, j int) bool {
 		if err != nil {
 			return false
 		}
-		row1 := p.rows.GetRow(indexes[i])
-		row2 := p.rows.GetRow(indexes[j])
+		row1 := unsorted.GetRow(indexes[i])
+		row2 := unsorted.GetRow(indexes[j])
 		for sortColIndex, sortbyExpr := range p.sortByExpressions {
 			descending := p.descending[sortColIndex]
 			colType, errType := sortbyExpr.ReturnType(p.colTypes)
@@ -226,10 +250,9 @@ func (p PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 		return nil, err
 	}
 
-	res := p.rowsFactory.NewRows(numRows)
+	rows := p.rowsFactory.NewRows(numRows)
 	for _, index := range indexes {
-		res.AppendRow(p.rows.GetRow(index))
+		rows.AppendRow(unsorted.GetRow(index))
 	}
-
-	return res, nil
+	return rows, nil
 }
