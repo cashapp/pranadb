@@ -1,64 +1,98 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/server"
+	"io"
 	"io/ioutil"
-	"log"
-	"muzzammil.xyz/jsonc"
 	"os"
-	"strconv"
+	"strings"
+
+	"github.com/alecthomas/kong"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
+	plog "github.com/squareup/pranadb/log"
+	"github.com/squareup/pranadb/server"
+	"muzzammil.xyz/jsonc"
 )
+
+type cli struct {
+	Config kong.ConfigFlag `help:"Path to config file" type:"existingfile" required:""`
+	Log    plog.Config     `help:"Configuration for the logger" embed:"" prefix:"log-"`
+	Server conf.Config     `help:"Server configuration" embed:"" prefix:""`
+}
 
 func main() {
 	r := &runner{}
-	if r.run(os.Args[1:], true) {
-		select {} // prevent main exiting
+	if err := r.run(os.Args[1:], true); err != nil {
+		log.Fatal(err.Error())
 	}
+	select {} // prevent main exiting
 }
 
 type runner struct {
 	server *server.Server
 }
 
-func (r *runner) run(args []string, start bool) bool {
-	if len(args) != 4 {
-		fmt.Println("Please run with -conf <config_file> -node <node_id>")
-		return false
-	}
-	// Happy to use Kong here! Just couldn't figure out quickly how to get it to parse the config file
-	sNodeID := args[3]
-	nodeID, err := strconv.ParseInt(sNodeID, 10, 32)
+func (r *runner) run(args []string, start bool) error {
+	cfg := cli{}
+	parser, err := kong.New(&cfg, kong.Configuration(JSONCResolver))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	confFile := args[1]
-	b, err := ioutil.ReadFile(confFile)
+	_, err = parser.Parse(args)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	cfg := conf.Config{}
-	// We use jsonc as it supports comments in JSON
-	b = jsonc.ToJSON(b)
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		log.Fatal(err)
+	if err := cfg.Log.Configure(); err != nil {
+		return err
 	}
-	cfg.NodeID = int(nodeID)
-	s, err := server.NewServer(cfg)
+
+	s, err := server.NewServer(cfg.Server)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	r.server = s
 	if start {
 		if err := s.Start(); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 func (r *runner) getServer() *server.Server {
 	return r.server
+}
+
+// JSONCResolver returns a Resolver that retrieves values from a JSONC source.
+func JSONCResolver(r io.Reader) (kong.Resolver, error) {
+	values := map[string]interface{}{}
+	data, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = jsonc.Unmarshal(data, &values)
+	if err != nil {
+		return nil, err
+	}
+	var f kong.ResolverFunc = func(context *kong.Context, parent *kong.Path, flag *kong.Flag) (interface{}, error) {
+		name := strings.ReplaceAll(flag.Name, "-", "_")
+		raw, ok := values[name]
+		if ok {
+			return raw, nil
+		}
+		raw = values
+		for _, part := range strings.Split(name, ".") {
+			if values, ok := raw.(map[string]interface{}); ok {
+				raw, ok = values[part]
+				if !ok {
+					return nil, nil
+				}
+			} else {
+				return nil, nil
+			}
+		}
+		return raw, nil
+	}
+
+	return f, nil
 }
