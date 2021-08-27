@@ -1,17 +1,14 @@
 package main
 
 import (
-	"io"
-	"io/ioutil"
 	"os"
-	"strings"
 
 	"github.com/alecthomas/kong"
+	"github.com/alecthomas/kong-hcl/v2"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	plog "github.com/squareup/pranadb/log"
 	"github.com/squareup/pranadb/server"
-	"muzzammil.xyz/jsonc"
 )
 
 type cli struct {
@@ -34,7 +31,7 @@ type runner struct {
 
 func (r *runner) run(args []string, start bool) error {
 	cfg := cli{}
-	parser, err := kong.New(&cfg, kong.Configuration(JSONCResolver))
+	parser, err := kong.New(&cfg, kong.Configuration(konghcl.Loader))
 	if err != nil {
 		return err
 	}
@@ -61,38 +58,4 @@ func (r *runner) run(args []string, start bool) error {
 
 func (r *runner) getServer() *server.Server {
 	return r.server
-}
-
-// JSONCResolver returns a Resolver that retrieves values from a JSONC source.
-func JSONCResolver(r io.Reader) (kong.Resolver, error) {
-	values := map[string]interface{}{}
-	data, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	err = jsonc.Unmarshal(data, &values)
-	if err != nil {
-		return nil, err
-	}
-	var f kong.ResolverFunc = func(context *kong.Context, parent *kong.Path, flag *kong.Flag) (interface{}, error) {
-		name := strings.ReplaceAll(flag.Name, "-", "_")
-		raw, ok := values[name]
-		if ok {
-			return raw, nil
-		}
-		raw = values
-		for _, part := range strings.Split(name, ".") {
-			if values, ok := raw.(map[string]interface{}); ok {
-				raw, ok = values[part]
-				if !ok {
-					return nil, nil
-				}
-			} else {
-				return nil, nil
-			}
-		}
-		return raw, nil
-	}
-
-	return f, nil
 }

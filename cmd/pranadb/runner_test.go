@@ -16,7 +16,7 @@ import (
 )
 
 func TestRunnerConfigAllFieldsSpecified(t *testing.T) {
-	t.Skip("Duration is marshaled as number but parser expects a string. Need a fix for Kong.")
+	t.Skip("No support for writing config to file just yet")
 	cnfExpected := createConfigWithAllFields()
 	cnfExpected.NodeID = 2
 	cnfToWrite := cnfExpected
@@ -28,59 +28,11 @@ func TestRunnerConfigAllFieldsSpecified(t *testing.T) {
 }
 
 func TestParseConfigWithComments(t *testing.T) {
-	jsonWithComments := `
-	{
-	  "cluster_id": 12345, // and this is the clusterid
-/* These 
-are the raft addresses
-*/
-	  "raft_addresses": [
-	   "addr1",
-	   "addr2",
-	   "addr3"
-	  ],
-	  "notif_listen_addresses": [
-	   "addr4",
-	   "addr5",
-	   "addr6"
-	  ],
-      // Numshards
-	  "num_shards": 50,
-	  "replication_factor": 3,
-	  "data_dir": "foo/bar/baz",
-	  "test_server": false,
-	  "kafka_brokers": {
-	   "testbroker": {
-		"client_type": 1,
-		"properties": {
-		 "fakeKafkaID": "1"
-		}
-	   }
-	  },
-	  "data_snapshot_entries": 1001,
-	  "data_compaction_overhead": 501,
-	  "sequence_snapshot_entries": 2001,
-	  "sequence_compaction_overhead": 1001,
-	  "locks_snapshot_entries": 101,
-	  "locks_compaction_overhead": 51,
-	  "debug": true,
-	  "notifier_heartbeat_interval": "76s",
-	  "enable_api_server": true,
-	  "api_server_listen_addresses": [
-	    "addr7",
-	    "addr8",
-	    "addr9"
-	  ],
-	  "api_server_session_timeout": "41s",
-	  "api_server_session_check_interval": "6s",
-      "log_format": "json",
-      "log_level": "info",
-      "log_file": "-"
-	 }
-`
+	hcl, err := ioutil.ReadFile("testdata/config.hcl")
+	require.NoError(t, err)
 	cnfExpected := createConfigWithAllFields()
 	cnfExpected.NodeID = 2
-	testRunner(t, []byte(jsonWithComments), cnfExpected, 2)
+	testRunner(t, hcl, cnfExpected, 2)
 }
 
 func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
