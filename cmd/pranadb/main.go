@@ -20,7 +20,7 @@ type cli struct {
 func main() {
 	r := &runner{}
 	if err := r.run(os.Args[1:], true); err != nil {
-		log.Fatal(err.Error())
+		log.WithError(err).Fatal("startup failed")
 	}
 	select {} // prevent main exiting
 }
