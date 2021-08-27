@@ -7,7 +7,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"path/filepath"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -194,7 +193,6 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 
 	if err != nil {
 		err = errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
-		debug.PrintStack()
 		return nil, err
 	}
 	bytes, ok := res.([]byte)
@@ -276,6 +274,7 @@ func (d *Dragon) Start() error {
 
 	d.started = true
 
+	// TODO It seems we need to introduce a wait otherwise queries can hang soon after startup - need to investigate more
 	time.Sleep(10 * time.Second)
 
 	log.Infof("Dragon node %d started", d.cnf.NodeID)

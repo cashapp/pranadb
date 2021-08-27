@@ -75,7 +75,6 @@ type QueryExecutionInfo struct {
 	Limit      uint32
 	ShardID    uint64
 	IsPs       bool
-	OrigNodeID int
 }
 
 func (q *QueryExecutionInfo) GetArgs() []interface{} {
@@ -180,7 +179,6 @@ func (q *QueryExecutionInfo) Serialize() ([]byte, error) {
 		b = 0
 	}
 	buff = append(buff, b)
-	buff = common.AppendUint64ToBufferLE(buff, uint64(q.OrigNodeID))
 	return buff, nil
 }
 
@@ -198,9 +196,6 @@ func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	q.Limit, offset = common.ReadUint32FromBufferLE(buff, offset)
 	q.ShardID, offset = common.ReadUint64FromBufferLE(buff, offset)
 	q.IsPs = buff[offset] == 1
-	offset++
-	on, _ := common.ReadUint64FromBufferLE(buff, offset)
-	q.OrigNodeID = int(on)
 	return nil
 }
 

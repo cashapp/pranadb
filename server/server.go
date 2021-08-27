@@ -56,7 +56,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine, config.NodeID)
+	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
 	apiServer := api.NewAPIServer(commandExecutor, config)
 

@@ -68,7 +68,7 @@ func (m *MessageConsumer) Stop() error {
 		return nil
 	}
 	<-m.loopCh
-	m.msgProvider.Stop()
+	return m.msgProvider.Stop()
 }
 
 func (m *MessageConsumer) Close() error {

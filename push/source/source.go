@@ -25,7 +25,7 @@ import (
 // TODO make configurable
 const (
 	defaultNumConsumersPerSource  = 2
-	defaultPollTimeoutMs          = 500
+	defaultPollTimeoutMs          = 10
 	defaultMaxPollMessages        = 10000
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
