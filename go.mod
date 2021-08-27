@@ -6,6 +6,7 @@ require (
 	github.com/PaesslerAG/gval v1.0.0
 	github.com/PaesslerAG/jsonpath v0.1.1 // indirect
 	github.com/alecthomas/kong v0.2.17
+	github.com/alecthomas/kong-hcl/v2 v2.0.0-20210826214724-5e9bf8bff126
 	github.com/alecthomas/participle/v2 v2.0.0-alpha6
 	github.com/alecthomas/repr v0.0.0-20210611225437-1a2716eca9d6
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -26,5 +27,4 @@ require (
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.23.0
-	muzzammil.xyz/jsonc v0.0.0-20201229145248-615b0916ca38
 )
