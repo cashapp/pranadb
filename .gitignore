@@ -11,3 +11,4 @@ docker-sources/
 polyrepo-settings.gradle.kts
 vendor
 .hermit/
+kafkatest/kafkaserver

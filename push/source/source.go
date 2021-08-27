@@ -10,7 +10,7 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
-	
+
 	"strconv"
 
 	"sync"
@@ -25,7 +25,7 @@ import (
 // TODO make configurable
 const (
 	defaultNumConsumersPerSource  = 2
-	defaultPollTimeoutMs          = 10
+	defaultPollTimeoutMs          = 500
 	defaultMaxPollMessages        = 10000
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
@@ -168,7 +168,6 @@ func (s *Source) Start() error {
 }
 
 func (s *Source) Stop() error {
-	log.Println("Stopping source")
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	return s.stop()
@@ -222,7 +221,6 @@ func (s *Source) loadStartupCommittedOffsets() error {
 			s.startupCommittedOffsets[int32(partID)] = offset
 		}
 	}
-	log.Printf("Loaded startup offsets %v", s.startupCommittedOffsets)
 	return nil
 }
 
@@ -232,6 +230,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 	defer s.lock.Unlock()
 	if !s.started {
 		return
+		//panic("Got consumer error but souce is not started")
 	}
 	log.Errorf("Failure in consumer %v source will be stopped", err)
 	if err2 := s.stop(); err2 != nil {
@@ -258,20 +257,21 @@ func (s *Source) consumerError(err error, clientError bool) {
 }
 
 func (s *Source) stop() error {
-	log.Println("Stopping source internal")
 	if !s.started {
-		panic("not started")
+		return nil
 	}
 	for _, consumer := range s.msgConsumers {
-		log.Println("Stopping consumer")
 		if err := consumer.Stop(); err != nil {
 			return err
 		}
-		log.Println("Stopped consumer")
+	}
+	for _, consumer := range s.msgConsumers {
+		if err := consumer.Close(); err != nil {
+			return err
+		}
 	}
 	s.msgConsumers = nil
 	s.started = false
-	log.Println("Source stopped")
 	return nil
 }
 
@@ -288,10 +288,6 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {
-	log.Printf("Ingesting %d messages", len(messages))
-	if len(messages) == 1 {
-		log.Printf("ingesting %s %s", string(messages[0].Key), string(messages[0].Value))
-	}
 	rows, err := mp.ParseMessages(messages)
 	if err != nil {
 		return err
@@ -329,11 +325,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if err := s.cluster.WriteBatch(batch); err != nil {
 		return err
 	}
-	err = s.mover.TransferData(shardID, true)
-	if err != nil {
-		log.Printf("Ingested %d messages ok", len(messages))
-	}
-	return err
+	return s.mover.TransferData(shardID, true)
 }
 
 // We commit the Kafka offsets in the same batch as we stage the rows for forwarding.

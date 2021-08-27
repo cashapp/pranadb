@@ -97,6 +97,7 @@ func (w *sqlTestsuite) restartCluster() {
 	log.Infof("Restarting cluster")
 	w.stopCluster()
 	log.Infof("Stopped cluster")
+	time.Sleep(5 * time.Second)
 	w.startCluster()
 	log.Infof("Restarted it")
 }
@@ -263,10 +264,12 @@ func (w *sqlTestsuite) startCluster() {
 	// The nodes need to be started in parallel, as cluster.start() shouldn't return until the cluster is
 	// available - i.e. all nodes are up. (Currently that is broken and there is a time.sleep but we should fix that)
 	wg := sync.WaitGroup{}
-	for _, prana := range w.pranaCluster {
+	for i, prana := range w.pranaCluster {
 		wg.Add(1)
 		prana := prana
+		ind := i
 		go func() {
+			log.Printf("Starting prana node %d", ind)
 			err := prana.Start()
 			if err != nil {
 				log.Fatal(err)

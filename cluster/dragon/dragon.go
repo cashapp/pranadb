@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -192,7 +193,9 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	}, timeout)
 
 	if err != nil {
-		return nil, errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.ClusterID, queryInfo.Query, err))
+		err = errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
+		debug.PrintStack()
+		return nil, err
 	}
 	bytes, ok := res.([]byte)
 	if !ok {
@@ -272,7 +275,11 @@ func (d *Dragon) Start() error {
 	}
 
 	d.started = true
+
+	time.Sleep(10 * time.Second)
+
 	log.Infof("Dragon node %d started", d.cnf.NodeID)
+
 	return nil
 }
 

@@ -126,6 +126,13 @@ func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (exec.P
 }
 
 func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
+
+	p.lock.Lock()
+	if !p.started {
+		panic("push engine not started")
+	}
+	p.lock.Unlock()
+
 	if queryInfo.SessionID == "" {
 		panic("empty session id")
 	}

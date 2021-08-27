@@ -3,7 +3,6 @@ package kafka
 import (
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/pkg/errors"
 	"log"
 	"sync"
 	"time"
@@ -36,21 +35,7 @@ type KafkaMessageProvider struct {
 	lock      sync.Mutex
 	consumer  *kafka.Consumer
 	topicName string
-	paCb      PartitionsCallback
-	prCb      PartitionsCallback
 	krpf      *CfltMessageProviderFactory
-}
-
-func (k *KafkaMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	k.paCb = cb
-}
-
-func (k *KafkaMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	k.prCb = cb
 }
 
 func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
@@ -98,6 +83,11 @@ func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, 
 }
 
 func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
+	k.lock.Lock()
+	defer k.lock.Unlock()
+	if k.consumer == nil {
+		return nil
+	}
 	offsets := make([]kafka.TopicPartition, len(offsetsMap))
 	i := 0
 	for partID, offset := range offsetsMap {
@@ -109,25 +99,24 @@ func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
 		i++
 	}
 	_, err := k.consumer.CommitOffsets(offsets)
-	if err == nil {
-		log.Printf("committed offsets %v", offsetsMap)
-	}
 	return err
 }
 
 func (k *KafkaMessageProvider) Stop() error {
+	return nil
+}
+
+func (k *KafkaMessageProvider) Close() error {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 	err := k.consumer.Close()
+	k.consumer = nil
 	return err
 }
 
 func (k *KafkaMessageProvider) Start() error {
 	k.lock.Lock()
 	defer k.lock.Unlock()
-	if k.prCb == nil || k.paCb == nil {
-		return errors.New("callbacks must be set before starting message provider")
-	}
 
 	cm := &kafka.ConfigMap{
 		"group.id":           k.krpf.groupID,

@@ -87,6 +87,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	return res, nil
 }
 
+//nolint:gocyclo
 func (p *PullSort) sortRows(unsorted *common.Rows) (*common.Rows, error) {
 	numRows := unsorted.RowCount()
 	indexes := make([]int, numRows)

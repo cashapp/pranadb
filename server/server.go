@@ -2,10 +2,13 @@ package server
 
 import (
 	"fmt"
+
 	"net/http" //nolint:stylecheck
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
 	_ "net/http/pprof" //nolint:stylecheck
+
+	//nolint:stylecheck
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -53,7 +56,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
+	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine, config.NodeID)
 	clus.RegisterMembershipListener(pullEngine)
 	apiServer := api.NewAPIServer(commandExecutor, config)
 
@@ -103,6 +106,7 @@ type Server struct {
 	services        []service
 	started         bool
 	conf            conf.Config
+	debugServer     *http.Server
 }
 
 type service interface {
@@ -117,6 +121,16 @@ func (s *Server) Start() error {
 		return nil
 	}
 
+	if s.conf.Debug {
+		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
+		s.debugServer = &http.Server{Addr: addr}
+		go func(srv *http.Server) {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Errorf("debug server failed to listen %v", err)
+			}
+		}(s.debugServer)
+	}
+
 	var err error
 	for _, s := range s.services {
 		if err = s.Start(); err != nil {
@@ -125,15 +139,7 @@ func (s *Server) Start() error {
 	}
 	s.started = true
 
-	if s.conf.Debug {
-		go func() {
-			if err := http.ListenAndServe(fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676), nil); err != nil {
-				log.Errorf("http server exited with error: %v", err)
-			}
-		}()
-	}
-
-	log.Infof("Prana server %d started", s.nodeID)
+	log.Printf("Prana server %d started", s.nodeID)
 
 	return nil
 }
@@ -144,6 +150,11 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.debugServer != nil {
+		if err := s.debugServer.Close(); err != nil {
+			return err
+		}
+	}
 	for i := len(s.services) - 1; i >= 0; i-- {
 		if err := s.services[i].Stop(); err != nil {
 			return err

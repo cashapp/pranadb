@@ -3,7 +3,11 @@ package kafka
 import (
 	"fmt"
 	"github.com/pkg/errors"
+
 	log "github.com/sirupsen/logrus"
+
+	"github.com/squareup/pranadb/common"
+
 	"github.com/squareup/pranadb/sharder"
 	"reflect"
 	"strconv"
@@ -183,7 +187,7 @@ func (t *Topic) calcPartition(message *Message) (int, error) {
 	return partID, nil
 }
 
-func (t *Topic) CreateSubscriber(groupID string, paCB PartitionsCallback, prCB PartitionsCallback) (*Subscriber, error) {
+func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
 	group, ok := t.getGroup(groupID)
 	if !ok {
 		t.lock.Lock()
@@ -194,7 +198,7 @@ func (t *Topic) CreateSubscriber(groupID string, paCB PartitionsCallback, prCB P
 		}
 		t.lock.Unlock()
 	}
-	return group.createSubscriber(t, group, paCB, prCB)
+	return group.createSubscriber(t, group)
 }
 
 func (t *Topic) ResetOffsets() error {
@@ -238,6 +242,8 @@ type Group struct {
 	subscribers     []*Subscriber
 	failureEnd      *time.Time
 	feLock          sync.Mutex
+	quiesceChannel  chan *quiesceResponse
+	qcl             sync.Mutex
 }
 
 func newGroup(id string, topic *Topic) *Group {
@@ -250,14 +256,13 @@ func newGroup(id string, topic *Topic) *Group {
 func (g *Group) injectFailure(failTime time.Duration) error {
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
-	if err := g.quiesceConsumers(); err != nil {
-		return err
-	}
+	quiesced, respChans := g.quiesceConsumers(g.subscribers)
 	tEnd := time.Now().Add(failTime)
 	g.feLock.Lock()
 	g.failureEnd = &tEnd
 	g.feLock.Unlock()
-	return g.wakeConsumers()
+	err := g.wakeConsumers(quiesced, respChans)
+	return err
 }
 
 func (g *Group) checkInjectFailure() error {
@@ -277,29 +282,29 @@ func (g *Group) checkInjectFailure() error {
 	return nil
 }
 
-func (g *Group) createSubscriber(t *Topic, group *Group, paCB PartitionsCallback, prCB PartitionsCallback) (*Subscriber, error) {
+func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
-	if err := g.quiesceConsumers(); err != nil {
-		return nil, err
-	}
+
+	quiesced, respChans := g.quiesceConsumers(g.subscribers)
+
 	subscriber := &Subscriber{
 		topic: t,
 		group: group,
-		paCB:  paCB,
-		prCB:  prCB,
 	}
 	g.subscribers = append(g.subscribers, subscriber)
 	if err := g.rebalance(); err != nil {
 		return nil, err
 	}
+	if err := g.wakeConsumers(quiesced, respChans); err != nil {
+		return nil, err
+	}
+
 	return subscriber, nil
 }
 
 func (g *Group) commitOffsets(offsets map[int32]int64) error {
-	if err := g.checkInjectFailure(); err != nil {
-		return err
-	}
+
 	for partID, offset := range offsets {
 		co, ok := g.offsets.Load(partID)
 		if ok {
@@ -311,22 +316,94 @@ func (g *Group) commitOffsets(offsets map[int32]int64) error {
 				return fmt.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
 			}
 		}
-		g.offsets.Store(partID, offset)
+		// We subtract one as when offsets are committed in Kafka they are 1 + last committed offset, so we subtract
+		// one as we keep track of the offsets that were actually committed
+		g.offsets.Store(partID, offset-1)
 	}
 	return nil
 }
 
-func (g *Group) quiesceConsumers() error {
-	// We first call the subscribers that rebalance is about to occur - this gives them a chance to
-	// commit offsets
-	for _, subscriber := range g.subscribers {
-		if subscriber.prCB != nil {
-			if err := subscriber.prCB(); err != nil {
-				return err
+func (g *Group) getQuiesceChannel() chan *quiesceResponse {
+	g.qcl.Lock()
+	defer g.qcl.Unlock()
+	return g.quiesceChannel
+}
+
+func (g *Group) setQuiesceChannel(qc chan *quiesceResponse) {
+	g.qcl.Lock()
+	defer g.qcl.Unlock()
+	g.quiesceChannel = qc
+}
+
+func (g *Group) quiesceConsumers(subscribers []*Subscriber) ([]*Subscriber, []chan struct{}) {
+	if len(subscribers) == 0 {
+		return nil, nil
+	}
+
+	// We need to wait for all subscribers to call in to getMessage - we then know there is no processing outstanding
+	// for that subscriber.
+	// This is also consistent with how rebalance is handled in Kafka - rebalance events are delivered on poll
+	// and if consumers don't call poll rebalance won't complete
+	qc := make(chan *quiesceResponse, len(subscribers))
+	g.setQuiesceChannel(qc)
+	for _, subscriber := range subscribers {
+		subscriber.quiescing.Set(true)
+	}
+	// Wait for all subscribers
+	var respChans []chan struct{}
+	var subs []*Subscriber
+
+	subsToGet := make(map[*Subscriber]struct{})
+	for _, sub := range subscribers {
+		subsToGet[sub] = struct{}{}
+	}
+
+	for len(subsToGet) > 0 {
+		select {
+		case resp := <-qc:
+			respChans = append(respChans, resp.wakeUpChannel)
+			subs = append(subs, resp.sub)
+			delete(subsToGet, resp.sub)
+		case <-time.After(time.Millisecond * 10):
+			for sub := range subsToGet {
+				if sub.stopped.Get() {
+					delete(subsToGet, sub)
+				}
 			}
 		}
 	}
+	return subs, respChans
+}
+
+type quiesceResponse struct {
+	wakeUpChannel chan struct{}
+	sub           *Subscriber
+}
+
+func (g *Group) wakeConsumers(subscribers []*Subscriber, respChans []chan struct{}) error {
+	if len(subscribers) == 0 {
+		return nil
+	}
+	g.setQuiesceChannel(nil)
+	for i, subscriber := range subscribers {
+		subscriber.quiescing.Set(false)
+		respChans[i] <- struct{}{}
+	}
 	return nil
+}
+
+func (g *Group) waitForQuiesce(sub *Subscriber) {
+	qc := g.getQuiesceChannel()
+	if qc == nil {
+		return
+	}
+	ch := make(chan struct{}, 1)
+	qr := &quiesceResponse{
+		wakeUpChannel: ch,
+		sub:           sub,
+	}
+	qc <- qr
+	<-ch
 }
 
 func (g *Group) rebalance() error {
@@ -349,28 +426,12 @@ func (g *Group) rebalance() error {
 			builder.WriteString(fmt.Sprintf("%d,", part.id))
 		}
 	}
-	return g.wakeConsumers()
-}
-
-func (g *Group) wakeConsumers() error {
-	for _, subscriber := range g.subscribers {
-		if subscriber.paCB != nil {
-			if err := subscriber.paCB(); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
 
 func (g *Group) unsubscribe(subscriber *Subscriber) error {
-
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
-
-	if err := g.quiesceConsumers(); err != nil {
-		return err
-	}
 
 	var newSubscribers []*Subscriber
 	for _, c := range g.subscribers {
@@ -378,8 +439,16 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 			newSubscribers = append(newSubscribers, c)
 		}
 	}
+
+	quiesced, respChans := g.quiesceConsumers(newSubscribers)
 	g.subscribers = newSubscribers
-	return g.rebalance()
+	if err := g.rebalance(); err != nil {
+		return err
+	}
+
+	err := g.wakeConsumers(quiesced, respChans)
+
+	return err
 }
 
 func (g *Group) getOffsets() map[int32]int64 {
@@ -407,15 +476,27 @@ type Subscriber struct {
 	topic      *Topic
 	partitions []*Partition
 	group      *Group
-	prCB       PartitionsCallback
-	paCB       PartitionsCallback
+	quiescing  common.AtomicBool
+	stopped    common.AtomicBool
 }
 
 func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
+	if c.stopped.Get() {
+		panic("subscriber is stopped")
+	}
+	if err := c.group.checkInjectFailure(); err != nil {
+		return err
+	}
 	return c.group.commitOffsets(offsets)
 }
 
 func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	if c.stopped.Get() {
+		panic("subscriber is stopped")
+	}
+	if c.quiescing.Get() {
+		c.group.waitForQuiesce(c)
+	}
 
 	if err := c.group.checkInjectFailure(); err != nil {
 		return nil, err
@@ -450,6 +531,7 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 }
 
 func (c *Subscriber) Unsubscribe() error {
+	c.stopped.Set(true)
 	return c.group.unsubscribe(c)
 }
 
@@ -493,28 +575,19 @@ func (fmpf *FakeMessageProviderFactory) NewMessageProvider() (MessageProvider, e
 }
 
 type FakeMessageProvider struct {
-	subscriber *Subscriber
-	topic      *Topic
-	groupID    string
-	started    bool
-	lock       sync.Mutex
-	prCB       PartitionsCallback
-	paCB       PartitionsCallback
-}
-
-func (f *FakeMessageProvider) SetPartitionsAssignedCb(cb PartitionsCallback) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.paCB = cb
-}
-
-func (f *FakeMessageProvider) SetPartitionsRevokedCb(cb PartitionsCallback) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.prCB = cb
+	subscriber   *Subscriber
+	topic        *Topic
+	groupID      string
+	started      bool
+	lock         sync.Mutex
+	inGetMessage common.AtomicBool
 }
 
 func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	if !f.inGetMessage.CompareAndSet(false, true) {
+		panic("already calling getmessage")
+	}
+	defer f.inGetMessage.Set(false)
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	if f.subscriber == nil {
@@ -538,10 +611,7 @@ func (f *FakeMessageProvider) Start() error {
 	if f.started {
 		return nil
 	}
-	if f.prCB == nil || f.paCB == nil {
-		return errors.New("callbacks must be set before message provider is started")
-	}
-	subscriber, err := f.topic.CreateSubscriber(f.groupID, f.paCB, f.prCB)
+	subscriber, err := f.topic.CreateSubscriber(f.groupID)
 	if err != nil {
 		return err
 	}
@@ -550,5 +620,10 @@ func (f *FakeMessageProvider) Start() error {
 }
 
 func (f *FakeMessageProvider) Stop() error {
+	f.subscriber.stopped.Set(true)
+	return nil
+}
+
+func (f *FakeMessageProvider) Close() error {
 	return f.subscriber.Unsubscribe()
 }

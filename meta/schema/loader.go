@@ -15,13 +15,15 @@ type Loader struct {
 	meta       *meta.Controller
 	pushEngine *push.PushEngine
 	queryExec  common.SimpleQueryExec
+	nodeID     int
 }
 
-func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.SimpleQueryExec) *Loader {
+func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.SimpleQueryExec, nodeID int) *Loader {
 	return &Loader{
 		meta:       m,
 		pushEngine: push,
 		queryExec:  queryExec,
+		nodeID:     nodeID,
 	}
 }
 

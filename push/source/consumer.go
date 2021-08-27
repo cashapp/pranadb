@@ -16,11 +16,8 @@ type MessageConsumer struct {
 	loopCh                  chan struct{}
 	scheduler               *sched.ShardScheduler
 	startupCommittedOffsets map[int32]int64
-	started                 common.AtomicBool
 	running                 common.AtomicBool
 	messageParser           *MessageParser
-
-	rebalancing common.AtomicBool
 }
 
 func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
@@ -43,14 +40,12 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 		loopCh:                  make(chan struct{}, 1),
 		messageParser:           messageParser,
 	}
-	msgProvider.SetPartitionsAssignedCb(mc.partitionsAssigned)
-	msgProvider.SetPartitionsRevokedCb(mc.partitionsRevoked)
 
-	// It's important that the message consumer is started before the message provider
-	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is started,
-	// and then the consumer is started, which starts the poll loop, but rebalancing is still in progress.
+	// It's important that the message consumer is running before the message provider
+	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is running,
+	// and then the consumer is running, which starts the poll loop, but rebalancing is still in progress.
 	// Messages can then be consumed and committed before rebalancing is complete which can result in out of order
-	// commits, if another consumer has started and has committed around the same time.
+	// commits, if another consumer has running and has committed around the same time.
 	// If the message provider is not set by the time the consumer has called getMessage first time, it will simply
 	// return nil, which is ok
 	mc.start()
@@ -59,94 +54,32 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	if err := msgProvider.Start(); err != nil {
 		return nil, err
 	}
+
 	return mc, nil
 }
 
-func (m *MessageConsumer) partitionsAssigned() error {
-	if !m.rebalancing.Get() {
-		panic("not rebalancing")
-	}
-	if !m.running.CompareAndSet(false, true) {
-		return nil
-	}
-	// We start the poll loop again
-	go m.pollLoop()
-	return nil
-}
-
-/*
-partitions revoked and assigned are called on the poll loop with the confluent go client
-
-we should assume they're always called this way, this is good in a way as cb will only be invoked when getMessage is called
-so we know there are no messages waiting to be committed.
-
-so we don't need to do anything in partition assigned and revoked
-
-and in the fake consumer, if a consumer is added or removed, then we first set revoking=true on each consumer, we allow
-offsets to be committed at this point, then when the next call to getMessage comes in on each consumer and all are calling
-getMessage then we block them on a waitgroup, we now know offsets have been committed, then we can do the rebalance
-*/
-
-func (m *MessageConsumer) partitionsRevoked() error {
-	// Re-balancing is about to occur - the Kafka client should guarantee this is called before rebalancing actually
-	// happens - it gives the consumer a chance to finish processing any messages and to commit any offsets.
-	// Without this it would be possible for another consumer to take over processing for the the same set of
-	// partitions and commit an offset in the same partition before this one had committed theirs.
-
-	// We wait for any processing to complete on the poll loop
-	m.rebalancing.Set(true)
-
-	// We have to wait for poll loop to stop on a different goroutine as this callback is called from the poll loop
-	// with the confluent client
-	if m.running.CompareAndSet(true, false) {
-		go func() {
-			_, ok := <-m.loopCh
-			if !ok {
-				panic("channel closed")
-			}
-			m.rebalancing.Set(false)
-		}()
-	}
-
-	// TODO - it is not sufficient to just wait for the pool loop to stop.
-	// Some time after the poll loop has stopped messages wil be forwarded async to other nodes.
-	// If owner of partitions changes during rebalance then messages processed from the new owner consumer
-	// could be forwarded before the messages processed by the earlier consumer.
-	// To deal with this case we should add an extra delay in here
-
-	return nil
-}
-
 func (m *MessageConsumer) start() {
-	m.started.Set(true)
 	m.running.Set(true)
 	go m.pollLoop()
 }
 
 func (m *MessageConsumer) Stop() error {
-	if !m.started.CompareAndSet(true, false) {
+	if !m.running.CompareAndSet(true, false) {
 		return nil
 	}
-
-	// If called from a consumer error it will be called on the poll loop and the consumer error will
-	// have already set running to false
-	m.waitForPollLoopToStop()
-
-	// unsubscribe happens here
-	return m.msgProvider.Stop()
+	<-m.loopCh
+	m.msgProvider.Stop()
 }
 
-func (m *MessageConsumer) waitForPollLoopToStop() {
-	if m.running.CompareAndSet(true, false) {
-		_, ok := <-m.loopCh
-		if !ok {
-			panic("channel closed")
-		}
-	}
+func (m *MessageConsumer) Close() error {
+	// Actually unsubscribes
+	return m.msgProvider.Close()
 }
 
 func (m *MessageConsumer) consumerError(err error, clientError bool) {
-	m.running.Set(false)
+	if err := m.msgProvider.Stop(); err != nil {
+		log.Printf("failed to stop message provider %v", err)
+	}
 	go func() {
 		m.source.consumerError(err, clientError)
 	}()
@@ -164,8 +97,6 @@ func (m *MessageConsumer) pollLoop() {
 		}
 		if len(messages) != 0 {
 
-			log.Printf("Got batch of %d messages", len(messages))
-
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
 			if err != nil {
@@ -174,7 +105,6 @@ func (m *MessageConsumer) pollLoop() {
 			}
 		}
 		// Commit the offsets - note there may be more offsets than messages in the case of duplicates
-
 		if len(offsetsToCommit) != 0 {
 			if err := m.msgProvider.CommitOffsets(offsetsToCommit); err != nil {
 				m.consumerError(err, true)
@@ -199,10 +129,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		if msg == nil {
 			break
 		}
-		log.Printf("Got message from message provider %s", string(msg.Key))
-
 		partID := msg.PartInfo.PartitionID
-
 		var lastOffset int64
 		var ok bool
 		lastOffset, ok = m.startupCommittedOffsets[partID]

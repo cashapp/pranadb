@@ -55,6 +55,7 @@ func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryR
 		var rows *common.Rows
 		var err error
 		c.queryExecInfo.Limit = uint32(limit)
+		c.queryExecInfo.OrigNodeID = c.re.cluster.GetNodeID()
 		rows, err = c.re.cluster.ExecuteRemotePullQuery(&c.queryExecInfo, c.re.rowsFactory)
 		if err == nil {
 			c.complete.Store(rows.RowCount() < limit)

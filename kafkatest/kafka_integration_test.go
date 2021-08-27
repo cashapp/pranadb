@@ -24,12 +24,15 @@ import (
 const numPartitions uint32 = 25
 
 func TestKafkaIntegration(t *testing.T) {
+	t.Skip("disabled - must be run manually")
 
 	dataDir, err := ioutil.TempDir("", "kafka-int-test")
 	require.NoError(t, err)
 	defer func() {
 		err := os.RemoveAll(dataDir)
-		require.NoError(t, err)
+		if err != nil {
+			log.Printf("failed to delete datadir %v", err)
+		}
 	}()
 
 	cluster := startPranaCluster(t, dataDir)
@@ -40,7 +43,9 @@ func TestKafkaIntegration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		err := cli.Stop()
-		require.NoError(t, err)
+		if err != nil {
+			log.Printf("Failed to close client %v", err)
+		}
 	}()
 
 	cm := &kafka.ConfigMap{}
@@ -52,18 +57,16 @@ func TestKafkaIntegration(t *testing.T) {
 	go func() {
 		// This appears to be necessary to stop the producer hanging
 		for e := range producer.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				if ev.TopicPartition.Error != nil {
-					fmt.Printf("Delivery failed: %v\n", ev.TopicPartition)
+			msg, ok := e.(*kafka.Message)
+			if ok {
+				if msg.TopicPartition.Error != nil {
+					fmt.Printf("Delivery failed: %v\n", msg.TopicPartition)
 				} else {
-					fmt.Printf("Delivered message to %v\n", ev.TopicPartition)
+					fmt.Printf("Delivered message to %v\n", msg.TopicPartition)
 				}
 			}
 		}
 	}()
-
-	log.Println("Servers started")
 
 	sessionID, err := cli.CreateSession()
 	require.NoError(t, err)
@@ -112,51 +115,33 @@ create source payments(
 	res = <-ch
 	require.Equal(t, "|payment_id|customer_id|payment_time|amount|payment_type|currency|fraud_score|", res)
 
-	log.Println("Executed create source")
-
 	numPayments := 1500
 
 	sendMessages(t, 0, numPayments, 17, "testtopic", producer)
 
-	log.Println("sent messages")
-
-	start := time.Now()
 	waitUntilRowsInTable(t, "payments", numPayments, cluster)
-	dur := time.Now().Sub(start)
-	log.Printf("Waiting for rows took %d ms", dur.Milliseconds())
 
-	log.Println("Executing query again")
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
 	lineCount := 0
-	for line := range ch {
-		log.Println(line)
+	for range ch {
 		lineCount++
 	}
 	require.Equal(t, numPayments+2, lineCount)
-
-	//for i := 0; i < 100; i++ {
-
-	//log.Printf("************* ITERATION %d", i)
 
 	// Send more messages
 	sendMessages(t, numPayments, numPayments, 17, "testtopic", producer)
 
 	waitUntilRowsInTable(t, "payments", numPayments*2, cluster)
 
-	log.Println("Sent more messages")
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
 
 	lineCount = 0
-	for line := range ch {
-		log.Println(line)
+	for range ch {
 		lineCount++
 	}
 	require.Equal(t, 2*numPayments+2, lineCount)
-
-	log.Println("Test completed ok")
-	//}
 
 	producer.Close()
 }
@@ -235,17 +220,16 @@ func startCluster(t *testing.T, cluster []*server.Server) {
 
 func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 	t.Helper()
-	log.Println("Stopping cluster")
 	for _, s := range cluster {
 		err := s.Stop()
-		require.NoError(t, err)
+		if err != nil {
+			log.Printf("Failed to stop cluster %v", err)
+		}
 	}
 }
 
 func sendMessages(t *testing.T, startID int, numPayments int, numCustomers int, topicName string, producer *kafka.Producer) {
 	t.Helper()
-	//time.Sleep(5 * time.Second)
-	log.Println("Sending messages")
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	paymentTypes := []string{"btc", "p2p", "other"}
 	currencies := []string{"gbp", "usd", "eur", "aud"}
@@ -288,13 +272,10 @@ func sendMessages(t *testing.T, startID int, numPayments int, numCustomers int, 
 
 	outstanding := producer.Flush(10000)
 	require.Equal(t, 0, outstanding)
-	//producer.Close()
-	log.Println("*********Sent messages")
 }
 
 func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster []*server.Server) {
 	t.Helper()
-	log.Printf("Waiting for %d rows in table %s", numRows, tableName)
 	schema, ok := cluster[0].GetMetaController().GetSchema("test")
 	require.True(t, ok, "can't find test schema")
 	tab, ok := schema.GetTable(tableName)
@@ -319,7 +300,6 @@ func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster [
 		}
 	}
 	require.True(t, ok, "Timed out waiting for %d rows in table %s there are %d", numRows, tableName, totRows)
-	log.Println("Rows arrived ok")
 }
 
 func getAllRowsInTable(tableID uint64, cluster []*server.Server) (int, error) {
