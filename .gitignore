@@ -12,3 +12,4 @@ polyrepo-settings.gradle.kts
 vendor
 .hermit/
 kafkatest/kafkaserver
+prana-data/

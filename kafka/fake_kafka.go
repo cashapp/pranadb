@@ -242,8 +242,9 @@ type Group struct {
 	subscribers     []*Subscriber
 	failureEnd      *time.Time
 	feLock          sync.Mutex
-	quiesceChannel  chan *quiesceResponse
-	qcl             sync.Mutex
+	// Quiesce channel - all subscribers send a message to this channel when they are quiescing
+	quiesceChannel chan *quiesceResponse
+	qcl            sync.Mutex
 }
 
 func newGroup(id string, topic *Topic) *Group {
