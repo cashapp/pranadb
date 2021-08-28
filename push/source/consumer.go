@@ -16,7 +16,6 @@ type MessageConsumer struct {
 	loopCh                  chan struct{}
 	scheduler               *sched.ShardScheduler
 	startupCommittedOffsets map[int32]int64
-	started                 common.AtomicBool
 	running                 common.AtomicBool
 	messageParser           *MessageParser
 }
@@ -41,14 +40,12 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 		loopCh:                  make(chan struct{}, 1),
 		messageParser:           messageParser,
 	}
-	msgProvider.SetPartitionsAssignedCb(mc.partitionsAssigned)
-	msgProvider.SetPartitionsRevokedCb(mc.partitionsRevoked)
 
-	// It's important that the message consumer is started before the message provider
-	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is started,
-	// and then the consumer is started, which starts the poll loop, but rebalancing is still in progress.
+	// It's important that the message consumer is running before the message provider
+	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is running,
+	// and then the consumer is running, which starts the poll loop, but rebalancing is still in progress.
 	// Messages can then be consumed and committed before rebalancing is complete which can result in out of order
-	// commits, if another consumer has started and has committed around the same time.
+	// commits, if another consumer has running and has committed around the same time.
 	// If the message provider is not set by the time the consumer has called getMessage first time, it will simply
 	// return nil, which is ok
 	mc.start()
@@ -57,66 +54,32 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	if err := msgProvider.Start(); err != nil {
 		return nil, err
 	}
+
 	return mc, nil
 }
 
-func (m *MessageConsumer) partitionsAssigned() error {
-	if !m.running.CompareAndSet(false, true) {
-		return nil
-	}
-	// We start the poll loop again
-	go m.pollLoop()
-	return nil
-}
-
-func (m *MessageConsumer) partitionsRevoked() error {
-	// Re-balancing is about to occur - the Kafka client should guarantee this is called before rebalancing actually
-	// happens - it gives the consumer a chance to finish processing any messages and to commit any offsets.
-	// Without this it would be possible for another consumer to take over processing for the the same set of
-	// partitions and commit an offset in the same partition before this one had committed theirs.
-
-	// We wait for any processing to complete on the poll loop
-
-	// TODO - it is not sufficient to just wait for the pool loop to stop.
-	// Some time after the poll loop has stopped messages wil be forwarded async to other nodes.
-	// If owner of partitions changes during rebalance then messages processed from the new owner consumer
-	// could be forwarded before the messages processed by the earlier consumer.
-	// To deal with this case we should add an extra delay in here
-	m.waitForPollLoopToStop()
-	return nil
-}
-
 func (m *MessageConsumer) start() {
-	m.started.Set(true)
 	m.running.Set(true)
 	go m.pollLoop()
 }
 
 func (m *MessageConsumer) Stop() error {
-	if !m.started.CompareAndSet(true, false) {
+	if !m.running.CompareAndSet(true, false) {
 		return nil
 	}
-	// unsubscribe happens here
-	err := m.msgProvider.Stop()
-
-	// If called from a consumer error it will be called on the poll loop and the consumer error will
-	// have already set running to false
-	m.waitForPollLoopToStop()
-
-	return err
+	<-m.loopCh
+	return m.msgProvider.Stop()
 }
 
-func (m *MessageConsumer) waitForPollLoopToStop() {
-	if m.running.CompareAndSet(true, false) {
-		_, ok := <-m.loopCh
-		if !ok {
-			panic("channel closed")
-		}
-	}
+func (m *MessageConsumer) Close() error {
+	// Actually unsubscribes
+	return m.msgProvider.Close()
 }
 
 func (m *MessageConsumer) consumerError(err error, clientError bool) {
-	m.running.Set(false)
+	if err := m.msgProvider.Stop(); err != nil {
+		log.Printf("failed to stop message provider %v", err)
+	}
 	go func() {
 		m.source.consumerError(err, clientError)
 	}()
@@ -133,6 +96,7 @@ func (m *MessageConsumer) pollLoop() {
 			return
 		}
 		if len(messages) != 0 {
+
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
 			if err != nil {
@@ -141,7 +105,6 @@ func (m *MessageConsumer) pollLoop() {
 			}
 		}
 		// Commit the offsets - note there may be more offsets than messages in the case of duplicates
-
 		if len(offsetsToCommit) != 0 {
 			if err := m.msgProvider.CommitOffsets(offsetsToCommit); err != nil {
 				m.consumerError(err, true)
@@ -166,17 +129,20 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		if msg == nil {
 			break
 		}
-
 		partID := msg.PartInfo.PartitionID
-
 		var lastOffset int64
 		var ok bool
 		lastOffset, ok = m.startupCommittedOffsets[partID]
 		if !ok {
-			lastOffset = 0
+			lastOffset = -1
+		} else {
+			// The committed offset is actually one more than the last offset seen. Yes this is weird, but
+			// it's consistent with how you commit offsets in Kafka (you specify 1 + the last offset you processed)
+			// So, to get the last offset actually seen, we subtract 1
+			lastOffset--
 		}
 
-		offsetsToCommit[partID] = msg.PartInfo.Offset
+		offsetsToCommit[partID] = msg.PartInfo.Offset + 1
 		if msg.PartInfo.Offset <= lastOffset {
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.

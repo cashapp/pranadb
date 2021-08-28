@@ -1,4 +1,4 @@
-package cli
+package client
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ func TestSessionTimeout(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	cli := NewCli(serverAddress, 5*time.Second)
+	cli := NewClient(serverAddress, 5*time.Second)
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {

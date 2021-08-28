@@ -3,6 +3,7 @@ package kafka
 import (
 	"fmt"
 	"github.com/stretchr/testify/require"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -79,7 +80,7 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub, err := topic.CreateSubscriber(groupID, nil, nil)
+	sub, err := topic.CreateSubscriber(groupID)
 	require.NoError(t, err)
 
 	receivedMsgs := map[string]*Message{}
@@ -111,31 +112,39 @@ func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub1, err := topic.CreateSubscriber(groupID, nil, nil)
-	require.NoError(t, err)
 
-	sub2, err := topic.CreateSubscriber(groupID, nil, nil)
-	require.NoError(t, err)
+	var receivedMessages int32
+	ch1 := make(chan receiveMsgResult, 1)
+	go func() {
+		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
+		rmr := receiveMsgResult{
+			err:  err,
+			msgs: msgs,
+		}
+		ch1 <- rmr
+	}()
+	ch2 := make(chan receiveMsgResult, 1)
+	go func() {
+		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
+		rmr := receiveMsgResult{
+			err:  err,
+			msgs: msgs,
+		}
+		ch2 <- rmr
+	}()
 
 	receivedMsgs := map[string]*Message{}
 
-	for i := 0; i < numMessages; i++ {
-		start := time.Now()
-		var msg *Message
-		for {
-			msg, err = sub1.GetMessage(1 * time.Millisecond)
-			require.NoError(t, err)
-			if msg != nil {
-				break
-			}
-			msg, err = sub2.GetMessage(1 * time.Millisecond)
-			require.NoError(t, err)
-			if msg != nil {
-				break
-			}
-			require.True(t, time.Now().Sub(start) >= 5*time.Second, "timedout waiting for msgs")
-		}
-		receivedMsgs[string(msg.Key)] = msg
+	rmr1 := <-ch1
+	require.NoError(t, rmr1.err)
+	for k, v := range rmr1.msgs {
+		receivedMsgs[k] = v
+	}
+
+	rmr2 := <-ch2
+	require.NoError(t, rmr2.err)
+	for k, v := range rmr2.msgs {
+		receivedMsgs[k] = v
 	}
 
 	for _, msg := range sentMsgs {
@@ -149,69 +158,31 @@ func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 	require.Equal(t, 2, len(group.subscribers))
 }
 
-func TestCommitOffsetsTwoSubscribersOneGroup(t *testing.T) {
-	fk := NewFakeKafka()
-	parts := 10
-	topic, err := fk.CreateTopic("topic1", parts)
-	require.NoError(t, err)
+type receiveMsgResult struct {
+	err  error
+	msgs map[string]*Message
+}
 
-	numMessages := 1000
-	sendMessages(t, fk, numMessages, topic.Name)
-
-	groupID1 := "group1"
-	sub1, err := topic.CreateSubscriber(groupID1, nil, nil)
-	require.NoError(t, err)
-
-	sub2, err := topic.CreateSubscriber(groupID1, nil, nil)
-	require.NoError(t, err)
-
-	group1, ok := topic.getGroup(groupID1)
-	require.True(t, ok)
-
-	offsets1 := map[int32]int64{}
-	offsets2 := map[int32]int64{}
-
-	for i := 0; i < numMessages; i++ {
-		start := time.Now()
-		var msg *Message
-		for {
-			msg, err = sub1.GetMessage(1 * time.Millisecond)
-			require.NoError(t, err)
-			if msg != nil {
-				offsets1[msg.PartInfo.PartitionID] = msg.PartInfo.Offset
-				break
-			}
-			msg, err = sub2.GetMessage(1 * time.Millisecond)
-			require.NoError(t, err)
-			if msg != nil {
-				offsets2[msg.PartInfo.PartitionID] = msg.PartInfo.Offset
-				break
-			}
-			require.True(t, time.Now().Sub(start) >= 5*time.Second, "timedout waiting for msgs")
+func receiveMessages(counter *int32, numMessages int, topic *Topic, groupID string) (map[string]*Message, error) {
+	sub, err := topic.CreateSubscriber(groupID)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]*Message)
+	for {
+		msg, err := sub.GetMessage(1 * time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		if msg != nil {
+			m[string(msg.Key)] = msg
+			atomic.AddInt32(counter, 1)
+		}
+		if atomic.LoadInt32(counter) == int32(numMessages) {
+			break
 		}
 	}
-
-	//sub1 and sub2 should have non overlapping partitions
-	require.Equal(t, len(offsets1), len(offsets2))
-	for partID := range offsets1 {
-		_, ok := offsets2[partID]
-		require.False(t, ok)
-	}
-
-	offsetsTot := map[int32]int64{}
-	for partID, offset := range offsets1 {
-		offsetsTot[partID] = offset
-	}
-	for partID, offset := range offsets2 {
-		offsetsTot[partID] = offset
-	}
-
-	err = sub1.commitOffsets(offsets1)
-	require.NoError(t, err)
-	err = sub2.commitOffsets(offsets2)
-	require.NoError(t, err)
-
-	require.Equal(t, group1.getOffsets(), offsetsTot)
+	return m, nil
 }
 
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {

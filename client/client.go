@@ -1,4 +1,4 @@
-package cli
+package client
 
 import (
 	"context"
@@ -18,7 +18,8 @@ import (
 
 const maxBufferedLines = 1000
 
-type Cli struct {
+// Client is a simple client used for executing statements against PranaDB, it used by the CLI and elsewhere
+type Client struct {
 	lock                  sync.Mutex
 	started               bool
 	serverAddress         string
@@ -30,14 +31,14 @@ type Cli struct {
 	heartbeatSendInterval time.Duration
 }
 
-func NewCli(serverAddress string, heartbeatSendInterval time.Duration) *Cli {
-	return &Cli{
+func NewClient(serverAddress string, heartbeatSendInterval time.Duration) *Client {
+	return &Client{
 		serverAddress:         serverAddress,
 		heartbeatSendInterval: heartbeatSendInterval,
 	}
 }
 
-func (c *Cli) Start() error {
+func (c *Client) Start() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.started {
@@ -55,7 +56,7 @@ func (c *Cli) Start() error {
 	return nil
 }
 
-func (c *Cli) Stop() error {
+func (c *Client) Stop() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
@@ -68,9 +69,12 @@ func (c *Cli) Stop() error {
 	return c.conn.Close()
 }
 
-func (c *Cli) CreateSession() (string, error) {
+func (c *Client) CreateSession() (string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if !c.started {
+		return "", errors.New("not started")
+	}
 	if c.executing {
 		return "", errors.New("statement currently executing")
 	}
@@ -83,9 +87,12 @@ func (c *Cli) CreateSession() (string, error) {
 	return sessID, nil
 }
 
-func (c *Cli) CloseSession(sessionID string) error {
+func (c *Client) CloseSession(sessionID string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if !c.started {
+		return errors.New("not started")
+	}
 	if c.executing {
 		return errors.New("statement currently executing")
 	}
@@ -96,9 +103,12 @@ func (c *Cli) CloseSession(sessionID string) error {
 
 // ExecuteStatement executes a Prana statement. Lines of output will be received on the channel that is returned.
 // When the channel is closed, the results are complete
-func (c *Cli) ExecuteStatement(sessionID string, statement string) (chan string, error) {
+func (c *Client) ExecuteStatement(sessionID string, statement string) (chan string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if !c.started {
+		return nil, errors.New("not started")
+	}
 	if c.executing {
 		return nil, errors.New("statement already executing")
 	}
@@ -108,11 +118,11 @@ func (c *Cli) ExecuteStatement(sessionID string, statement string) (chan string,
 	return ch, nil
 }
 
-func (c *Cli) sendErrorToChannel(ch chan string, err error) {
+func (c *Client) sendErrorToChannel(ch chan string, err error) {
 	ch <- err.Error()
 }
 
-func (c *Cli) doExecuteStatement(sessionID string, statement string, ch chan string) {
+func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan string) {
 	if rc, err := c.doExecuteStatementWithError(sessionID, statement, ch); err != nil {
 		c.sendErrorToChannel(ch, err)
 	} else {
@@ -124,7 +134,7 @@ func (c *Cli) doExecuteStatement(sessionID string, statement string, ch chan str
 	c.lock.Unlock()
 }
 
-func (c *Cli) doExecuteStatementWithError(sessionID string, statement string, ch chan string) (int, error) {
+func (c *Client) doExecuteStatementWithError(sessionID string, statement string, ch chan string) (int, error) {
 	stream, err := c.client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
 		SessionId: sessionID,
 		Statement: statement,
@@ -215,7 +225,7 @@ func toColumnTypes(result *service.Columns) (names []string, types []common.Colu
 	return
 }
 
-func (c *Cli) sendHeartbeats() {
+func (c *Client) sendHeartbeats() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
@@ -232,7 +242,7 @@ func (c *Cli) sendHeartbeats() {
 	c.scheduleHeartbeats()
 }
 
-func (c *Cli) scheduleHeartbeats() {
+func (c *Client) scheduleHeartbeats() {
 	c.heartbeatTimer = time.AfterFunc(c.heartbeatSendInterval, c.sendHeartbeats)
 }
 
@@ -249,7 +259,7 @@ func stripgRPCPrefix(err error) error {
 }
 
 // used in testing
-func (c *Cli) disableHeartbeats() {
+func (c *Client) disableHeartbeats() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.heartbeatSendInterval = math.MaxInt64

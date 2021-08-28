@@ -192,7 +192,8 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	}, timeout)
 
 	if err != nil {
-		return nil, errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.ClusterID, queryInfo.Query, err))
+		err = errors.WithStack(fmt.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
+		return nil, err
 	}
 	bytes, ok := res.([]byte)
 	if !ok {
@@ -272,7 +273,13 @@ func (d *Dragon) Start() error {
 	}
 
 	d.started = true
+
+	// TODO It seems we need to introduce a wait otherwise queries can hang soon after startup - need to investigate more
+	// https://github.com/squareup/pranadb/issues/124
+	time.Sleep(10 * time.Second)
+
 	log.Infof("Dragon node %d started", d.cnf.NodeID)
+
 	return nil
 }
 

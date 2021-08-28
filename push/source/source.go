@@ -10,6 +10,9 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
+
+	"strconv"
+
 	"sync"
 	"time"
 
@@ -21,11 +24,14 @@ import (
 
 // TODO make configurable
 const (
-	numConsumersPerSource = 2
-	pollTimeoutMs         = 100
-	maxPollMessages       = 10000
-	maxRetryDelay         = time.Second * 30
-	initialRestartDelay   = time.Millisecond * 100
+	defaultNumConsumersPerSource  = 2
+	defaultPollTimeoutMs          = 10
+	defaultMaxPollMessages        = 10000
+	maxRetryDelay                 = time.Second * 30
+	initialRestartDelay           = time.Millisecond * 100
+	numConsumersPerSourcePropName = "prana.source.numconsumers"
+	pollTimeoutPropName           = "prana.source.polltimeoutms"
+	maxPollMessagesPropName       = "prana.source.maxpollmessages"
 )
 
 type RowProcessor interface {
@@ -49,6 +55,9 @@ type Source struct {
 	lock                    sync.Mutex
 	lastRestartDelay        time.Duration
 	started                 bool
+	numConsumersPerSource   int
+	pollTimeoutMs           int
+	maxPollMessages         int
 }
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
@@ -82,6 +91,18 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
+	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.TopicInfo.Properties, defaultNumConsumersPerSource)
+	if err != nil {
+		return nil, err
+	}
+	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.TopicInfo.Properties, defaultPollTimeoutMs)
+	if err != nil {
+		return nil, err
+	}
+	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.TopicInfo.Properties, defaultMaxPollMessages)
+	if err != nil {
+		return nil, err
+	}
 	return &Source{
 		sourceInfo:              sourceInfo,
 		tableExecutor:           tableExec,
@@ -92,6 +113,9 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
 		startupCommittedOffsets: make(map[int32]int64),
+		numConsumersPerSource:   numConsumers,
+		pollTimeoutMs:           pollTimeoutMs,
+		maxPollMessages:         maxPollMessages,
 	}, nil
 }
 
@@ -111,7 +135,7 @@ func (s *Source) Start() error {
 		panic("more than zero consumers!")
 	}
 
-	for i := 0; i < numConsumersPerSource; i++ {
+	for i := 0; i < s.numConsumersPerSource; i++ {
 		msgProvider, err := s.msgProvFact.NewMessageProvider()
 		if err != nil {
 			return err
@@ -131,7 +155,8 @@ func (s *Source) Start() error {
 			return err
 		}
 
-		consumer, err := NewMessageConsumer(msgProvider, pollTimeoutMs*time.Millisecond, maxPollMessages, s, scheduler, s.startupCommittedOffsets)
+		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
+			s.maxPollMessages, s, scheduler, s.startupCommittedOffsets)
 		if err != nil {
 			return err
 		}
@@ -205,6 +230,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 	defer s.lock.Unlock()
 	if !s.started {
 		return
+		//panic("Got consumer error but souce is not started")
 	}
 	log.Errorf("Failure in consumer %v source will be stopped", err)
 	if err2 := s.stop(); err2 != nil {
@@ -232,10 +258,15 @@ func (s *Source) consumerError(err error, clientError bool) {
 
 func (s *Source) stop() error {
 	if !s.started {
-		panic("not started")
+		return nil
 	}
 	for _, consumer := range s.msgConsumers {
 		if err := consumer.Stop(); err != nil {
+			return err
+		}
+	}
+	for _, consumer := range s.msgConsumers {
+		if err := consumer.Close(); err != nil {
 			return err
 		}
 	}
@@ -349,4 +380,19 @@ func (s *Source) startupLastOffset(partitionID int32) int64 {
 
 func GenerateGroupID(clusterID int, sourceInfo *common.SourceInfo) string {
 	return fmt.Sprintf("prana-source-%d-%s-%s", clusterID, sourceInfo.SchemaName, sourceInfo.Name)
+}
+
+func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
+	ncs, ok := props[propName]
+	var res int
+	if ok {
+		nc, err := strconv.ParseInt(ncs, 10, 32)
+		if err != nil {
+			return 0, err
+		}
+		res = int(nc)
+	} else {
+		res = def
+	}
+	return res, nil
 }

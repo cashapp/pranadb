@@ -11,11 +11,8 @@ type MessageProvider interface {
 	CommitOffsets(offsets map[int32]int64) error
 	Stop() error
 	Start() error
-	SetPartitionsAssignedCb(cb PartitionsCallback)
-	SetPartitionsRevokedCb(cb PartitionsCallback)
+	Close() error
 }
-
-type PartitionsCallback func() error
 
 type Message struct {
 	PartInfo  PartInfo

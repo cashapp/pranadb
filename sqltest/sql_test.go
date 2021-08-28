@@ -3,7 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/cli"
+	"github.com/squareup/pranadb/client"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -97,6 +97,7 @@ func (w *sqlTestsuite) restartCluster() {
 	log.Infof("Restarting cluster")
 	w.stopCluster()
 	log.Infof("Stopped cluster")
+	time.Sleep(5 * time.Second)
 	w.startCluster()
 	log.Infof("Restarted it")
 }
@@ -263,10 +264,12 @@ func (w *sqlTestsuite) startCluster() {
 	// The nodes need to be started in parallel, as cluster.start() shouldn't return until the cluster is
 	// available - i.e. all nodes are up. (Currently that is broken and there is a time.sleep but we should fix that)
 	wg := sync.WaitGroup{}
-	for _, prana := range w.pranaCluster {
+	for i, prana := range w.pranaCluster {
 		wg.Add(1)
 		prana := prana
+		ind := i
 		go func() {
+			log.Printf("Starting prana node %d", ind)
 			err := prana.Start()
 			if err != nil {
 				log.Fatal(err)
@@ -297,7 +300,7 @@ type sqlTest struct {
 	rnd          *rand.Rand
 	prana        *server.Server
 	topics       []*kafka.Topic
-	cli          *cli.Cli
+	cli          *client.Client
 	sessionID    string
 }
 
@@ -439,7 +442,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
 
-		require.Equal(0, prana.GetAPIServerr().SessionCount(), "API Server sessions left at end of test run")
+		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
 	}
 
 	outfile, closeFunc := openFile("./testdata/" + st.outFile)
@@ -468,7 +471,7 @@ func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName s
 		totRows, err = st.getAllRowsInTable(tabInfo.ID)
 		require.NoError(err)
 		return totRows == numRows, nil
-	}, 5*time.Hour, 500*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	if !ok {
 		for _, prana := range st.testSuite.pranaCluster {
@@ -753,12 +756,12 @@ func (st *sqlTest) choosePrana() *server.Server {
 	return pranas[index]
 }
 
-func (st *sqlTest) createCli(require *require.Assertions) *cli.Cli {
+func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	// We connect to a random Prana
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
-	cli := cli.NewCli(apiServerAddress, 5*time.Second)
+	cli := client.NewClient(apiServerAddress, 5*time.Second)
 	err := cli.Start()
 	require.NoError(err)
 	sessID, err := cli.CreateSession()
