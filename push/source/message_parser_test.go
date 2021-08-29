@@ -218,7 +218,7 @@ func TestParseMessageTimestamp(t *testing.T) {
 
 	testParseMessage(t, theColNames, theColTypes, common.EncodingJSON, common.EncodingJSON, common.EncodingJSON,
 		nil,
-		[]byte(fmt.Sprintf(`{"kf1":"%s"}`, sTS)), // Tests decoding mysql timestamp from string field in message
+		[]byte(fmt.Sprintf(`{"kf1":"%s"}`, sTS)),               // Tests decoding mysql timestamp from string field in message
 		[]byte(fmt.Sprintf(`{"vf1":%d}`, unixMillisPastEpoch)), // Tests decoding mysql timestamp from numeric field - assumed to be milliseconds past Unix epoch
 		[]string{"t", "k.kf1", "v.vf1"}, ts,
 		vf)

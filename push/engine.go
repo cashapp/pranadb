@@ -3,7 +3,8 @@ package push
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"log"
+
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
@@ -225,10 +226,10 @@ func (s *shardListener) maybeHandleRemoteBatch() error {
 		// It's possible an error can occur in handling received rows if the source or aggregate table is not
 		// yet registered - this could be the case if rows are forwarded right after startup - in this case we can just
 		// retry
-		log.Errorf("failed to handle received rows %v will retry after delay", err)
+		log.Printf("failed to handle received rows %v will retry after delay", err)
 		time.AfterFunc(remoteBatchRetryDelay, func() {
 			if err := s.maybeHandleRemoteBatch(); err != nil {
-				log.Errorf("failed to process remote batch %v", err)
+				log.Printf("failed to process remote batch %v", err)
 			}
 		})
 		return nil
@@ -322,20 +323,20 @@ func (p *PushEngine) checkForRowsToForward() error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *PushEngine) WaitForProcessingToComplete() error {
 
-	log.Infof("Waiting for schedulers to stop")
+	log.Printf("Waiting for schedulers to stop")
 	err := p.waitForSchedulers()
 	if err != nil {
 		return err
 	}
 
-	log.Infof("Waiting for no rows in forwarder table")
+	log.Printf("Waiting for no rows in forwarder table")
 	// Wait for no rows in the forwarder table
 	err = p.waitForNoRowsInTable(common.ForwarderTableID)
 	if err != nil {
 		return err
 	}
 
-	log.Infof("Waiting for no rows in receiver table")
+	log.Printf("Waiting for no rows in receiver table")
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {

@@ -2,11 +2,12 @@ package notifier
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"sync"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+
 	"github.com/squareup/pranadb/common"
 )
 
@@ -175,7 +176,7 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) {
 	if msgType == heartbeatMessageType {
 		if !c.s.responsesDisabled.Get() {
 			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
-				log.Errorf("failed to write heartbeat %v", err)
+				log.Printf("failed to write heartbeat %v", err)
 			}
 		}
 		return
@@ -192,19 +193,19 @@ func (c *connection) handleMessageAsync(msg []byte) {
 func (c *connection) doHandleMessageAsync(msg []byte) {
 	nf := &NotificationMessage{}
 	if err := nf.deserialize(msg); err != nil {
-		log.Errorf("Failed to deserialize notification %v", err)
+		log.Printf("Failed to deserialize notification %v", err)
 		return
 	}
 	listener := c.s.lookupNotificationListener(nf.notif)
 	err := listener.HandleNotification(nf.notif)
 	ok := true
 	if err != nil {
-		log.Errorf("Failed to handle notification %v", err)
+		log.Printf("Failed to handle notification %v", err)
 		ok = false
 	}
 	if nf.requiresResponse && !c.s.responsesDisabled.Get() {
 		if err := c.sendResponse(nf, ok); err != nil {
-			log.Errorf("failed to send response %v", err)
+			log.Printf("failed to send response %v", err)
 		}
 	}
 }

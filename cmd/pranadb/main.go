@@ -1,11 +1,11 @@
 package main
 
 import (
-	"os"
-
 	"github.com/alecthomas/kong"
 	"github.com/alecthomas/kong-hcl/v2"
-	log "github.com/sirupsen/logrus"
+	"log"
+	"os"
+
 	"github.com/squareup/pranadb/conf"
 	plog "github.com/squareup/pranadb/log"
 	"github.com/squareup/pranadb/server"
@@ -20,7 +20,7 @@ type cli struct {
 func main() {
 	r := &runner{}
 	if err := r.run(os.Args[1:], true); err != nil {
-		log.WithError(err).Fatal("startup failed")
+		log.Printf("startup failed %v", err)
 	}
 	select {} // prevent main exiting
 }

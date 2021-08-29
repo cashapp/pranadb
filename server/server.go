@@ -8,10 +8,10 @@ import (
 	//nolint:gosec
 	_ "net/http/pprof" //nolint:stylecheck
 
+	"log"
 	//nolint:stylecheck
 	"sync"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/api"
 
 	"github.com/squareup/pranadb/cluster"
@@ -126,7 +126,7 @@ func (s *Server) Start() error {
 		s.debugServer = &http.Server{Addr: addr}
 		go func(srv *http.Server) {
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Errorf("debug server failed to listen %v", err)
+				log.Printf("debug server failed to listen %v", err)
 			}
 		}(s.debugServer)
 	}

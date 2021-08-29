@@ -1,10 +1,9 @@
 package log
 
 import (
-	"os"
-
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/perrors"
+	"os"
 )
 
 // Config contains the configuration for the global logger.

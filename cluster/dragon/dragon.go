@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/lni/dragonboat/v3/client"
-	log "github.com/sirupsen/logrus"
+	"log"
+
 	"github.com/squareup/pranadb/conf"
 	"path/filepath"
 	"sync"
@@ -73,7 +74,7 @@ type snapshot struct {
 
 func (s *snapshot) Close() {
 	if err := s.pebbleSnapshot.Close(); err != nil {
-		log.Errorf("failed to close snapshot %v", err)
+		log.Printf("failed to close snapshot %v", err)
 	}
 }
 
@@ -278,7 +279,7 @@ func (d *Dragon) Start() error {
 	// https://github.com/squareup/pranadb/issues/124
 	time.Sleep(10 * time.Second)
 
-	log.Infof("Dragon node %d started", d.cnf.NodeID)
+	log.Printf("Dragon node %d started", d.cnf.NodeID)
 
 	return nil
 }
@@ -712,7 +713,7 @@ func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
 	go func() {
 		err := d.nodeRemovedFromCluster(int(info.NodeID-1), info.ClusterID)
 		if err != nil {
-			log.Errorf("failed to remove node from cluster %v", err)
+			log.Printf("failed to remove node from cluster %v", err)
 		}
 	}()
 }

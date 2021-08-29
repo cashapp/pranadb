@@ -3,8 +3,7 @@ package kafka
 import (
 	"fmt"
 	"github.com/pkg/errors"
-
-	log "github.com/sirupsen/logrus"
+	"log"
 
 	"github.com/squareup/pranadb/common"
 
@@ -274,7 +273,7 @@ func (g *Group) checkInjectFailure() error {
 	if g.failureEnd != nil {
 
 		if time.Now().Sub(*g.failureEnd) >= 0 {
-			log.Infof("Failure injection has ended")
+			log.Printf("Failure injection has ended")
 			g.failureEnd = nil
 			return nil
 		}

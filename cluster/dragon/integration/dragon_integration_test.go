@@ -5,12 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 
 	dragon "github.com/squareup/pranadb/cluster/dragon"
@@ -31,7 +31,7 @@ var dataDir string
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Short() {
-		log.Infof("-short: skipped")
+		log.Printf("-short: skipped")
 		return
 	}
 	var err error

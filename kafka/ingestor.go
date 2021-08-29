@@ -32,7 +32,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ingested, committed := topic.TotalMessages(groupID)
 		// All the messages have been ingested and committed
-		//log.Infof("start committed %d ingested %d committed %d ingested %d", c, ingestedStart, committed, ingested)
+		//log.Printf("start committed %d ingested %d committed %d ingested %d", c, ingestedStart, committed, ingested)
 		if (ingested-ingestedStart == rows.RowCount()) && (ingested-committed) == 0 {
 			return true, nil
 		}
