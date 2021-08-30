@@ -160,8 +160,7 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 	return args, offset, nil
 }
 
-func (q *QueryExecutionInfo) Serialize() ([]byte, error) {
-	var buff []byte
+func (q *QueryExecutionInfo) Serialize(buff []byte) ([]byte, error) {
 	buff = common.AppendStringToBufferLE(buff, q.SessionID)
 	buff = common.AppendStringToBufferLE(buff, q.SchemaName)
 	buff = common.AppendStringToBufferLE(buff, q.Query)

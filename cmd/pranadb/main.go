@@ -11,7 +11,7 @@ import (
 	"github.com/squareup/pranadb/server"
 )
 
-type cli struct {
+type arguments struct {
 	Config kong.ConfigFlag `help:"Path to config file" type:"existingfile" required:""`
 	Log    plog.Config     `help:"Configuration for the logger" embed:"" prefix:"log-"`
 	Server conf.Config     `help:"Server configuration" embed:"" prefix:""`
@@ -30,7 +30,7 @@ type runner struct {
 }
 
 func (r *runner) run(args []string, start bool) error {
-	cfg := cli{}
+	cfg := arguments{}
 	parser, err := kong.New(&cfg, kong.Configuration(konghcl.Loader))
 	if err != nil {
 		return err

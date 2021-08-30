@@ -45,9 +45,7 @@ func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.New("minimum cluster size is 3 nodes")
 	}
-	dragon := Dragon{cnf: cnf}
-	dragon.generateNodesAndShards(cnf.NumShards, cnf.ReplicationFactor)
-	return &dragon, nil
+	return &Dragon{cnf: cnf}, nil
 }
 
 type Dragon struct {
@@ -82,8 +80,8 @@ func init() {
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
 	logger.GetLogger("raft").SetLevel(logger.ERROR)
 	logger.GetLogger("rsm").SetLevel(logger.ERROR)
-	logger.GetLogger("transport").SetLevel(logger.WARNING)
-	logger.GetLogger("grpc").SetLevel(logger.WARNING)
+	logger.GetLogger("transport").SetLevel(logger.ERROR)
+	logger.GetLogger("grpc").SetLevel(logger.ERROR)
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -178,7 +176,9 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		panic("invalid shard cluster id")
 	}
 
-	queryRequest, err := queryInfo.Serialize()
+	var buff []byte
+	buff = append(buff, shardStateMachineLookupQuery)
+	queryRequest, err := queryInfo.Serialize(buff)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +238,8 @@ func (d *Dragon) Start() error {
 	}
 	d.pebble = pebble
 
+	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
+
 	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
 
 	dragonBoatDir := filepath.Join(datadir, "dragon")
@@ -272,15 +274,36 @@ func (d *Dragon) Start() error {
 		return err
 	}
 
-	d.started = true
+	// Now we make sure all groups are ready by executing lookups against them.
 
-	// TODO It seems we need to introduce a wait otherwise queries can hang soon after startup - need to investigate more
-	// https://github.com/squareup/pranadb/issues/124
-	time.Sleep(10 * time.Second)
+	req := []byte{shardStateMachineLookupPing}
+	for _, shardID := range d.allShards {
+		if err := d.ExecutePingLookup(shardID, req); err != nil {
+			return err
+		}
+	}
+	if err := d.ExecutePingLookup(locksClusterID, nil); err != nil {
+		return err
+	}
+	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
+		return err
+	}
 
 	log.Infof("Dragon node %d started", d.cnf.NodeID)
 
+	d.started = true
+
 	return nil
+}
+
+func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
+	_, err := d.executeWithRetry(func() (interface{}, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), initialShardTimeout)
+		res, err := d.nh.SyncRead(ctx, shardID, request)
+		cancel()
+		return res, err
+	}, initialShardTimeout)
+	return err
 }
 
 func (d *Dragon) Stop() error {

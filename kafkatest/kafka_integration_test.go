@@ -8,6 +8,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
@@ -21,7 +22,7 @@ import (
 	"time"
 )
 
-const numPartitions uint32 = 25
+const numPartitions = 25
 
 func TestKafkaIntegration(t *testing.T) {
 	t.Skip("disabled - must be run manually")
@@ -48,25 +49,11 @@ func TestKafkaIntegration(t *testing.T) {
 		}
 	}()
 
-	cm := &kafka.ConfigMap{}
-	err = cm.SetKey("bootstrap.servers", "localhost:9092")
+	gm, err := msggen.NewGenManager()
 	require.NoError(t, err)
-	producer, err := kafka.NewProducer(cm)
-	require.NoError(t, err)
-
-	go func() {
-		// This appears to be necessary to stop the producer hanging
-		for e := range producer.Events() {
-			msg, ok := e.(*kafka.Message)
-			if ok {
-				if msg.TopicPartition.Error != nil {
-					fmt.Printf("Delivery failed: %v\n", msg.TopicPartition)
-				} else {
-					fmt.Printf("Delivered message to %v\n", msg.TopicPartition)
-				}
-			}
-		}
-	}()
+	props := map[string]string{
+		"bootstrap.servers": "localhost:9092",
+	}
 
 	sessionID, err := cli.CreateSession()
 	require.NoError(t, err)
@@ -115,11 +102,12 @@ create source payments(
 	res = <-ch
 	require.Equal(t, "|payment_id|customer_id|payment_time|amount|payment_type|currency|fraud_score|", res)
 
-	numPayments := 1500
+	var numPayments int64 = 1500
 
-	sendMessages(t, 0, numPayments, 17, "testtopic", producer)
+	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, 0, props)
+	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", numPayments, cluster)
+	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
 
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
@@ -127,12 +115,13 @@ create source payments(
 	for range ch {
 		lineCount++
 	}
-	require.Equal(t, numPayments+2, lineCount)
+	require.Equal(t, int(numPayments+2), lineCount)
 
 	// Send more messages
-	sendMessages(t, numPayments, numPayments, 17, "testtopic", producer)
+	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, numPayments, props)
+	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", numPayments*2, cluster)
+	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
 
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
@@ -141,9 +130,7 @@ create source payments(
 	for range ch {
 		lineCount++
 	}
-	require.Equal(t, 2*numPayments+2, lineCount)
-
-	producer.Close()
+	require.Equal(t, int(2*numPayments+2), lineCount)
 }
 
 func startPranaCluster(t *testing.T, dataDir string) []*server.Server {

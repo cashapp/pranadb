@@ -2,6 +2,9 @@ package schema
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/push/source"
+	"log"
+	"time"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
@@ -43,6 +46,8 @@ func (l *Loader) Start() error {
 	}
 	mvTables := make(map[tableKey]*MVTables)
 
+	var srcsToStart []*source.Source
+
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		kind := row.GetString(1)
@@ -57,9 +62,7 @@ func (l *Loader) Start() error {
 			if err != nil {
 				return err
 			}
-			if err := src.Start(); err != nil {
-				return err
-			}
+			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&row)
 			tk := tableKey{info.SchemaName, info.Name}
@@ -100,6 +103,19 @@ func (l *Loader) Start() error {
 			return err
 		}
 		if err := l.meta.RegisterMaterializedView(mvt.mvInfo, mvt.internalTables); err != nil {
+			return err
+		}
+	}
+
+	// TODO when a cluster starts it's possible that sources on some nodes are started before they are created
+	// on another nodes. This can cause errors when forwarding rows from one to another.
+	// For now, we introduce a little delay between creating the sources and starting them, which should
+	// help mitigate this issue
+	log.Println("Pausing a little to allow sources to be registered across cluster")
+	time.Sleep(5 * time.Second)
+
+	for _, src := range srcsToStart {
+		if err := src.Start(); err != nil {
 			return err
 		}
 	}

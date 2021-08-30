@@ -25,7 +25,7 @@ import (
 // TODO make configurable
 const (
 	defaultNumConsumersPerSource  = 2
-	defaultPollTimeoutMs          = 10
+	defaultPollTimeoutMs          = 20
 	defaultMaxPollMessages        = 10000
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
@@ -87,6 +87,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
+		log.Printf("Creating confluent message provider factory")
 		msgProvFact = kafka.NewCfltMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)

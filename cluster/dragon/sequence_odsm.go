@@ -1,12 +1,11 @@
 package dragon
 
 import (
-	"io"
-
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
+	"io"
 )
 
 const (
@@ -67,7 +66,7 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 }
 
 func (s *sequenceODStateMachine) Lookup(i interface{}) (interface{}, error) {
-	panic("should not be called")
+	return nil, nil
 }
 
 func (s *sequenceODStateMachine) Sync() error {

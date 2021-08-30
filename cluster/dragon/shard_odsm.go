@@ -11,10 +11,13 @@ import (
 )
 
 const (
+	shardStateMachineLookupPing  byte = 1
+	shardStateMachineLookupQuery byte = 2
+
 	shardStateMachineCommandWrite             byte = 1
-	shardStateMachineCommandForwardWrite           = 2
-	shardStateMachineCommandRemoveNode             = 3
-	shardStateMachineCommandDeleteRangePrefix      = 4
+	shardStateMachineCommandForwardWrite      byte = 2
+	shardStateMachineCommandRemoveNode        byte = 3
+	shardStateMachineCommandDeleteRangePrefix byte = 4
 
 	shardStateMachineResponseOK uint64 = 1
 )
@@ -193,17 +196,25 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 	if !ok {
 		panic("expected []byte")
 	}
-	queryInfo := &cluster.QueryExecutionInfo{}
-	err := queryInfo.Deserialize(buff)
-	if err != nil {
-		return nil, err
+	typ := buff[0]
+	if typ == shardStateMachineLookupPing {
+		// A ping
+		return nil, nil
+	} else if typ == shardStateMachineLookupQuery {
+		queryInfo := &cluster.QueryExecutionInfo{}
+		err := queryInfo.Deserialize(buff[1:])
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
+		if err != nil {
+			return nil, err
+		}
+		buff = rows.Serialize()
+		return buff, nil
+	} else {
+		panic("invalid lookup type")
 	}
-	rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
-	if err != nil {
-		return nil, err
-	}
-	buff = rows.Serialize()
-	return buff, nil
 }
 
 func (s *ShardOnDiskStateMachine) Sync() error {
