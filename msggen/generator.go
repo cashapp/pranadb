@@ -75,7 +75,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			msg, ok := e.(*kafkaclient.Message)
 			if ok {
 				if msg.TopicPartition.Error != nil {
-					err := fmt.Errorf("Delivery failed: %v\n", msg.TopicPartition)
+					err := fmt.Errorf("delivery failed %v", msg.TopicPartition)
 					errValue.Store(err)
 				} else {
 					wg.Done()
@@ -127,8 +127,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	if outstanding != 0 {
 		return fmt.Errorf("producer failed to flush %d messages", outstanding)
 	}
-	v := errValue.Load()
-	if v != nil {
+	if v := errValue.Load(); v != nil {
 		err, ok := v.(error)
 		if !ok {
 			panic("not an error")

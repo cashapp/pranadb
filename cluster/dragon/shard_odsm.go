@@ -196,8 +196,7 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 	if !ok {
 		panic("expected []byte")
 	}
-	typ := buff[0]
-	if typ == shardStateMachineLookupPing {
+	if typ := buff[0]; typ == shardStateMachineLookupPing {
 		// A ping
 		return nil, nil
 	} else if typ == shardStateMachineLookupQuery {

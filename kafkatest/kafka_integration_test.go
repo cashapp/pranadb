@@ -1,21 +1,16 @@
 package kafkatest
 
 import (
-	json2 "encoding/json"
 	"fmt"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/squareup/pranadb/client"
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"os"
 	"sync"
 	"testing"
@@ -213,52 +208,6 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 			log.Printf("Failed to stop cluster %v", err)
 		}
 	}
-}
-
-func sendMessages(t *testing.T, startID int, numPayments int, numCustomers int, topicName string, producer *kafka.Producer) {
-	t.Helper()
-	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	paymentTypes := []string{"btc", "p2p", "other"}
-	currencies := []string{"gbp", "usd", "eur", "aud"}
-	timestamp := time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
-	for i := startID; i < numPayments+startID; i++ {
-		m := make(map[string]interface{})
-		paymentID := fmt.Sprintf("payment%06d", i)
-		customerID := i % numCustomers
-		m["customer_id"] = customerID
-		m["amount"] = fmt.Sprintf("%.2f", float64(rnd.Int31n(1000000))/10)
-		m["payment_type"] = paymentTypes[i%len(paymentTypes)]
-		m["currency"] = currencies[i%len(currencies)]
-		json, err := json2.Marshal(&m)
-		require.NoError(t, err)
-		var headers []kafka.Header
-		fs := rnd.Float64()
-		headers = append(headers, kafka.Header{
-			Key:   "fraud_score",
-			Value: []byte(fmt.Sprintf("%.2f", fs)),
-		})
-
-		// The cflt client doesn't choose partition itself, so we hash the customer id to choose the partition
-		kv := make([]byte, 0, 8)
-		kv = common.AppendUint64ToBufferBE(kv, uint64(customerID))
-		hash, err := sharder.Hash(kv)
-		require.NoError(t, err)
-		partition := hash % numPartitions
-
-		msg := &kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &topicName, Partition: int32(partition)},
-			Value:          json,
-			Key:            []byte(paymentID),
-			Timestamp:      timestamp,
-			Headers:        headers,
-		}
-		err = producer.Produce(msg, nil)
-		require.NoError(t, err)
-		timestamp = timestamp.Add(1 * time.Second)
-	}
-
-	outstanding := producer.Flush(10000)
-	require.Equal(t, 0, outstanding)
 }
 
 func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster []*server.Server) {
