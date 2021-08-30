@@ -16,7 +16,7 @@ require (
 	github.com/golang/protobuf v1.4.3
 	github.com/google/btree v1.0.0
 	github.com/lni/dragonboat/v3 v3.3.4
-	github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3 // indirect
+	github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3
 	github.com/pingcap/kvproto v0.0.0-20210507054410-a8152f8a876c
 	github.com/pingcap/parser v0.0.0-20210602030610-10b704ade769
 	github.com/pingcap/tidb v1.1.0-beta.0.20210602102026-ad7102cdeedf
@@ -26,6 +26,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tikv/pd v1.1.0-beta.0.20210323123936-c8fa72502f16 // indirect
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
+	golang.org/x/sys v0.0.0-20210817190340-bfb29a6856f2 // indirect
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.23.0
 )
