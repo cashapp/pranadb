@@ -2,6 +2,13 @@ package kafkatest
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
@@ -9,12 +16,6 @@ import (
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
-	"log"
-	"os"
-	"sync"
-	"testing"
-	"time"
 )
 
 const numPartitions = 25
@@ -224,7 +225,7 @@ func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster [
 		totRows, err = getAllRowsInTable(tabInfo.ID, cluster)
 		require.NoError(t, err)
 		return totRows == numRows, nil
-	}, 60*time.Second, 100*time.Millisecond)
+	}, 30*time.Second, 100*time.Millisecond)
 	require.NoError(t, err)
 	if !ok {
 		for _, prana := range cluster {
