@@ -1,27 +1,23 @@
 package kafkatest
 
 import (
-	json2 "encoding/json"
 	"fmt"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/squareup/pranadb/client"
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"os"
 	"sync"
 	"testing"
 	"time"
 )
 
-const numPartitions uint32 = 25
+const numPartitions = 25
 
 func TestKafkaIntegration(t *testing.T) {
 	t.Skip("disabled - must be run manually")
@@ -48,25 +44,11 @@ func TestKafkaIntegration(t *testing.T) {
 		}
 	}()
 
-	cm := &kafka.ConfigMap{}
-	err = cm.SetKey("bootstrap.servers", "localhost:9092")
+	gm, err := msggen.NewGenManager()
 	require.NoError(t, err)
-	producer, err := kafka.NewProducer(cm)
-	require.NoError(t, err)
-
-	go func() {
-		// This appears to be necessary to stop the producer hanging
-		for e := range producer.Events() {
-			msg, ok := e.(*kafka.Message)
-			if ok {
-				if msg.TopicPartition.Error != nil {
-					fmt.Printf("Delivery failed: %v\n", msg.TopicPartition)
-				} else {
-					fmt.Printf("Delivered message to %v\n", msg.TopicPartition)
-				}
-			}
-		}
-	}()
+	props := map[string]string{
+		"bootstrap.servers": "localhost:9092",
+	}
 
 	sessionID, err := cli.CreateSession()
 	require.NoError(t, err)
@@ -115,11 +97,12 @@ create source payments(
 	res = <-ch
 	require.Equal(t, "|payment_id|customer_id|payment_time|amount|payment_type|currency|fraud_score|", res)
 
-	numPayments := 1500
+	var numPayments int64 = 1500
 
-	sendMessages(t, 0, numPayments, 17, "testtopic", producer)
+	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, 0, props)
+	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", numPayments, cluster)
+	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
 
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
@@ -127,12 +110,13 @@ create source payments(
 	for range ch {
 		lineCount++
 	}
-	require.Equal(t, numPayments+2, lineCount)
+	require.Equal(t, int(numPayments+2), lineCount)
 
 	// Send more messages
-	sendMessages(t, numPayments, numPayments, 17, "testtopic", producer)
+	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, numPayments, props)
+	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", numPayments*2, cluster)
+	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
 
 	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
 	require.NoError(t, err)
@@ -141,9 +125,7 @@ create source payments(
 	for range ch {
 		lineCount++
 	}
-	require.Equal(t, 2*numPayments+2, lineCount)
-
-	producer.Close()
+	require.Equal(t, int(2*numPayments+2), lineCount)
 }
 
 func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
@@ -226,52 +208,6 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 			log.Printf("Failed to stop cluster %v", err)
 		}
 	}
-}
-
-func sendMessages(t *testing.T, startID int, numPayments int, numCustomers int, topicName string, producer *kafka.Producer) {
-	t.Helper()
-	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	paymentTypes := []string{"btc", "p2p", "other"}
-	currencies := []string{"gbp", "usd", "eur", "aud"}
-	timestamp := time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
-	for i := startID; i < numPayments+startID; i++ {
-		m := make(map[string]interface{})
-		paymentID := fmt.Sprintf("payment%06d", i)
-		customerID := i % numCustomers
-		m["customer_id"] = customerID
-		m["amount"] = fmt.Sprintf("%.2f", float64(rnd.Int31n(1000000))/10)
-		m["payment_type"] = paymentTypes[i%len(paymentTypes)]
-		m["currency"] = currencies[i%len(currencies)]
-		json, err := json2.Marshal(&m)
-		require.NoError(t, err)
-		var headers []kafka.Header
-		fs := rnd.Float64()
-		headers = append(headers, kafka.Header{
-			Key:   "fraud_score",
-			Value: []byte(fmt.Sprintf("%.2f", fs)),
-		})
-
-		// The cflt client doesn't choose partition itself, so we hash the customer id to choose the partition
-		kv := make([]byte, 0, 8)
-		kv = common.AppendUint64ToBufferBE(kv, uint64(customerID))
-		hash, err := sharder.Hash(kv)
-		require.NoError(t, err)
-		partition := hash % numPartitions
-
-		msg := &kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &topicName, Partition: int32(partition)},
-			Value:          json,
-			Key:            []byte(paymentID),
-			Timestamp:      timestamp,
-			Headers:        headers,
-		}
-		err = producer.Produce(msg, nil)
-		require.NoError(t, err)
-		timestamp = timestamp.Add(1 * time.Second)
-	}
-
-	outstanding := producer.Flush(10000)
-	require.Equal(t, 0, outstanding)
 }
 
 func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster []*server.Server) {

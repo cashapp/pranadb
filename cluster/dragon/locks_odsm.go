@@ -130,7 +130,7 @@ func (s *locksODStateMachine) encodeLocksKey(prefix string) []byte {
 }
 
 func (s *locksODStateMachine) Lookup(i interface{}) (interface{}, error) {
-	panic("should not be called")
+	return nil, nil
 }
 
 func (s *locksODStateMachine) Sync() error {

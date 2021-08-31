@@ -1,11 +1,14 @@
 #!/bin/zsh
 
+# Must be run from the project root
+
 rm -rf /tmp/kafka-logs
 rm -rf /tmp/zookeeper/*
 
 kafkadir="kafkaserver"
 kafka_version="2.8.0"
 kafka_archive=${kafkadir}/kafka-"${kafka-version}".tgz
+mkdir -p ${kafkadir}
 
 if [ ! -f "${kafka_archive}" ]; then
   echo "downloading and installing kafka"
