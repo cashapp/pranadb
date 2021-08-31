@@ -18,6 +18,7 @@ import (
 )
 
 const numPartitions = 25
+const paymentTopicName = "payments"
 
 func TestKafkaIntegration(t *testing.T) {
 	t.Skip("disabled - must be run manually")
@@ -59,7 +60,7 @@ func TestKafkaIntegration(t *testing.T) {
 	res := <-ch
 	require.Equal(t, "0 rows returned", res)
 
-	createSourceSQL := `
+	createSourceSQL := fmt.Sprintf(`
 create source payments(
     payment_id varchar,
     customer_id bigint,
@@ -71,7 +72,7 @@ create source payments(
     primary key (payment_id)
 ) with (
     brokername = "testbroker",
-    topicname = "testtopic",
+    topicname = "%s",
     headerencoding = "stringbytes",
     keyencoding = "stringbytes",
     valueencoding = "json",
@@ -86,7 +87,7 @@ create source payments(
     )
     properties = ()
 )
-`
+`, paymentTopicName)
 	ch, err = cli.ExecuteStatement(sessionID, createSourceSQL)
 	require.NoError(t, err)
 	res = <-ch
@@ -99,7 +100,7 @@ create source payments(
 
 	var numPayments int64 = 1500
 
-	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, 0, props)
+	err = gm.ProduceMessages("payments", paymentTopicName, numPartitions, 0, numPayments, 0, props)
 	require.NoError(t, err)
 
 	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
@@ -113,7 +114,7 @@ create source payments(
 	require.Equal(t, int(numPayments+2), lineCount)
 
 	// Send more messages
-	err = gm.ProduceMessages("payments", "testtopic", numPartitions, 0, numPayments, numPayments, props)
+	err = gm.ProduceMessages("payments", paymentTopicName, numPartitions, 0, numPayments, numPayments, props)
 	require.NoError(t, err)
 
 	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
