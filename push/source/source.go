@@ -2,6 +2,10 @@ package source
 
 import (
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
@@ -10,11 +14,6 @@ import (
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
-
-	"strconv"
-
-	"sync"
-	"time"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -87,8 +86,8 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		log.Printf("Creating confluent message provider factory")
-		msgProvFact = kafka.NewCfltMessageProviderFactory(ti.TopicName, props, groupID)
+		log.Printf("Creating real message provider factory")
+		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
@@ -233,7 +232,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 		return
 		//panic("Got consumer error but souce is not started")
 	}
-	log.Errorf("Failure in consumer %v source will be stopped", err)
+	log.Errorf("Failure in consumer, source will be stopped: %v. ", err)
 	if err2 := s.stop(); err2 != nil {
 		return
 	}

@@ -2,6 +2,13 @@ package kafka
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/pkg/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -9,12 +16,6 @@ import (
 	"github.com/squareup/pranadb/common"
 
 	"github.com/squareup/pranadb/sharder"
-	"reflect"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const maxBufferedMessagesPerPartition = 10000

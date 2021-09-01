@@ -1,16 +1,19 @@
+// +build confluent
+
 package kafka
 
 import (
 	"fmt"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
 
-func NewCfltMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
 	return &CfltMessageProviderFactory{
 		topicName: topicName,
 		props:     props,
@@ -37,6 +40,8 @@ type KafkaMessageProvider struct {
 	topicName string
 	krpf      *CfltMessageProviderFactory
 }
+
+var _ MessageProvider = &KafkaMessageProvider{}
 
 func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
 	log.Printf("rebalance event received in consumer %v %p", event, k)

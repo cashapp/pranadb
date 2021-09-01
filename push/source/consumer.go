@@ -1,11 +1,12 @@
 package source
 
 import (
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/sched"
-	"time"
 )
 
 type MessageConsumer struct {

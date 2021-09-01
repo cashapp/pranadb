@@ -1,16 +1,20 @@
 package msggen
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	kafkaclient "github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/sharder"
-	"log"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	kafkaclient "github.com/segmentio/kafka-go"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/sharder"
 )
 
 // MessageGenerator - quick and dirty Kafka message generator for demos, tests etc
@@ -56,36 +60,40 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 		return fmt.Errorf("no generator with registered with name %s", genName)
 	}
 
-	cm := &kafkaclient.ConfigMap{}
-	for k, v := range kafkaProps {
-		if err := cm.SetKey(k, v); err != nil {
-			return err
-		}
+	msgsSent := int64(0)
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+	producer := &kafkaclient.Writer{
+		Async: true,
+		Completion: func(messages []kafkaclient.Message, err error) {
+			sent := atomic.AddInt64(&msgsSent, int64(len(messages)))
+			if err != nil {
+				errChan <- err
+			}
+			if sent >= numMessages {
+				close(errChan)
+				log.Infof("%d/%d messages sent to topic %s", sent, numMessages, topicName)
+				close(doneChan)
+			}
+		},
 	}
-	producer, err := kafkaclient.NewProducer(cm)
-	if err != nil {
-		return err
-	}
-	wg := &sync.WaitGroup{}
-	wg.Add(int(numMessages))
-	var errValue atomic.Value
 	go func() {
-		// This appears to be necessary to stop the producer hanging
-		for e := range producer.Events() {
-			msg, ok := e.(*kafkaclient.Message)
-			if ok {
-				if msg.TopicPartition.Error != nil {
-					err := fmt.Errorf("delivery failed %v", msg.TopicPartition)
-					errValue.Store(err)
-				} else {
-					wg.Done()
-				}
+		for {
+			select {
+			case <-time.After(time.Second):
+				sent := atomic.LoadInt64(&msgsSent)
+				log.Infof("%d/%d messages sent to topic %s", sent, numMessages, topicName)
+			case <-doneChan:
+				return
 			}
 		}
 	}()
+	for k, v := range kafkaProps {
+		if err := setProperty(producer, k, v); err != nil {
+			return err
+		}
+	}
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	status := newSendStatus(topicName)
-	status.start()
 	for i := indexStart; i < indexStart+numMessages; i++ {
 		msg, err := gen.GenerateMessage(i, rnd)
 		if err != nil {
@@ -103,83 +111,42 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 				Value: hdr.Value,
 			}
 		}
-		kmsg := &kafkaclient.Message{
-			TopicPartition: kafkaclient.TopicPartition{
-				Topic:     &topicName,
-				Partition: int32(part),
-			},
-			Value:         msg.Value,
-			Key:           msg.Key,
-			Timestamp:     msg.TimeStamp,
-			TimestampType: 0,
-			Opaque:        nil,
-			Headers:       kheaders,
+		kmsg := kafkaclient.Message{
+			Partition: int(part),
+			Topic:     topicName,
+			Value:     msg.Value,
+			Key:       msg.Key,
+			Time:      msg.TimeStamp,
+			Headers:   kheaders,
 		}
-		if err := producer.Produce(kmsg, nil); err != nil {
+		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
 			return err
 		}
-		status.incMessagesSent()
 		if delay != 0 {
 			time.Sleep(delay)
 		}
 	}
-	outstanding := producer.Flush(10000)
-	if outstanding != 0 {
-		return fmt.Errorf("producer failed to flush %d messages", outstanding)
-	}
-	if v := errValue.Load(); v != nil {
-		err, ok := v.(error)
-		if !ok {
-			panic("not an error")
-		}
+	if err := producer.Close(); err != nil {
 		return err
 	}
-	wg.Wait()
-	producer.Close()
-	status.stop()
+	failed := false
+	for err := range errChan {
+		log.Errorf("error producing messages: %v", err)
+		failed = true
+	}
+	if failed {
+		return errors.New("failed to send all messages")
+	}
 	log.Println("Messages sent ok")
 	return nil
 }
 
-type sendStatus struct {
-	msgsSent  int64
-	running   common.AtomicBool
-	interval  time.Duration
-	topicName string
-	closeChan chan struct{}
-}
-
-func newSendStatus(topicName string) *sendStatus {
-	return &sendStatus{
-		interval:  1 * time.Second,
-		topicName: topicName,
-		closeChan: make(chan struct{}, 1),
+func setProperty(cfg *kafkaclient.Writer, k, v string) error {
+	switch k {
+	case "bootstrap.servers":
+		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
+	default:
+		return perrors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
 	}
-}
-
-func (s *sendStatus) incMessagesSent() {
-	atomic.AddInt64(&s.msgsSent, 1)
-}
-
-func (s *sendStatus) start() {
-	s.running.Set(true)
-	go s.runLoop()
-}
-
-func (s *sendStatus) stop() {
-	s.running.Set(false)
-	<-s.closeChan
-}
-
-func (s *sendStatus) runLoop() {
-	last := time.Now()
-	for s.running.Get() {
-		time.Sleep(100 * time.Millisecond)
-		now := time.Now()
-		if now.Sub(last) >= s.interval {
-			log.Printf("%d messages sent to topic %s", atomic.LoadInt64(&s.msgsSent), s.topicName)
-			last = now
-		}
-	}
-	s.closeChan <- struct{}{}
+	return nil
 }
