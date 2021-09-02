@@ -3,9 +3,9 @@ package push
 import (
 	"errors"
 	"fmt"
-
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
@@ -16,12 +16,14 @@ import (
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	// Build the physical plan
-	physicalPlan, _, err := pl.QueryToPlan(query, false)
+	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
 	if err != nil {
 		return nil, nil, err
 	}
+	log.Printf("logical plan output names %v", logicalPlan.OutputNames())
+	log.Printf("physical plan output names %v", physicalPlan.OutputNames())
 	// Build initial dag from the plan
-	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema.Name, mvName, seqGenerator)
+	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -30,15 +32,25 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	if err != nil {
 		return nil, nil, err
 	}
+	// We get the final column names from the logical plan - they're not always present on th physical plan, e.g.
+	// in the case of union all
+	var colNames []string
+	for _, colName := range logicalPlan.OutputNames() {
+		colNames = append(colNames, colName.ColName.L)
+	}
+	dag.SetColNames(colNames)
 	return dag, internalTables, nil
 }
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int, queryName string, schemaName string,
+func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	cols := plan.Schema().Columns
+	// TODO These colNames and colTypes are only used for aggregations and it's best for us to infer our own column
+	// names and types as the TiDB col names are sometimes missing and the col types don't have decimal precision and scale
+	// remove this once we refactor the aggregate
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
 	for _, col := range cols {
@@ -55,7 +67,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor = exec.NewPushProjection(colNames, colTypes, exprs)
+		executor = exec.NewPushProjection(exprs)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -64,7 +76,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
-		executor = exec.NewPushSelect(colNames, colTypes, exprs)
+		executor = exec.NewPushSelect(exprs)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -123,12 +135,12 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 
 		tableID := seqGenerator.GenerateSequence()
 
-		tableName := fmt.Sprintf("%s-aggtable-%d", queryName, aggSequence)
+		tableName := fmt.Sprintf("%s-aggtable-%d", mvName, aggSequence)
 		aggSequence++
 
 		tableInfo := &common.TableInfo{
 			ID:             tableID,
-			SchemaName:     schemaName,
+			SchemaName:     schema.Name,
 			Name:           tableName,
 			PrimaryKeyCols: pkCols,
 			ColumnNames:    colNames,
@@ -137,7 +149,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		}
 		aggInfo := &common.InternalTableInfo{
 			TableInfo:            tableInfo,
-			MaterializedViewName: queryName,
+			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, aggInfo)
 		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, m.cluster, m.sharder)
@@ -154,7 +166,40 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			return nil, nil, errors.New("expected PhysicalTableScan")
 		}
 		tableName := physTableScan.Table.Name
-		executor, err = exec.NewTableScan(colTypes, tableName.L)
+		var scanCols []int
+		for _, col := range physTableScan.Columns {
+			scanCols = append(scanCols, col.Offset)
+		}
+		executor, err = exec.NewScan(tableName.L, scanCols)
+		if err != nil {
+			return nil, nil, err
+		}
+	case *core.PhysicalUnionAll:
+		idBase, err := m.cluster.GenerateClusterSequence("unionall")
+		if err != nil {
+			return nil, nil, err
+		}
+		executor, err = exec.NewUnionAll(int64(idBase))
+		if err != nil {
+			return nil, nil, err
+		}
+	case *core.PhysicalIndexReader:
+		// If we create an MV that only selects on index fields the TiDB planner will give us an index reader.
+		// As this is a push query we won't use an index but we'll use a push Scan specifying which columns we want
+		indePlan := op.IndexPlans[0]
+		phsyIndexScan, ok := indePlan.(*core.PhysicalIndexScan)
+		if !ok {
+			return nil, nil, errors.New("expected PhysicalIndexScan")
+		}
+		// Assume PK - TODO check name of index
+
+		tableName := phsyIndexScan.Table.Name
+		table, ok := schema.GetTable(tableName.L)
+		if !ok {
+			return nil, nil, fmt.Errorf("cannot find table %s", tableName.L)
+		}
+		info := table.GetTableInfo()
+		executor, err = exec.NewScan(tableName.L, info.PrimaryKeyCols)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -164,7 +209,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schemaName, queryName, seqGenerator)
+		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -189,18 +234,18 @@ func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *com
 		}
 	}
 	switch op := executor.(type) {
-	case *exec.TableScan:
+	case *exec.Scan:
 		tableName := op.TableName
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
 			return fmt.Errorf("unknown source or materialized view %s", tableName)
 		}
 		tableInfo := tbl.GetTableInfo()
-		op.SetSchema(tableInfo.ColumnNames, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols)
+		op.SetSchema(tableInfo)
 	case *exec.Aggregator:
 		// Do nothing
 	default:
-		executor.ReCalcSchemaFromChildren()
+		return executor.ReCalcSchemaFromChildren()
 	}
 	return nil
 }

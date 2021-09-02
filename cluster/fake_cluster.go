@@ -15,7 +15,7 @@ import (
 type FakeCluster struct {
 	nodeID                       int
 	mu                           sync.RWMutex
-	tableSequence                uint64
+	clusterSequence              uint64
 	remoteQueryExecutionCallback RemoteQueryExecutionCallback
 	allShardIds                  []uint64
 	started                      bool
@@ -24,7 +24,7 @@ type FakeCluster struct {
 	shardListeners               map[uint64]ShardListener
 	membershipListener           MembershipListener
 	lockslock                    sync.Mutex
-	locks                        map[string]struct{} // TODO use a trie
+	locks                        map[string]struct{}
 }
 
 type snapshot struct {
@@ -66,12 +66,12 @@ func (f *FakeCluster) ReleaseLock(prefix string) (bool, error) {
 
 func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 	return &FakeCluster{
-		nodeID:         nodeID,
-		tableSequence:  uint64(common.UserTableIDBase), // First 100 reserved for system tables
-		allShardIds:    genAllShardIds(numShards),
-		btree:          btree.New(3),
-		shardListeners: make(map[uint64]ShardListener),
-		locks:          make(map[string]struct{}),
+		nodeID:          nodeID,
+		clusterSequence: uint64(common.UserTableIDBase), // First 100 reserved for system tables
+		allShardIds:     genAllShardIds(numShards),
+		btree:           btree.New(3),
+		shardListeners:  make(map[uint64]ShardListener),
+		locks:           make(map[string]struct{}),
 	}
 }
 
@@ -126,11 +126,11 @@ func (f *FakeCluster) GetLocalShardIDs() []uint64 {
 	return f.allShardIds
 }
 
-func (f *FakeCluster) GenerateTableID() (uint64, error) {
+func (f *FakeCluster) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	res := f.tableSequence
-	f.tableSequence++
+	res := f.clusterSequence
+	f.clusterSequence++
 	return res, nil
 }
 
@@ -214,7 +214,7 @@ func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix [
 	endPref = common.AppendUint64ToBufferBE(endPref, shardID)
 	endPref = append(endPref, endPrefix...)
 
-	pairs, err := f.LocalScan(startPref, endPref, -1)
+	pairs, err := f.localScanWithBtree(f.btree, startPref, endPref, -1)
 	if err != nil {
 		return err
 	}
@@ -241,6 +241,8 @@ func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPr
 }
 
 func (f *FakeCluster) LocalScanWithSnapshot(sn Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	s, ok := sn.(*snapshot)
 	if !ok {
 		panic("not a snapshot")
@@ -249,12 +251,12 @@ func (f *FakeCluster) LocalScanWithSnapshot(sn Snapshot, startKeyPrefix []byte, 
 }
 
 func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	return f.localScanWithBtree(f.btree, startKeyPrefix, endKeyPrefix, limit)
 }
 
 func (f *FakeCluster) localScanWithBtree(bt *btree.BTree, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}

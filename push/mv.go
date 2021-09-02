@@ -25,7 +25,6 @@ type MaterializedView struct {
 // CreateMaterializedView creates the materialized view but does not register it in memory
 func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
 	tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
-
 	mv := MaterializedView{
 		pe:      pe,
 		schema:  schema,
@@ -43,6 +42,7 @@ func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.
 		PrimaryKeyCols: dag.KeyCols(),
 		ColumnNames:    dag.ColNames(),
 		ColumnTypes:    dag.ColTypes(),
+		ColsVisible:    dag.ColsVisible(),
 		IndexInfos:     nil,
 	}
 	mvInfo := common.MaterializedViewInfo{
@@ -50,7 +50,7 @@ func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.
 		TableInfo: &tableInfo,
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(dag.ColTypes(), &tableInfo, pe.cluster)
+	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -78,7 +78,7 @@ func (m *MaterializedView) Drop() error {
 func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
 
 	switch op := node.(type) {
-	case *exec.TableScan:
+	case *exec.Scan:
 		tableName := op.TableName
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
@@ -152,7 +152,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 		}
 	}
 	switch op := executor.(type) {
-	case *exec.TableScan:
+	case *exec.Scan:
 		if addConsuming {
 			tableName := op.TableName
 			tbl, ok := m.schema.GetTable(tableName)
@@ -199,10 +199,11 @@ func (m *MaterializedView) Fill() error {
 	if err != nil {
 		return err
 	}
-	fillTableID, err := m.cluster.GenerateTableID()
+	fillTableID, err := m.cluster.GenerateClusterSequence("table")
 	if err != nil {
 		return err
 	}
+	fillTableID += common.UserTableIDBase
 
 	// TODO if cluster membership changes while fill is in process we need to abort process and start again
 	schedulers, err := m.pe.GetLocalLeaderSchedulers()
@@ -235,10 +236,10 @@ func (m *MaterializedView) Fill() error {
 	return nil
 }
 
-func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.TableExecutor, []*exec.TableScan, error) {
+func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.TableExecutor, []*exec.Scan, error) {
 	var tes []*exec.TableExecutor
-	var tss []*exec.TableScan
-	ts, ok := ex.(*exec.TableScan)
+	var tss []*exec.Scan
+	ts, ok := ex.(*exec.Scan)
 	if ok {
 		tbl, ok := m.schema.GetTable(ts.TableName)
 		if !ok {

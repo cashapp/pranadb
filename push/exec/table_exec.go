@@ -27,30 +27,23 @@ type TableExecutor struct {
 	fillTableID    uint64
 }
 
-func NewTableExecutor(colTypes []common.ColumnType, tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
-	rf := common.NewRowsFactory(colTypes)
-	pushBase := pushExecutorBase{
-		colTypes:    colTypes,
-		rowsFactory: rf,
-	}
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
 	return &TableExecutor{
-		pushExecutorBase: pushBase,
-		tableInfo:        tableInfo,
-		store:            store,
-		consumingNodes:   make(map[PushExecutor]struct{}),
+		pushExecutorBase: pushExecutorBase{
+			colNames:    tableInfo.ColumnNames,
+			colTypes:    tableInfo.ColumnTypes,
+			keyCols:     tableInfo.PrimaryKeyCols,
+			colsVisible: tableInfo.ColsVisible,
+			rowsFactory: common.NewRowsFactory(tableInfo.ColumnTypes),
+		},
+		tableInfo:      tableInfo,
+		store:          store,
+		consumingNodes: make(map[PushExecutor]struct{}),
 	}
 }
 
-func (t *TableExecutor) ReCalcSchemaFromChildren() {
-	if len(t.children) > 1 {
-		panic("too many children")
-	}
-	if len(t.children) == 1 {
-		child := t.children[0]
-		t.colNames = child.ColNames()
-		t.colTypes = child.ColTypes()
-		t.keyCols = child.KeyCols()
-	}
+func (t *TableExecutor) ReCalcSchemaFromChildren() error {
+	return nil
 }
 
 func (t *TableExecutor) AddConsumingNode(node PushExecutor) {

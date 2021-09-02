@@ -37,8 +37,8 @@ type Cluster interface {
 	// GetLocalShardIDs returns the ids of the shards on the local node - this includes replicas
 	GetLocalShardIDs() []uint64
 
-	// GenerateTableID generates a table using a cluster wide persistent counter
-	GenerateTableID() (uint64, error)
+	// GenerateClusterSequence generates a cluster wide unique sequence number
+	GenerateClusterSequence(sequenceName string) (uint64, error)
 
 	SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback)
 

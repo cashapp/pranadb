@@ -76,6 +76,13 @@ func TestSQLClustered(t *testing.T) {
 func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	t.Helper()
 
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors:            true,
+		DisableQuote:           true,
+		FullTimestamp:          true,
+		DisableLevelTruncation: true,
+	})
+
 	// Make sure we don't run tests in parallel
 	lock.Lock()
 	defer lock.Unlock()
@@ -125,6 +132,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
+		cnf.Debug = true
 		cnf.APIServerListenAddresses = []string{
 			"localhost:63401",
 		}
@@ -387,8 +395,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 	}
 
-	log.Println("TEST OUTPUT=========================\n" + st.output.String())
-	log.Println("END TEST OUTPUT=====================")
+	fmt.Println("TEST OUTPUT=========================\n" + st.output.String())
+	fmt.Println("END TEST OUTPUT=====================")
 
 	st.closeClient(require)
 

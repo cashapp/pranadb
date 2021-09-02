@@ -1,11 +1,15 @@
 package table
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 )
 
 func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *cluster.WriteBatch) error {
+	if len(tableInfo.PrimaryKeyCols) == 0 {
+		return fmt.Errorf("table %s has no primary key", tableInfo.Name)
+	}
 	keyBuff, err := encodeKeyFromRow(tableInfo, row, writeBatch.ShardID)
 	if err != nil {
 		return err

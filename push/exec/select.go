@@ -11,29 +11,27 @@ type PushSelect struct {
 	predicates []*common.Expression
 }
 
-func NewPushSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) *PushSelect {
-	rf := common.NewRowsFactory(colTypes)
-	pushBase := pushExecutorBase{
-		colNames:    colNames,
-		colTypes:    colTypes,
-		rowsFactory: rf,
-	}
+func NewPushSelect(predicates []*common.Expression) *PushSelect {
 	return &PushSelect{
-		pushExecutorBase: pushBase,
+		pushExecutorBase: pushExecutorBase{},
 		predicates:       predicates,
 	}
 }
 
-func (p *PushSelect) ReCalcSchemaFromChildren() {
-	if len(p.children) > 1 {
-		panic("too many children")
+func (p *PushSelect) calculateSchema(childColNames []string, childColTypes []common.ColumnType, childPkCols []int) {
+	p.colNames = childColNames
+	p.colTypes = childColTypes
+	p.keyCols = childPkCols
+	p.rowsFactory = common.NewRowsFactory(p.colTypes)
+}
+
+func (p *PushSelect) ReCalcSchemaFromChildren() error {
+	if len(p.children) != 1 {
+		panic("must be one child")
 	}
-	if len(p.children) == 1 {
-		child := p.children[0]
-		p.colNames = child.ColNames()
-		p.colTypes = child.ColTypes()
-		p.keyCols = child.KeyCols()
-	}
+	child := p.children[0]
+	p.calculateSchema(child.ColNames(), child.ColTypes(), child.KeyCols())
+	return nil
 }
 
 func (p *PushSelect) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {

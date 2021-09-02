@@ -183,7 +183,6 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		return nil, perrors.NewPranaErrorf(perrors.WrongNumberColumnSelectors,
 			"if specified, number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
 	}
-
 	topicInfo := &common.TopicInfo{
 		BrokerName:     ast.TopicInformation.BrokerName,
 		TopicName:      ast.TopicInformation.TopicName,
@@ -193,7 +192,6 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		ColSelectors:   colSelectors,
 		Properties:     propsMap,
 	}
-
 	tableInfo := common.TableInfo{
 		ID:             c.tableSequences[0],
 		SchemaName:     c.schemaName,

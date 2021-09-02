@@ -161,7 +161,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 			// and log the internal error in the server logs with the sequence number so it can be looked up
 			seq := atomic.AddInt64(&s.errorSequence, 1)
 			pe := perrors.NewInternalError(seq)
-			log.Printf("%s\n%s", pe.Error(), err.Error())
+			log.Printf("internal error occurred with sequence number %d\n%v", seq, err)
 			return pe
 		}
 		return err
@@ -171,10 +171,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	columns := &service.Columns{}
 	names := executor.SimpleColNames()
 	for i, typ := range executor.ColTypes() {
-		name := ""
-		if i < len(names) {
-			name = names[i]
-		}
+		name := names[i]
 		column := &service.Column{
 			Name: name,
 			Type: service.ColumnType(typ.Type),

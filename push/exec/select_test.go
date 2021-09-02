@@ -50,7 +50,8 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	t.Helper()
 	predicate, err := common.NewScalarFunctionExpression(colTypes[2], funcName, funcArgs...)
 	require.NoError(t, err)
-	sel := NewPushSelect(colNames, colTypes, []*common.Expression{predicate})
+	sel := NewPushSelect([]*common.Expression{predicate})
+	sel.calculateSchema(colNames, colTypes, nil)
 	require.NoError(t, err)
 	execCtx := &ExecutionContext{
 		WriteBatch: cluster.NewWriteBatch(1, false),

@@ -21,34 +21,6 @@ type Rows struct {
 	codec          *chunk.Codec
 }
 
-// InferRow is a convenience function for one-off row results.
-func InferRow(values ...interface{}) Row {
-	columnTypes := make([]ColumnType, 0, len(values))
-	for _, value := range values {
-		columnTypes = append(columnTypes, InferColumnType(value))
-	}
-	rows := NewRows(columnTypes, 1)
-	for i, value := range values {
-		switch value := value.(type) {
-		case string:
-			rows.AppendStringToColumn(i, value)
-		case int64:
-			rows.AppendInt64ToColumn(i, value)
-		case int:
-			rows.AppendInt64ToColumn(i, int64(value))
-		case int32:
-			rows.AppendInt64ToColumn(i, int64(value))
-		case int16:
-			rows.AppendInt64ToColumn(i, int64(value))
-		case float64:
-			rows.AppendFloat64ToColumn(i, value)
-		case Timestamp:
-			rows.AppendTimestampToColumn(i, value)
-		}
-	}
-	return rows.GetRow(0)
-}
-
 func NewRows(columnTypes []ColumnType, capacity int) *Rows {
 	tidbFieldTypes := toTidbFieldTypes(columnTypes)
 	ch := chunk.NewChunkWithCapacity(tidbFieldTypes, capacity)

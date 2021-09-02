@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"github.com/alecthomas/participle/v2"
+	"github.com/squareup/pranadb/common"
 	"strings"
 	"sync/atomic"
 
@@ -104,7 +105,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		ex, err := e.execExecute(session, ast.Execute)
 		return ex, err
 	case ast.Create != nil && ast.Create.Source != nil:
-		sequences, err := e.generateSequences(1)
+		sequences, err := e.generateTableIDSequences(1)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +116,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		sequences, err := e.generateSequences(2)
+		sequences, err := e.generateTableIDSequences(2)
 		if err != nil {
 			return nil, err
 		}
@@ -173,16 +174,16 @@ func (e *Executor) GetPullEngine() *pull.PullEngine {
 	return e.pullEngine
 }
 
-func (e *Executor) generateSequences(numValues int) ([]uint64, error) {
-	sequences := make([]uint64, numValues)
+func (e *Executor) generateTableIDSequences(numValues int) ([]uint64, error) {
+	tableIDSequences := make([]uint64, numValues)
 	for i := 0; i < numValues; i++ {
-		v, err := e.cluster.GenerateTableID()
+		v, err := e.cluster.GenerateClusterSequence("table")
 		if err != nil {
 			return nil, err
 		}
-		sequences[i] = v
+		tableIDSequences[i] = v + common.UserTableIDBase
 	}
-	return sequences, nil
+	return tableIDSequences, nil
 }
 
 func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExecutor, error) {

@@ -1,0 +1,87 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+--load data dataset_1;
+
+-- we create MVs on all columns including and excluding the PK;
+
+create materialized view test_mv_1 as select col0 from test_source_1;
+select * from test_mv_1 order by col0;
+select col0 from test_mv_1 order by col0;
+
+create materialized view test_mv_2 as select col1 from test_source_1;
+select * from test_mv_2 order by col1;
+select col1 from test_mv_2 order by col1;
+
+create materialized view test_mv_3 as select col2 from test_source_1;
+select * from test_mv_3 order by col2;
+select col2 from test_mv_3 order by col2;
+
+create materialized view test_mv_4 as select col3 from test_source_1;
+select * from test_mv_4 order by col3;
+select col3 from test_mv_4 order by col3;
+
+create materialized view test_mv_5 as select col4 from test_source_1;
+select * from test_mv_5 order by col4;
+select col4 from test_mv_5 order by col4;
+
+create materialized view test_mv_6 as select col5 from test_source_1;
+select * from test_mv_6 order by col5;
+select col5 from test_mv_6 order by col5;
+
+create materialized view test_mv_7 as select col6 from test_source_1;
+select * from test_mv_7 order by col6;
+select col6 from test_mv_7 order by col6;
+
+create materialized view test_mv_8 as select col0, col6 from test_source_1;
+select * from test_mv_8 order by col0;
+select col0, col6 from test_mv_8 order by col0;
+
+create materialized view test_mv_9 as select col1, col5 from test_source_1;
+select * from test_mv_9 order by col1;
+select col1, col5 from test_mv_9 order by col1;
+
+create materialized view test_mv_10 as select col2, col4 from test_source_1;
+select * from test_mv_10 order by col2;
+select col2, col4 from test_mv_10 order by col2;
+
+drop materialized view test_mv_10;
+drop materialized view test_mv_9;
+drop materialized view test_mv_8;
+drop materialized view test_mv_7;
+drop materialized view test_mv_6;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+--delete topic testtopic;

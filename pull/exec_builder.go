@@ -25,7 +25,7 @@ func (p *PullEngine) buildPullQueryExecutionFromQuery(session *sess.Session, que
 func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
-	physicalPlan, logicalSort, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
+	physicalPlan, logicalPlan, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
 	if err != nil {
 		return nil, err
 	}
@@ -34,11 +34,12 @@ func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast p
 	if err != nil {
 		return nil, err
 	}
-	if logicalSort != nil {
+	logicalSort, ok := logicalPlan.(*core.LogicalSort)
+	if ok {
 		_, hasPhysicalSort := dag.(*exec.PullSort)
 		if !hasPhysicalSort {
 			// The TiDB planner assumes range partitioning and therefore sometimes elides the physical sort operator
-			// from the physical plan duriung the optimisation process if the order by is on the primary key of the table
+			// from the physical plan during the optimisation process if the order by is on the primary key of the table
 			// In this case it thinks the table is already ordered and we fan out to remote nodes using range scans
 			// so the iteration order of the partial results when joined together gives us ordered results as require.
 			// However, we use hash partitioning, so we always need to implement the sort after all partial results

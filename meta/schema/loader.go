@@ -2,14 +2,11 @@ package schema
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/push/source"
-	"log"
-	"time"
-
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
+	"github.com/squareup/pranadb/push/source"
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
@@ -111,8 +108,8 @@ func (l *Loader) Start() error {
 	// on another nodes. This can cause errors when forwarding rows from one to another.
 	// For now, we introduce a little delay between creating the sources and starting them, which should
 	// help mitigate this issue
-	log.Println("Pausing a little to allow sources to be registered across cluster")
-	time.Sleep(5 * time.Second)
+	//log.Println("Pausing a little to allow sources to be registered across cluster")
+	//time.Sleep(5 * time.Second)
 
 	for _, src := range srcsToStart {
 		if err := src.Start(); err != nil {

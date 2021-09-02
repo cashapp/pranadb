@@ -119,6 +119,7 @@ type TableInfo struct {
 	ColumnNames    []string
 	ColumnTypes    []ColumnType
 	IndexInfos     []*IndexInfo
+	ColsVisible    []bool
 }
 
 func (i *TableInfo) GetTableInfo() *TableInfo { return i }

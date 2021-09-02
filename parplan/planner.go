@@ -55,7 +55,7 @@ func (p *Planner) Parse(query string) (AstHandle, error) {
 	return p.parser.Parse(query)
 }
 
-func (p *Planner) QueryToPlan(query string, prepare bool) (core.PhysicalPlan, *core.LogicalSort, error) {
+func (p *Planner) QueryToPlan(query string, prepare bool) (core.PhysicalPlan, core.LogicalPlan, error) {
 	ast, err := p.Parse(query)
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +63,7 @@ func (p *Planner) QueryToPlan(query string, prepare bool) (core.PhysicalPlan, *c
 	return p.BuildPhysicalPlan(ast, prepare)
 }
 
-func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.PhysicalPlan, *core.LogicalSort, error) {
+func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.PhysicalPlan, core.LogicalPlan, error) {
 
 	var err error
 	if prepare {
@@ -79,16 +79,11 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.Physical
 		return nil, nil, err
 	}
 
-	var logicalSort *core.LogicalSort
-	if p.pullQuery {
-		logicalSort, _ = logicalPlan.(*core.LogicalSort)
-	}
-
 	phys, err := p.createPhysicalPlan(context.TODO(), p.ctx, logicalPlan, true, true)
 	if err != nil {
 		return nil, nil, err
 	}
-	return phys, logicalSort, nil
+	return phys, logicalPlan, nil
 }
 
 func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (core.LogicalPlan, error) {

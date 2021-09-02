@@ -3,7 +3,6 @@ package parplan
 import (
 	"context"
 	"fmt"
-
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/ddl/placement"
@@ -14,7 +13,6 @@ import (
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	tidbTable "github.com/pingcap/tidb/table"
 	tidbTypes "github.com/pingcap/tidb/types"
-
 	"github.com/squareup/pranadb/common"
 )
 
@@ -51,7 +49,12 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 	for _, tableInfo := range schemaInfo.TablesInfos {
 
 		var columns []*model.ColumnInfo
+
 		for columnIndex, columnType := range tableInfo.ColumnTypes {
+
+			if tableInfo.ColsVisible != nil && !tableInfo.ColsVisible[columnIndex] {
+				continue
+			}
 
 			colType := common.ConvertPranaTypeToTiDBType(columnType)
 

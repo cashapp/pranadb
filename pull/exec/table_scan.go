@@ -28,7 +28,14 @@ type ScanRange struct {
 }
 
 func NewPullTableScan(tableInfo *common.TableInfo, storage cluster.Cluster, shardID uint64, scanRange *ScanRange) (*PullTableScan, error) {
-	rf := common.NewRowsFactory(tableInfo.ColumnTypes)
+	// The rows that we create for a pull query don't include hidden rows
+	var visibleColTypes []common.ColumnType
+	for i, colType := range tableInfo.ColumnTypes {
+		if tableInfo.ColsVisible == nil || tableInfo.ColsVisible[i] {
+			visibleColTypes = append(visibleColTypes, colType)
+		}
+	}
+	rf := common.NewRowsFactory(visibleColTypes)
 	base := pullExecutorBase{
 		colTypes:    tableInfo.ColumnTypes,
 		rowsFactory: rf,
@@ -114,9 +121,7 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			t.lastRowPrefix = kvPair.Key
 		}
-		err := common.DecodeRow(kvPair.Value, t.tableInfo.ColumnTypes, rows)
-		if err != nil {
-
+		if err := common.DecodeRowWithHiddenCols(kvPair.Value, t.tableInfo.ColumnTypes, t.tableInfo.ColsVisible, rows); err != nil {
 			return nil, err
 		}
 	}
