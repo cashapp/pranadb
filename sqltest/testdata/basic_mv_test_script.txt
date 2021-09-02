@@ -32,6 +32,8 @@ create source test_source_1(
 
 create materialized view test_mv_1 as select * from test_source_1;
 
+select * from test_mv_1 order by col0;
+
 --load data dataset_1;
 
 select * from test_mv_1 order by col0;

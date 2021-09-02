@@ -30,6 +30,8 @@ create source test_source_1(
     )
 );
 
+select * from test_source_1 order by col0;
+
 --load data dataset_1;
 select * from test_source_1 order by col0;
 
