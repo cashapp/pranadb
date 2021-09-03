@@ -1,3 +1,4 @@
+//go:build confluent
 // +build confluent
 
 package kafka

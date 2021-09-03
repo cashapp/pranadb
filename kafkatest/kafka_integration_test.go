@@ -4,7 +4,7 @@ package kafkatest
 
 import (
 	"fmt"
-	
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/client"
