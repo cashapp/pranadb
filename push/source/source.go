@@ -86,7 +86,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		log.Printf("Creating real message provider factory")
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)

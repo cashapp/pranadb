@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"github.com/pingcap/parser/mysql"
 
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
@@ -87,8 +88,16 @@ func NewScalarFunctionExpression(colType ColumnType, funcName string, args ...*E
 	return &Expression{expression: f}, nil
 }
 
-func NewExpression(expression expression.Expression) *Expression {
-	return &Expression{expression: expression}
+func NewExpression(exp expression.Expression) *Expression {
+	sf, ok := exp.(*expression.ScalarFunction)
+	if ok {
+		// All our varchar lengths are unbounded so we override what the TiDB planner gives us
+		rt := sf.RetType
+		if rt.Tp == mysql.TypeVarchar {
+			rt.Flen = -1
+		}
+	}
+	return &Expression{expression: exp}
 }
 
 func (e *Expression) GetColumnIndex() (int, bool) {

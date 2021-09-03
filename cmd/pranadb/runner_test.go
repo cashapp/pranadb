@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/fs"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,7 +42,7 @@ func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
 
 func removeDataDir(dataDir string) {
 	if err := os.RemoveAll(dataDir); err != nil {
-		log.Printf("failed to remove datadir %v", err)
+		log.Errorf("failed to remove datadir %v", err)
 	}
 }
 

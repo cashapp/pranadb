@@ -4,12 +4,8 @@ package kafkatest
 
 import (
 	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
-	"sync"
-	"testing"
-	"time"
+	
+	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/common/commontest"
@@ -18,6 +14,12 @@ import (
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
+
+	"io/ioutil"
+	"os"
+	"sync"
+	"testing"
+	"time"
 )
 
 const numPartitions = 25
@@ -31,7 +33,7 @@ func TestKafkaIntegration(t *testing.T) {
 	defer func() {
 		err := os.RemoveAll(dataDir)
 		if err != nil {
-			log.Printf("failed to delete datadir %v", err)
+			log.Errorf("failed to delete datadir %v", err)
 		}
 	}()
 
@@ -44,7 +46,7 @@ func TestKafkaIntegration(t *testing.T) {
 	defer func() {
 		err := cli.Stop()
 		if err != nil {
-			log.Printf("Failed to close client %v", err)
+			log.Errorf("Failed to close client %v", err)
 		}
 	}()
 
@@ -209,7 +211,7 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 	for _, s := range cluster {
 		err := s.Stop()
 		if err != nil {
-			log.Printf("Failed to stop cluster %v", err)
+			log.Errorf("Failed to stop cluster %v", err)
 		}
 	}
 }

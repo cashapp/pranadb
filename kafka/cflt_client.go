@@ -4,11 +4,10 @@ package kafka
 
 import (
 	"fmt"
-	"log"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
-
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
@@ -44,7 +43,7 @@ type KafkaMessageProvider struct {
 var _ MessageProvider = &KafkaMessageProvider{}
 
 func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
-	log.Printf("rebalance event received in consumer %v %p", event, k)
+	log.Debugf("rebalance event received in consumer %v %p", event, k)
 	return nil
 }
 

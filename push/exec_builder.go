@@ -44,18 +44,6 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
-	cols := plan.Schema().Columns
-	// TODO These colNames and colTypes are only used for aggregations and it's best for us to infer our own column
-	// names and types as the TiDB col names are sometimes missing and the col types don't have decimal precision and scale
-	// remove this once we refactor the aggregate
-	colTypes := make([]common.ColumnType, 0, len(cols))
-	colNames := make([]string, 0, len(cols))
-	for _, col := range cols {
-		colType := col.GetType()
-		pranaType := common.ConvertTiDBTypeToPranaType(colType)
-		colTypes = append(colTypes, pranaType)
-		colNames = append(colNames, col.OrigName)
-	}
 	var executor exec.PushExecutor
 	var err error
 	switch op := plan.(type) {
@@ -140,8 +128,6 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			SchemaName:     schema.Name,
 			Name:           tableName,
 			PrimaryKeyCols: pkCols,
-			ColumnNames:    colNames,
-			ColumnTypes:    colTypes,
 			IndexInfos:     nil, // TODO
 		}
 		aggInfo := &common.InternalTableInfo{
@@ -149,7 +135,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, aggInfo)
-		executor, err = exec.NewAggregator(colNames, colTypes, pkCols, aggFuncs, tableInfo, groupByCols, m.cluster, m.sharder)
+		executor, err = exec.NewAggregator(nil, nil, pkCols, aggFuncs, tableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, err
 		}

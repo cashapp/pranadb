@@ -13,7 +13,7 @@ type UnionAll struct {
 }
 
 func NewUnionAll(idSequenceBase int64) (*UnionAll, error) {
-	keyBase := make([]byte, 0, 16)
+	keyBase := make([]byte, 0, 8)
 	keyBase = common.AppendUint64ToBufferBE(keyBase, uint64(idSequenceBase))
 	return &UnionAll{
 		pushExecutorBase: pushExecutorBase{},
@@ -38,19 +38,21 @@ func (t *UnionAll) ReCalcSchemaFromChildren() error {
 
 	t.keyCols = []int{t.genIDColIndex}
 	t.rowsFactory = common.NewRowsFactory(t.colTypes)
+
 	return nil
 }
 
-func (t *UnionAll) generateID() string {
+func (t *UnionAll) generateID(shardID uint64) string {
 	// It doesn't matter that generated IDs for shards are contiguous but its best they are monotonically increasing
 	// so the natural select order roughly reflects insertion time
-	// Also IDs don't have to globally unique across all shards - the IDS are never used exposed in user queries
-	// only used for looking up rows in a particular shard, from an index in the same shard so they only need to be
-	// unique per shard
-	// So we grab a cluster wide id sequence when we create the executor and use that as the first 8 bytes of the key
-	// then we have an in-memory counter for the next 8 bytes.
+	// We grab a cluster wide id sequence when we create the executor and use that as the first 8 bytes of the key
+	// then for the next 8 bytes and then we have an in-memory counter.
+	// We prepend the key with shardID so it's unique across all shards
+	key := make([]byte, 0, 24)
+	key = common.AppendUint64ToBufferBE(key, shardID)
+	key = append(key, t.keyBase...)
 	id := atomic.AddInt64(&t.idSequence, 1)
-	key := common.AppendUint64ToBufferBE(t.keyBase, uint64(id))
+	key = common.AppendUint64ToBufferBE(key, uint64(id))
 	return string(key)
 }
 
@@ -80,7 +82,7 @@ func (t *UnionAll) HandleRows(incoming *common.Rows, ctx *ExecutionContext) erro
 				panic("unexpected column type")
 			}
 		}
-		id := t.generateID()
+		id := t.generateID(ctx.WriteBatch.ShardID)
 		out.AppendStringToColumn(t.genIDColIndex, id)
 	}
 	return t.parent.HandleRows(out, ctx)

@@ -79,7 +79,7 @@ func (m *MessageConsumer) Close() error {
 
 func (m *MessageConsumer) consumerError(err error, clientError bool) {
 	if err := m.msgProvider.Stop(); err != nil {
-		log.Printf("failed to stop message provider %v", err)
+		log.Errorf("failed to stop message provider %v", err)
 	}
 	go func() {
 		m.source.consumerError(err, clientError)

@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,12 +34,12 @@ func (c *cliMain) run() {
 	err := c.doRun()
 	if c.sessionID != "" {
 		if err := c.cl.CloseSession(c.sessionID); err != nil {
-			log.Printf("failed to close session %v", err)
+			log.Errorf("failed to close session %v", err)
 		}
 	}
 	if c.cl != nil {
 		if err := c.cl.Stop(); err != nil {
-			log.Printf("failed to close cli %v", err)
+			log.Errorf("failed to close cli %v", err)
 		}
 	}
 	c.kctx.FatalIfErrorf(err)

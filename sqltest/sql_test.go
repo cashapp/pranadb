@@ -277,7 +277,7 @@ func (w *sqlTestsuite) startCluster() {
 		prana := prana
 		ind := i
 		go func() {
-			log.Printf("Starting prana node %d", ind)
+			log.Infof("Starting prana node %d", ind)
 			err := prana.Start()
 			if err != nil {
 				log.Fatal(err)
@@ -361,7 +361,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		if command == "" {
 			continue
 		}
-		log.Printf("Executing line: %s", command)
+		log.Infof("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
 		} else if strings.HasPrefix(command, "--close session") {
@@ -744,7 +744,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
 	require.NoError(err)
 	for line := range resChan {
-		log.Printf("output:%s", line)
+		log.Infof("output:%s", line)
 		st.output.WriteString(line + "\n")
 	}
 	end := time.Now()
