@@ -702,6 +702,9 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		cancel()
 		return res, err
 	}, timeout)
+	if err != nil {
+		return statemachine.Result{}, err
+	}
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
 		panic(fmt.Sprintf("not a sm result %v", smRes))
