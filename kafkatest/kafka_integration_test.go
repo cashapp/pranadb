@@ -1,3 +1,5 @@
+// +build integration
+
 package kafkatest
 
 import (
@@ -22,7 +24,7 @@ const numPartitions = 25
 const paymentTopicName = "payments"
 
 func TestKafkaIntegration(t *testing.T) {
-	t.Skip("disabled - must be run manually")
+	RequireRedPanda(t, paymentTopicName, numPartitions)
 
 	dataDir, err := ioutil.TempDir("", "kafka-int-test")
 	require.NoError(t, err)
