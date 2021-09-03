@@ -1,6 +1,7 @@
 package kafkatest
 
 import (
+	"flag"
 	"testing"
 	"time"
 
@@ -17,6 +18,13 @@ const (
 
 	kafkaAPIPort  = "9092"
 	zookeeperPort = "2181"
+)
+
+type KafkaProvider string
+
+const (
+	KafkaProviderRedPanda KafkaProvider = "redpanda"
+	KafkaProviderKafka    KafkaProvider = "kafka"
 )
 
 // KafkaContainer is a reference to the docker kafka running Kafka (or RedPanda).
@@ -41,10 +49,39 @@ func (c *KafkaContainer) Stop() {
 	}
 }
 
-// RequireRedPanda runs RedPanda to serve as Kafka and create the requested topic. RedPanda is API-compatible
-// with Kafka and significantly faster. If Kafka API is already healthy on kafkaAPIPort 9092, RedPanda will not be created.
-// The requested topic will still be created.
-func RequireRedPanda(t *testing.T, topicName string, numPartitions int) *KafkaContainer {
+// KafkaOpts configures options for starting the test Kafka API.
+type KafkaOpts struct {
+	Topic         string        // Create topic
+	NumPartitions int           // Number of partitions to create for topic
+	Provider      KafkaProvider // The Kafka provider, RedPanda or Kafka. If not set, RedPanda is used.
+}
+
+// RequireKafka starts a Kafka-compatible API in a docker container, serving on port 9092,
+// and creates the requested topic. If the Kafka API is already healthy on 9092, no new
+// containers will be started, but the topic will still be created.
+//
+// By default, the Kafka API is served by RedPanda as it starts significantly faster, but
+// real Kafka can be used by setting the Provider option to KafkaProviderKafka.
+func RequireKafka(t *testing.T, opts KafkaOpts) *KafkaContainer {
+	t.Helper()
+	switch opts.Provider {
+	case "", KafkaProviderRedPanda:
+		return requireRedPanda(t, opts.Topic, opts.NumPartitions)
+	case KafkaProviderKafka:
+		return requireKafka(t, opts.Topic, opts.NumPartitions)
+	default:
+		t.Fatalf("invalid Kafka provider %q", opts.Provider)
+		return nil
+	}
+}
+
+// NewKafkaProviderFlag initializes the -kafka-provider flag and returns a pointer to the parsed value.
+// This must be called before flag.Parse().
+func NewKafkaProviderFlag() *KafkaProvider {
+	return (*KafkaProvider)(flag.String("kafka-provider", string(KafkaProviderRedPanda), "The Kafka API provider: redpanda or kafka"))
+}
+
+func requireRedPanda(t *testing.T, topicName string, numPartitions int) *KafkaContainer {
 	t.Helper()
 
 	var container *dockertest.Resource
@@ -117,7 +154,7 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 // RequireKafka runs Kafka along with Zookeeper, and creates the requested topic.
 // If Kafka API is already healthy on kafkaAPIPort 9092, the containers will not be created.
 // The requested topic will still be created.
-func RequireKafka(t *testing.T, topicName string, numPartitions int) *KafkaContainer {
+func requireKafka(t *testing.T, topicName string, numPartitions int) *KafkaContainer {
 	t.Helper()
 
 	var zk, kfk *dockertest.Resource
@@ -179,7 +216,7 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 		}
 	})
 
-	log.Info("Starting Kafka on :" + zookeeperPort)
+	log.Info("Starting Kafka on :" + kafkaAPIPort)
 	log.Info("Run `docker logs -f kafka` for logs")
 	kafka, err = pool.RunWithOptions(&dockertest.RunOptions{
 		Name:       "kafka",

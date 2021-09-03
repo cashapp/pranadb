@@ -23,8 +23,14 @@ import (
 const numPartitions = 25
 const paymentTopicName = "payments"
 
+var kafkaProvider = NewKafkaProviderFlag()
+
 func TestKafkaIntegration(t *testing.T) {
-	RequireRedPanda(t, paymentTopicName, numPartitions)
+	RequireKafka(t, KafkaOpts{
+		Topic:         paymentTopicName,
+		NumPartitions: numPartitions,
+		Provider:      *kafkaProvider,
+	})
 
 	dataDir, err := ioutil.TempDir("", "kafka-int-test")
 	require.NoError(t, err)
