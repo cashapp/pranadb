@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
@@ -20,8 +19,6 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	if err != nil {
 		return nil, nil, err
 	}
-	log.Printf("logical plan output names %v", logicalPlan.OutputNames())
-	log.Printf("physical plan output names %v", physicalPlan.OutputNames())
 	// Build initial dag from the plan
 	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
 	if err != nil {
