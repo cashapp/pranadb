@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/squareup/pranadb/conf"
@@ -116,9 +115,9 @@ func TestLoader(t *testing.T) {
 						)
 					)`,
 					`create materialized view latest_movies as
-						select director, max(year)
+						select director,year
 						from movies
-						group by director`,
+						where year > 2020`,
 				},
 			}},
 		},
@@ -137,11 +136,7 @@ func TestLoader(t *testing.T) {
 				session.UseSchema(schema)
 				for _, query := range ddl.queries {
 					_, err := executor.ExecuteSQLStatement(session, query)
-					if strings.Contains(query, "create source") {
-						numTables++
-					} else if strings.Contains(query, "create materialized view") {
-						numTables += 2
-					}
+					numTables++
 					require.NoError(t, err)
 				}
 				require.Equal(t, schema.LenTables(), numTables)

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/perrors"
@@ -13,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -73,7 +73,7 @@ func (s *Server) startServer(list net.Listener) {
 	defer s.lock.Unlock()
 	s.started = false
 	if err != nil {
-		log.Printf("grpc server listen failed: %v", err)
+		log.Errorf("grpc server listen failed: %v", err)
 	}
 }
 
@@ -113,7 +113,7 @@ func (s *Server) CloseSession(ctx context.Context, request *service.CloseSession
 	}
 	s.sessions.Delete(request.GetSessionId())
 	if err := sessEntry.session.Close(); err != nil {
-		log.Printf("failed to close session %v", err)
+		log.Errorf("failed to close session %v", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -148,6 +148,18 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 
 	executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
 	if err != nil {
+
+		log.Errorf("failed to execute statement %v", err)
+		// Seriously golang why do you make it so hard to log stack traces??
+		type stackTracer interface {
+			StackTrace() errors.StackTrace
+		}
+		if err, ok := err.(stackTracer); ok {
+			for _, f := range err.StackTrace() {
+				log.Errorf("%+s:%d\n", f, f) // Or your own formatting
+			}
+		}
+
 		_, ok := err.(perrors.PranaError)
 		if !ok {
 			err = findCause(err)
@@ -161,7 +173,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 			// and log the internal error in the server logs with the sequence number so it can be looked up
 			seq := atomic.AddInt64(&s.errorSequence, 1)
 			pe := perrors.NewInternalError(seq)
-			log.Printf("%s\n%s", pe.Error(), err.Error())
+			log.Errorf("internal error occurred with sequence number %d\n%v", seq, err)
 			return pe
 		}
 		return err
@@ -171,10 +183,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	columns := &service.Columns{}
 	names := executor.SimpleColNames()
 	for i, typ := range executor.ColTypes() {
-		name := ""
-		if i < len(names) {
-			name = names[i]
-		}
+		name := names[i]
 		column := &service.Column{
 			Name: name,
 			Type: service.ColumnType(typ.Type),
@@ -253,10 +262,10 @@ func (s *Server) checkExpiredSessions() {
 
 		lat := se.getLastAccessedTime()
 		if now.Sub(*lat) > s.sessTimeout {
-			log.Printf("Deleting expired session %v", key)
+			log.Debugf("Deleting expired session %v", key)
 			s.sessions.Delete(key)
 			if err := se.session.Close(); err != nil {
-				log.Printf("failed to close session %v", err)
+				log.Errorf("failed to close session %v", err)
 			}
 		}
 		return true

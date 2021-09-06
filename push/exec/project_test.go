@@ -22,8 +22,7 @@ func TestProjectionOneCol(t *testing.T) {
 		{"los angeles"},
 	}
 	expectedColTypes := []common.ColumnType{common.VarcharColumnType}
-	expectedColNames := []string{"location"}
-	testProject(t, inpRows, expectedRows, expectedColNames, expectedColTypes, colExpression(1))
+	testProject(t, inpRows, expectedRows, expectedColTypes, colExpression(1))
 }
 
 func TestProjectionAllCols(t *testing.T) {
@@ -37,7 +36,7 @@ func TestProjectionAllCols(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	testProject(t, inpRows, expectedRows, colNames, colTypes, colExpression(0), colExpression(1), colExpression(2), colExpression(3))
+	testProject(t, inpRows, expectedRows, colTypes, colExpression(0), colExpression(1), colExpression(2), colExpression(3))
 }
 
 func TestProjectionAllColsReverseOrder(t *testing.T) {
@@ -51,9 +50,8 @@ func TestProjectionAllColsReverseOrder(t *testing.T) {
 		{"9.32", 35.1, "london", 2},
 		{"11.75", 20.6, "los angeles", 3},
 	}
-	columnNames := []string{"temperature", "location", "sensor_id"}
 	columnTypes := []common.ColumnType{common.NewDecimalColumnType(10, 2), common.DoubleColumnType, common.VarcharColumnType, common.BigIntColumnType}
-	testProject(t, inpRows, expectedRows, columnNames, columnTypes, colExpression(3), colExpression(2), colExpression(1), colExpression(0))
+	testProject(t, inpRows, expectedRows, columnTypes, colExpression(3), colExpression(2), colExpression(1), colExpression(0))
 }
 
 func TestProjectionNonColExpression(t *testing.T) {
@@ -71,12 +69,16 @@ func TestProjectionNonColExpression(t *testing.T) {
 	// Add one to column 2
 	f, err := common.NewScalarFunctionExpression(colTypes[2], "plus", colExpression(2), con)
 	require.NoError(t, err)
-	testProject(t, inpRows, expectedRows, colNames, colTypes, colExpression(0), colExpression(1), f, colExpression(3))
+	testProject(t, inpRows, expectedRows, colTypes, colExpression(0), colExpression(1), f, colExpression(3))
 }
 
-func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, expectedColNames []string, expectedColTypes []common.ColumnType, projExprs ...*common.Expression) {
+func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{},
+	expectedColTypes []common.ColumnType, projExprs ...*common.Expression) {
 	t.Helper()
-	proj := NewPushProjection(expectedColNames, expectedColTypes, projExprs)
+	proj := NewPushProjection(projExprs)
+	err := proj.calculateSchema(colNames, colTypes, nil)
+	require.NoError(t, err)
+
 	execCtx := &ExecutionContext{
 		WriteBatch: cluster.NewWriteBatch(1, false),
 	}
@@ -84,7 +86,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	proj.SetParent(rg)
 
 	inpRows := toRows(t, inputRows, colTypes)
-	err := proj.HandleRows(inpRows, execCtx)
+	err = proj.HandleRows(inpRows, execCtx)
 	require.NoError(t, err)
 
 	gathered := rg.Rows

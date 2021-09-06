@@ -1,3 +1,4 @@
+//go:build !confluent
 // +build !confluent
 
 package kafka
@@ -41,6 +42,10 @@ type SegmentKafkaMessageProvider struct {
 	reader    *kafka.Reader
 	topicName string
 	krpf      *SegmentMessageProviderFactory
+}
+
+func (p *SegmentKafkaMessageProvider) SetConsumer(cons interface{}) {
+	panic("implement me")
 }
 
 var _ MessageProvider = &SegmentKafkaMessageProvider{}

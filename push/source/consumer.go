@@ -42,19 +42,14 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 		messageParser:           messageParser,
 	}
 
-	// It's important that the message consumer is running before the message provider
-	// Otherwise there is a race condition where rebalancing starts (but not finishes) before the consumer is running,
-	// and then the consumer is running, which starts the poll loop, but rebalancing is still in progress.
-	// Messages can then be consumed and committed before rebalancing is complete which can result in out of order
-	// commits, if another consumer has running and has committed around the same time.
-	// If the message provider is not set by the time the consumer has called getMessage first time, it will simply
-	// return nil, which is ok
-	mc.start()
-
 	// Starting the provider actually subscribes
+	//msgProvider.SetConsumer(mc)
+	log.Printf("mc: %p subscribing", mc)
 	if err := msgProvider.Start(); err != nil {
 		return nil, err
 	}
+
+	mc.start()
 
 	return mc, nil
 }
@@ -69,6 +64,7 @@ func (m *MessageConsumer) Stop() error {
 		return nil
 	}
 	<-m.loopCh
+	log.Printf("mc:%p stop", m)
 	return m.msgProvider.Stop()
 }
 
@@ -79,7 +75,7 @@ func (m *MessageConsumer) Close() error {
 
 func (m *MessageConsumer) consumerError(err error, clientError bool) {
 	if err := m.msgProvider.Stop(); err != nil {
-		log.Printf("failed to stop message provider %v", err)
+		log.Errorf("failed to stop message provider %v", err)
 	}
 	go func() {
 		m.source.consumerError(err, clientError)
@@ -97,6 +93,11 @@ func (m *MessageConsumer) pollLoop() {
 			return
 		}
 		if len(messages) != 0 {
+
+			for _, msg := range messages {
+				log.Infof("mc:%p Got message part %d offset %d", m, msg.PartInfo.PartitionID, msg.PartInfo.Offset)
+			}
+
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
 			if err != nil {
@@ -106,6 +107,8 @@ func (m *MessageConsumer) pollLoop() {
 		}
 		// Commit the offsets - note there may be more offsets than messages in the case of duplicates
 		if len(offsetsToCommit) != 0 {
+			log.Infof("mc:%p Committing offsets %v", m, offsetsToCommit)
+
 			if err := m.msgProvider.CommitOffsets(offsetsToCommit); err != nil {
 				m.consumerError(err, true)
 				return
@@ -147,9 +150,10 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 			// We've seen the message before - this can be the case if a node crashed after offset was committed in
 			// Prana but before offset was committed in Kafka.
 			// In this case we log a warning, and ignore the message, the offset will be committed
-			log.Warnf("Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
-				" Message will be ignored", m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
-			continue
+			log.Warnf("mc: %p Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
+				" Message will be ignored", m, m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
+			//continue
+			break
 		}
 
 		msgs = append(msgs, msg)

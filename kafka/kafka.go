@@ -12,6 +12,7 @@ type MessageProvider interface {
 	Stop() error
 	Start() error
 	Close() error
+	//SetConsumer(cons interface{})
 }
 
 type Message struct {

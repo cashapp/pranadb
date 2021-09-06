@@ -25,7 +25,7 @@ import (
 const (
 	defaultNumConsumersPerSource  = 2
 	defaultPollTimeoutMs          = 20
-	defaultMaxPollMessages        = 10000
+	defaultMaxPollMessages        = 1
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
@@ -86,7 +86,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		log.Printf("Creating real message provider factory")
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)

@@ -1,11 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/fs"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,18 +13,6 @@ import (
 	"github.com/squareup/pranadb/conf"
 	"github.com/stretchr/testify/require"
 )
-
-func TestRunnerConfigAllFieldsSpecified(t *testing.T) {
-	t.Skip("No support for writing config to file just yet")
-	cnfExpected := createConfigWithAllFields()
-	cnfExpected.NodeID = 2
-	cnfToWrite := cnfExpected
-	cnfToWrite.NodeID = 12345 // Node id is not taken from the config file
-	b, err := json.MarshalIndent(cnfToWrite, " ", " ")
-	require.NoError(t, err)
-	fmt.Println(string(b))
-	testRunner(t, b, cnfExpected, 2)
-}
 
 func TestParseConfigWithComments(t *testing.T) {
 	hcl, err := ioutil.ReadFile("testdata/config.hcl")
@@ -55,7 +42,7 @@ func testRunner(t *testing.T, b []byte, cnf conf.Config, nodeID int) {
 
 func removeDataDir(dataDir string) {
 	if err := os.RemoveAll(dataDir); err != nil {
-		log.Printf("failed to remove datadir %v", err)
+		log.Errorf("failed to remove datadir %v", err)
 	}
 }
 

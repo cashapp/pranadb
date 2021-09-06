@@ -127,6 +127,8 @@ func (s *Server) Start() error {
 		go func(srv *http.Server) {
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Errorf("debug server failed to listen %v", err)
+			} else {
+				log.Debugf("Started debug server on address %s", addr)
 			}
 		}(s.debugServer)
 	}
@@ -139,7 +141,7 @@ func (s *Server) Start() error {
 	}
 	s.started = true
 
-	log.Printf("Prana server %d started", s.nodeID)
+	log.Infof("Prana server %d started", s.nodeID)
 
 	return nil
 }

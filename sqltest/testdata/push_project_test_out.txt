@@ -1,0 +1,350 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+-- we create MVs on all columns including and excluding the PK;
+
+create materialized view test_mv_1 as select col0 from test_source_1;
+0 rows returned
+select * from test_mv_1 order by col0;
+|col0|
+|1|
+|2|
+|3|
+|4|
+|5|
+|6|
+|7|
+|8|
+|9|
+|10|
+10 rows returned
+select col0 from test_mv_1 order by col0;
+|col0|
+|1|
+|2|
+|3|
+|4|
+|5|
+|6|
+|7|
+|8|
+|9|
+|10|
+10 rows returned
+
+create materialized view test_mv_2 as select col1 from test_source_1;
+0 rows returned
+select * from test_mv_2 order by col1;
+|col1|
+|100|
+|200|
+|300|
+|400|
+|500|
+|600|
+|700|
+|800|
+|900|
+|1000|
+10 rows returned
+select col1 from test_mv_2 order by col1;
+|col1|
+|100|
+|200|
+|300|
+|400|
+|500|
+|600|
+|700|
+|800|
+|900|
+|1000|
+10 rows returned
+
+create materialized view test_mv_3 as select col2 from test_source_1;
+0 rows returned
+select * from test_mv_3 order by col2;
+|col2|
+|1000|
+|2000|
+|3000|
+|4000|
+|5000|
+|6000|
+|7000|
+|8000|
+|9000|
+|10000|
+10 rows returned
+select col2 from test_mv_3 order by col2;
+|col2|
+|1000|
+|2000|
+|3000|
+|4000|
+|5000|
+|6000|
+|7000|
+|8000|
+|9000|
+|10000|
+10 rows returned
+
+create materialized view test_mv_4 as select col3 from test_source_1;
+0 rows returned
+select * from test_mv_4 order by col3;
+|col3|
+|1234.4321|
+|2234.4321|
+|3234.4321|
+|4234.4321|
+|5234.4321|
+|6234.4321|
+|7234.4321|
+|8234.4321|
+|9234.4321|
+|10234.4321|
+10 rows returned
+select col3 from test_mv_4 order by col3;
+|col3|
+|1234.4321|
+|2234.4321|
+|3234.4321|
+|4234.4321|
+|5234.4321|
+|6234.4321|
+|7234.4321|
+|8234.4321|
+|9234.4321|
+|10234.4321|
+10 rows returned
+
+create materialized view test_mv_5 as select col4 from test_source_1;
+0 rows returned
+select * from test_mv_5 order by col4;
+|col4|
+|12345678.99|
+|22345678.99|
+|32345678.99|
+|42345678.99|
+|52345678.99|
+|62345678.99|
+|72345678.99|
+|82345678.99|
+|92345678.99|
+|93345678.99|
+10 rows returned
+select col4 from test_mv_5 order by col4;
+|col4|
+|12345678.99|
+|22345678.99|
+|32345678.99|
+|42345678.99|
+|52345678.99|
+|62345678.99|
+|72345678.99|
+|82345678.99|
+|92345678.99|
+|93345678.99|
+10 rows returned
+
+create materialized view test_mv_6 as select col5 from test_source_1;
+0 rows returned
+select * from test_mv_6 order by col5;
+|col5|
+|str1|
+|str10|
+|str2|
+|str3|
+|str4|
+|str5|
+|str6|
+|str7|
+|str8|
+|str9|
+10 rows returned
+select col5 from test_mv_6 order by col5;
+|col5|
+|str1|
+|str10|
+|str2|
+|str3|
+|str4|
+|str5|
+|str6|
+|str7|
+|str8|
+|str9|
+10 rows returned
+
+create materialized view test_mv_7 as select col6 from test_source_1;
+0 rows returned
+select * from test_mv_7 order by col6;
+|col6|
+|2020-01-01 01:00:00.123000|
+|2020-01-02 01:00:00.123000|
+|2020-01-03 01:00:00.123000|
+|2020-01-04 01:00:00.123000|
+|2020-01-05 01:00:00.123000|
+|2020-01-06 01:00:00.123000|
+|2020-01-07 01:00:00.123000|
+|2020-01-08 01:00:00.123000|
+|2020-01-09 01:00:00.123000|
+|2020-01-10 01:00:00.123000|
+10 rows returned
+select col6 from test_mv_7 order by col6;
+|col6|
+|2020-01-01 01:00:00.123000|
+|2020-01-02 01:00:00.123000|
+|2020-01-03 01:00:00.123000|
+|2020-01-04 01:00:00.123000|
+|2020-01-05 01:00:00.123000|
+|2020-01-06 01:00:00.123000|
+|2020-01-07 01:00:00.123000|
+|2020-01-08 01:00:00.123000|
+|2020-01-09 01:00:00.123000|
+|2020-01-10 01:00:00.123000|
+10 rows returned
+
+create materialized view test_mv_8 as select col0, col6 from test_source_1;
+0 rows returned
+select * from test_mv_8 order by col0;
+|col0|col6|
+|1|2020-01-01 01:00:00.123000|
+|2|2020-01-02 01:00:00.123000|
+|3|2020-01-03 01:00:00.123000|
+|4|2020-01-04 01:00:00.123000|
+|5|2020-01-05 01:00:00.123000|
+|6|2020-01-06 01:00:00.123000|
+|7|2020-01-07 01:00:00.123000|
+|8|2020-01-08 01:00:00.123000|
+|9|2020-01-09 01:00:00.123000|
+|10|2020-01-10 01:00:00.123000|
+10 rows returned
+select col0, col6 from test_mv_8 order by col0;
+|col0|col6|
+|1|2020-01-01 01:00:00.123000|
+|2|2020-01-02 01:00:00.123000|
+|3|2020-01-03 01:00:00.123000|
+|4|2020-01-04 01:00:00.123000|
+|5|2020-01-05 01:00:00.123000|
+|6|2020-01-06 01:00:00.123000|
+|7|2020-01-07 01:00:00.123000|
+|8|2020-01-08 01:00:00.123000|
+|9|2020-01-09 01:00:00.123000|
+|10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+create materialized view test_mv_9 as select col1, col5 from test_source_1;
+0 rows returned
+select * from test_mv_9 order by col1;
+|col1|col5|
+|100|str1|
+|200|str2|
+|300|str3|
+|400|str4|
+|500|str5|
+|600|str6|
+|700|str7|
+|800|str8|
+|900|str9|
+|1000|str10|
+10 rows returned
+select col1, col5 from test_mv_9 order by col1;
+|col1|col5|
+|100|str1|
+|200|str2|
+|300|str3|
+|400|str4|
+|500|str5|
+|600|str6|
+|700|str7|
+|800|str8|
+|900|str9|
+|1000|str10|
+10 rows returned
+
+create materialized view test_mv_10 as select col2, col4 from test_source_1;
+0 rows returned
+select * from test_mv_10 order by col2;
+|col2|col4|
+|1000|12345678.99|
+|2000|22345678.99|
+|3000|32345678.99|
+|4000|42345678.99|
+|5000|52345678.99|
+|6000|62345678.99|
+|7000|72345678.99|
+|8000|82345678.99|
+|9000|92345678.99|
+|10000|93345678.99|
+10 rows returned
+select col2, col4 from test_mv_10 order by col2;
+|col2|col4|
+|1000|12345678.99|
+|2000|22345678.99|
+|3000|32345678.99|
+|4000|42345678.99|
+|5000|52345678.99|
+|6000|62345678.99|
+|7000|72345678.99|
+|8000|82345678.99|
+|9000|92345678.99|
+|10000|93345678.99|
+10 rows returned
+
+drop materialized view test_mv_10;
+0 rows returned
+drop materialized view test_mv_9;
+0 rows returned
+drop materialized view test_mv_8;
+0 rows returned
+drop materialized view test_mv_7;
+0 rows returned
+drop materialized view test_mv_6;
+0 rows returned
+drop materialized view test_mv_5;
+0 rows returned
+drop materialized view test_mv_4;
+0 rows returned
+drop materialized view test_mv_3;
+0 rows returned
+drop materialized view test_mv_2;
+0 rows returned
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;

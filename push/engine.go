@@ -414,12 +414,10 @@ func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) 
 
 func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
 
-	colTypes := sourceInfo.TableInfo.ColumnTypes
-
-	tableExecutor := exec.NewTableExecutor(colTypes, sourceInfo.TableInfo, p.cluster)
-
 	p.lock.Lock()
 	defer p.lock.Unlock()
+
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster)
 
 	src, err := source.NewSource(
 		sourceInfo,
@@ -435,6 +433,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source
 		return nil, err
 	}
 
+	colTypes := sourceInfo.TableInfo.ColumnTypes
 	rf := common.NewRowsFactory(colTypes)
 	rc := &RemoteConsumer{
 		RowsFactory: rf,

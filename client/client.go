@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
-	"log"
 	"math"
 	"strings"
 	"sync"
@@ -235,7 +235,7 @@ func (c *Client) sendHeartbeats() {
 		_, err := c.client.Heartbeat(context.Background(), &service.HeartbeatRequest{SessionId: sessID})
 		if err != nil {
 			err = stripgRPCPrefix(err)
-			log.Printf("heartbeat failed %v", err)
+			log.Errorf("heartbeat failed %v", err)
 			delete(c.sessionIDs, sessID)
 		}
 	}

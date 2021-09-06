@@ -103,11 +103,11 @@ func (d *Dragon) GetNodeID() int {
 	return d.cnf.NodeID
 }
 
-func (d *Dragon) GenerateTableID() (uint64, error) {
+func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	cs := d.nh.GetNoOPSession(tableSequenceClusterID)
 
 	var buff []byte
-	buff = common.AppendStringToBufferLE(buff, "table")
+	buff = common.AppendStringToBufferLE(buff, sequenceName)
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
@@ -702,6 +702,9 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		cancel()
 		return res, err
 	}, timeout)
+	if err != nil {
+		return statemachine.Result{}, err
+	}
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
 		panic(fmt.Sprintf("not a sm result %v", smRes))

@@ -28,7 +28,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+var TestPrefix = "redelivery_kafka_failure"
 
 var TestSchemaName = "test"
 
@@ -75,6 +75,13 @@ func TestSQLClustered(t *testing.T) {
 
 func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	t.Helper()
+
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors:            true,
+		DisableQuote:           true,
+		FullTimestamp:          true,
+		DisableLevelTruncation: true,
+	})
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
@@ -125,6 +132,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
+		cnf.Debug = true
 		cnf.APIServerListenAddresses = []string{
 			"localhost:63401",
 		}
@@ -269,7 +277,7 @@ func (w *sqlTestsuite) startCluster() {
 		prana := prana
 		ind := i
 		go func() {
-			log.Printf("Starting prana node %d", ind)
+			log.Infof("Starting prana node %d", ind)
 			err := prana.Start()
 			if err != nil {
 				log.Fatal(err)
@@ -353,7 +361,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		if command == "" {
 			continue
 		}
-		log.Printf("Executing line: %s", command)
+		log.Infof("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
 		} else if strings.HasPrefix(command, "--close session") {
@@ -387,8 +395,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 	}
 
-	log.Println("TEST OUTPUT=========================\n" + st.output.String())
-	log.Println("END TEST OUTPUT=====================")
+	fmt.Println("TEST OUTPUT=========================\n" + st.output.String())
+	fmt.Println("END TEST OUTPUT=====================")
 
 	st.closeClient(require)
 
@@ -736,7 +744,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
 	require.NoError(err)
 	for line := range resChan {
-		log.Printf("output:%s", line)
+		log.Infof("output:%s", line)
 		st.output.WriteString(line + "\n")
 	}
 	end := time.Now()

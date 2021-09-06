@@ -251,7 +251,7 @@ func (t *testCluster) GetLocalShardIDs() []uint64 {
 	panic("should not be called")
 }
 
-func (t *testCluster) GenerateTableID() (uint64, error) {
+func (t *testCluster) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	panic("should not be called")
 }
 

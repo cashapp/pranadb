@@ -37,7 +37,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 			return true, nil
 		}
 		return false, nil
-	}, 5*time.Hour, 10*time.Millisecond)
+	}, 5*time.Second, 10*time.Millisecond)
 	if err != nil {
 		return err
 	}

@@ -272,6 +272,7 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 	return nil
 }
 
-func (a *Aggregator) ReCalcSchemaFromChildren() {
+func (a *Aggregator) ReCalcSchemaFromChildren() error {
 	// NOOP
+	return nil
 }

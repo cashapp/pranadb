@@ -14,10 +14,12 @@ type PushExecutor interface {
 	AddChild(parent PushExecutor)
 	GetChildren() []PushExecutor
 	ClearChildren()
-	ReCalcSchemaFromChildren()
+	ReCalcSchemaFromChildren() error
 	ColNames() []string
+	SetColNames(colNames []string)
 	ColTypes() []common.ColumnType
 	KeyCols() []int
+	ColsVisible() []bool
 }
 
 type ExecutionContext struct {
@@ -26,8 +28,11 @@ type ExecutionContext struct {
 }
 
 type pushExecutorBase struct {
-	colNames    []string
-	colTypes    []common.ColumnType
+	colNames []string
+	colTypes []common.ColumnType
+	// determines whether the column at index i is visible to the user or not
+	// by default this array is nil which means all columns are visible
+	colsVisible []bool
 	keyCols     []int
 	rowsFactory *common.RowsFactory
 	parent      PushExecutor
@@ -62,8 +67,16 @@ func (p *pushExecutorBase) ColNames() []string {
 	return p.colNames
 }
 
+func (p *pushExecutorBase) SetColNames(colNames []string) {
+	p.colNames = colNames
+}
+
 func (p *pushExecutorBase) ColTypes() []common.ColumnType {
 	return p.colTypes
+}
+
+func (p *pushExecutorBase) ColsVisible() []bool {
+	return p.colsVisible
 }
 
 func ConnectPushExecutors(childExecutors []PushExecutor, parent PushExecutor) {

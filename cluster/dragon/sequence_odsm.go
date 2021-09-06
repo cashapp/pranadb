@@ -44,9 +44,8 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 			seqVal, _ = common.ReadUint64FromBufferLE(v, 0)
 			seqBuff = v
 		} else {
-			seqVal = common.UserTableIDBase
-			seqBuff = make([]byte, 0)
-			seqBuff = common.AppendUint64ToBufferLE(seqBuff, seqVal)
+			seqVal = 0
+			seqBuff = make([]byte, 8)
 		}
 		vBuff := make([]byte, 0, 8)
 		vBuff = common.AppendUint64ToBufferLE(vBuff, seqVal+1)

@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/common"
 )
 
 var dragonCluster []cluster.Cluster
@@ -167,11 +166,16 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 	}
 }
 
-func TestGenerateTableID(t *testing.T) {
+func TestGenerateClusterSequence(t *testing.T) {
 	for i := 0; i < 10; i++ {
-		id, err := dragonCluster[i%len(dragonCluster)].GenerateTableID()
+		id, err := dragonCluster[i%len(dragonCluster)].GenerateClusterSequence("sequence1")
 		require.NoError(t, err)
-		require.Equal(t, uint64(i)+common.UserTableIDBase, id)
+		require.Equal(t, uint64(i), id)
+	}
+	for i := 0; i < 10; i++ {
+		id, err := dragonCluster[i%len(dragonCluster)].GenerateClusterSequence("sequence2")
+		require.NoError(t, err)
+		require.Equal(t, uint64(i), id)
 	}
 }
 

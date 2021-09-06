@@ -36,39 +36,47 @@ type rowGatherer struct {
 	Rows *common.Rows
 }
 
+func (r *rowGatherer) SetColNames(colNames []string) {
+}
+
 func (r *rowGatherer) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
 	r.Rows = rows
 	return nil
 }
 
-func (r rowGatherer) SetParent(parent PushExecutor) {
+func (r *rowGatherer) SetParent(parent PushExecutor) {
 }
 
-func (r rowGatherer) GetParent() PushExecutor {
+func (r *rowGatherer) GetParent() PushExecutor {
 	return nil
 }
 
-func (r rowGatherer) AddChild(parent PushExecutor) {
+func (r *rowGatherer) AddChild(parent PushExecutor) {
 }
 
-func (r rowGatherer) GetChildren() []PushExecutor {
+func (r *rowGatherer) GetChildren() []PushExecutor {
 	return nil
 }
 
-func (r rowGatherer) ClearChildren() {
+func (r *rowGatherer) ClearChildren() {
 }
 
-func (r rowGatherer) ReCalcSchemaFromChildren() {
-}
-
-func (r rowGatherer) ColNames() []string {
+func (r *rowGatherer) ColNames() []string {
 	return nil
 }
 
-func (r rowGatherer) ColTypes() []common.ColumnType {
+func (r *rowGatherer) ColTypes() []common.ColumnType {
 	return nil
 }
 
-func (r rowGatherer) KeyCols() []int {
+func (r *rowGatherer) KeyCols() []int {
 	return nil
+}
+
+func (r *rowGatherer) ReCalcSchemaFromChildren() error {
+	panic("implement me")
+}
+
+func (r *rowGatherer) ColsVisible() []bool {
+	panic("implement me")
 }
