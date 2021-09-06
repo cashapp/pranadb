@@ -295,12 +295,9 @@ func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
 		group: group,
 	}
 	g.subscribers = append(g.subscribers, subscriber)
-	log.Println("rebalance start - subscribing")
 	if err := g.rebalance(); err != nil {
 		return nil, err
 	}
-	log.Println("rebalance end")
-
 	if err := g.wakeConsumers(quiesced, respChans); err != nil {
 		return nil, err
 	}
@@ -342,10 +339,7 @@ func (g *Group) setQuiesceChannel(qc chan *quiesceResponse) {
 
 func (g *Group) quiesceConsumers(subscribers []*Subscriber) ([]*Subscriber, []chan struct{}) {
 	if len(subscribers) == 0 {
-		log.Println("quiescing - no-one to wait for")
 		return nil, nil
-	} else {
-		log.Println("quiescing start")
 	}
 
 	// We need to wait for all subscribers to call in to getMessage - we then know there is no processing outstanding
@@ -366,25 +360,20 @@ func (g *Group) quiesceConsumers(subscribers []*Subscriber) ([]*Subscriber, []ch
 		subsToGet[sub] = struct{}{}
 	}
 
-	stoppedCount := 0
 	for len(subsToGet) > 0 {
 		select {
 		case resp := <-qc:
 			respChans = append(respChans, resp.wakeUpChannel)
 			subs = append(subs, resp.sub)
-			//log.Printf("waited ok for mc: %p", resp.sub.consumer)
 			delete(subsToGet, resp.sub)
 		case <-time.After(time.Millisecond * 10):
 			for sub := range subsToGet {
 				if sub.stopped.Get() {
-					stoppedCount++
-					//	log.Printf("was stopped mc: %p", sub.consumer)
 					delete(subsToGet, sub)
 				}
 			}
 		}
 	}
-	log.Printf("quiesced ok. Waited for %d subscribers %d stopped", len(subscribers), stoppedCount)
 	return subs, respChans
 }
 
@@ -402,7 +391,6 @@ func (g *Group) wakeConsumers(subscribers []*Subscriber, respChans []chan struct
 		subscriber.quiescing.Set(false)
 		respChans[i] <- struct{}{}
 	}
-	log.Println("woke subscribers")
 	return nil
 }
 
@@ -456,11 +444,9 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 
 	quiesced, respChans := g.quiesceConsumers(newSubscribers)
 	g.subscribers = newSubscribers
-	log.Println("rebalance start - unsubscribing")
 	if err := g.rebalance(); err != nil {
 		return err
 	}
-	log.Println("rebalance end")
 
 	err := g.wakeConsumers(quiesced, respChans)
 
@@ -494,7 +480,6 @@ type Subscriber struct {
 	group      *Group
 	quiescing  common.AtomicBool
 	stopped    common.AtomicBool
-	//consumer   interface{}
 }
 
 func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
@@ -598,12 +583,7 @@ type FakeMessageProvider struct {
 	started      bool
 	lock         sync.Mutex
 	inGetMessage common.AtomicBool
-	//consumer interface{}
 }
-
-//func (f *FakeMessageProvider) SetConsumer(cons interface{}) {
-//	f.consumer = cons
-//}
 
 func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
 	if !f.inGetMessage.CompareAndSet(false, true) {
@@ -630,6 +610,9 @@ func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {
 func (f *FakeMessageProvider) Start() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
+	if f.started {
+		return nil
+	}
 	subscriber, err := f.topic.CreateSubscriber(f.groupID)
 	if err != nil {
 		return err
