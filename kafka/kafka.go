@@ -12,6 +12,7 @@ type MessageProvider interface {
 	Stop() error
 	Start() error
 	Close() error
+	SetRebalanceCallback(callback RebalanceCallback)
 }
 
 type Message struct {
@@ -21,6 +22,8 @@ type Message struct {
 	Value     []byte
 	Headers   []MessageHeader
 }
+
+type RebalanceCallback func() error
 
 type MessageHeader struct {
 	Key   string

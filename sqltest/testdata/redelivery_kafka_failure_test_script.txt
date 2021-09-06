@@ -1,7 +1,3 @@
--- This script tests the case where Kafka has failed, then becomes available again but attempts to deliver messages;
--- as offsets hadn't been committed in Kafka. In this case we should reject duplicates as we also record;
--- committed offsets;
-
 --create topic testtopic;
 use test;
 create source test_source_1(
@@ -34,17 +30,29 @@ create source test_source_1(
     )
 );
 
+-- this will disable committing of offsets in Kafka, but they will be committed in Prana;
+--disable commit offsets test_source_1;
+
 --load data dataset_1;
+
 select * from test_source_1 order by col0;
 
--- simulate failure of Kafka - this will cause consumers to be closed and restarted;
+-- simulate failure of Kafka - this will cause consumers to be closed and restarted until they reconnect after 1 second;
 --kafka fail testtopic test_source_1 1000;
 
--- reset the offsets and load the data;
---reset offsets testtopic;
---load data dataset_2;
+-- re-enable committing of offsets;
+--enable commit offsets test_source_1;
 
--- only the last 5 records from dataset 2 should be present as the first 10 have the same PK as in dataset one;
+-- when the consumers reconnect they will consume again from the last committed offset, since we disabled committing offsets earlier;
+-- so they all the messages will be received again but they will be rejected as duplicates;
+-- there should be at least 10 duplicates - there could be more in the case of a rebalance occurring and messages consumed
+-- between reconnecting and rebalance occurring;
+--wait for committed test_source_1 10;
+--wait for duplicates test_source_1 10;
+
+-- send some more data;
+--load data dataset_2;
 select * from test_source_1 order by col0;
+
 drop source test_source_1;
 --delete topic testtopic;

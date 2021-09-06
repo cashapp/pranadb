@@ -1,6 +1,3 @@
-//go:build confluent
-// +build confluent
-
 package kafka
 
 import (
@@ -13,49 +10,60 @@ import (
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
 
-func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
-	return &CfltMessageProviderFactory{
+func NewConfluentMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+	return &ConfluentMessageProviderFactory{
 		topicName: topicName,
 		props:     props,
 		groupID:   groupID,
 	}
 }
 
-type CfltMessageProviderFactory struct {
+type ConfluentMessageProviderFactory struct {
 	topicName string
 	props     map[string]string
 	groupID   string
 }
 
-func (krpf *CfltMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
-	kmp := &KafkaMessageProvider{}
-	kmp.krpf = krpf
-	kmp.topicName = krpf.topicName
+func (cmpf *ConfluentMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
+	kmp := &ConfluentMessageProvider{}
+	kmp.krpf = cmpf
+	kmp.topicName = cmpf.topicName
 	return kmp, nil
 }
 
-type KafkaMessageProvider struct {
-	lock      sync.Mutex
-	consumer  *kafka.Consumer
-	topicName string
-	krpf      *CfltMessageProviderFactory
+type ConfluentMessageProvider struct {
+	lock        sync.Mutex
+	consumer    *kafka.Consumer
+	topicName   string
+	krpf        *ConfluentMessageProviderFactory
+	rebalanceCB RebalanceCallback
 }
 
-var _ MessageProvider = &KafkaMessageProvider{}
+var _ MessageProvider = &ConfluentMessageProvider{}
 
-func (k *KafkaMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
-	log.Debugf("rebalance event received in consumer %v %p", event, k)
+func (cmp *ConfluentMessageProvider) SetRebalanceCallback(callback RebalanceCallback) {
+	cmp.rebalanceCB = callback
+}
+
+func (cmp *ConfluentMessageProvider) RebalanceOccurred(cons *kafka.Consumer, event kafka.Event) error {
+	log.Debugf("rebalance event received in consumer %v %p", event, cmp)
+	_, ok := event.(kafka.RevokedPartitions)
+	if ok {
+		if err := cmp.rebalanceCB(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	if k.consumer == nil {
+func (cmp *ConfluentMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	cmp.lock.Lock()
+	defer cmp.lock.Unlock()
+	if cmp.consumer == nil {
 		return nil, nil
 	}
 
-	ev := k.consumer.Poll(int(pollTimeout.Milliseconds()))
+	ev := cmp.consumer.Poll(int(pollTimeout.Milliseconds()))
 	if ev == nil {
 		return nil, nil
 	}
@@ -87,48 +95,48 @@ func (k *KafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, 
 	}
 }
 
-func (k *KafkaMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	if k.consumer == nil {
+func (cmp *ConfluentMessageProvider) CommitOffsets(offsetsMap map[int32]int64) error {
+	cmp.lock.Lock()
+	defer cmp.lock.Unlock()
+	if cmp.consumer == nil {
 		return nil
 	}
 	offsets := make([]kafka.TopicPartition, len(offsetsMap))
 	i := 0
 	for partID, offset := range offsetsMap {
 		offsets[i] = kafka.TopicPartition{
-			Topic:     &k.topicName,
+			Topic:     &cmp.topicName,
 			Partition: partID,
 			Offset:    kafka.Offset(offset),
 		}
 		i++
 	}
-	_, err := k.consumer.CommitOffsets(offsets)
+	_, err := cmp.consumer.CommitOffsets(offsets)
 	return err
 }
 
-func (k *KafkaMessageProvider) Stop() error {
+func (cmp *ConfluentMessageProvider) Stop() error {
 	return nil
 }
 
-func (k *KafkaMessageProvider) Close() error {
-	k.lock.Lock()
-	defer k.lock.Unlock()
-	err := k.consumer.Close()
-	k.consumer = nil
+func (cmp *ConfluentMessageProvider) Close() error {
+	cmp.lock.Lock()
+	defer cmp.lock.Unlock()
+	err := cmp.consumer.Close()
+	cmp.consumer = nil
 	return err
 }
 
-func (k *KafkaMessageProvider) Start() error {
-	k.lock.Lock()
-	defer k.lock.Unlock()
+func (cmp *ConfluentMessageProvider) Start() error {
+	cmp.lock.Lock()
+	defer cmp.lock.Unlock()
 
 	cm := &kafka.ConfigMap{
-		"group.id":           k.krpf.groupID,
+		"group.id":           cmp.krpf.groupID,
 		"auto.offset.reset":  "earliest",
 		"enable.auto.commit": false,
 	}
-	for k, v := range k.krpf.props {
+	for k, v := range cmp.krpf.props {
 		if err := cm.SetKey(k, v); err != nil {
 			return err
 		}
@@ -137,9 +145,9 @@ func (k *KafkaMessageProvider) Start() error {
 	if err != nil {
 		return err
 	}
-	if err := consumer.Subscribe(k.krpf.topicName, k.RebalanceOccurred); err != nil {
+	if err := consumer.Subscribe(cmp.krpf.topicName, cmp.RebalanceOccurred); err != nil {
 		return err
 	}
-	k.consumer = consumer
+	cmp.consumer = consumer
 	return nil
 }

@@ -3,7 +3,6 @@ package kafka
 import (
 	"fmt"
 	"github.com/stretchr/testify/require"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -80,7 +79,7 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub, err := topic.CreateSubscriber(groupID)
+	sub, err := topic.CreateSubscriber(groupID, nil)
 	require.NoError(t, err)
 
 	receivedMsgs := map[string]*Message{}
@@ -100,89 +99,6 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 	group, ok := topic.getGroup(groupID)
 	require.True(t, ok)
 	require.Equal(t, 1, len(group.subscribers))
-}
-
-func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
-	fk := NewFakeKafka()
-	parts := 10
-	topic, err := fk.CreateTopic("topic1", parts)
-	require.NoError(t, err)
-
-	numMessages := 1000
-	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
-
-	groupID := "group1"
-
-	var receivedMessages int32
-	ch1 := make(chan receiveMsgResult, 1)
-	go func() {
-		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
-		rmr := receiveMsgResult{
-			err:  err,
-			msgs: msgs,
-		}
-		ch1 <- rmr
-	}()
-	ch2 := make(chan receiveMsgResult, 1)
-	go func() {
-		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
-		rmr := receiveMsgResult{
-			err:  err,
-			msgs: msgs,
-		}
-		ch2 <- rmr
-	}()
-
-	receivedMsgs := map[string]*Message{}
-
-	rmr1 := <-ch1
-	require.NoError(t, rmr1.err)
-	for k, v := range rmr1.msgs {
-		receivedMsgs[k] = v
-	}
-
-	rmr2 := <-ch2
-	require.NoError(t, rmr2.err)
-	for k, v := range rmr2.msgs {
-		receivedMsgs[k] = v
-	}
-
-	for _, msg := range sentMsgs {
-		rec, ok := receivedMsgs[string(msg.Key)]
-		require.True(t, ok)
-		require.Equal(t, msg, rec)
-	}
-
-	group, ok := topic.getGroup(groupID)
-	require.True(t, ok)
-	require.Equal(t, 2, len(group.subscribers))
-}
-
-type receiveMsgResult struct {
-	err  error
-	msgs map[string]*Message
-}
-
-func receiveMessages(counter *int32, numMessages int, topic *Topic, groupID string) (map[string]*Message, error) {
-	sub, err := topic.CreateSubscriber(groupID)
-	if err != nil {
-		return nil, err
-	}
-	m := make(map[string]*Message)
-	for {
-		msg, err := sub.GetMessage(1 * time.Millisecond)
-		if err != nil {
-			return nil, err
-		}
-		if msg != nil {
-			m[string(msg.Key)] = msg
-			atomic.AddInt32(counter, 1)
-		}
-		if atomic.LoadInt32(counter) == int32(numMessages) {
-			break
-		}
-	}
-	return m, nil
 }
 
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {

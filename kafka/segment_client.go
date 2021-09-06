@@ -16,7 +16,7 @@ import (
 
 // Kafka Message Provider implementation that uses the SegmentIO golang client
 
-func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewSegmentIOMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
 	return &SegmentMessageProviderFactory{
 		topicName: topicName,
 		props:     props,
@@ -46,17 +46,21 @@ type SegmentKafkaMessageProvider struct {
 
 var _ MessageProvider = &SegmentKafkaMessageProvider{}
 
-func (p *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	if p.reader == nil {
+func (smp *SegmentKafkaMessageProvider) SetRebalanceCallback(callback RebalanceCallback) {
+	panic("implement me")
+}
+
+func (smp *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
+	smp.lock.Lock()
+	defer smp.lock.Unlock()
+	if smp.reader == nil {
 		return nil, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), pollTimeout)
 	defer cancel()
 
-	msg, err := p.reader.FetchMessage(ctx)
+	msg, err := smp.reader.FetchMessage(ctx)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			return nil, nil
@@ -81,57 +85,56 @@ func (p *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Me
 		Value:     msg.Value,
 		Headers:   headers,
 	}
-	//log.Infof("recv %d %d", msg.Partition, atomic.AddInt32(&count, 1))
 	return m, nil
 }
 
-func (p *SegmentKafkaMessageProvider) CommitOffsets(offsets map[int32]int64) error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	if p.reader == nil {
+func (smp *SegmentKafkaMessageProvider) CommitOffsets(offsets map[int32]int64) error {
+	smp.lock.Lock()
+	defer smp.lock.Unlock()
+	if smp.reader == nil {
 		return nil
 	}
 	kmsgs := make([]kafka.Message, 0, len(offsets))
 	for partition, offset := range offsets {
 		kmsgs = append(kmsgs, kafka.Message{
-			Topic:     p.topicName,
+			Topic:     smp.topicName,
 			Partition: int(partition),
 			// The offset passed to commit is 1 higher than the offset of the original message.
 			Offset: offset - 1,
 		})
 	}
 
-	return p.reader.CommitMessages(context.Background(), kmsgs...)
+	return smp.reader.CommitMessages(context.Background(), kmsgs...)
 }
 
-func (p *SegmentKafkaMessageProvider) Stop() error {
+func (smp *SegmentKafkaMessageProvider) Stop() error {
 	return nil
 }
 
-func (p *SegmentKafkaMessageProvider) Close() error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	err := p.reader.Close()
-	p.reader = nil
+func (smp *SegmentKafkaMessageProvider) Close() error {
+	smp.lock.Lock()
+	defer smp.lock.Unlock()
+	err := smp.reader.Close()
+	smp.reader = nil
 	return err
 }
 
-func (p *SegmentKafkaMessageProvider) Start() error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (smp *SegmentKafkaMessageProvider) Start() error {
+	smp.lock.Lock()
+	defer smp.lock.Unlock()
 
 	cfg := &kafka.ReaderConfig{
-		GroupID:     p.krpf.groupID,
-		Topic:       p.krpf.topicName,
+		GroupID:     smp.krpf.groupID,
+		Topic:       smp.krpf.topicName,
 		StartOffset: kafka.FirstOffset,
 	}
-	for k, v := range p.krpf.props {
+	for k, v := range smp.krpf.props {
 		if err := setProperty(cfg, k, v); err != nil {
 			return err
 		}
 	}
 	reader := kafka.NewReader(*cfg)
-	p.reader = reader
+	smp.reader = reader
 	return nil
 }
 

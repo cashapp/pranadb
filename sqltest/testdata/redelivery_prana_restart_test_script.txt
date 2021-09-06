@@ -1,6 +1,3 @@
--- This script tests the case where Prana has failed and has received messages before committing offsets in Kafka;
--- offsets are committed in Prana but messages get redelivered after restart. We must reject the duplicates.;
-
 use test;
 --create topic testtopic;
 create source test_source_1(
@@ -36,15 +33,18 @@ create source test_source_1(
 --load data dataset_1;
 select * from test_source_1 order by col0;
 
--- We restart the cluster, reset the offsets and attempt redelivery again -- in this case duplicates should;
--- be rejected again as we load the last committed offsets from storage when sources are restarted;
-
---reset offsets testtopic;
+-- We delete the topic, then recreate, then load it with messages with the same id (from 1-10) but different other fields
+-- We then restart the cluster - the first 10 messages should be ignored due to duplicate detection as they will have the
+-- same offsets;
+--delete topic testtopic;
+--create topic testtopic;
 --restart cluster;
 
 use test;
 
---load data dataset_2;
+--load data dataset_2 no wait;
+--wait for duplicates test_source_1 10;
+--wait for committed test_source_1 5;
 select * from test_source_1 order by col0;
 
 drop source test_source_1;

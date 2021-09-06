@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -57,6 +58,10 @@ type Source struct {
 	numConsumersPerSource   int
 	pollTimeoutMs           int
 	maxPollMessages         int
+	duplicateCount          int64
+	committedCount          int64
+	enableStats             bool
+	commitOffsets           common.AtomicBool
 }
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
@@ -86,7 +91,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
+		msgProvFact = kafka.NewConfluentMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
@@ -102,7 +107,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	if err != nil {
 		return nil, err
 	}
-	return &Source{
+	source := &Source{
 		sourceInfo:              sourceInfo,
 		tableExecutor:           tableExec,
 		sharder:                 sharder,
@@ -115,7 +120,10 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		numConsumersPerSource:   numConsumers,
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
-	}, nil
+		enableStats:             cfg.EnableSourceStats,
+	}
+	source.commitOffsets.Set(true)
+	return source, nil
 }
 
 func (s *Source) Start() error {
@@ -394,4 +402,24 @@ func getOrDefaultIntValue(propName string, props map[string]string, def int) (in
 		res = def
 	}
 	return res, nil
+}
+
+func (s *Source) incrementDuplicateCount() {
+	atomic.AddInt64(&s.duplicateCount, 1)
+}
+
+func (s *Source) GetDuplicateCount() int64 {
+	return atomic.LoadInt64(&s.duplicateCount)
+}
+
+func (s *Source) addCommittedCount(val int64) {
+	atomic.AddInt64(&s.committedCount, val)
+}
+
+func (s *Source) GetCommittedCount() int64 {
+	return atomic.LoadInt64(&s.committedCount)
+}
+
+func (s *Source) SetCommitOffsets(enable bool) {
+	s.commitOffsets.Set(enable)
 }
