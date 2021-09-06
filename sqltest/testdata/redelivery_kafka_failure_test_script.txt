@@ -1,3 +1,4 @@
+--repeat 100000;
 -- This script tests the case where Kafka has failed, then becomes available again but attempts to deliver messages;
 -- as offsets hadn't been committed in Kafka. In this case we should reject duplicates as we also record;
 -- committed offsets;
@@ -37,11 +38,11 @@ create source test_source_1(
 --load data dataset_1;
 select * from test_source_1 order by col0;
 
+--reset offsets testtopic;
+
 -- simulate failure of Kafka - this will cause consumers to be closed and restarted;
 --kafka fail testtopic test_source_1 1000;
 
--- reset the offsets and load the data;
---reset offsets testtopic;
 --load data dataset_2;
 
 -- only the last 5 records from dataset 2 should be present as the first 10 have the same PK as in dataset one;

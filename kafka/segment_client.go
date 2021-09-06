@@ -44,6 +44,10 @@ type SegmentKafkaMessageProvider struct {
 	krpf      *SegmentMessageProviderFactory
 }
 
+func (p *SegmentKafkaMessageProvider) SetConsumer(cons interface{}) {
+	panic("implement me")
+}
+
 var _ MessageProvider = &SegmentKafkaMessageProvider{}
 
 func (p *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {

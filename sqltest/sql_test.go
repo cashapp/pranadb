@@ -28,7 +28,7 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+var TestPrefix = "redelivery_kafka_failure"
 
 var TestSchemaName = "test"
 

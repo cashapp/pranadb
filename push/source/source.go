@@ -25,7 +25,7 @@ import (
 const (
 	defaultNumConsumersPerSource  = 2
 	defaultPollTimeoutMs          = 20
-	defaultMaxPollMessages        = 10000
+	defaultMaxPollMessages        = 1
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
