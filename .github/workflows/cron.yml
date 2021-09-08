@@ -1,0 +1,41 @@
+on:
+  schedule:
+    - cron: '0 * * * *'
+  push:
+    branches:
+      - force-integration-tests # Push this branch to force this job to run
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go
+          restore-keys: |
+            ${{ runner.os }}-go
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Init Hermit
+        run: |
+          ./bin/hermit env --raw >> $GITHUB_ENV
+          ./bin/hermit install
+      - name: Build
+        run: go build ./...
+      - name: SQLTests
+        run: go test -tags confluent ./sqltest
+        if: ${{ always() }}
+      - name: Kafka tests using RedPanda and SegmentIO Kafka client
+        run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
+        if: ${{ always() }}
+      - name: Kafka tests using RedPanda and Confluent Kafka client
+        run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
+        if: ${{ always() }}
+      - name: Kafka tests using Kafka and SegmentIO Kafka client
+        run: go test -tags integration ./kafkatest -- -kafka-provider=kafka
+        if: ${{ always() }}
