@@ -154,7 +154,6 @@ type consumer struct {
 	msgCounter  *int64
 	msgs        []*Message
 	maxMessages int64
-	err         error
 }
 
 func (c *consumer) start() {
