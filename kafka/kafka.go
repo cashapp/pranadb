@@ -2,6 +2,8 @@ package kafka
 
 import "time"
 
+type ClientFactory func(topicName string, props map[string]string, groupID string) MessageProviderFactory
+
 type MessageProviderFactory interface {
 	NewMessageProvider() (MessageProvider, error)
 }

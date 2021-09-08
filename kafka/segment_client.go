@@ -15,6 +15,14 @@ import (
 )
 
 // Kafka Message Provider implementation that uses the SegmentIO golang client
+// Important note - the SegmentIO client does not handle the Kafka rebalance protocol and does not allow callbacks
+// to be set which are called when partitions are revoked and assigned. In the Kafka rebalance protocol these callbacks
+// gives the user of the client an opportunity to commit any messages or reset other state before partitions are assigned
+// to other consumers. The protocol guarantees, under normal conditions, that no other consumers will consume from
+// those partitions until the callbacks have been executed on all consumers.
+// Without this it's possible that consumers could concurrently process duplicate messages.
+// DO NOT USE this client in production. We leave it here for use during development as it's easier to build on newer
+// Macbooks than the Confluent client.
 
 func NewSegmentIOMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
 	return &SegmentMessageProviderFactory{
@@ -47,7 +55,6 @@ type SegmentKafkaMessageProvider struct {
 var _ MessageProvider = &SegmentKafkaMessageProvider{}
 
 func (smp *SegmentKafkaMessageProvider) SetRebalanceCallback(callback RebalanceCallback) {
-	panic("implement me")
 }
 
 func (smp *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
