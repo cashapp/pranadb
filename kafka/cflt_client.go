@@ -1,3 +1,4 @@
+//go:build confluent
 // +build confluent
 
 package kafka
@@ -12,7 +13,7 @@ import (
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
 
-func NewConfluentMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
 	return &ConfluentMessageProviderFactory{
 		topicName: topicName,
 		props:     props,

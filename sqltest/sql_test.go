@@ -474,31 +474,19 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 }
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
-	log.Infof("Waiting for %d rows in table %s", numRows, tableName)
-	schema, ok := st.prana.GetMetaController().GetSchema(TestSchemaName)
-	require.True(ok, "can't find test schema")
-	tab, ok := schema.GetTable(tableName)
-	require.True(ok, fmt.Sprintf("can't find table %s", tableName))
-	tabInfo := tab.GetTableInfo()
-	totRows := 0
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		var err error
-		totRows, err = st.getAllRowsInTable(tabInfo.ID)
-		require.NoError(err)
-		return totRows == numRows, nil
+		ch, err := st.cli.ExecuteStatement(st.sessionID, fmt.Sprintf("select * from %s", tableName))
+		if err != nil {
+			return false, err
+		}
+		lineCount := -2 // There's a header and a footer
+		for range ch {
+			lineCount++
+		}
+		return lineCount == numRows, nil
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
-	if !ok {
-		for _, prana := range st.testSuite.pranaCluster {
-			lls, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
-			require.NoError(err)
-			var ss []uint64
-			for sid := range lls {
-				ss = append(ss, sid)
-			}
-		}
-	}
-	require.True(ok, "Timed out waiting for %d rows in table %s there are %d", numRows, tableName, totRows)
+	require.True(ok)
 }
 
 func (st *sqlTest) getAllRowsInTable(tableID uint64) (int, error) {

@@ -129,7 +129,13 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rows *common.Rows, ct
 	return t.store.WriteBatch(wb)
 }
 
-func (t *TableExecutor) FillTo(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover, fillTableID uint64) error {
+func (t *TableExecutor) FillTo(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error {
+
+	fillTableID, err := t.store.GenerateClusterSequence("table")
+	if err != nil {
+		return err
+	}
+	fillTableID += common.UserTableIDBase
 
 	// We need to pause all schedulers for the shards here.
 	// We must make sure there are no in-progress and uncommitted upserts for the source as they won't appear in the
@@ -360,7 +366,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 				panic("num rows zero")
 			}
 
-			kvp, err := t.store.LocalScan(startPrefix, endPrefix, 1000000)
+			kvp, err := t.store.LocalScan(startPrefix, endPrefix, 1000000) // TODO don't hardcode here
 			if err != nil {
 				ch <- err
 				return

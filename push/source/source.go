@@ -91,7 +91,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 			return nil, err
 		}
 	case conf.BrokerClientDefault:
-		msgProvFact = ClientFactory(ti.TopicName, props, groupID)
+		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
 		return nil, perrors.NewPranaErrorf(perrors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
