@@ -2,6 +2,8 @@ package kafka
 
 import "time"
 
+type ClientFactory func(topicName string, props map[string]string, groupID string) MessageProviderFactory
+
 type MessageProviderFactory interface {
 	NewMessageProvider() (MessageProvider, error)
 }
@@ -12,6 +14,7 @@ type MessageProvider interface {
 	Stop() error
 	Start() error
 	Close() error
+	SetRebalanceCallback(callback RebalanceCallback)
 }
 
 type Message struct {
@@ -21,6 +24,8 @@ type Message struct {
 	Value     []byte
 	Headers   []MessageHeader
 }
+
+type RebalanceCallback func() error
 
 type MessageHeader struct {
 	Key   string

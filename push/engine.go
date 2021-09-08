@@ -23,7 +23,7 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-const remoteBatchRetryDelay = 2 * time.Second
+const remoteBatchRetryDelay = 1 * time.Second
 
 type PushEngine struct {
 	lock              sync.RWMutex

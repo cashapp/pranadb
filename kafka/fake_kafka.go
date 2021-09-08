@@ -2,9 +2,7 @@ package kafka
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +16,6 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-const maxBufferedMessagesPerPartition = 10000
 const FakeKafkaIDPropName = "fakeKafkaID"
 
 var fakeKafkaSeq int64 = -1
@@ -67,8 +64,7 @@ func (f *FakeKafka) CreateTopic(name string, partitions int) (*Topic, error) {
 	parts := make([]*Partition, partitions)
 	for i := 0; i < partitions; i++ {
 		parts[i] = &Partition{
-			id:       int32(i),
-			messages: make(chan *Message, maxBufferedMessagesPerPartition),
+			id: int32(i),
 		}
 	}
 	topic := &Topic{
@@ -134,24 +130,21 @@ type Topic struct {
 }
 
 type Partition struct {
-	id         int32
-	messages   MessageQueue
-	highOffset int64
+	lock     sync.Mutex
+	id       int32
+	messages []*Message
 }
 
 type MessageQueue chan *Message
 
 func (p *Partition) push(message *Message) {
-	offset := atomic.AddInt64(&p.highOffset, 1)
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	message.PartInfo = PartInfo{
 		PartitionID: p.id,
-		Offset:      offset,
+		Offset:      int64(len(p.messages)),
 	}
-	p.messages <- message
-}
-
-func (p *Partition) resetOffset() {
-	atomic.StoreInt64(&p.highOffset, 0)
+	p.messages = append(p.messages, message)
 }
 
 func (t *Topic) injectFailure(groupID string, failTime time.Duration) error {
@@ -188,7 +181,7 @@ func (t *Topic) calcPartition(message *Message) (int, error) {
 	return partID, nil
 }
 
-func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
+func (t *Topic) CreateSubscriber(groupID string, rebalanceCB RebalanceCallback) (*Subscriber, error) {
 	group, ok := t.getGroup(groupID)
 	if !ok {
 		t.lock.Lock()
@@ -199,40 +192,10 @@ func (t *Topic) CreateSubscriber(groupID string) (*Subscriber, error) {
 		}
 		t.lock.Unlock()
 	}
-	return group.createSubscriber(t, group)
-}
-
-func (t *Topic) ResetOffsets() error {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	for _, part := range t.partitions {
-		part.resetOffset()
-	}
-	t.groups.Range(func(_, v interface{}) bool {
-		v.(*Group).resetOffsets()
-		return true
-	})
-	return nil
+	return group.createSubscriber(t, group, rebalanceCB)
 }
 
 func (t *Topic) close() {
-}
-
-func (t *Topic) TotalMessages(groupID string) (int, int) {
-	group, ok := t.getGroup(groupID)
-	if !ok {
-		return 0, 0
-	}
-	totMsgs := 0
-	totCommitted := 0
-	offs := group.getOffsets()
-	for _, part := range t.partitions {
-		highOff := atomic.LoadInt64(&part.highOffset)
-		totMsgs += int(highOff)
-		committed := offs[part.id]
-		totCommitted += int(committed)
-	}
-	return totMsgs, totCommitted
 }
 
 type Group struct {
@@ -284,20 +247,23 @@ func (g *Group) checkInjectFailure() error {
 	return nil
 }
 
-func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
+func (g *Group) createSubscriber(t *Topic, group *Group, rebalanceCB RebalanceCallback) (*Subscriber, error) {
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
 
 	quiesced, respChans := g.quiesceConsumers(g.subscribers)
 
 	subscriber := &Subscriber{
-		topic: t,
-		group: group,
+		topic:       t,
+		group:       group,
+		rebalanceCB: rebalanceCB,
+		nextOffsets: make(map[int32]int64),
 	}
 	g.subscribers = append(g.subscribers, subscriber)
 	if err := g.rebalance(); err != nil {
 		return nil, err
 	}
+
 	if err := g.wakeConsumers(quiesced, respChans); err != nil {
 		return nil, err
 	}
@@ -306,7 +272,6 @@ func (g *Group) createSubscriber(t *Topic, group *Group) (*Subscriber, error) {
 }
 
 func (g *Group) commitOffsets(offsets map[int32]int64) error {
-
 	for partID, offset := range offsets {
 		co, ok := g.offsets.Load(partID)
 		if ok {
@@ -422,11 +387,18 @@ func (g *Group) rebalance() error {
 		subscriber := g.subscribers[i%len(g.subscribers)]
 		subscriber.partitions = append(subscriber.partitions, part)
 	}
-	for _, sub := range g.subscribers {
-		builder := strings.Builder{}
-		for _, part := range sub.partitions {
-			builder.WriteString(fmt.Sprintf("%d,", part.id))
+	for _, subscriber := range g.subscribers {
+		for _, part := range subscriber.partitions {
+			o, ok := g.offsets.Load(part.id)
+			var offset int64
+			if ok {
+				offset = o.(int64) //nolint:forcetypeassert
+			} else {
+				offset = -1
+			}
+			subscriber.nextOffsets[part.id] = offset + 1
 		}
+		subscriber.msgBuffer = nil
 	}
 	return nil
 }
@@ -467,19 +439,15 @@ func (g *Group) getOffsets() map[int32]int64 {
 	return m
 }
 
-func (g *Group) resetOffsets() {
-	g.offsets.Range(func(key, _ interface{}) bool {
-		g.offsets.Delete(key)
-		return true
-	})
-}
-
 type Subscriber struct {
-	topic      *Topic
-	partitions []*Partition
-	group      *Group
-	quiescing  common.AtomicBool
-	stopped    common.AtomicBool
+	topic       *Topic
+	partitions  []*Partition
+	group       *Group
+	quiescing   common.AtomicBool
+	stopped     common.AtomicBool
+	rebalanceCB RebalanceCallback
+	msgBuffer   []*Message
+	nextOffsets map[int32]int64
 }
 
 func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
@@ -497,6 +465,13 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 		panic("subscriber is stopped")
 	}
 	if c.quiescing.Get() {
+		// We call the re-balance callback here - this models the behaviour of the Kafka client where it is called on
+		// the message loop goroutine when poll is called
+		if c.rebalanceCB != nil {
+			if err := c.rebalanceCB(); err != nil {
+				return nil, err
+			}
+		}
 		c.group.waitForQuiesce(c)
 	}
 
@@ -504,32 +479,33 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 		return nil, err
 	}
 
-	// We have to do a bit of reflective wibbling to select from a dynamic set of channels with a timeout
-	var set []reflect.SelectCase
-	for _, part := range c.partitions {
-		set = append(set, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(part.messages),
-		})
-	}
-	set = append(set, reflect.SelectCase{
-		Dir:  reflect.SelectRecv,
-		Chan: reflect.ValueOf(time.After(pollTimeout)),
-	})
+	start := time.Now()
+	for time.Now().Sub(start) < pollTimeout {
 
-	index, valValue, ok := reflect.Select(set)
-	if !ok {
-		return nil, errors.New("channel was closed")
+		if len(c.msgBuffer) == 0 {
+			for _, part := range c.partitions {
+				offset, ok := c.nextOffsets[part.id]
+				if !ok {
+					offset = 0
+				}
+				if len(part.messages) > int(offset) {
+					part.lock.Lock()
+					msg := part.messages[offset]
+					c.nextOffsets[part.id] = offset + 1
+					c.msgBuffer = append(c.msgBuffer, msg)
+					part.lock.Unlock()
+				}
+			}
+		}
+
+		if len(c.msgBuffer) != 0 {
+			msg := c.msgBuffer[0]
+			c.msgBuffer = c.msgBuffer[1:]
+			return msg, nil
+		}
+		time.Sleep(1 * time.Millisecond)
 	}
-	if index == len(c.partitions) {
-		// timeout fired
-		return nil, nil
-	}
-	builder := strings.Builder{}
-	for _, part := range c.partitions {
-		builder.WriteString(fmt.Sprintf("%d,", part.id))
-	}
-	return valValue.Interface().(*Message), nil
+	return nil, nil
 }
 
 func (c *Subscriber) Unsubscribe() error {
@@ -577,19 +553,18 @@ func (fmpf *FakeMessageProviderFactory) NewMessageProvider() (MessageProvider, e
 }
 
 type FakeMessageProvider struct {
-	subscriber   *Subscriber
-	topic        *Topic
-	groupID      string
-	started      bool
-	lock         sync.Mutex
-	inGetMessage common.AtomicBool
+	subscriber  *Subscriber
+	topic       *Topic
+	groupID     string
+	lock        sync.Mutex
+	rebalanceCB RebalanceCallback
+}
+
+func (f *FakeMessageProvider) SetRebalanceCallback(callback RebalanceCallback) {
+	f.rebalanceCB = callback
 }
 
 func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, error) {
-	if !f.inGetMessage.CompareAndSet(false, true) {
-		panic("already calling getmessage")
-	}
-	defer f.inGetMessage.Set(false)
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	if f.subscriber == nil {
@@ -610,10 +585,7 @@ func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {
 func (f *FakeMessageProvider) Start() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	if f.started {
-		return nil
-	}
-	subscriber, err := f.topic.CreateSubscriber(f.groupID)
+	subscriber, err := f.topic.CreateSubscriber(f.groupID, f.rebalanceCB)
 	if err != nil {
 		return err
 	}

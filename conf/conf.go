@@ -41,6 +41,7 @@ type Config struct {
 	APIServerListenAddresses      []string
 	APIServerSessionTimeout       time.Duration
 	APIServerSessionCheckInterval time.Duration
+	EnableSourceStats             bool
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo

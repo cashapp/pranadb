@@ -104,7 +104,6 @@ func (w *sqlTestsuite) restartCluster() {
 	log.Infof("Restarting cluster")
 	w.stopCluster()
 	log.Infof("Stopped cluster")
-	time.Sleep(5 * time.Second)
 	w.startCluster()
 	log.Infof("Restarted it")
 }
@@ -133,6 +132,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
 		cnf.Debug = true
+		cnf.EnableSourceStats = true
 		cnf.APIServerListenAddresses = []string{
 			"localhost:63401",
 		}
@@ -169,6 +169,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
 			cnf.Debug = true
+			cnf.EnableSourceStats = true
 			cnf.EnableAPIServer = true
 			cnf.APIServerListenAddresses = apiServerListenAddresses
 
@@ -378,14 +379,20 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeCreateTopic(require, command)
 		} else if strings.HasPrefix(command, "--delete topic") {
 			st.executeDeleteTopic(require, command)
-		} else if strings.HasPrefix(command, "--reset offsets") {
-			st.executeResetOffets(require, command)
 		} else if strings.HasPrefix(command, "--restart cluster") {
 			st.executeRestartCluster(require)
 		} else if strings.HasPrefix(command, "--kafka fail") {
 			st.executeKafkaFail(require, command)
 		} else if strings.HasPrefix(command, "--wait for rows") {
 			st.executeWaitForRows(require, command)
+		} else if strings.HasPrefix(command, "--wait for duplicates") {
+			st.executeWaitForDuplicates(require, command)
+		} else if strings.HasPrefix(command, "--wait for committed") {
+			st.executeWaitForCommitted(require, command)
+		} else if strings.HasPrefix(command, "--enable commit offsets") {
+			st.executeEnableCommitOffsets(require, command)
+		} else if strings.HasPrefix(command, "--disable commit offsets") {
+			st.executeDisableCommitOffsets(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -624,21 +631,24 @@ func (st *sqlTest) executeLoadData(require *require.Assertions, command string) 
 	}
 	// If no wait we run the load data asynchronously
 	if noWait {
-		go st.doLoadData(require, command)
+		go st.doLoadData(require, command, true)
 	} else {
-		st.doLoadData(require, command)
+		st.doLoadData(require, command, false)
 	}
 }
 
-func (st *sqlTest) doLoadData(require *require.Assertions, command string) {
+func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWait bool) {
 	start := time.Now()
 	datasetName := command[12:]
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
-	groupID := source.GenerateGroupID(TestClusterID, dataset.sourceInfo)
-	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, groupID, encoder)
+	initialCommitted := st.getNumCommitted(require, dataset.sourceInfo.ID)
+	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, encoder)
 	require.NoError(err)
-	st.waitForProcessingToComplete(require)
+	if !noWait {
+		st.waitForCommitted(require, dataset.rows.RowCount()+initialCommitted, dataset.sourceInfo.ID)
+		st.waitForProcessingToComplete(require)
+	}
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Infof("Load data %s execute time ms %d", command, dur.Milliseconds())
@@ -683,17 +693,6 @@ func (st *sqlTest) executeDeleteTopic(require *require.Assertions, command strin
 	log.Infof("Deleted topic %s ", topicName)
 }
 
-func (st *sqlTest) executeResetOffets(require *require.Assertions, command string) {
-	parts := strings.Split(command, " ")
-	lp := len(parts)
-	require.True(lp == 3, "Invalid reset offsets, should be --reset offsets topic_name")
-	topicName := parts[2]
-	topic, ok := st.testSuite.fakeKafka.GetTopic(topicName)
-	require.True(ok, fmt.Sprintf("no such topic %s", topicName))
-	err := topic.ResetOffsets()
-	require.NoError(err)
-}
-
 func (st *sqlTest) executeRestartCluster(require *require.Assertions) {
 	st.closeClient(require)
 	st.testSuite.restartCluster()
@@ -730,6 +729,94 @@ func (st *sqlTest) executeWaitForRows(require *require.Assertions, command strin
 	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
 	require.NoError(err)
 	st.waitUntilRowsInTable(require, tableName, int(numrows))
+}
+
+func (st *sqlTest) getNumCommitted(require *require.Assertions, sourceID uint64) int {
+	totCommitted := 0
+	for _, server := range st.testSuite.pranaCluster {
+		source, err := server.GetPushEngine().GetSource(sourceID)
+		require.NoError(err)
+		totCommitted += int(source.GetCommittedCount())
+	}
+	return totCommitted
+}
+
+func (st *sqlTest) executeWaitForCommitted(require *require.Assertions, command string) {
+	command = command[21:]
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 2, "Invalid wait for committed, should be --wait for committed source_name num_rows")
+	sourceName := parts[0]
+	sNumRows := parts[1]
+	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
+	require.NoError(err)
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
+	st.waitForCommitted(require, int(numrows), sourceInfo.ID)
+}
+
+func (st *sqlTest) waitForCommitted(require *require.Assertions, numrows int, sourceID uint64) {
+	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+		totCommitted := st.getNumCommitted(require, sourceID)
+		if totCommitted == numrows {
+			return true, nil
+		}
+		return false, nil
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(err)
+	require.True(ok, fmt.Sprintf("timed out waiting for %d rows to be committed, actual committed %d", numrows, st.getNumCommitted(require, sourceID)))
+}
+
+func (st *sqlTest) executeWaitForDuplicates(require *require.Assertions, command string) {
+	command = command[22:]
+	parts := strings.Split(command, " ")
+	lp := len(parts)
+	require.True(lp == 2, "Invalid wait for duplicates, should be --wait for duplicates source_name num_rows")
+	sourceName := parts[0]
+	sNumRows := parts[1]
+	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
+	require.NoError(err)
+
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
+
+	ok, err = commontest.WaitUntilWithError(func() (bool, error) {
+		totDuplicates := 0
+		for _, server := range st.testSuite.pranaCluster {
+			source, err := server.GetPushEngine().GetSource(sourceInfo.ID)
+			require.NoError(err)
+			totDuplicates += int(source.GetDuplicateCount())
+		}
+		// We wait for at least numrows - we can have more than this number in the case that
+		// a rebalance occurred after failure injection stopped so consumer might receive dups then rebalance
+		// then two consumers receive dups again
+		if totDuplicates >= int(numrows) {
+			return true, nil
+		}
+		return false, nil
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(err)
+	require.True(ok, "timed out waiting for duplicates")
+}
+
+func (st *sqlTest) executeEnableCommitOffsets(require *require.Assertions, command string) {
+	sourceName := command[24:]
+	st.setCommitOffsets(require, sourceName, true)
+}
+
+func (st *sqlTest) executeDisableCommitOffsets(require *require.Assertions, command string) {
+	sourceName := command[25:]
+	st.setCommitOffsets(require, sourceName, false)
+}
+
+func (st *sqlTest) setCommitOffsets(require *require.Assertions, sourceName string, enable bool) {
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
+	for _, server := range st.testSuite.pranaCluster {
+		source, err := server.GetPushEngine().GetSource(sourceInfo.ID)
+		require.NoError(err)
+		source.SetCommitOffsets(enable)
+	}
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {

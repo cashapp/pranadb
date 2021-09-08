@@ -2,7 +2,10 @@ package kafka
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -80,7 +83,7 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
 
 	groupID := "group1"
-	sub, err := topic.CreateSubscriber(groupID)
+	sub, err := topic.CreateSubscriber(groupID, nil)
 	require.NoError(t, err)
 
 	receivedMsgs := map[string]*Message{}
@@ -104,85 +107,100 @@ func TestIngestConsumeOneSubscriber(t *testing.T) {
 
 func TestIngestConsumeTwoSubscribersOneGroup(t *testing.T) {
 	fk := NewFakeKafka()
-	parts := 10
+	parts := 1000
 	topic, err := fk.CreateTopic("topic1", parts)
 	require.NoError(t, err)
-
-	numMessages := 1000
-	sentMsgs := sendMessages(t, fk, numMessages, topic.Name)
-
+	var numMessages int64 = 10
 	groupID := "group1"
+	var msgCounter int64
+	consumer1 := newConsumer(groupID, topic, &msgCounter, numMessages)
+	consumer2 := newConsumer(groupID, topic, &msgCounter, numMessages)
+	consumer1.start()
+	consumer2.start()
 
-	var receivedMessages int32
-	ch1 := make(chan receiveMsgResult, 1)
-	go func() {
-		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
-		rmr := receiveMsgResult{
-			err:  err,
-			msgs: msgs,
-		}
-		ch1 <- rmr
-	}()
-	ch2 := make(chan receiveMsgResult, 1)
-	go func() {
-		msgs, err := receiveMessages(&receivedMessages, numMessages, topic, groupID)
-		rmr := receiveMsgResult{
-			err:  err,
-			msgs: msgs,
-		}
-		ch2 <- rmr
-	}()
+	sentMsgs := sendMessages(t, fk, int(numMessages), topic.Name)
 
-	receivedMsgs := map[string]*Message{}
+	commontest.WaitUntil(t, func() (bool, error) {
+		return atomic.LoadInt64(&msgCounter) == numMessages, nil
+	})
 
-	rmr1 := <-ch1
-	require.NoError(t, rmr1.err)
-	for k, v := range rmr1.msgs {
-		receivedMsgs[k] = v
+	recvMsgs := make(map[string][]byte)
+	for _, msg := range consumer1.getMessages() {
+		recvMsgs[string(msg.Key)] = msg.Value
+	}
+	for _, msg := range consumer2.getMessages() {
+		recvMsgs[string(msg.Key)] = msg.Value
 	}
 
-	rmr2 := <-ch2
-	require.NoError(t, rmr2.err)
-	for k, v := range rmr2.msgs {
-		receivedMsgs[k] = v
+	for _, sentMsg := range sentMsgs {
+		_, ok := recvMsgs[string(sentMsg.Key)]
+		require.True(t, ok, fmt.Sprintf("did not receive msg %s", string(sentMsg.Key)))
 	}
-
-	for _, msg := range sentMsgs {
-		rec, ok := receivedMsgs[string(msg.Key)]
-		require.True(t, ok)
-		require.Equal(t, msg, rec)
-	}
-
-	group, ok := topic.getGroup(groupID)
-	require.True(t, ok)
-	require.Equal(t, 2, len(group.subscribers))
 }
 
-type receiveMsgResult struct {
-	err  error
-	msgs map[string]*Message
+func newConsumer(groupID string, topic *Topic, msgCounter *int64, maxMessages int64) *consumer {
+	return &consumer{
+		groupID:     groupID,
+		topic:       topic,
+		msgCounter:  msgCounter,
+		maxMessages: maxMessages,
+	}
 }
 
-func receiveMessages(counter *int32, numMessages int, topic *Topic, groupID string) (map[string]*Message, error) {
-	sub, err := topic.CreateSubscriber(groupID)
-	if err != nil {
-		return nil, err
-	}
-	m := make(map[string]*Message)
-	for {
-		msg, err := sub.GetMessage(1 * time.Millisecond)
+type consumer struct {
+	lock        sync.Mutex
+	groupID     string
+	topic       *Topic
+	msgCounter  *int64
+	msgs        []*Message
+	maxMessages int64
+}
+
+func (c *consumer) start() {
+	go func() {
+		err := c.runLoop()
 		if err != nil {
-			return nil, err
+			log.Fatal(err)
+		}
+	}()
+}
+
+func (c *consumer) runLoop() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	subscriber, err := c.topic.CreateSubscriber(c.groupID, c.rebalance)
+	if err != nil {
+		return err
+	}
+	for {
+		msg, err := subscriber.GetMessage(10 * time.Millisecond)
+		if err != nil {
+			return err
 		}
 		if msg != nil {
-			m[string(msg.Key)] = msg
-			atomic.AddInt32(counter, 1)
+			c.msgs = append(c.msgs, msg)
+			offsets := make(map[int32]int64)
+			offsets[msg.PartInfo.PartitionID] = msg.PartInfo.Offset + 1
+			if err := subscriber.commitOffsets(offsets); err != nil {
+				return err
+			}
+			atomic.AddInt64(c.msgCounter, 1)
 		}
-		if atomic.LoadInt32(counter) == int32(numMessages) {
-			break
+		if atomic.LoadInt64(c.msgCounter) == c.maxMessages {
+			return nil
 		}
 	}
-	return m, nil
+}
+
+func (c *consumer) rebalance() error {
+	log.Println("rebalance occurred")
+	return nil
+}
+
+func (c *consumer) getMessages() []*Message {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.msgs
 }
 
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {
