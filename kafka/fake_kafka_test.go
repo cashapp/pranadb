@@ -187,6 +187,9 @@ func (c *consumer) runLoop() error {
 			atomic.AddInt64(c.msgCounter, 1)
 		}
 		if atomic.LoadInt64(c.msgCounter) == c.maxMessages {
+			if err := subscriber.Unsubscribe(); err != nil {
+				return err
+			}
 			return nil
 		}
 	}

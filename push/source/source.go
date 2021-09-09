@@ -22,7 +22,6 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-// TODO make configurable
 const (
 	defaultNumConsumersPerSource  = 2
 	defaultPollTimeoutMs          = 20
