@@ -24,7 +24,7 @@ import (
 // DO NOT USE this client in production. We leave it here for use during development as it's easier to build on newer
 // Macbooks than the Confluent client.
 
-func NewSegmentIOMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
 	return &SegmentMessageProviderFactory{
 		topicName: topicName,
 		props:     props,

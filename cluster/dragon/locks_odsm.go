@@ -22,16 +22,12 @@ const (
 	LockSMResultFalse  byte = 0
 )
 
-func (d *Dragon) newLocksODStateMachine(clusterID uint64, _ uint64) statemachine.IOnDiskStateMachine {
-	return &locksODStateMachine{
-		dragon:  d,
-		shardID: clusterID,
-	}
+func (d *Dragon) newLocksODStateMachine(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
+	return &locksODStateMachine{dragon: d}
 }
 
 type locksODStateMachine struct {
-	dragon  *Dragon
-	shardID uint64
+	dragon *Dragon
 	// This mutex is to provide a memory barrier between calling threads, not for mutual exclusion
 	locksLock sync.Mutex
 	locks     map[string]struct{} // TODO use a trie
@@ -39,8 +35,8 @@ type locksODStateMachine struct {
 
 func (s *locksODStateMachine) loadLocks() error {
 	s.locks = make(map[string]struct{})
-	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, s.shardID, 16)
-	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, s.shardID, 16)
+	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
+	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
 	kvp, err := s.dragon.LocalScan(startPrefix, endPrefix, math.MaxInt32)
 	if err != nil {
 		return err
@@ -55,7 +51,7 @@ func (s *locksODStateMachine) loadLocks() error {
 func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
-	lp, err := loadLastProcessedRaftIndex(s.dragon.pebble, s.shardID)
+	lp, err := loadLastProcessedRaftIndex(s.dragon.pebble, locksClusterID)
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +102,7 @@ outer:
 			return nil, fmt.Errorf("unknown lock command %s", command)
 		}
 	}
-	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, s.shardID); err != nil {
+	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, locksClusterID); err != nil {
 		return nil, err
 	}
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
@@ -125,7 +121,7 @@ func (s *locksODStateMachine) setResult(ok bool, entries []statemachine.Entry, i
 }
 
 func (s *locksODStateMachine) encodeLocksKey(prefix string) []byte {
-	keyBuff := table.EncodeTableKeyPrefix(common.LocksTableID, s.shardID, 24)
+	keyBuff := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 24)
 	return common.KeyEncodeString(keyBuff, prefix)
 }
 
@@ -147,15 +143,15 @@ func (s *locksODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i2 <
 	if !ok {
 		panic("not a snapshot")
 	}
-	prefix := table.EncodeTableKeyPrefix(common.LocksTableID, s.shardID, 16)
-	return saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
+	prefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
+	return saveSnapshotDataToWriter(snapshot, prefix, writer, locksClusterID)
 }
 
 func (s *locksODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
-	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, s.shardID, 16)
-	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, s.shardID, 16)
+	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
+	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
 	if err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir); err != nil {
 		return err
 	}

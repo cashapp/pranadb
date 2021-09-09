@@ -199,11 +199,6 @@ func (m *MaterializedView) Fill() error {
 	if err != nil {
 		return err
 	}
-	fillTableID, err := m.cluster.GenerateClusterSequence("table")
-	if err != nil {
-		return err
-	}
-	fillTableID += common.UserTableIDBase
 
 	// TODO if cluster membership changes while fill is in process we need to abort process and start again
 	schedulers, err := m.pe.GetLocalLeaderSchedulers()
@@ -212,6 +207,7 @@ func (m *MaterializedView) Fill() error {
 	}
 
 	chans := make([]chan error, len(tes))
+
 	for i, tableExec := range tes {
 		ts := tss[i]
 		ch := make(chan error, 1)
@@ -219,7 +215,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, schedulers, m.pe.mover, fillTableID)
+			err := te.FillTo(ts, schedulers, m.pe.mover)
 			ch <- err
 		}()
 	}
