@@ -2,13 +2,14 @@ package command
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/source"
-	"sync"
 )
 
 type CreateSourceCommand struct {
@@ -156,15 +157,15 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 
 	headerEncoding := common.KafkaEncodingFromString(ast.TopicInformation.HeaderEncoding)
-	if headerEncoding == common.EncodingUnknown {
+	if headerEncoding.Encoding == common.EncodingUnknown {
 		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.HeaderEncoding)
 	}
 	keyEncoding := common.KafkaEncodingFromString(ast.TopicInformation.KeyEncoding)
-	if keyEncoding == common.EncodingUnknown {
+	if keyEncoding.Encoding == common.EncodingUnknown {
 		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.KeyEncoding)
 	}
 	valueEncoding := common.KafkaEncodingFromString(ast.TopicInformation.ValueEncoding)
-	if valueEncoding == common.EncodingUnknown {
+	if valueEncoding.Encoding == common.EncodingUnknown {
 		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.ValueEncoding)
 	}
 	props := ast.TopicInformation.Properties

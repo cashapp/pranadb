@@ -2,8 +2,9 @@ package kafka
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"time"
+
+	"github.com/squareup/pranadb/common"
 )
 
 // For ingested rows, timestamp starts at this value and increments by one second for each row
@@ -20,7 +21,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		// We give each
-		if err := IngestRow(f, topic, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
+		if err := IngestRow(topic, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
 			return err
 		}
 		timestamp = timestamp.Add(1 * time.Second)
@@ -29,8 +30,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 }
 
 // IngestRow is a convenience method which encodes the row into a Kafka message first, then ingests it
-func IngestRow(f *FakeKafka, topic *Topic, row *common.Row, colTypes []common.ColumnType, keyCols []int,
-	encoder MessageEncoder, timestamp time.Time) error {
+func IngestRow(topic *Topic, row *common.Row, colTypes []common.ColumnType, keyCols []int, encoder MessageEncoder, timestamp time.Time) error {
 	message, err := encoder.EncodeMessage(row, colTypes, keyCols, timestamp)
 	if err != nil {
 		return err

@@ -1,11 +1,13 @@
 package source
 
 import (
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/kafka"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/protolib"
+	"github.com/stretchr/testify/require"
 )
 
 var messageParserJSON = setupMessageParserJSON()
@@ -24,8 +26,8 @@ func setupMessageParserJSON() *MessageParser {
 	topicInfo := &common.TopicInfo{
 		BrokerName:    "test_broker",
 		TopicName:     "test_topic",
-		KeyEncoding:   common.EncodingProtobuf,
-		ValueEncoding: common.EncodingProtobuf,
+		KeyEncoding:   common.KafkaEncodingJSON,
+		ValueEncoding: common.KafkaEncodingJSON,
 		ColSelectors:  colSelectors,
 		Properties:    nil,
 	}
@@ -34,7 +36,7 @@ func setupMessageParserJSON() *MessageParser {
 		TableInfo: tableInfo,
 		TopicInfo: topicInfo,
 	}
-	mp, err := NewMessageParser(sourceInfo)
+	mp, err := NewMessageParser(sourceInfo, protolib.NewProtoRegistry(""))
 	if err != nil {
 		panic(err)
 	}

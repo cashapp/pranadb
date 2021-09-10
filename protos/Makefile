@@ -1,8 +1,9 @@
 PROTOS = $(shell find . -name '*.proto')
 GENERATED = $(patsubst %.proto, %.pb.go, $(PROTOS))
+GENERATED_DESCRIPTOR = $(patsubst %.proto, %.bin, $(PROTOS))
 
 .PHONY: all
-all: generators $(GENERATED)
+all: generators $(GENERATED) $(GENERATED_DESCRIPTOR)
 	go build ./...
 
 .PHONY: clean
@@ -13,6 +14,10 @@ clean:
 	protoc --go_out=plugins=grpc:. --buf-lint_out=. $<
 	rsync -r --remove-source-files ./github.com/squareup/pranadb/protos/ ./
 	rm -rf ./github.com
+
+%.bin: %.proto Makefile
+	mkdir -p ./descriptors/$(dir $@)
+	protoc --include_imports --descriptor_set_out=./descriptors/$@ $<
 
 .PHONY: lint
 lint: 

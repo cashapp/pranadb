@@ -2,11 +2,13 @@ package source
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"math"
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/squareup/pranadb/common"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func CoerceInt64(val interface{}) (int64, error) {
@@ -35,6 +37,11 @@ func CoerceInt64(val interface{}) (int64, error) {
 		return int64(v), nil
 	case float64:
 		return int64(v), nil
+	case bool:
+		if v {
+			return 1, nil
+		}
+		return 0, nil
 	case string:
 		r, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -66,6 +73,11 @@ func CoerceFloat64(val interface{}) (float64, error) {
 		return float64(v), nil
 	case int:
 		return float64(v), nil
+	case bool:
+		if v {
+			return 1, nil
+		}
+		return 0, nil
 	case string:
 		r, err := strconv.ParseFloat(v, 64)
 		if err != nil {
@@ -133,6 +145,10 @@ func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
 		// Incoming value is assumed to be Unix milliseconds past epoch
 		ts := common.NewTimestampFromUnixEpochMillis(int64(v))
 		return ts, nil
+	case *timestamppb.Timestamp:
+		return common.NewTimestampFromGoTime(v.AsTime()), nil
+	case timestamppb.Timestamp:
+		return common.NewTimestampFromGoTime(v.AsTime()), nil
 	default:
 		return common.Timestamp{}, coerceFailedErr(v, "timestamp")
 	}
