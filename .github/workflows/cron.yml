@@ -1,3 +1,4 @@
+name: "Hourly Integration Tests"
 on:
   schedule:
     - cron: '0 * * * *'
@@ -34,7 +35,7 @@ jobs:
         run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and Confluent Kafka client
-        run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -tags confluent,integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using Kafka and SegmentIO Kafka client
         run: go test -tags integration ./kafkatest -- -kafka-provider=kafka
