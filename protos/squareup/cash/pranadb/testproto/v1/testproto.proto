@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.testproto.v1;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto";
+
+message TestTypes {
+  message Nested {
+    string nested_string = 1;
+    repeated string nested_repeated_string = 2;
+    map<string, string> nested_map = 3;
+  }
+
+  double double_field = 1;
+  float float_field = 2;
+  int32 int32_field = 3;
+  int64 int64_field = 4;
+  uint32 uint32_field = 5;
+  uint64 uint64_field = 6;
+  bool bool_field = 7;
+  string string_field = 8;
+  bytes bytes_field = 9;
+  Nested nested_field = 10;
+  repeated string repeated_string_field = 11;
+  Recursive recursive_field = 12;
+
+  oneof oneof_field {
+    string one_string = 13;
+    int64 one_int64 = 14;
+  }
+
+  map<string, string> string_map_field = 15;
+  map<int32, string> int_map_field = 16;
+  map<string, SimpleValue> map_message_field = 17;
+}
+
+message Recursive {
+  string string_field = 1;
+  Recursive recursive_field = 2;
+}
+
+message SimpleValue {
+  string value = 1;
+}
