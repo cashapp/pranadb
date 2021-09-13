@@ -31,7 +31,7 @@ import (
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
 const (
-	TestPrefix         = ""
+	TestPrefix         = "basic_mv"
 	TestSchemaName     = "test"
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -444,9 +444,14 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		// Script should delete all it's table and MV. Once they are all deleted the schema will automatically
 		// be removed, so should not exist at end of test
 		sch, ok := prana.GetMetaController().GetSchema(TestSchemaName)
-		require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
+		if ok {
+			// Must be empty
+			require.Equal(0, sch.LenTables(), fmt.Sprintf("Schema %s is not empty at end of test. Did you drop all the tables and materialized views?", sch.Name))
+		} else {
+			require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
+		}
 
-		// This can be async - a replica can be taken off line and snapshotted while the delete range is occurring
+		// This can be async - a replica can be taken off line and snap-shotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
 		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			return st.tableDataLeft(require, prana, false)

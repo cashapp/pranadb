@@ -57,6 +57,13 @@ select * from test_mv_1 order by col0;
 
 drop materialized view test_mv_1;
 0 rows returned
+
+select * from test_mv_1 order by col0;
+Failed to execute statement: PDB0002 - Table 'test.test_mv_1' doesn't exist
+
+drop materialized view test_mv_1;
+Failed to execute statement: PDB0006 - Unknown materialized view: test.test_mv_1
+
 drop source test_source_1;
 0 rows returned
 

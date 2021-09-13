@@ -126,7 +126,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 	}
 	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {
-		return nil, perrors.MaybeAddStack(fmt.Errorf("unknown source %s", c.sourceName))
+		return nil, perrors.NewUnknownSourceError(c.schemaName, c.sourceName)
 	}
 	return sourceInfo, nil
 }

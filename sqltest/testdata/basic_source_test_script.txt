@@ -36,4 +36,9 @@ select * from test_source_1 order by col0;
 select * from test_source_1 order by col0;
 
 drop source test_source_1;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
 --delete topic testtopic;

@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
@@ -138,6 +139,23 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	if err := d.getLock(lockName); err != nil {
 		return err
 	}
+	err := d.RunWithLock(command, ddlInfo)
+	// We release the lock even if we got an error
+	d.releaseLock(lockName)
+	return err
+}
+
+func (d *DDLCommandRunner) releaseLock(lockName string) {
+	ok, err := d.ce.cluster.ReleaseLock(lockName)
+	if err != nil {
+		log.Errorf("error in releasing DDL lock %v", err)
+	}
+	if !ok {
+		log.Errorf("failed to release ddl lock %s", lockName)
+	}
+}
+
+func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
 	if err := command.BeforePrepare(); err != nil {
 		return err
 	}
@@ -147,17 +165,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	if err := d.broadcastDDL(false, ddlInfo); err != nil {
 		return err
 	}
-	if err := command.AfterCommit(); err != nil {
-		return err
-	}
-	ok, err := d.ce.cluster.ReleaseLock(lockName)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("failed to release ddl lock %s", lockName)
-	}
-	return nil
+	return command.AfterCommit()
 }
 
 func (d *DDLCommandRunner) broadcastDDL(prepare bool, ddlInfo *notifications.DDLStatementInfo) error {
