@@ -69,6 +69,12 @@ func (c *client) makeUnavailable(serverAddress string) {
 	c.unavailableServers[serverAddress] = time.Now()
 }
 
+func (c *client) makeUnavailableWithLock(serverAddress string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.makeUnavailable(serverAddress)
+}
+
 // BroadcastSync broadcasts a notification to all nodes and waits until all nodes have responded before returning
 func (c *client) BroadcastSync(notif Notification) error {
 	nf := c.createNotifcationMessage(notif, true)
@@ -347,7 +353,7 @@ func (cc *clientConnection) sendHeartbeat() {
 
 func (cc *clientConnection) heartbeatFailed() {
 	cc.stop()
-	cc.client.makeUnavailable(cc.serverAddress)
+	cc.client.makeUnavailableWithLock(cc.serverAddress)
 	cc.client.connectionClosed(cc)
 }
 
