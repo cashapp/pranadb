@@ -29,16 +29,16 @@ jobs:
       - name: Build
         run: go build ./...
       - name: SQLTests
-        run: go test -tags confluent ./sqltest
+        run: go test -tags confluent -count=1 ./sqltest
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and SegmentIO Kafka client
-        run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -tags integration -count=1 ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and Confluent Kafka client
-        run: go test -tags confluent,integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -tags confluent,integration -count=1 ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using Kafka and SegmentIO Kafka client
-        run: go test -tags integration ./kafkatest -- -kafka-provider=kafka
+        run: go test -tags integration ./kafkatest -count=1 -- -kafka-provider=kafka
         if: ${{ always() }}
   slack-on-fail:
     runs-on: ubuntu-latest
