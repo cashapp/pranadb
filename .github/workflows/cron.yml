@@ -1,3 +1,4 @@
+name: "Hourly Integration Tests"
 on:
   schedule:
     - cron: '0 * * * *'
@@ -34,8 +35,19 @@ jobs:
         run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and Confluent Kafka client
-        run: go test -tags integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -tags confluent,integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using Kafka and SegmentIO Kafka client
         run: go test -tags integration ./kafkatest -- -kafka-provider=kafka
         if: ${{ always() }}
+  slack-on-fail:
+    runs-on: ubuntu-latest
+    needs: [ integration ]
+    if: always() && (needs.integration.result == 'failure' || needs.integration.result == 'error')
+    steps:
+      - run: git clone --depth 1 https://github.com/squareup/github-actions --branch v1 --single-branch
+      - uses: ./github-actions/slack-on-fail
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TEXT: Integration tests failed.
