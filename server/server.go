@@ -2,17 +2,16 @@ package server
 
 import (
 	"fmt"
-
 	"net/http" //nolint:stylecheck
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
 	_ "net/http/pprof" //nolint:stylecheck
-
 	//nolint:stylecheck
 	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/api"
+	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
@@ -51,7 +50,8 @@ func NewServer(config conf.Config) (*Server, error) {
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine)
+	protoRegistry := protolib.NewProtoRegistry(config.ProtobufDescriptorDir)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry)
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
@@ -66,6 +66,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		clus,
 		shardr,
 		commandExecutor,
+		protoRegistry,
 		pushEngine,
 		pullEngine,
 		schemaLoader,

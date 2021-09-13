@@ -240,14 +240,36 @@ type TopicInfo struct {
 	Properties     map[string]string
 }
 
-type KafkaEncoding int
+type KafkaEncoding struct {
+	Encoding   Encoding
+	SchemaName string
+}
+
+var (
+	KafkaEncodingUnknown     = KafkaEncoding{Encoding: EncodingUnknown}
+	KafkaEncodingRaw         = KafkaEncoding{Encoding: EncodingRaw}
+	KafkaEncodingCSV         = KafkaEncoding{Encoding: EncodingCSV}
+	KafkaEncodingJSON        = KafkaEncoding{Encoding: EncodingJSON}
+	KafkaEncodingFloat32BE   = KafkaEncoding{Encoding: EncodingFloat32BE}
+	KafkaEncodingFloat64BE   = KafkaEncoding{Encoding: EncodingFloat64BE}
+	KafkaEncodingInt32BE     = KafkaEncoding{Encoding: EncodingInt32BE}
+	KafkaEncodingInt64BE     = KafkaEncoding{Encoding: EncodingInt64BE}
+	KafkaEncodingInt16BE     = KafkaEncoding{Encoding: EncodingInt16BE}
+	KafkaEncodingStringBytes = KafkaEncoding{Encoding: EncodingStringBytes}
+)
+
+func KafkaEncodingProtobuf(schema string) KafkaEncoding {
+	return KafkaEncoding{Encoding: EncodingProtobuf, SchemaName: schema}
+}
+
+type Encoding int
 
 const (
-	EncodingUnknown  KafkaEncoding = iota
-	EncodingRaw                    // No encoding - value retained as []byte
-	EncodingCSV                    // Comma separated
-	EncodingJSON                   // JSON
-	EncodingProtobuf               // Protobuf
+	EncodingUnknown  Encoding = iota
+	EncodingRaw               // No encoding - value retained as []byte
+	EncodingCSV               // Comma separated
+	EncodingJSON              // JSON
+	EncodingProtobuf          // Protobuf
 	EncodingFloat32BE
 	EncodingFloat64BE
 	EncodingInt32BE
@@ -256,7 +278,19 @@ const (
 	EncodingStringBytes
 )
 
+// KafkaEncodingFromString decodes an encoding and an optional schema name from the string,
+// in the format "<encoding>[:<schema>]". For example, for a "com.squareup.cash.Payment" protobuf,
+// encoding should be specified as "protobuf:com.squareup.cash.Payment"
 func KafkaEncodingFromString(str string) KafkaEncoding {
+	parts := strings.SplitN(str, ":", 2)
+	enc := EncodingFormatFromString(strings.ToLower(parts[0]))
+	if len(parts) == 1 {
+		return KafkaEncoding{Encoding: enc}
+	}
+	return KafkaEncoding{Encoding: enc, SchemaName: parts[1]}
+}
+
+func EncodingFormatFromString(str string) Encoding {
 	str = strings.ToLower(str)
 	switch str {
 	case "json":

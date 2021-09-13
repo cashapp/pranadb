@@ -1,0 +1,16 @@
+
+í
+:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ú
+DDLStatementInfo.
+originating_node_id (RoriginatingNodeId
+
+command_id (R	commandId
+prepare (Rprepare!
+command_type (RcommandType
+schema_name (	R
+schemaName
+sql (	Rsql'
+table_sequences (RtableSequences"5
+SessionClosedMessage
+
+session_id (	R	sessionIdBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

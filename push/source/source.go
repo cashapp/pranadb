@@ -7,11 +7,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
@@ -46,6 +48,7 @@ type Source struct {
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
 	mover                   *mover.Mover
+	protoRegistry           *protolib.ProtoRegistry
 	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
 	msgConsumers            []*MessageConsumer
@@ -63,9 +66,7 @@ type Source struct {
 	commitOffsets           common.AtomicBool
 }
 
-func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
-	cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config,
-	queryExec common.SimpleQueryExec) (*Source, error) {
+func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder, cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config, queryExec common.SimpleQueryExec, registry *protolib.ProtoRegistry) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.TopicInfo
@@ -112,6 +113,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		sharder:                 sharder,
 		cluster:                 cluster,
 		mover:                   mover,
+		protoRegistry:           registry,
 		schedSelector:           schedSelector,
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
@@ -238,7 +240,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 		return
 		//panic("Got consumer error but souce is not started")
 	}
-	log.Errorf("Failure in consumer, source will be stopped: %v. ", err)
+	log.Errorf("Failure in consumer, source will be stopped: %+v. ", err)
 	if err2 := s.stop(); err2 != nil {
 		return
 	}
@@ -290,7 +292,7 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if !ok {
 		panic("channel closed")
 	}
-	return err
+	return errors.WithStack(err)
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {

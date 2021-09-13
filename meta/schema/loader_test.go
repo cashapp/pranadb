@@ -5,6 +5,7 @@ import (
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/notifier"
 
@@ -171,7 +172,7 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	config := conf.NewTestConfig(fakeKafka.ID)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.NewProtoRegistry(""))
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)

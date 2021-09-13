@@ -23,13 +23,12 @@ type MessageConsumer struct {
 	offsetsToCommit         map[int32]int64
 }
 
-func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
-	scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) (*MessageConsumer, error) {
+func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source, scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) (*MessageConsumer, error) {
 	lcm := make(map[int32]int64)
 	for k, v := range startupCommitOffsets {
 		lcm[k] = v
 	}
-	messageParser, err := NewMessageParser(source.sourceInfo)
+	messageParser, err := NewMessageParser(source.sourceInfo, source.protoRegistry)
 	if err != nil {
 		return nil, err
 	}

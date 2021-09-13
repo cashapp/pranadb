@@ -42,6 +42,7 @@ type Config struct {
 	APIServerSessionTimeout       time.Duration
 	APIServerSessionCheckInterval time.Duration
 	EnableSourceStats             bool
+	ProtobufDescriptorDir         string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo

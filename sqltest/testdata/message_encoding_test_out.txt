@@ -558,3 +558,61 @@ drop source test_source_1;
 0 rows returned
 
 --delete topic testtopic;
+
+-- TEST11 - protobuf message;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 double,
+    col1 double,
+    col2 int,
+    col3 bigint,
+    col4 int,
+    col5 bigint,
+    col6 tinyint,
+    col7 varchar,
+    primary key (col7)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "stringbytes",
+    valueencoding = "protobuf:squareup.cash.pranadb.testproto.v1.TestTypes",
+    columnselectors = (
+        "v.double_field",
+        "v.float_field",
+        "v.int32_field",
+        "v.int64_field",
+        "v.uint32_field",
+        "v.uint64_field",
+        "v.bool_field",
+        "k"
+    )
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_11;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|col7|
+|1234.4321|123.32099914550781|100|1000|10000|100000|1|str1|
+|2234.4321|223.3209991455078|200|2000|20000|200000|0|str2|
+|3234.4321|323.3210144042969|300|3000|30000|300000|1|str3|
+|4234.4321|423.3210144042969|400|4000|40000|400000|0|str4|
+|5234.4321|523.3209838867188|500|5000|50000|500000|1|str5|
+|6234.4321|623.3209838867188|600|6000|60000|600000|0|str6|
+|7234.4321|723.3209838867188|700|7000|70000|700000|1|str7|
+|8234.4321|823.3209838867188|800|8000|80000|800000|0|str8|
+|9234.4321|923.3209838867188|900|9000|90000|900000|1|str9|
+|10234.4321|1023.3209838867188|1000|10000|100000|1000000|0|str10|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+;

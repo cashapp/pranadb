@@ -3,7 +3,6 @@ package sqltest
 import (
 	"bufio"
 	"fmt"
-	"github.com/squareup/pranadb/client"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -13,6 +12,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/client"
+	"github.com/squareup/pranadb/protolib"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
@@ -28,15 +30,17 @@ import (
 )
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
-var TestPrefix = ""
+const (
+	TestPrefix         = ""
+	TestSchemaName     = "test"
+	TestClusterID      = 12345678
+	ProtoDescriptorDir = "../protos"
+)
 
-var TestSchemaName = "test"
-
-var TestClusterID = 12345678
-
-var lock sync.Mutex
-
-var defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+var (
+	lock           sync.Mutex
+	defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+)
 
 const apiServerListenAddressBase = 63401
 
@@ -50,7 +54,15 @@ type sqlTestsuite struct {
 	t            *testing.T
 	dataDir      string
 	lock         sync.Mutex
-	encoders     map[string]kafka.MessageEncoder
+	encoders     map[string]encoderFactory
+}
+
+type encoderFactory func(options string) (kafka.MessageEncoder, error)
+
+func staticEncoderFactory(encoder kafka.MessageEncoder) encoderFactory {
+	return func(options string) (kafka.MessageEncoder, error) {
+		return encoder, nil
+	}
 }
 
 func (w *sqlTestsuite) T() *testing.T {
@@ -87,7 +99,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]kafka.MessageEncoder)}
+	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]encoderFactory)}
 	ts.setup(fakeCluster, numNodes)
 	defer ts.teardown()
 
@@ -136,6 +148,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.APIServerListenAddresses = []string{
 			"localhost:63401",
 		}
+		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
@@ -172,6 +185,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableSourceStats = true
 			cnf.EnableAPIServer = true
 			cnf.APIServerListenAddresses = apiServerListenAddresses
+			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -194,7 +208,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
-	w.registerEncoders()
+	protoRegistry := protolib.NewProtoRegistry(ProtoDescriptorDir)
+	require.NoError(w.t, protoRegistry.Start())
+	w.registerEncoders(protoRegistry)
 	w.fakeKafka = kafka.NewFakeKafka()
 
 	dataDir, err := ioutil.TempDir("", "sql-test")
@@ -241,7 +257,7 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	}
 }
 
-func (w *sqlTestsuite) registerEncoders() {
+func (w *sqlTestsuite) registerEncoders(registry *protolib.ProtoRegistry) {
 	w.registerEncoder(&kafka.JSONKeyJSONValueEncoder{})
 	w.registerEncoder(&kafka.StringKeyTLJSONValueEncoder{})
 	w.registerEncoder(&kafka.Int64BEKeyTLJSONValueEncoder{})
@@ -251,13 +267,22 @@ func (w *sqlTestsuite) registerEncoders() {
 	w.registerEncoder(&kafka.Float32BEKeyTLJSONValueEncoder{})
 	w.registerEncoder(&kafka.NestedJSONKeyNestedJSONValueEncoder{})
 	w.registerEncoder(&kafka.JSONHeadersEncoder{})
+	w.registerEncoderFactory(kafka.NewStringKeyProtobufValueEncoderFactory(registry), &kafka.StringKeyProtobufValueEncoder{})
 }
 
 func (w *sqlTestsuite) registerEncoder(encoder kafka.MessageEncoder) {
 	if _, ok := w.encoders[encoder.Name()]; ok {
 		panic(fmt.Sprintf("encoder with name %s already registered", encoder.Name()))
 	}
-	w.encoders[encoder.Name()] = encoder
+	w.encoders[encoder.Name()] = staticEncoderFactory(encoder)
+}
+
+func (w *sqlTestsuite) registerEncoderFactory(factory encoderFactory, typ kafka.MessageEncoder) {
+	name := typ.Name()
+	if _, ok := w.encoders[name]; ok {
+		panic(fmt.Sprintf("encoder with name %s already registered", name))
+	}
+	w.encoders[name] = factory
 }
 
 func (w *sqlTestsuite) stopCluster() {
@@ -540,8 +565,11 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 	dataFile, closeFunc := openFile("./testdata/" + st.testDataFile)
 	defer closeFunc()
 	scanner := bufio.NewScanner(dataFile)
-	var encoder kafka.MessageEncoder
-	var currDataSet *dataset
+	var (
+		encoder     kafka.MessageEncoder
+		currDataSet *dataset
+		err         error
+	)
 	lineNum := 1
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -563,8 +591,15 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			require.True(ok, fmt.Sprintf("unknown source %s", sourceName))
 			if lp == 3 {
 				encoderName := parts[2]
-				encoder, ok = st.testSuite.encoders[encoderName]
+				options := ""
+				if strings.Contains(encoderName, ":") {
+					parts := strings.SplitN(encoderName, ":", 2)
+					encoderName, options = parts[0], parts[1]
+				}
+				factory, ok := st.testSuite.encoders[encoderName]
 				require.True(ok, fmt.Sprintf("unknown encoder %s", encoderName))
+				encoder, err = factory(options)
+				require.NoError(err)
 			} else {
 				encoder = defaultEncoder
 			}
@@ -584,8 +619,19 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 				} else {
 					switch colType.Type {
 					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-						val, err := strconv.ParseInt(part, 10, 64)
-						require.NoError(err)
+						val, intErr := strconv.ParseInt(part, 10, 64)
+						if intErr != nil {
+							// bools are ints
+							boolVal, err := strconv.ParseBool(part)
+							if err != nil {
+								require.NoError(intErr)
+							}
+							if boolVal {
+								val = 1
+							} else {
+								val = 0
+							}
+						}
 						currDataSet.rows.AppendInt64ToColumn(i, val)
 					case common.TypeDouble:
 						val, err := strconv.ParseFloat(part, 64)

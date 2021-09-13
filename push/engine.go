@@ -3,14 +3,16 @@ package push
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/push/mover"
-	"github.com/squareup/pranadb/push/sched"
-	"github.com/squareup/pranadb/push/source"
 	"math/rand"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/protolib"
+	"github.com/squareup/pranadb/push/mover"
+	"github.com/squareup/pranadb/push/sched"
+	"github.com/squareup/pranadb/push/source"
 
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/table"
@@ -41,6 +43,7 @@ type PushEngine struct {
 	rnd               *rand.Rand
 	cfg               *conf.Config
 	queryExec         common.SimpleQueryExec
+	protoRegistry     *protolib.ProtoRegistry
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -64,16 +67,16 @@ type remoteRowsHandler interface {
 	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
-	queryExec common.SimpleQueryExec) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry *protolib.ProtoRegistry) *PushEngine {
 	engine := PushEngine{
-		mover:     mover.NewMover(cluster),
-		cluster:   cluster,
-		sharder:   sharder,
-		meta:      meta,
-		rnd:       rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
-		cfg:       cfg,
-		queryExec: queryExec,
+		mover:         mover.NewMover(cluster),
+		cluster:       cluster,
+		sharder:       sharder,
+		meta:          meta,
+		rnd:           rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:           cfg,
+		queryExec:     queryExec,
+		protoRegistry: registry,
 	}
 	engine.createMaps()
 	return &engine
@@ -428,6 +431,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source
 		p,
 		p.cfg,
 		p.queryExec,
+		p.protoRegistry,
 	)
 	if err != nil {
 		return nil, err

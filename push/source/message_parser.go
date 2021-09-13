@@ -4,96 +4,120 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
+
 	"github.com/PaesslerAG/gval"
+	"github.com/golang/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
-	"strings"
+	"github.com/squareup/pranadb/protolib"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-var jsonDecoder = &JSONDecoder{}
-var protobufDecoder = &ProtobufDecoder{}
-var kafkaDecoderFloat = newKafkaDecoder(common.EncodingFloat32BE)
-var kafkaDecoderDouble = newKafkaDecoder(common.EncodingFloat64BE)
-var kafkaDecoderInteger = newKafkaDecoder(common.EncodingInt32BE)
-var kafkaDecoderLong = newKafkaDecoder(common.EncodingInt64BE)
-var kafkaDecoderShort = newKafkaDecoder(common.EncodingInt16BE)
-var kafkaDecoderString = newKafkaDecoder(common.EncodingStringBytes)
+var (
+	jsonDecoder         = &JSONDecoder{}
+	kafkaDecoderFloat   = newKafkaDecoder(common.KafkaEncodingFloat32BE)
+	kafkaDecoderDouble  = newKafkaDecoder(common.KafkaEncodingFloat64BE)
+	kafkaDecoderInteger = newKafkaDecoder(common.KafkaEncodingInt32BE)
+	kafkaDecoderLong    = newKafkaDecoder(common.KafkaEncodingInt64BE)
+	kafkaDecoderShort   = newKafkaDecoder(common.KafkaEncodingInt16BE)
+	kafkaDecoderString  = newKafkaDecoder(common.KafkaEncodingStringBytes)
+
+	evalCtx = context.Background()
+)
 
 type MessageParser struct {
-	sourceInfo   *common.SourceInfo
-	rowsFactory  *common.RowsFactory
-	colEvals     []gval.Evaluable
-	parseHeaders bool
-	parseKey     bool
-	parseValue   bool
-	repMap       map[string]interface{}
+	sourceInfo       *common.SourceInfo
+	rowsFactory      *common.RowsFactory
+	colEvals         []evaluable
+	headerDecoder    Decoder
+	keyDecoder       Decoder
+	valueDecoder     Decoder
+	repMap           map[string]interface{}
+	protobufRegistry *protolib.ProtoRegistry
 }
 
-func NewMessageParser(sourceInfo *common.SourceInfo) (*MessageParser, error) {
-	lang := gval.Full()
+func NewMessageParser(sourceInfo *common.SourceInfo, registry *protolib.ProtoRegistry) (*MessageParser, error) {
 	selectors := sourceInfo.TopicInfo.ColSelectors
-	selectEvals := make([]gval.Evaluable, len(selectors))
+	selectEvals := make([]evaluable, len(selectors))
 	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
 	// don't use them
-	parseHeaders := false
-	parseKey := false
-	parseValue := false
-	repMapSize := 0
+	var (
+		headerDecoder, keyDecoder, valueDecoder Decoder
+
+		encoding common.KafkaEncoding
+		err      error
+		eval     evaluable
+	)
+	topic := sourceInfo.TopicInfo
 	for i, selector := range selectors {
-		if strings.HasPrefix(selector, "h") {
-			parseHeaders = true
-			repMapSize++
+		switch {
+		case strings.HasPrefix(selector, "h"):
+			encoding = topic.HeaderEncoding
+			headerDecoder, err = getDecoder(registry, encoding)
+		case strings.HasPrefix(selector, "k"):
+			encoding = topic.KeyEncoding
+			keyDecoder, err = getDecoder(registry, encoding)
+		case strings.HasPrefix(selector, "v"):
+			encoding = topic.ValueEncoding
+			valueDecoder, err = getDecoder(registry, encoding)
+		case strings.HasPrefix(selector, "t"):
+			// timestamp selector, no decoding required
+		default:
+			panic(fmt.Sprintf("invalid selector %q", selector))
 		}
-		if strings.HasPrefix(selector, "k") {
-			parseKey = true
-			repMapSize++
+		if err != nil {
+			return nil, err
 		}
-		if strings.HasPrefix(selector, "v") {
-			parseValue = true
-			repMapSize++
+
+		if encoding.Encoding == common.EncodingProtobuf {
+			eval, err = protoEvaluable(selector)
+		} else {
+			eval, err = gvalEvaluable(selector)
 		}
-		if strings.HasPrefix(selector, "t") {
-			repMapSize++
-		}
-		eval, err := lang.NewEvaluable(selector)
 		if err != nil {
 			return nil, err
 		}
 		selectEvals[i] = eval
 	}
-	repMap := make(map[string]interface{}, repMapSize)
+	repMap := make(map[string]interface{}, 4)
 	return &MessageParser{
-		rowsFactory:  common.NewRowsFactory(sourceInfo.ColumnTypes),
-		sourceInfo:   sourceInfo,
-		colEvals:     selectEvals,
-		parseHeaders: parseHeaders,
-		parseKey:     parseKey,
-		parseValue:   parseValue,
-		repMap:       repMap,
+		rowsFactory:      common.NewRowsFactory(sourceInfo.ColumnTypes),
+		protobufRegistry: registry,
+		sourceInfo:       sourceInfo,
+		colEvals:         selectEvals,
+		headerDecoder:    headerDecoder,
+		keyDecoder:       keyDecoder,
+		valueDecoder:     valueDecoder,
+		repMap:           repMap,
 	}, nil
 }
 
 func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, error) {
 	rows := m.rowsFactory.NewRows(len(messages))
 	for _, msg := range messages {
-		if err := m.parseMessage(msg, rows); err != nil {
-			return nil, err
+		if err := m.decodeMessage(msg); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if err := m.evalColumns(rows); err != nil {
+			return nil, errors.WithStack(err)
 		}
 	}
 	return rows, nil
 }
 
-//nolint:gocyclo
-func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) error {
-	ti := m.sourceInfo.TopicInfo
+func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 	// Decode headers
 	var hdrs map[string]interface{}
-	if m.parseHeaders {
+	if m.headerDecoder != nil {
 		lh := len(message.Headers)
 		if lh > 0 {
 			hdrs = make(map[string]interface{}, lh)
 			for _, hdr := range message.Headers {
-				hm, err := m.decodeBytes(ti.HeaderEncoding, hdr.Value)
+				hm, err := m.decodeBytes(m.headerDecoder, hdr.Value)
 				if err != nil {
 					return err
 				}
@@ -103,18 +127,18 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 	}
 	// Decode key
 	var km interface{}
-	if m.parseKey {
+	if m.keyDecoder != nil {
 		var err error
-		km, err = m.decodeBytes(ti.KeyEncoding, message.Key)
+		km, err = m.decodeBytes(m.keyDecoder, message.Key)
 		if err != nil {
 			return err
 		}
 	}
 	// Decode value
 	var vm interface{}
-	if m.parseValue {
+	if m.valueDecoder != nil {
 		var err error
-		vm, err = m.decodeBytes(ti.ValueEncoding, message.Value)
+		vm, err = m.decodeBytes(m.valueDecoder, message.Value)
 		if err != nil {
 			return err
 		}
@@ -124,10 +148,14 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 	m.repMap["k"] = km
 	m.repMap["v"] = vm
 	m.repMap["t"] = message.TimeStamp
+
+	return nil
+}
+
+func (m *MessageParser) evalColumns(rows *common.Rows) error {
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
-		c := context.Background()
-		val, err := eval(c, m.repMap)
+		val, err := eval(m.repMap)
 		if err != nil {
 			return err
 		}
@@ -173,12 +201,9 @@ func (m *MessageParser) parseMessage(message *kafka.Message, rows *common.Rows) 
 	return nil
 }
 
-func (m *MessageParser) decodeBytes(encoding common.KafkaEncoding, bytes []byte) (interface{}, error) {
-	if bytes == nil {
-		return nil, nil
-	}
+func getDecoder(registry *protolib.ProtoRegistry, encoding common.KafkaEncoding) (Decoder, error) {
 	var decoder Decoder
-	switch encoding {
+	switch encoding.Encoding {
 	case common.EncodingJSON:
 		decoder = jsonDecoder
 	case common.EncodingFloat64BE:
@@ -194,11 +219,27 @@ func (m *MessageParser) decodeBytes(encoding common.KafkaEncoding, bytes []byte)
 	case common.EncodingStringBytes:
 		decoder = kafkaDecoderString
 	case common.EncodingProtobuf:
-		decoder = protobufDecoder
+		desc, err := registry.FindDescriptorByName(protoreflect.FullName(encoding.SchemaName))
+		if err != nil {
+			return nil, fmt.Errorf("could not find protobuf descriptor for %q", encoding.SchemaName)
+		}
+		msgDesc, ok := desc.(protoreflect.MessageDescriptor)
+		if !ok {
+			return nil, fmt.Errorf("expected to find MessageDescriptor at %q, but was %q", encoding.SchemaName, reflect.TypeOf(msgDesc))
+		}
+		decoder = &ProtobufDecoder{desc: msgDesc}
 	default:
 		panic("unsupported encoding")
 	}
-	return decoder.Decode(bytes)
+	return decoder, nil
+}
+
+func (m *MessageParser) decodeBytes(decoder Decoder, bytes []byte) (interface{}, error) {
+	if bytes == nil {
+		return nil, nil
+	}
+	v, err := decoder.Decode(bytes)
+	return v, errors.WithStack(err)
 }
 
 type Decoder interface {
@@ -228,7 +269,7 @@ func (k *KafkaDecoder) Decode(bytes []byte) (interface{}, error) {
 	if len(bytes) == 0 {
 		return nil, nil
 	}
-	switch k.encoding {
+	switch k.encoding.Encoding {
 	case common.EncodingFloat32BE:
 		val, _ := common.ReadFloat32FromBufferBE(bytes, 0)
 		return val, nil
@@ -253,24 +294,37 @@ func (k *KafkaDecoder) Decode(bytes []byte) (interface{}, error) {
 }
 
 type ProtobufDecoder struct {
+	desc protoreflect.MessageDescriptor
 }
 
 func (p *ProtobufDecoder) Decode(bytes []byte) (interface{}, error) {
-	// cheat
-	if string(bytes) == "key" {
-		return &SomeKeyProto{F1: 1234}, nil
+	msg := dynamicpb.NewMessage(p.desc)
+	err := proto.Unmarshal(bytes, msg)
+	return msg, err
+}
+
+type evaluable func(repMap map[string]interface{}) (interface{}, error)
+
+func gvalEvaluable(selector string) (evaluable, error) {
+	e, err := gval.Base().NewEvaluable(selector)
+	if err != nil {
+		return nil, err
 	}
-	return &SomeValueProto{
-		F1: 12.21,
-		F2: "foo",
+	return func(repMap map[string]interface{}) (interface{}, error) {
+		return e(evalCtx, repMap)
 	}, nil
 }
 
-type SomeValueProto struct {
-	F1 float64
-	F2 string
-}
-
-type SomeKeyProto struct {
-	F1 int64
+func protoEvaluable(selector string) (evaluable, error) {
+	prefix := selector[0:1]
+	if len(selector) <= 2 || selector[1] != '.' {
+		return nil, fmt.Errorf("invalid protobuf selector %q", selector)
+	}
+	sel, err := protolib.ParseSelector(selector[2:])
+	if err != nil {
+		return nil, err
+	}
+	return func(repMap map[string]interface{}) (interface{}, error) {
+		return sel.Select(repMap[prefix].(protoreflect.Message))
+	}, nil
 }

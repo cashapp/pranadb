@@ -2,8 +2,10 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/conf"
 	"testing"
+
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/table"
@@ -355,7 +357,7 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	metaController := meta.NewController(clus)
 	shard := sharder.NewSharder(clus)
 	config := conf.NewTestConfig(0)
-	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{})
+	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{}, protolib.NewProtoRegistry(""))
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clus.Start()

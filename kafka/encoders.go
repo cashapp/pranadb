@@ -3,9 +3,15 @@ package kafka
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"time"
+
+	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
-	"time"
+	"github.com/squareup/pranadb/protolib"
+	pref "google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type MessageEncoder interface {
@@ -352,4 +358,99 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 		Value: valBytes,
 	}
 	return message, nil
+}
+
+func NewStringKeyProtobufValueEncoderFactory(registry *protolib.ProtoRegistry) func(options string) (MessageEncoder, error) {
+	return func(options string) (MessageEncoder, error) {
+		return NewStringKeyProtobufValueEncoder(registry, options)
+	}
+}
+
+func NewStringKeyProtobufValueEncoder(protoRegistry *protolib.ProtoRegistry, options string) (MessageEncoder, error) {
+	name := pref.FullName(options)
+	desc, err := protoRegistry.FindDescriptorByName(name)
+	if err != nil {
+		return nil, err
+	}
+	mdesc, ok := desc.(pref.MessageDescriptor)
+	if !ok {
+		return nil, errors.Errorf("expected %q to be a MessageDescriptor, but was %v", name, reflect.TypeOf(mdesc))
+	}
+	return &StringKeyProtobufValueEncoder{d: mdesc}, nil
+}
+
+// StringKeyProtobufValueEncoder is an encoder that translates each row to a protobuf message. Columns 0 to N correspond
+// to protobuf field numbers 1 to N+1. This means that the key also ends up as a field in the value protobuf.
+type StringKeyProtobufValueEncoder struct {
+	d pref.MessageDescriptor
+}
+
+func (e *StringKeyProtobufValueEncoder) Name() string {
+	return "StringKeyProtobufValueEncoder"
+}
+
+func (e *StringKeyProtobufValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
+	if len(keyCols) != 1 {
+		return nil, errors.New("must be only one pk col for binary key encoding")
+	}
+	keyColIndex := keyCols[0]
+	keyColType := colTypes[keyColIndex]
+	if keyColType != common.VarcharColumnType {
+		return nil, errors.New("Key is not a varchar column")
+	}
+	keyBytes := []byte(row.GetString(keyColIndex))
+
+	valBytes, err := e.encodeProtobufValue(colTypes, row)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Message{
+		Key:   keyBytes,
+		Value: valBytes,
+	}, nil
+}
+
+func (e *StringKeyProtobufValueEncoder) encodeProtobufValue(colTypes []common.ColumnType, row *common.Row) ([]byte, error) {
+	msg := dynamicpb.NewMessage(e.d)
+	fields := e.d.Fields()
+	for i, colType := range colTypes {
+		colVal, err := getColVal(i, colType, row)
+		if err != nil {
+			return nil, err
+		}
+		protoSet(msg, fields.ByNumber(pref.FieldNumber(i+1)), colVal)
+	}
+	return proto.Marshal(msg)
+}
+
+func protoSet(msg *dynamicpb.Message, fd pref.FieldDescriptor, v interface{}) {
+	// coerce types when necessary and possible. If not possible, let the protoreflect library panic
+	// with a nice message
+	switch t := v.(type) {
+	case float64:
+		if fd.Kind() == pref.FloatKind {
+			v = float32(t)
+		}
+	case int64:
+		switch fd.Kind() {
+		case pref.Int32Kind, pref.Sint32Kind, pref.Sfixed32Kind:
+			v = int32(t)
+		case pref.Uint32Kind, pref.Fixed32Kind:
+			v = uint32(t)
+		case pref.Uint64Kind, pref.Fixed64Kind:
+			v = uint64(t)
+		case pref.BoolKind:
+			v = t != 0
+		default:
+			// fallthrough
+		}
+	case string:
+		if fd.Kind() == pref.BytesKind {
+			v = []byte(t)
+		}
+	default:
+		panic(fmt.Sprintf("unknown type %s", reflect.TypeOf(v)))
+	}
+	msg.Set(fd, pref.ValueOf(v))
 }
