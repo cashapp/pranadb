@@ -488,13 +488,13 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 				if !ok {
 					offset = 0
 				}
+				part.lock.Lock()
 				if len(part.messages) > int(offset) {
-					part.lock.Lock()
 					msg := part.messages[offset]
 					c.nextOffsets[part.id] = offset + 1
 					c.msgBuffer = append(c.msgBuffer, msg)
-					part.lock.Unlock()
 				}
+				part.lock.Unlock()
 			}
 		}
 
