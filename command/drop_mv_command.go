@@ -67,6 +67,11 @@ func (c *DropMVCommand) BeforePrepare() error {
 	}
 	c.mv = mv
 
+	consuming := c.mv.GetConsumingMVs()
+	if len(consuming) != 0 {
+		return perrors.NewMaterializedViewHasChildrenError(mv.Info.SchemaName, mv.Info.Name, consuming)
+	}
+
 	// Update row in tables table to mark it as pending delete
 	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateDelete)
 }

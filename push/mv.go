@@ -2,11 +2,10 @@ package push
 
 import (
 	"fmt"
-	"reflect"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
+	"reflect"
 	//"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
@@ -91,7 +90,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 				if err != nil {
 					return err
 				}
-				source.RemoveConsumingExecutor(node)
+				source.RemoveConsumingExecutor(m.Info.Name)
 			}
 		case *common.MaterializedViewInfo:
 			if disconnect {
@@ -99,7 +98,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 				if err != nil {
 					return err
 				}
-				mv.removeConsumingExecutor(node)
+				mv.removeConsumingExecutor(m.Info.Name)
 			}
 		default:
 			return fmt.Errorf("cannot disconnect %s: invalid table type", tbl)
@@ -136,12 +135,16 @@ func (m *MaterializedView) deleteMvTableData(tableID uint64) error {
 	return nil
 }
 
-func (m *MaterializedView) addConsumingExecutor(node exec.PushExecutor) {
-	m.tableExecutor.AddConsumingNode(node)
+func (m *MaterializedView) addConsumingExecutor(mvName string, executor exec.PushExecutor) {
+	m.tableExecutor.AddConsumingNode(mvName, executor)
 }
 
-func (m *MaterializedView) removeConsumingExecutor(executor exec.PushExecutor) {
-	m.tableExecutor.RemoveConsumingNode(executor)
+func (m *MaterializedView) removeConsumingExecutor(mvName string) {
+	m.tableExecutor.RemoveConsumingNode(mvName)
+}
+
+func (m *MaterializedView) GetConsumingMVs() []string {
+	return m.tableExecutor.GetConsumingMvNames()
 }
 
 func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool, registerRemote bool) error {
@@ -165,13 +168,13 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 				if err != nil {
 					return err
 				}
-				source.AddConsumingExecutor(executor)
+				source.AddConsumingExecutor(m.Info.Name, executor)
 			case *common.MaterializedViewInfo:
 				mv, err := m.pe.GetMaterializedView(tbl.ID)
 				if err != nil {
 					return err
 				}
-				mv.addConsumingExecutor(executor)
+				mv.addConsumingExecutor(m.Info.Name, executor)
 			default:
 				return fmt.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
 			}
@@ -215,7 +218,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, schedulers, m.pe.mover)
+			err := te.FillTo(ts, m.Info.Name, schedulers, m.pe.mover)
 			ch <- err
 		}()
 	}

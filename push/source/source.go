@@ -203,12 +203,20 @@ func (s *Source) Drop() error {
 	return s.cluster.DeleteAllDataInRangeForAllShards(tableStartPrefix, tableEndPrefix)
 }
 
-func (s *Source) AddConsumingExecutor(executor exec.PushExecutor) {
-	s.tableExecutor.AddConsumingNode(executor)
+func (s *Source) AddConsumingExecutor(mvName string, executor exec.PushExecutor) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.tableExecutor.AddConsumingNode(mvName, executor)
 }
 
-func (s *Source) RemoveConsumingExecutor(executor exec.PushExecutor) {
-	s.tableExecutor.RemoveConsumingNode(executor)
+func (s *Source) RemoveConsumingExecutor(mvName string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.tableExecutor.RemoveConsumingNode(mvName)
+}
+
+func (s *Source) GetConsumingMVs() []string {
+	return s.tableExecutor.GetConsumingMvNames()
 }
 
 func (s *Source) loadStartupCommittedOffsets() error {

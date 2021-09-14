@@ -1,6 +1,9 @@
 package perrors
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 import gerrors "github.com/pkg/errors"
 
 type ErrorCode int
@@ -14,6 +17,10 @@ const (
 	UnknownSource
 	UnknownMaterializedView
 	UnknownPreparedStatement
+	SourceAlreadyExists
+	MaterializedViewAlreadyExists
+	SourceHasChildren
+	MaterializedViewHasChildren
 
 	UnknownBrokerName
 	MissingKafkaBrokers
@@ -53,6 +60,33 @@ func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaErro
 
 func NewUnknownPreparedStatementError(psID int64) PranaError {
 	return NewPranaErrorf(UnknownPreparedStatement, "Unknown prepared statement, id: %d", psID)
+}
+
+func NewSourceAlreadyExistsError(schemaName string, sourceName string) PranaError {
+	return NewPranaErrorf(SourceAlreadyExists, "Source already exists: %s.%s", schemaName, sourceName)
+}
+
+func NewMaterializedViewAlreadyExistsError(schemaName string, materializedViewName string) PranaError {
+	return NewPranaErrorf(MaterializedViewAlreadyExists, "Materialized view already exists: %s.%s", schemaName, materializedViewName)
+}
+
+func NewSourceHasChildrenError(schemaName string, sourceName string, childMVs []string) PranaError {
+	return NewPranaErrorf(SourceHasChildren, "Cannot drop source %s.%s it has the following children %s", schemaName, sourceName, getChildString(schemaName, childMVs))
+}
+
+func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName string, childMVs []string) PranaError {
+	return NewPranaErrorf(MaterializedViewHasChildren, "Cannot drop materialized view %s.%s it has the following children %s", schemaName, materializedViewName, getChildString(schemaName, childMVs))
+}
+
+func getChildString(schemaName string, childMVs []string) string {
+	sb := strings.Builder{}
+	for i, childName := range childMVs {
+		sb.WriteString(fmt.Sprintf("%s.%s", schemaName, childName))
+		if i != len(childMVs)-1 {
+			sb.WriteString(", ")
+		}
+	}
+	return sb.String()
 }
 
 func NewPranaErrorf(errorCode ErrorCode, msgFormat string, args ...interface{}) PranaError {

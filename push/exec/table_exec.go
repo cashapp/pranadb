@@ -18,8 +18,8 @@ const fillMaxBatchSize = 1000
 // of a materialized view or source
 type TableExecutor struct {
 	pushExecutorBase
-	tableInfo      *common.TableInfo
-	consumingNodes map[PushExecutor]struct{}
+	TableInfo      *common.TableInfo
+	consumingNodes map[string]PushExecutor
 	store          cluster.Cluster
 	lock           sync.RWMutex
 	filling        bool
@@ -36,9 +36,9 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *Table
 			colsVisible: tableInfo.ColsVisible,
 			rowsFactory: common.NewRowsFactory(tableInfo.ColumnTypes),
 		},
-		tableInfo:      tableInfo,
+		TableInfo:      tableInfo,
 		store:          store,
-		consumingNodes: make(map[PushExecutor]struct{}),
+		consumingNodes: make(map[string]PushExecutor),
 	}
 }
 
@@ -46,20 +46,20 @@ func (t *TableExecutor) ReCalcSchemaFromChildren() error {
 	return nil
 }
 
-func (t *TableExecutor) AddConsumingNode(node PushExecutor) {
+func (t *TableExecutor) AddConsumingNode(mvName string, node PushExecutor) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	t.addConsumingNode(node)
+	t.addConsumingNode(mvName, node)
 }
 
-func (t *TableExecutor) addConsumingNode(node PushExecutor) {
-	t.consumingNodes[node] = struct{}{}
+func (t *TableExecutor) addConsumingNode(mvName string, node PushExecutor) {
+	t.consumingNodes[mvName] = node
 }
 
-func (t *TableExecutor) RemoveConsumingNode(node PushExecutor) {
+func (t *TableExecutor) RemoveConsumingNode(mvName string) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	delete(t.consumingNodes, node)
+	delete(t.consumingNodes, mvName)
 }
 
 func (t *TableExecutor) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
@@ -70,7 +70,7 @@ func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) err
 	t.lock.RLock()
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
-		if err := table.Upsert(t.tableInfo, &row, ctx.WriteBatch); err != nil {
+		if err := table.Upsert(t.TableInfo, &row, ctx.WriteBatch); err != nil {
 			return err
 		}
 	}
@@ -92,7 +92,7 @@ func (t *TableExecutor) handleForwardAndCapture(rows *common.Rows, ctx *Executio
 }
 
 func (t *TableExecutor) ForwardToConsumingNodes(rows *common.Rows, ctx *ExecutionContext) error {
-	for consumingNode := range t.consumingNodes {
+	for _, consumingNode := range t.consumingNodes {
 		if err := consumingNode.HandleRows(rows, ctx); err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rows *common.Rows, ct
 	return t.store.WriteBatch(wb)
 }
 
-func (t *TableExecutor) FillTo(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error {
+func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error {
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
@@ -238,7 +238,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, schedulers map[uint64]*sched.Sha
 	}
 	t.filling = false
 
-	t.addConsumingNode(pe)
+	t.addConsumingNode(mvName, pe)
 
 	t.lock.Unlock()
 
@@ -282,8 +282,8 @@ func (t *TableExecutor) performFillFromSnapshot(snapshot cluster.Snapshot, pe Pu
 		// concurrent execution from schedulers
 		theShardID := shardID
 		go func() {
-			startPrefix := table.EncodeTableKeyPrefix(t.tableInfo.ID, theShardID, 16)
-			endPrefix := table.EncodeTableKeyPrefix(t.tableInfo.ID+1, theShardID, 16)
+			startPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID, theShardID, 16)
+			endPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID+1, theShardID, 16)
 			for {
 				kvp, err := t.store.LocalScanWithSnapshot(snapshot, startPrefix, endPrefix, fillMaxBatchSize)
 				if err != nil {
@@ -394,4 +394,12 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 		}
 	}
 	return nil
+}
+
+func (t *TableExecutor) GetConsumingMvNames() []string {
+	var mvNames []string
+	for mvName := range t.consumingNodes {
+		mvNames = append(mvNames, mvName)
+	}
+	return mvNames
 }

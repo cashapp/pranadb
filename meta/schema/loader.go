@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
@@ -43,6 +44,8 @@ func (l *Loader) Start() error {
 	}
 	mvTables := make(map[tableKey]*MVTables)
 
+	// MVs must be started in the load order so we maintain a slice
+	var mvsToStart []tableKey
 	var srcsToStart []*source.Source
 
 	for i := 0; i < rows.RowCount(); i++ {
@@ -52,6 +55,7 @@ func (l *Loader) Start() error {
 		case meta.TableKindSource:
 			info := meta.DecodeSourceInfoRow(&row)
 			// TODO check prepare state and restart command if pending
+			log.Printf("Loading source %s", info.Name)
 			if err := l.meta.RegisterSource(info); err != nil {
 				return err
 			}
@@ -62,6 +66,7 @@ func (l *Loader) Start() error {
 			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&row)
+			log.Printf("Loading mv %s", info.Name)
 			tk := tableKey{info.SchemaName, info.Name}
 			_, ok := mvTables[tk]
 			if ok {
@@ -69,6 +74,7 @@ func (l *Loader) Start() error {
 			}
 			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
 			mvTables[tk] = mvt
+			mvsToStart = append(mvsToStart, tk)
 		case meta.TableKindInternal:
 			info := meta.DecodeInternalTableInfoRow(&row)
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
@@ -83,7 +89,8 @@ func (l *Loader) Start() error {
 		}
 	}
 
-	for _, mvt := range mvTables {
+	for _, tk := range mvsToStart {
+		mvt := mvTables[tk]
 		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
 		mv, err := push.CreateMaterializedView(
 			l.pushEngine,

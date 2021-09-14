@@ -77,6 +77,11 @@ func (c *CreateMVCommand) BeforePrepare() error {
 	}
 	c.mv = mv
 
+	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
+	if ok {
+		return perrors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
+	}
+
 	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
 }
 
