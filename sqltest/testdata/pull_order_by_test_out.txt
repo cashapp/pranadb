@@ -589,6 +589,7 @@ select * from test_mv_1 order by col6 desc;
 10 rows returned
 
 -- test empty source/mv;
+--create topic testtopic2;
 create source test_source_2(
     col0 bigint,
     col1 tinyint,
@@ -600,7 +601,7 @@ create source test_source_2(
     primary key (col0)
 ) with (
     brokername = "testbroker",
-    topicname = "testtopic",
+    topicname = "testtopic2",
     headerencoding = "json",
     keyencoding = "json",
     valueencoding = "json",
@@ -646,4 +647,5 @@ drop materialized view test_mv_1;
 drop source test_source_1;
 0 rows returned
 
+--delete topic testtopic2;
 --delete topic testtopic;
