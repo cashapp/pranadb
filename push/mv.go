@@ -5,10 +5,9 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
-	"reflect"
-	//"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
+	"reflect"
 )
 
 type MaterializedView struct {
