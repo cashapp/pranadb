@@ -2,7 +2,6 @@ package schema
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
@@ -55,7 +54,6 @@ func (l *Loader) Start() error {
 		case meta.TableKindSource:
 			info := meta.DecodeSourceInfoRow(&row)
 			// TODO check prepare state and restart command if pending
-			log.Printf("Loading source %s", info.Name)
 			if err := l.meta.RegisterSource(info); err != nil {
 				return err
 			}
@@ -66,7 +64,6 @@ func (l *Loader) Start() error {
 			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&row)
-			log.Printf("Loading mv %s", info.Name)
 			tk := tableKey{info.SchemaName, info.Name}
 			_, ok := mvTables[tk]
 			if ok {
