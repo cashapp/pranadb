@@ -11,8 +11,10 @@ const (
 	InvalidStatement
 	UnknownSessionID
 	InvalidConfiguration
+	UnknownSource
+	UnknownMaterializedView
+	UnknownPreparedStatement
 
-	PreparedStatementDoesNotExist
 	UnknownBrokerName
 	MissingKafkaBrokers
 	MissingTopicInfo
@@ -39,6 +41,18 @@ func NewUnknownSessionIDError(sessionID string) PranaError {
 
 func NewInvalidConfigurationError(msg string) PranaError {
 	return NewPranaErrorf(InvalidConfiguration, "Invalid configuration: %s", msg)
+}
+
+func NewUnknownSourceError(schemaName string, sourceName string) PranaError {
+	return NewPranaErrorf(UnknownSource, "Unknown source: %s.%s", schemaName, sourceName)
+}
+
+func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaError {
+	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
+}
+
+func NewUnknownPreparedStatementError(psID int64) PranaError {
+	return NewPranaErrorf(UnknownPreparedStatement, "Unknown prepared statement, id: %d", psID)
 }
 
 func NewPranaErrorf(errorCode ErrorCode, msgFormat string, args ...interface{}) PranaError {

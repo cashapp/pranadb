@@ -53,4 +53,11 @@ select * from test_source_1 order by col0;
 
 drop source test_source_1;
 0 rows returned
+
+select * from test_source_1 order by col0;
+Failed to execute statement: PDB0002 - Table 'test.test_source_1' doesn't exist
+
+drop source test_source_1;
+Failed to execute statement: PDB0005 - Unknown source: test.test_source_1
+
 --delete topic testtopic;

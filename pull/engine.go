@@ -82,7 +82,7 @@ func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exe
 func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
 	ps, ok := session.PsCache[psID]
 	if !ok {
-		return nil, perrors.NewPranaErrorf(perrors.PreparedStatementDoesNotExist, "cannot find prepared statement with id %d", psID)
+		return nil, perrors.NewUnknownPreparedStatementError(psID)
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
 	session.PullPlanner().SetPSArgs(args)

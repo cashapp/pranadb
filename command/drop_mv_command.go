@@ -134,7 +134,7 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 
 	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, c.mvName)
 	if !ok {
-		return nil, perrors.MaybeAddStack(fmt.Errorf("unknown mv %s", c.mvName))
+		return nil, perrors.NewUnknownMaterializedViewError(c.schemaName, c.mvName)
 	}
 	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
 	return mv, err
