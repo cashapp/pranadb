@@ -38,10 +38,14 @@ select * from test_mv_1 order by col0;
 
 select * from test_mv_1 order by col0;
 
+-- try and drop the source before the MV is dropped - this should fail;
+drop source test_source_1;
+
 drop materialized view test_mv_1;
 
 select * from test_mv_1 order by col0;
 
+-- try and drop it again;
 drop materialized view test_mv_1;
 
 drop source test_source_1;

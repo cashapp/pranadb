@@ -1,0 +1,128 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+select * from test_source_1 order by col0 asc;
+select * from test_mv_1 order by col0 asc;
+select * from test_source_1 order by col0 desc;
+select * from test_mv_1 order by col0 desc;
+
+select * from test_source_1 order by col1;
+select * from test_mv_1 order by col1;
+select * from test_source_1 order by col1 asc;
+select * from test_mv_1 order by col1 asc;
+select * from test_source_1 order by col1 desc;
+select * from test_mv_1 order by col1 desc;
+
+select * from test_source_1 order by col2;
+select * from test_mv_1 order by col2;
+select * from test_source_1 order by col2 asc;
+select * from test_mv_1 order by col2 asc;
+select * from test_source_1 order by col2 desc;
+select * from test_mv_1 order by col2 desc;
+
+select * from test_source_1 order by col3;
+select * from test_mv_1 order by col3;
+select * from test_source_1 order by col3 asc;
+select * from test_mv_1 order by col3 asc;
+select * from test_source_1 order by col3 desc;
+select * from test_mv_1 order by col3 desc;
+
+select * from test_source_1 order by col4;
+select * from test_mv_1 order by col4;
+select * from test_source_1 order by col4 asc;
+select * from test_mv_1 order by col4 asc;
+select * from test_source_1 order by col4 desc;
+select * from test_mv_1 order by col4 desc;
+
+select * from test_source_1 order by col5;
+select * from test_mv_1 order by col5;
+select * from test_source_1 order by col5 asc;
+select * from test_mv_1 order by col5 asc;
+select * from test_source_1 order by col5 desc;
+select * from test_mv_1 order by col5 desc;
+
+select * from test_source_1 order by col6;
+select * from test_mv_1 order by col6;
+select * from test_source_1 order by col6 asc;
+select * from test_mv_1 order by col6 asc;
+select * from test_source_1 order by col6 desc;
+select * from test_mv_1 order by col6 desc;
+
+-- test empty source/mv;
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+create materialized view test_mv_2 as select * from test_source_2;
+
+select * from test_source_2 order by col0;
+select * from test_mv_2 order by col0;
+
+select col0, col1, col2, col3, col4, col5, col6 from test_source_2 order by col0;
+select col0, col1, col2, col3, col4, col5, col6 from test_mv_2 order by col0;
+
+-- TODO test order by with multiple columns;
+
+drop materialized view test_mv_2;
+drop source test_source_2;
+
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+--delete topic testtopic;

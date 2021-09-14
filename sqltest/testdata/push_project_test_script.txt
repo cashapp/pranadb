@@ -72,6 +72,15 @@ create materialized view test_mv_10 as select col2, col4 from test_source_1;
 select * from test_mv_10 order by col2;
 select col2, col4 from test_mv_10 order by col2;
 
+create materialized view test_mv_11 as select * from test_source_1;
+select * from test_mv_11 order by col1;
+
+create materialized view test_mv_12 as select col6, col5, col4, col3, col2, col1 from test_source_1;
+select * from test_mv_12 order by col1;
+select col6, col5, col4, col3, col2, col1 from test_mv_12 order by col1;
+
+drop materialized view test_mv_12;
+drop materialized view test_mv_11;
 drop materialized view test_mv_10;
 drop materialized view test_mv_9;
 drop materialized view test_mv_8;
