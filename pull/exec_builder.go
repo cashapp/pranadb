@@ -139,7 +139,11 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 				}
 			}
 		}
-		executor, err = exec.NewPullTableScan(tbl.GetTableInfo(), p.cluster, session.QueryInfo.ShardID, scanRange)
+		var colIndexes []int
+		for _, col := range op.Columns {
+			colIndexes = append(colIndexes, col.Offset)
+		}
+		executor, err = exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, session.QueryInfo.ShardID, scanRange)
 		if err != nil {
 			return nil, err
 		}

@@ -376,7 +376,7 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRang
 
 	insertRowsIntoTable(t, shardID, &tableInfoAfter, inpRows, clust)
 
-	ts, err := NewPullTableScan(&tableInfo, clust, shardID, scanRange)
+	ts, err := NewPullTableScan(&tableInfo, nil, clust, shardID, scanRange)
 	require.NoError(t, err)
 
 	return ts, clust

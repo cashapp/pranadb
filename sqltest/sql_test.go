@@ -32,7 +32,6 @@ import (
 // Set this to the name of a test if you want to only run that test, e.g. during development
 const (
 	TestPrefix         = ""
-	TestSchemaName     = "test"
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
 )
@@ -325,17 +324,18 @@ func (w *sqlTestsuite) teardown() {
 }
 
 type sqlTest struct {
-	testSuite    *sqlTestsuite
-	testName     string
-	scriptFile   string
-	testDataFile string
-	outFile      string
-	output       *strings.Builder
-	rnd          *rand.Rand
-	prana        *server.Server
-	topics       []*kafka.Topic
-	cli          *client.Client
-	sessionID    string
+	testSuite     *sqlTestsuite
+	testName      string
+	scriptFile    string
+	testDataFile  string
+	outFile       string
+	output        *strings.Builder
+	rnd           *rand.Rand
+	prana         *server.Server
+	topics        []*kafka.Topic
+	cli           *client.Client
+	sessionID     string
+	currentSchema string
 }
 
 func (st *sqlTest) run() {
@@ -443,12 +443,17 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		// Script should delete all it's table and MV. Once they are all deleted the schema will automatically
 		// be removed, so should not exist at end of test
-		sch, ok := prana.GetMetaController().GetSchema(TestSchemaName)
-		if ok {
-			// Must be empty
-			require.Equal(0, sch.LenTables(), fmt.Sprintf("Schema %s is not empty at end of test. Did you drop all the tables and materialized views?", sch.Name))
-		} else {
-			require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
+		schemaNames := prana.GetMetaController().GetSchemaNames()
+		for _, schemaName := range schemaNames {
+			if schemaName != "sys" {
+				sch, ok := prana.GetMetaController().GetSchema(schemaName)
+				if ok {
+					// Must be empty
+					require.Equal(0, sch.LenTables(), fmt.Sprintf("Schema %s is not empty at end of test. Did you drop all the tables and materialized views?", sch.Name))
+				} else {
+					require.False(ok, fmt.Sprintf("Test schema exists: %v. Did you drop all the tables and materialized views?", sch))
+				}
+			}
 		}
 
 		// This can be async - a replica can be taken off line and snap-shotted while the delete range is occurring
@@ -598,7 +603,8 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 				continue
 			}
 			sourceName := parts[1]
-			sourceInfo, ok := st.prana.GetMetaController().GetSource(TestSchemaName, sourceName)
+			require.NotEmpty(st.currentSchema, "no schema selected")
+			sourceInfo, ok := st.prana.GetMetaController().GetSource(st.currentSchema, sourceName)
 			require.True(ok, fmt.Sprintf("unknown source %s", sourceName))
 			if lp == 3 {
 				encoderName := parts[2]
@@ -757,7 +763,8 @@ func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string)
 	failTime, err := strconv.ParseInt(sFailTime, 10, 64)
 	require.NoError(err)
 	dur := time.Millisecond * time.Duration(failTime)
-	srcInfo, ok := st.prana.GetMetaController().GetSource(TestSchemaName, sourceNae)
+	require.NotEmpty(st.currentSchema, "no schema selected")
+	srcInfo, ok := st.prana.GetMetaController().GetSource(st.currentSchema, sourceNae)
 	require.True(ok)
 	groupID := source.GenerateGroupID(TestClusterID, srcInfo)
 	err = st.testSuite.fakeKafka.InjectFailure(topicName, groupID, dur)
@@ -795,7 +802,8 @@ func (st *sqlTest) executeWaitForCommitted(require *require.Assertions, command 
 	sNumRows := parts[1]
 	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
 	require.NoError(err)
-	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.NotEmpty(st.currentSchema, "no schema selected")
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(st.currentSchema, sourceName)
 	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
 	st.waitForCommitted(require, int(numrows), sourceInfo.ID)
 }
@@ -822,7 +830,8 @@ func (st *sqlTest) executeWaitForDuplicates(require *require.Assertions, command
 	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
 	require.NoError(err)
 
-	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.NotEmpty(st.currentSchema, "no schema selected")
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(st.currentSchema, sourceName)
 	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
 
 	ok, err = commontest.WaitUntilWithError(func() (bool, error) {
@@ -855,7 +864,8 @@ func (st *sqlTest) executeDisableCommitOffsets(require *require.Assertions, comm
 }
 
 func (st *sqlTest) setCommitOffsets(require *require.Assertions, sourceName string, enable bool) {
-	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(TestSchemaName, sourceName)
+	require.NotEmpty(st.currentSchema, "no schema selected")
+	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(st.currentSchema, sourceName)
 	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
 	for _, server := range st.testSuite.pranaCluster {
 		source, err := server.GetPushEngine().GetSource(sourceInfo.ID)
@@ -873,11 +883,18 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
+	isUse := strings.HasPrefix(statement, "use ")
 	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
 	require.NoError(err)
+	lastLine := ""
 	for line := range resChan {
 		log.Infof("output:%s", line)
 		st.output.WriteString(line + "\n")
+		lastLine = line
+	}
+	successful := lastLine == "0 rows returned"
+	if isUse && successful {
+		st.currentSchema = statement[4:]
 	}
 	end := time.Now()
 	dur := end.Sub(start)
