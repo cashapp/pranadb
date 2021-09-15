@@ -25,7 +25,7 @@ type Client struct {
 	serverAddress         string
 	conn                  *grpc.ClientConn
 	client                service.PranaDBServiceClient
-	executing             bool
+	currentStatement      string
 	sessionIDs            map[string]struct{}
 	heartbeatTimer        *time.Timer
 	heartbeatSendInterval time.Duration
@@ -75,8 +75,8 @@ func (c *Client) CreateSession() (string, error) {
 	if !c.started {
 		return "", errors.New("not started")
 	}
-	if c.executing {
-		return "", errors.New("statement currently executing")
+	if c.currentStatement != "" {
+		return "", fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -93,8 +93,8 @@ func (c *Client) CloseSession(sessionID string) error {
 	if !c.started {
 		return errors.New("not started")
 	}
-	if c.executing {
-		return errors.New("statement currently executing")
+	if c.currentStatement != "" {
+		return fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
 	delete(c.sessionIDs, sessionID)
@@ -109,11 +109,11 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 	if !c.started {
 		return nil, errors.New("not started")
 	}
-	if c.executing {
-		return nil, errors.New("statement already executing")
+	if c.currentStatement != "" {
+		return nil, fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	ch := make(chan string, maxBufferedLines)
-	c.executing = true
+	c.currentStatement = statement
 	go c.doExecuteStatement(sessionID, statement, ch)
 	return ch, nil
 }
@@ -130,7 +130,7 @@ func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan 
 	}
 	close(ch)
 	c.lock.Lock()
-	c.executing = false
+	c.currentStatement = ""
 	c.lock.Unlock()
 }
 
