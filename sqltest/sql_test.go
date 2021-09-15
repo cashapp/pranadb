@@ -631,7 +631,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			require.Equal(len(currDataSet.colTypes), len(parts), fmt.Sprintf("source %s has %d columns but data has %d columns at line %d in file %s", currDataSet.sourceInfo.Name, len(currDataSet.colTypes), len(parts), lineNum, fileName))
 			for i, colType := range currDataSet.colTypes {
 				part := parts[i]
-				if part == "" {
+				if part == "null" {
 					currDataSet.rows.AppendNullToColumn(i)
 				} else {
 					switch colType.Type {

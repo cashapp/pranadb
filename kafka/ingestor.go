@@ -40,6 +40,9 @@ func IngestRow(topic *Topic, row *common.Row, colTypes []common.ColumnType, keyC
 }
 
 func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interface{}, error) {
+	if row.IsNull(colIndex) {
+		return nil, nil
+	}
 	var colVal interface{}
 	switch colType.Type {
 	case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:

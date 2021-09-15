@@ -177,26 +177,31 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 				row := rows.GetRow(ri)
 				sb := strings.Builder{}
 				sb.WriteRune('|')
-				for ci, ct := range rows.ColumnTypes() {
-					var sc string
-					switch ct.Type {
-					case common.TypeVarchar:
-						sc = row.GetString(ci)
-					case common.TypeTinyInt, common.TypeBigInt, common.TypeInt:
-						sc = fmt.Sprintf("%v", row.GetInt64(ci))
-					case common.TypeDecimal:
-						dec := row.GetDecimal(ci)
-						sc = dec.String()
-					case common.TypeDouble:
-						sc = fmt.Sprintf("%g", row.GetFloat64(ci))
-					case common.TypeTimestamp:
-						ts := row.GetTimestamp(ci)
-						sc = ts.String()
-					case common.TypeUnknown:
-						sc = "??"
+				for colIndex, colType := range rows.ColumnTypes() {
+					if row.IsNull(colIndex) {
+						log.Println("*****NULL&&&&&&&&")
+						sb.WriteString("null|")
+					} else {
+						var sc string
+						switch colType.Type {
+						case common.TypeVarchar:
+							sc = row.GetString(colIndex)
+						case common.TypeTinyInt, common.TypeBigInt, common.TypeInt:
+							sc = fmt.Sprintf("%v", row.GetInt64(colIndex))
+						case common.TypeDecimal:
+							dec := row.GetDecimal(colIndex)
+							sc = dec.String()
+						case common.TypeDouble:
+							sc = fmt.Sprintf("%g", row.GetFloat64(colIndex))
+						case common.TypeTimestamp:
+							ts := row.GetTimestamp(colIndex)
+							sc = ts.String()
+						case common.TypeUnknown:
+							sc = "??"
+						}
+						sb.WriteString(sc)
+						sb.WriteRune('|')
 					}
-					sb.WriteString(sc)
-					sb.WriteRune('|')
 				}
 				ch <- sb.String()
 				rowCount++
