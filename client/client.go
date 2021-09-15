@@ -179,7 +179,6 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 				sb.WriteRune('|')
 				for colIndex, colType := range rows.ColumnTypes() {
 					if row.IsNull(colIndex) {
-						log.Println("*****NULL&&&&&&&&")
 						sb.WriteString("null|")
 					} else {
 						var sc string
