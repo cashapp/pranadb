@@ -1,0 +1,192 @@
+--create topic testtopic1;
+use test;
+create source test_source_1(
+    col0_1 bigint,
+    col1_1 tinyint,
+    col2_1 int,
+    col3_1 double,
+    col4_1 decimal(10, 2),
+    col5_1 varchar,
+    col6_1 timestamp(6),
+    primary key (col0_1)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+select * from test_source_1 order by col0_1;
+
+--load data dataset_1;
+select * from test_source_1 order by col0_1;
+
+--create topic testtopic2;
+create source test_source_2(
+    col0_2 bigint,
+    col1_2 tinyint,
+    col2_2 int,
+    col3_2 double,
+    col4_2 decimal(10, 2),
+    col5_2 varchar,
+    col6_2 timestamp(6),
+    primary key (col0_2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+select * from test_source_2 order by col0_2;
+
+--load data dataset_2;
+select * from test_source_2 order by col0_2;
+
+--create topic testtopic3;
+create source test_source_3(
+    col0_3 bigint,
+    col1_3 tinyint,
+    col2_3 int,
+    col3_3 double,
+    col4_3 decimal(10, 2),
+    col5_3 varchar,
+    col6_3 timestamp(6),
+    primary key (col0_3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+select * from test_source_3 order by col0_3;
+
+--load data dataset_3;
+select * from test_source_3 order by col0_3;
+
+--load data dataset_4;
+select * from test_source_1 order by col0_1;
+
+--load data dataset_5;
+select * from test_source_2 order by col0_2;
+
+--load data dataset_6;
+select * from test_source_3 order by col0_3;
+
+--try and create source with same name;
+create source test_source_3(
+    col0_3 bigint,
+    col1_3 tinyint,
+    col2_3 int,
+    col3_3 double,
+    col4_3 decimal(10, 2),
+    col5_3 varchar,
+    col6_3 timestamp(6),
+    primary key (col0_3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+drop source test_source_3;
+select * from test_source_3 order by col0_3;
+
+drop source test_source_2;
+select * from test_source_2 order by col0_2;
+
+drop source test_source_1;
+select * from test_source_1 order by col0_1;
+
+--recreate source;
+create source test_source_1(
+    col0_1 bigint,
+    col1_1 tinyint,
+    col2_1 int,
+    col3_1 double,
+    col4_1 decimal(10, 2),
+    col5_1 varchar,
+    col6_1 timestamp(6),
+    primary key (col0_1)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+select * from test_source_1 order by col0_1;
+
+--load data dataset_1;
+select * from test_source_1 order by col0_1;
+
+drop source test_source_1;
+
+--try and drop it again;
+drop source test_source_1;
+
+--delete topic testtopic3;
+--delete topic testtopic2;
+--delete topic testtopic1;

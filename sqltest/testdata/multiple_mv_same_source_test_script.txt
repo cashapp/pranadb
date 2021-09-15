@@ -1,0 +1,51 @@
+--create topic testtopic1;
+use test;
+create source test_source_1(
+    col0_1 bigint,
+    col1_1 tinyint,
+    col2_1 int,
+    col3_1 double,
+    col4_1 decimal(10, 2),
+    col5_1 varchar,
+    col6_1 timestamp(6),
+    primary key (col0_1)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+create materialized view test_mv_1 as select * from test_source_1 where col0_1 >= 1 and col0_1 < 6;
+create materialized view test_mv_2 as select * from test_source_1 where col0_1 >= 6 and col0_1 < 14;
+create materialized view test_mv_3 as select * from test_source_1 where col0_1 >= 14;
+
+--load data dataset_1;
+
+select * from test_mv_1 order by col0_1;
+select * from test_mv_2 order by col0_1;
+select * from test_mv_3 order by col0_1;
+
+--load data dataset_2;
+
+select * from test_mv_1 order by col0_1;
+select * from test_mv_2 order by col0_1;
+select * from test_mv_3 order by col0_1;
+
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_1;
+--delete topic testtopic1;

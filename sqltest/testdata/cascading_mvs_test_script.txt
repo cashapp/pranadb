@@ -1,0 +1,87 @@
+--test chain of MVs sourcing from one another;
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_1;
+
+create materialized view test_mv_1 as select * from test_source_1;
+create materialized view test_mv_2 as select * from test_mv_1 where col0 > 2;
+create materialized view test_mv_3 as select * from test_mv_2 where col0 > 6;
+create materialized view test_mv_4 as select * from test_mv_3 where col0 > 10;
+create materialized view test_mv_5 as select * from test_mv_4 where col0 > 15;
+
+select * from test_mv_1 order by col0;
+select * from test_mv_2 order by col0;
+select * from test_mv_3 order by col0;
+select * from test_mv_4 order by col0;
+select * from test_mv_5 order by col0;
+
+--load data dataset_2;
+
+select * from test_mv_1 order by col0;
+select * from test_mv_2 order by col0;
+select * from test_mv_3 order by col0;
+select * from test_mv_4 order by col0;
+select * from test_mv_5 order by col0;
+
+create materialized view test_mv_6 as select * from test_mv_5 where col0 > 17;
+select * from test_mv_6 order by col0;
+
+--now try and drop mvs when they stil have children - this should fail;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+
+--now restart - they should be recreated properly on restart;
+--restart cluster;
+
+use test;
+
+select * from test_mv_1 order by col0;
+select * from test_mv_2 order by col0;
+select * from test_mv_3 order by col0;
+select * from test_mv_4 order by col0;
+select * from test_mv_5 order by col0;
+select * from test_mv_6 order by col0;
+
+
+drop materialized view test_mv_6;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+--delete topic testtopic;

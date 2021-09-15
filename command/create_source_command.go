@@ -72,6 +72,10 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	if err != nil {
 		return err
 	}
+	_, ok := c.e.metaController.GetSource(c.schemaName, c.sourceInfo.Name)
+	if ok {
+		return perrors.NewSourceAlreadyExistsError(c.schemaName, c.sourceInfo.Name)
+	}
 	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
 }
 

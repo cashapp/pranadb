@@ -43,6 +43,8 @@ func (l *Loader) Start() error {
 	}
 	mvTables := make(map[tableKey]*MVTables)
 
+	// MVs must be started in the load order so we maintain a slice
+	var mvsToStart []tableKey
 	var srcsToStart []*source.Source
 
 	for i := 0; i < rows.RowCount(); i++ {
@@ -69,6 +71,7 @@ func (l *Loader) Start() error {
 			}
 			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
 			mvTables[tk] = mvt
+			mvsToStart = append(mvsToStart, tk)
 		case meta.TableKindInternal:
 			info := meta.DecodeInternalTableInfoRow(&row)
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
@@ -83,7 +86,8 @@ func (l *Loader) Start() error {
 		}
 	}
 
-	for _, mvt := range mvTables {
+	for _, tk := range mvsToStart {
+		mvt := mvTables[tk]
 		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
 		mv, err := push.CreateMaterializedView(
 			l.pushEngine,

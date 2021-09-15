@@ -65,6 +65,15 @@ func (c *DropSourceCommand) BeforePrepare() error {
 	}
 	c.sourceInfo = sourceInfo
 
+	source, err := c.e.pushEngine.GetSource(sourceInfo.ID)
+	if err != nil {
+		return err
+	}
+	consuming := source.GetConsumingMVs()
+	if len(consuming) != 0 {
+		return perrors.NewSourceHasChildrenError(c.sourceInfo.SchemaName, c.sourceInfo.Name, consuming)
+	}
+
 	// Update row in tables table to mark it as pending delete
 	return c.e.metaController.PersistSource(sourceInfo, meta.PrepareStateDelete)
 }

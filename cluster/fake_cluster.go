@@ -200,8 +200,8 @@ func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
 }
 
 func (f *FakeCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix)
 }
 
@@ -230,8 +230,8 @@ func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix [
 }
 
 func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, shardID := range f.allShardIds {
 		if err := f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix); err != nil {
 			return err

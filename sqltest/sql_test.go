@@ -306,7 +306,7 @@ func (w *sqlTestsuite) startCluster() {
 			log.Infof("Starting prana node %d", ind)
 			err := prana.Start()
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("Failed to start cluster %+v", err)
 			}
 			wg.Done()
 		}()
@@ -483,6 +483,12 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 		rows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from tables ")
 		require.NoError(err)
+		if rows.RowCount() != 0 {
+			for i := 0; i < rows.RowCount(); i++ {
+				row := rows.GetRow(i)
+				log.Println(row.String())
+			}
+		}
 		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
