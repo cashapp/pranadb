@@ -131,7 +131,7 @@ func (c *Controller) GetSchemaNames() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	var schemaNames []string
-	for name, _ := range c.schemas {
+	for name := range c.schemas {
 		schemaNames = append(schemaNames, name)
 	}
 	return schemaNames
