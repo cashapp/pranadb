@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -11,24 +12,41 @@ import (
 
 type Aggregator struct {
 	pushExecutorBase
-	aggFuncs     []aggfuncs.AggregateFunction
-	AggTableInfo *common.TableInfo
-	groupByCols  []int
-	storage      cluster.Cluster
-	sharder      *sharder.Sharder
+	aggFuncs            []aggfuncs.AggregateFunction
+	PartialAggTableInfo *common.TableInfo
+	FullAggTableInfo    *common.TableInfo
+	groupByCols         []int // The group by column indexes in the child
+	storage             cluster.Cluster
+	sharder             *sharder.Sharder
 }
 
 type AggregateFunctionInfo struct {
-	FuncType aggfuncs.AggFunctionType
-	Distinct bool
-	ArgExpr  *common.Expression
+	FuncType   aggfuncs.AggFunctionType
+	Distinct   bool
+	ArgExpr    *common.Expression
+	ReturnType common.ColumnType
 }
 
-func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo, groupByCols []int,
-	storage cluster.Cluster, sharder *sharder.Sharder) (*Aggregator, error) {
+type aggStateHolder struct {
+	aggState        *aggfuncs.AggState
+	initialRowBytes []byte
+	keyBytes        []byte
+	rowBytes        []byte
+	initialRow      *common.Row
+	row             *common.Row
+}
+
+func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, partialAggTableInfo *common.TableInfo,
+	fullAggTableInfo *common.TableInfo, groupByCols []int, storage cluster.Cluster, sharder *sharder.Sharder) (*Aggregator, error) {
+
+	colTypes := make([]common.ColumnType, len(aggFunctions))
+	for i, aggFunc := range aggFunctions {
+		colTypes[i] = aggFunc.ReturnType
+	}
+	partialAggTableInfo.ColumnTypes = colTypes
+	fullAggTableInfo.ColumnTypes = colTypes
 	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
-		colNames:    colNames,
 		colTypes:    colTypes,
 		keyCols:     pkCols,
 		rowsFactory: rf,
@@ -38,192 +56,291 @@ func NewAggregator(colNames []string, colTypes []common.ColumnType, pkCols []int
 		return nil, err
 	}
 	return &Aggregator{
-		pushExecutorBase: pushBase,
-		aggFuncs:         aggFuncs,
-		AggTableInfo:     aggTableInfo,
-		groupByCols:      groupByCols,
-		storage:          storage,
-		sharder:          sharder,
+		pushExecutorBase:    pushBase,
+		aggFuncs:            aggFuncs,
+		PartialAggTableInfo: partialAggTableInfo,
+		FullAggTableInfo:    fullAggTableInfo,
+		groupByCols:         groupByCols,
+		storage:             storage,
+		sharder:             sharder,
 	}, nil
 }
 
-func createAggFunctions(aggFunctionInfos []*AggregateFunctionInfo, colTypes []common.ColumnType) ([]aggfuncs.AggregateFunction, error) {
-	aggFuncs := make([]aggfuncs.AggregateFunction, len(aggFunctionInfos))
-	for index, funcInfo := range aggFunctionInfos {
-		argExpr := funcInfo.ArgExpr
-		valueType := colTypes[index]
-		aggFunc, err := aggfuncs.NewAggregateFunction(argExpr, funcInfo.FuncType, valueType)
-		if err != nil {
-			return nil, err
-		}
-		aggFuncs[index] = aggFunc
-	}
-	return aggFuncs, nil
-}
+func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 
-func (a *Aggregator) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
-	for i := 0; i < rows.RowCount(); i++ {
-
-		row := rows.GetRow(i)
-		key := make([]byte, 0, 8)
-		incomingColTypes := a.children[0].ColTypes()
-		key, err := common.EncodeKeyCols(&row, a.groupByCols, incomingColTypes, key)
-		if err != nil {
-			return err
-		}
-
-		remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, key)
-		if err != nil {
-			return err
-		}
-		if remoteShardID == ctx.WriteBatch.ShardID {
-			// Destination shard is same as this one, so no need for remote send
-			return a.HandleRemoteRows(rows, ctx)
-		}
-		err = ctx.Mover.QueueForRemoteSend(remoteShardID, &row, ctx.WriteBatch.ShardID, a.AggTableInfo.ID, incomingColTypes, ctx.WriteBatch)
-		if err != nil {
+	// We first calculate the partial aggregations locally
+	stateHolders := make(map[string]*aggStateHolder)
+	numRows := rowsBatch.Len()
+	readRows := a.rowsFactory.NewRows(numRows)
+	for i := 0; i < numRows; i++ {
+		row := rowsBatch.CurrentRow(i)
+		if err := a.calcPartialAggregations(row, readRows, stateHolders, ctx.WriteBatch.ShardID); err != nil {
 			return err
 		}
 	}
 
+	// Store the results locally
+	if err := a.storeAggregateResults(stateHolders, ctx.WriteBatch); err != nil {
+		return err
+	}
+
+	// We send the partial aggregation results to the shard that owns the key
+	for _, stateHolder := range stateHolders {
+		if stateHolder.aggState.IsChanged() {
+			// We ignore the first 16 bytes as this is shard-id|table-id
+			remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, stateHolder.keyBytes[16:])
+			if err != nil {
+				return err
+			}
+			if err := ctx.Mover.QueueForRemoteSend(remoteShardID, stateHolder.initialRowBytes, stateHolder.rowBytes,
+				ctx.WriteBatch.ShardID, a.FullAggTableInfo.ID, ctx.WriteBatch); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
-func (a *Aggregator) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
+// HandleRemoteRows is called when partial aggregation is forwarded from another shard
+func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 
-	aggStates := make(map[string]*aggfuncs.AggState)
-
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		err := a.calcAggregations(&row, ctx, aggStates)
-		if err != nil {
+	numRows := rowsBatch.Len()
+	stateHolders := make(map[string]*aggStateHolder)
+	readRows := a.rowsFactory.NewRows(numRows)
+	numCols := len(a.colTypes)
+	for i := 0; i < numRows; i++ {
+		prevRow := rowsBatch.PreviousRow(i)
+		currRow := rowsBatch.CurrentRow(i)
+		if err := a.calcFullAggregation(prevRow, currRow, readRows, stateHolders, ctx.WriteBatch.ShardID, numCols); err != nil {
 			return err
 		}
 	}
 
-	resultRows := a.rowsFactory.NewRows(len(aggStates))
-	for _, aggState := range aggStates {
-		for i, colType := range a.colTypes {
-			if aggState.IsNull(i) {
-				resultRows.AppendNullToColumn(i)
-			} else {
-				switch colType.Type {
-				case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-					resultRows.AppendInt64ToColumn(i, aggState.GetInt64(i))
-				case common.TypeDecimal:
-					// TODO
-				case common.TypeDouble:
-					resultRows.AppendFloat64ToColumn(i, aggState.GetFloat64(i))
-				case common.TypeVarchar:
-					strPtr := aggState.GetString(i)
-					resultRows.AppendStringToColumn(i, *strPtr)
-				case common.TypeTimestamp:
-					ts, err := aggState.GetTimestamp(i)
-					if err != nil {
-						return err
-					}
-					resultRows.AppendTimestampToColumn(i, ts)
-				default:
-					return fmt.Errorf("unexpected column type %d", colType)
-				}
+	// Store the results
+	if err := a.storeAggregateResults(stateHolders, ctx.WriteBatch); err != nil {
+		return err
+	}
+
+	resultRows := a.rowsFactory.NewRows(numRows)
+	entries := make([]RowsEntry, 0, numRows)
+	rc := 0
+
+	// Send the rows to the parent
+	for _, stateHolder := range stateHolders {
+		if stateHolder.aggState.IsChanged() {
+			prevRow := stateHolder.initialRow
+			currRow := stateHolder.row
+			pi := -1
+			if prevRow != nil {
+				resultRows.AppendRow(*prevRow)
+				pi = rc
+				rc++
 			}
+			ci := -1
+			if currRow != nil {
+				resultRows.AppendRow(*currRow)
+				ci = rc
+				rc++
+			}
+			entries = append(entries, NewRowsEntry(pi, ci))
 		}
 	}
 
-	for i := 0; i < resultRows.RowCount(); i++ {
-		row := resultRows.GetRow(i)
-		err := table.Upsert(a.AggTableInfo, &row, ctx.WriteBatch)
-		if err != nil {
-			return err
-		}
-	}
-
-	// FIXME - we don't output all result rows, only ones that have changed
-	return a.parent.HandleRows(resultRows, ctx)
+	return a.parent.HandleRows(NewRowsBatch(resultRows, entries), ctx)
 }
 
-// The cols for the output of an aggregation are:
-// one col holding each aggregate result in the order they appear in the select
-// one col for each original column from the input in the same order as the input
-// There is one agg function for each of the columns above, for aggregate columns,
-// it's the actual aggregate function, otherwise it's a "firstrow" function
-// TODO: break into smaller functions
-// nolint: gocyclo
-func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, aggStates map[string]*aggfuncs.AggState) error {
+func (a *Aggregator) calcPartialAggregations(row *common.Row, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder, shardID uint64) error {
 
-	// TODO this seems unnecessary - we should just lookup the row in storage using the
-	// keyBytes
-	groupByVals := make([]interface{}, len(a.keyCols))
-	for i, groupByCol := range a.groupByCols {
-		colType := a.GetChildren()[0].ColTypes()[groupByCol]
-		var val interface{}
-		null := row.IsNull(groupByCol)
-		if !null {
-			switch colType.Type {
-			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-				val = row.GetInt64(groupByCol)
-			case common.TypeDecimal:
-				// TODO
-			case common.TypeDouble:
-				val = row.GetFloat64(groupByCol)
-			case common.TypeVarchar:
-				val = row.GetString(groupByCol)
-			case common.TypeTimestamp:
-				val = row.GetTimestamp(groupByCol)
-			default:
-				return fmt.Errorf("unexpected column type %d", colType)
-			}
-			groupByVals[i] = val
-		}
-	}
-
-	keyBytes := make([]byte, 0, 8)
-	keyBytes, err := common.EncodeKeyCols(row, a.groupByCols, a.GetChildren()[0].ColTypes(), keyBytes)
+	// Create the key
+	keyBytes, err := a.createKey(row, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.PartialAggTableInfo.ID)
 	if err != nil {
 		return err
 	}
 
-	aggState, ok := aggStates[common.ByteSliceToStringZeroCopy(keyBytes)]
-	if !ok {
+	// Lookup existing aggregate state
+	stateHolder, err := a.loadAggregateState(keyBytes, readRows, aggStateHolders)
+	if err != nil {
+		return err
+	}
 
-		// TODO Seems inefficient to have to encode the key again just to lookup the row -
-		// we should lookup direct in storage - not use table
-		currRow, err := table.LookupInPk(a.AggTableInfo, groupByVals, a.AggTableInfo.PrimaryKeyCols, ctx.WriteBatch.ShardID, a.rowsFactory, a.storage)
+	// Evaluate the agg functions on the state
+	return a.evaluateAggFunctions(stateHolder.aggState, row)
+}
 
-		if err != nil {
+func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
+	stateHolders map[string]*aggStateHolder, shardID uint64, numCols int) error {
+
+	log.Printf("Calculating full agg with row %s", currRow.String())
+
+	key, err := a.createKey(currRow, shardID, a.colTypes, a.keyCols, a.FullAggTableInfo.ID)
+	if err != nil {
+		return err
+	}
+	stateHolder, err := a.loadAggregateState(key, readRows, stateHolders)
+	if err != nil {
+		return err
+	}
+
+	var prevMergeState *aggfuncs.AggState
+	if prevRow != nil {
+		prevMergeState = aggfuncs.NewAggState(numCols)
+		if err := a.initAggStateWithRow(prevRow, prevMergeState, numCols); err != nil {
 			return err
 		}
-		numCols := len(a.colTypes)
-		aggState = aggfuncs.NewAggState(numCols)
-		aggStates[common.ByteSliceToStringZeroCopy(keyBytes)] = aggState
-		if currRow != nil {
-			for i := 0; i < numCols; i++ {
-				colType := a.colTypes[i]
-				if currRow.IsNull(i) {
-					aggState.SetNull(i, true)
-				} else {
-					switch colType.Type {
-					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-						aggState.SetInt64(i, currRow.GetInt64(i))
-					case common.TypeDecimal:
-						// TODO
-					case common.TypeDouble:
-						aggState.SetFloat64(i, currRow.GetFloat64(i))
-					case common.TypeVarchar:
-						strVal := currRow.GetString(i)
-						aggState.SetString(i, &strVal)
-					case common.TypeTimestamp:
-						if err := aggState.SetTimestamp(i, currRow.GetTimestamp(i)); err != nil {
-							return err
-						}
-					default:
-						return fmt.Errorf("unexpected column type %d", colType)
-					}
-				}
-			}
+	}
+	var currMergeState *aggfuncs.AggState
+	if currRow != nil {
+		currMergeState = aggfuncs.NewAggState(numCols)
+		if err := a.initAggStateWithRow(currRow, currMergeState, numCols); err != nil {
+			return err
 		}
 	}
 
+	currAggState := stateHolder.aggState
+	for index, aggFunc := range a.aggFuncs {
+		switch aggFunc.ValueType().Type {
+		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+			if err := aggFunc.MergeInt64(prevMergeState, currMergeState, currAggState, index); err != nil {
+				return err
+			}
+		case common.TypeDecimal:
+			if err := aggFunc.MergeDecimal(prevMergeState, currMergeState, currAggState, index); err != nil {
+				return err
+			}
+		case common.TypeDouble:
+			if err := aggFunc.MergeFloat64(prevMergeState, currMergeState, currAggState, index); err != nil {
+				return err
+			}
+		case common.TypeVarchar:
+			if err := aggFunc.MergeString(prevMergeState, currMergeState, currAggState, index); err != nil {
+				return err
+			}
+		case common.TypeTimestamp:
+			if err := aggFunc.MergeTimestamp(prevMergeState, currMergeState, currAggState, index); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unexpected column type %d", aggFunc.ValueType())
+		}
+	}
+	return nil
+}
+
+func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder) (*aggStateHolder, error) {
+	sKey := common.ByteSliceToStringZeroCopy(keyBytes)
+	stateHolder, ok := aggStateHolders[sKey] // maybe already cached for this batch
+	if !ok {
+		// Nope - try and load the aggregate state from storage
+		rowBytes, err := a.storage.LocalGet(keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		var currRow *common.Row
+		if rowBytes != nil {
+			// Doesn't matter if we use partial or full col types here as they are the same
+			if err := common.DecodeRow(rowBytes, a.PartialAggTableInfo.ColumnTypes, readRows); err != nil {
+				return nil, err
+			}
+			r := readRows.GetRow(readRows.RowCount() - 1)
+			currRow = &r
+		}
+		numCols := len(a.colTypes)
+		aggState := aggfuncs.NewAggState(numCols)
+		stateHolder = &aggStateHolder{aggState: aggState}
+		stateHolder.keyBytes = keyBytes
+		aggStateHolders[sKey] = stateHolder
+		if currRow != nil {
+			// Initialise the agg state with the row from storage
+			if err := a.initAggStateWithRow(currRow, aggState, numCols); err != nil {
+				return nil, err
+			}
+			stateHolder.initialRow = currRow
+		}
+
+		// copy the agg state here and set it as a field on the holder
+		stateHolder.initialRowBytes = rowBytes
+	}
+	return stateHolder, nil
+}
+
+func (a *Aggregator) storeAggregateResults(stateHolders map[string]*aggStateHolder, writeBatch *cluster.WriteBatch) error {
+	resultRows := a.rowsFactory.NewRows(len(stateHolders))
+	rowCount := 0
+	for _, stateHolder := range stateHolders {
+		aggState := stateHolder.aggState
+		if aggState.IsChanged() {
+			for i, colType := range a.colTypes {
+				if aggState.IsNull(i) {
+					resultRows.AppendNullToColumn(i)
+				} else {
+					switch colType.Type {
+					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+						resultRows.AppendInt64ToColumn(i, aggState.GetInt64(i))
+					case common.TypeDecimal:
+						resultRows.AppendDecimalToColumn(i, aggState.GetDecimal(i))
+					case common.TypeDouble:
+						resultRows.AppendFloat64ToColumn(i, aggState.GetFloat64(i))
+					case common.TypeVarchar:
+						str := aggState.GetString(i)
+						resultRows.AppendStringToColumn(i, str)
+					case common.TypeTimestamp:
+						ts, err := aggState.GetTimestamp(i)
+						if err != nil {
+							return err
+						}
+						resultRows.AppendTimestampToColumn(i, ts)
+					default:
+						return fmt.Errorf("unexpected column type %d", colType)
+					}
+					// TODO!! store extra data
+				}
+			}
+			row := resultRows.GetRow(rowCount)
+			stateHolder.row = &row
+			// Doesn't matter if we use partial or full col types here as they are the same
+			valueBuff, err := common.EncodeRow(&row, a.PartialAggTableInfo.ColumnTypes, make([]byte, 0))
+			if err != nil {
+				return err
+			}
+			writeBatch.AddPut(stateHolder.keyBytes, valueBuff)
+			stateHolder.rowBytes = valueBuff
+			rowCount++
+		}
+	}
+	return nil
+}
+
+func (a *Aggregator) initAggStateWithRow(currRow *common.Row, aggState *aggfuncs.AggState, numCols int) error {
+	for i := 0; i < numCols; i++ {
+		colType := a.colTypes[i]
+		if currRow.IsNull(i) {
+			aggState.SetNull(i)
+		} else {
+			switch colType.Type {
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+				aggState.SetInt64(i, currRow.GetInt64(i))
+			case common.TypeDecimal:
+				if err := aggState.SetDecimal(i, currRow.GetDecimal(i)); err != nil {
+					return err
+				}
+			case common.TypeDouble:
+				aggState.SetFloat64(i, currRow.GetFloat64(i))
+			case common.TypeVarchar:
+				strVal := currRow.GetString(i)
+				aggState.SetString(i, strVal)
+			case common.TypeTimestamp:
+				if err := aggState.SetTimestamp(i, currRow.GetTimestamp(i)); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unexpected column type %d", colType)
+			}
+		}
+	}
+	return nil
+}
+
+func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *common.Row) error {
 	for index, aggFunc := range a.aggFuncs {
 		switch aggFunc.ValueType().Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
@@ -236,7 +353,14 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 				return err
 			}
 		case common.TypeDecimal:
-			// TODO
+			arg, null, err := aggFunc.ArgExpression().EvalDecimal(row)
+			if err != nil {
+				return err
+			}
+			err = aggFunc.EvalDecimal(arg, null, aggState, index)
+			if err != nil {
+				return err
+			}
 		case common.TypeDouble:
 			arg, null, err := aggFunc.ArgExpression().EvalFloat64(row)
 			if err != nil {
@@ -268,8 +392,26 @@ func (a *Aggregator) calcAggregations(row *common.Row, ctx *ExecutionContext, ag
 			return fmt.Errorf("unexpected column type %d", aggFunc.ValueType())
 		}
 	}
-
 	return nil
+}
+
+func (a *Aggregator) createKey(row *common.Row, shardID uint64, colTypes []common.ColumnType, keyCols []int, tableID uint64) ([]byte, error) {
+	keyBytes := table.EncodeTableKeyPrefix(tableID, shardID, 25)
+	return common.EncodeKeyCols(row, keyCols, colTypes, keyBytes)
+}
+
+func createAggFunctions(aggFunctionInfos []*AggregateFunctionInfo, colTypes []common.ColumnType) ([]aggfuncs.AggregateFunction, error) {
+	aggFuncs := make([]aggfuncs.AggregateFunction, len(aggFunctionInfos))
+	for index, funcInfo := range aggFunctionInfos {
+		argExpr := funcInfo.ArgExpr
+		valueType := colTypes[index]
+		aggFunc, err := aggfuncs.NewAggregateFunction(argExpr, funcInfo.FuncType, valueType)
+		if err != nil {
+			return nil, err
+		}
+		aggFuncs[index] = aggFunc
+	}
+	return aggFuncs, nil
 }
 
 func (a *Aggregator) ReCalcSchemaFromChildren() error {

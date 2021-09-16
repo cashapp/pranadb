@@ -97,45 +97,66 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			default:
 				return nil, nil, fmt.Errorf("unexpected aggregate function %s", aggFunc.Name)
 			}
+			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
 			af := &exec.AggregateFunctionInfo{
-				FuncType: funcType,
-				Distinct: aggFunc.HasDistinct,
-				ArgExpr:  argExpr,
+				FuncType:   funcType,
+				Distinct:   aggFunc.HasDistinct,
+				ArgExpr:    argExpr,
+				ReturnType: colType,
 			}
 			aggFuncs = append(aggFuncs, af)
 		}
 
 		nonFirstRowFuncs := len(aggFuncs) - firstRowFuncs
 
+		// These are the indexes of the group by cols in the output of the aggregation
 		pkCols := make([]int, len(op.GroupByItems))
+
+		// These are the indexes of the group by cols in the input of the aggregation
 		groupByCols := make([]int, len(op.GroupByItems))
+
 		for i, expr := range op.GroupByItems {
 			col, ok := expr.(*expression.Column)
 			if !ok {
 				return nil, nil, errors.New("group by expression not a column")
 			}
 			groupByCols[i] = col.Index
-			pkCols[i] = col.Index + nonFirstRowFuncs
+			pkCols[i] = i + nonFirstRowFuncs
 		}
 
-		tableID := seqGenerator.GenerateSequence()
-
-		tableName := fmt.Sprintf("%s-aggtable-%d", mvName, aggSequence)
+		partialTableID := seqGenerator.GenerateSequence()
+		partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
 		aggSequence++
-
-		tableInfo := &common.TableInfo{
-			ID:             tableID,
+		partialTableInfo := &common.TableInfo{
+			ID:             partialTableID,
 			SchemaName:     schema.Name,
-			Name:           tableName,
+			Name:           partialTableName,
 			PrimaryKeyCols: pkCols,
 			IndexInfos:     nil, // TODO
+			Internal:       true,
 		}
-		aggInfo := &common.InternalTableInfo{
-			TableInfo:            tableInfo,
+		fullTableID := seqGenerator.GenerateSequence()
+		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
+		aggSequence++
+		fullTableInfo := &common.TableInfo{
+			ID:             fullTableID,
+			SchemaName:     schema.Name,
+			Name:           fullTableName,
+			PrimaryKeyCols: pkCols,
+			IndexInfos:     nil, // TODO
+			Internal:       true,
+		}
+		partialAggInfo := &common.InternalTableInfo{
+			TableInfo:            partialTableInfo,
 			MaterializedViewName: mvName,
 		}
-		internalTables = append(internalTables, aggInfo)
-		executor, err = exec.NewAggregator(nil, nil, pkCols, aggFuncs, tableInfo, groupByCols, m.cluster, m.sharder)
+		internalTables = append(internalTables, partialAggInfo)
+		fullAggInfo := &common.InternalTableInfo{
+			TableInfo:            fullTableInfo,
+			MaterializedViewName: mvName,
+		}
+		internalTables = append(internalTables, fullAggInfo)
+		executor, err = exec.NewAggregator(pkCols, aggFuncs, partialTableInfo, fullTableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, err
 		}

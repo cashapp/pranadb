@@ -1,0 +1,316 @@
+--create topic sensor_readings;
+use test;
+0 rows returned
+create source latest_sensor_readings(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    reading_2 double,
+    reading_3 decimal(10,2),
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5"
+    )
+    properties = (
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from latest_sensor_readings order by sensor_id;
+|sensor_id|country|city|reading_1|reading_2|reading_3|
+|1|uk|london|1000|192.23|123456.33|
+|2|usa|new york|-1501|-563.34|-765432.34|
+|3|au|sydney|372|7890.765|98766554.34|
+|4|uk|london|2012|675.21|9873.74|
+|5|uk|bristol|-192|-876.23|-736464.38|
+|6|usa|new york|-346|-763.97|252673.83|
+|7|au|melbourne|0|764.32|9686.12|
+|8|uk|bristol|453|9867.99|87475.36|
+|9|usa|san francisco|-3736|-543.12|-8575.38|
+|10|au|sydney|2163|0|-38373.36|
+10 rows returned
+
+-- MAX;
+-- ===;
+
+-- No group by;
+
+create materialized view test_mv_1 as select max(reading_1) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_1;
+|max(reading_1)|
+|2163|
+1 rows returned
+
+create materialized view test_mv_2 as select max(reading_2) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_2;
+|max(reading_2)|
+|9867.99|
+1 rows returned
+
+create materialized view test_mv_3 as select max(reading_3) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_3;
+|max(reading_3)|
+|98766554.340000000000000000000000000000|
+1 rows returned
+
+create materialized view test_mv_4 as select max(reading_1) from latest_sensor_readings having max(reading_1) < 0;
+0 rows returned
+select * from test_mv_4;
+|max(reading_1)|
+0 rows returned
+
+create materialized view test_mv_5 as select max(reading_2) from latest_sensor_readings having max(reading_2) < 0;
+0 rows returned
+select * from test_mv_5;
+|max(reading_2)|
+0 rows returned
+
+create materialized view test_mv_6 as select max(reading_3) from latest_sensor_readings having max(reading_3) < 0;
+0 rows returned
+select * from test_mv_6;
+|max(reading_3)|
+0 rows returned
+
+create materialized view test_mv_7 as select max(reading_1) from latest_sensor_readings having max(reading_1) > 0;
+0 rows returned
+select * from test_mv_7;
+|max(reading_1)|
+|2163|
+1 rows returned
+
+create materialized view test_mv_8 as select max(reading_2) from latest_sensor_readings having max(reading_2) > 0;
+0 rows returned
+select * from test_mv_8;
+|max(reading_2)|
+|9867.99|
+1 rows returned
+
+create materialized view test_mv_9 as select max(reading_3) from latest_sensor_readings having max(reading_3) > 0;
+0 rows returned
+select * from test_mv_9;
+|max(reading_3)|
+|98766554.340000000000000000000000000000|
+1 rows returned
+
+-- Group by one column;
+
+create materialized view test_mv_10 as select country, max(reading_1) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_10 order by country;
+|country|max(reading_1)|
+|au|2163|
+|uk|2012|
+|usa|-346|
+3 rows returned
+
+create materialized view test_mv_11 as select country, max(reading_2) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_11 order by country;
+|country|max(reading_2)|
+|au|7890.765|
+|uk|9867.99|
+|usa|-543.12|
+3 rows returned
+
+create materialized view test_mv_12 as select country, max(reading_3) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_12 order by country;
+|country|max(reading_3)|
+|au|98766554.340000000000000000000000000000|
+|uk|123456.330000000000000000000000000000|
+|usa|252673.830000000000000000000000000000|
+3 rows returned
+
+create materialized view test_mv_13 as select country, max(reading_1) from latest_sensor_readings group by country having max(reading_1) > -0;
+0 rows returned
+select * from test_mv_13 order by country;
+|country|max(reading_1)|
+|au|2163|
+|uk|2012|
+2 rows returned
+
+create materialized view test_mv_14 as select country, max(reading_2) from latest_sensor_readings group by country having max(reading_2) > -0;
+0 rows returned
+select * from test_mv_14 order by country;
+|country|max(reading_2)|
+|au|7890.765|
+|uk|9867.99|
+2 rows returned
+
+create materialized view test_mv_15 as select country, max(reading_3) from latest_sensor_readings group by country having max(reading_3) > 200000;
+0 rows returned
+select * from test_mv_15 order by country;
+|country|max(reading_3)|
+|au|98766554.340000000000000000000000000000|
+|usa|252673.830000000000000000000000000000|
+2 rows returned
+
+-- Group by two columns;
+
+create materialized view test_mv_16 as select country, city, max(reading_1) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_16 order by country, city;
+|country|city|max(reading_1)|
+|au|melbourne|0|
+|au|sydney|2163|
+|uk|bristol|453|
+|uk|london|2012|
+|usa|new york|-346|
+|usa|san francisco|-3736|
+6 rows returned
+
+create materialized view test_mv_17 as select country, city, max(reading_2) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_17 order by country, city;
+|country|city|max(reading_2)|
+|au|melbourne|764.32|
+|au|sydney|7890.765|
+|uk|bristol|9867.99|
+|uk|london|675.21|
+|usa|new york|-563.34|
+|usa|san francisco|-543.12|
+6 rows returned
+
+create materialized view test_mv_18 as select country, city, max(reading_3) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_18 order by country, city;
+|country|city|max(reading_3)|
+|au|melbourne|9686.120000000000000000000000000000|
+|au|sydney|98766554.340000000000000000000000000000|
+|uk|bristol|87475.360000000000000000000000000000|
+|uk|london|123456.330000000000000000000000000000|
+|usa|new york|252673.830000000000000000000000000000|
+|usa|san francisco|-8575.380000000000000000000000000000|
+6 rows returned
+
+create materialized view test_mv_19 as select country, city, max(reading_1) from latest_sensor_readings group by country, city having max(reading_1) > 1;
+0 rows returned
+select * from test_mv_19 order by country, city;
+|country|city|max(reading_1)|
+|au|sydney|2163|
+|uk|bristol|453|
+|uk|london|2012|
+3 rows returned
+
+create materialized view test_mv_20 as select country, city, max(reading_2) from latest_sensor_readings group by country, city having max(reading_2) > 1;
+0 rows returned
+select * from test_mv_20 order by country, city;
+|country|city|max(reading_2)|
+|au|melbourne|764.32|
+|au|sydney|7890.765|
+|uk|bristol|9867.99|
+|uk|london|675.21|
+4 rows returned
+
+create materialized view test_mv_21 as select country, city, max(reading_3) from latest_sensor_readings group by country, city having max(reading_3) > 1;
+0 rows returned
+select * from test_mv_21 order by country, city;
+|country|city|max(reading_3)|
+|au|melbourne|9686.120000000000000000000000000000|
+|au|sydney|98766554.340000000000000000000000000000|
+|uk|bristol|87475.360000000000000000000000000000|
+|uk|london|123456.330000000000000000000000000000|
+|usa|new york|252673.830000000000000000000000000000|
+5 rows returned
+
+-- without aggregate in projection;
+
+create materialized view test_mv_22 as select country, city from latest_sensor_readings group by country, city having max(reading_1) > 1;
+0 rows returned
+select * from test_mv_22 order by country, city;
+|country|city|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+3 rows returned
+
+create materialized view test_mv_23 as select country, city from latest_sensor_readings group by country, city having max(reading_2) > 1;
+0 rows returned
+select * from test_mv_23 order by country, city;
+|country|city|
+|au|melbourne|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+4 rows returned
+
+create materialized view test_mv_24 as select country, city from latest_sensor_readings group by country, city having max(reading_3) > 1;
+0 rows returned
+select * from test_mv_24 order by country, city;
+|country|city|
+|au|melbourne|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+|usa|new york|
+5 rows returned
+
+drop materialized view test_mv_24;
+0 rows returned
+drop materialized view test_mv_23;
+0 rows returned
+drop materialized view test_mv_22;
+0 rows returned
+drop materialized view test_mv_21;
+0 rows returned
+drop materialized view test_mv_20;
+0 rows returned
+drop materialized view test_mv_19;
+0 rows returned
+drop materialized view test_mv_18;
+0 rows returned
+drop materialized view test_mv_17;
+0 rows returned
+drop materialized view test_mv_16;
+0 rows returned
+drop materialized view test_mv_15;
+0 rows returned
+drop materialized view test_mv_14;
+0 rows returned
+drop materialized view test_mv_13;
+0 rows returned
+drop materialized view test_mv_12;
+0 rows returned
+drop materialized view test_mv_11;
+0 rows returned
+drop materialized view test_mv_10;
+0 rows returned
+drop materialized view test_mv_9;
+0 rows returned
+drop materialized view test_mv_8;
+0 rows returned
+drop materialized view test_mv_7;
+0 rows returned
+drop materialized view test_mv_6;
+0 rows returned
+drop materialized view test_mv_5;
+0 rows returned
+drop materialized view test_mv_4;
+0 rows returned
+drop materialized view test_mv_3;
+0 rows returned
+drop materialized view test_mv_2;
+0 rows returned
+drop materialized view test_mv_1;
+0 rows returned
+drop source latest_sensor_readings;
+0 rows returned
+
+--delete topic sensor_readings;

@@ -186,7 +186,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	lc := len(colSelectors)
 	if lc > 0 && lc != len(colTypes) {
 		return nil, perrors.NewPranaErrorf(perrors.WrongNumberColumnSelectors,
-			"if specified, number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
+			"Number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
 	}
 	topicInfo := &common.TopicInfo{
 		BrokerName:     ast.TopicInformation.BrokerName,

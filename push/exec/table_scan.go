@@ -78,39 +78,65 @@ func (t *Scan) ReCalcSchemaFromChildren() error {
 	return nil
 }
 
-func (t *Scan) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
+func (t *Scan) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	numRows := rowsBatch.Len()
 	if t.cols != nil {
-		newRows := t.rowsFactory.NewRows(rows.RowCount())
-		for i := 0; i < rows.RowCount(); i++ {
-			incomingRow := rows.GetRow(i)
-			for i, incomingColIndex := range t.cols {
-				if incomingRow.IsNull(incomingColIndex) {
-					newRows.AppendNullToColumn(i)
-				} else {
-					colType := t.colTypes[i]
-					switch colType.Type {
-					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-						val := incomingRow.GetInt64(incomingColIndex)
-						newRows.AppendInt64ToColumn(i, val)
-					case common.TypeDouble:
-						val := incomingRow.GetFloat64(incomingColIndex)
-						newRows.AppendFloat64ToColumn(i, val)
-					case common.TypeVarchar:
-						val := incomingRow.GetString(incomingColIndex)
-						newRows.AppendStringToColumn(i, val)
-					case common.TypeDecimal:
-						val := incomingRow.GetDecimal(incomingColIndex)
-						newRows.AppendDecimalToColumn(i, val)
-					case common.TypeTimestamp:
-						val := incomingRow.GetTimestamp(incomingColIndex)
-						newRows.AppendTimestampToColumn(i, val)
-					default:
-						return fmt.Errorf("unexpected column type %v", colType)
-					}
+		newRows := t.rowsFactory.NewRows(numRows)
+		entries := make([]RowsEntry, numRows)
+		// Convert the previous and current rows into the required columns
+		rc := 0
+		for i := 0; i < numRows; i++ {
+			pi := -1
+			prevRow := rowsBatch.PreviousRow(i)
+			if prevRow != nil {
+				if err := t.appendResultRow(prevRow, newRows); err != nil {
+					return err
 				}
+				pi = rc
+				rc++
+			}
+			ci := -1
+			currRow := rowsBatch.CurrentRow(i)
+			if currRow != nil {
+				if err := t.appendResultRow(currRow, newRows); err != nil {
+					return err
+				}
+				ci = rc
+				rc++
+			}
+			entries[i] = NewRowsEntry(pi, ci)
+		}
+		return t.parent.HandleRows(NewRowsBatch(newRows, entries), ctx)
+	}
+	return t.parent.HandleRows(rowsBatch, ctx)
+}
+
+func (t *Scan) appendResultRow(row *common.Row, outRows *common.Rows) error {
+	for i, incomingColIndex := range t.cols {
+		if row.IsNull(incomingColIndex) {
+			outRows.AppendNullToColumn(i)
+		} else {
+			colType := t.colTypes[i]
+			switch colType.Type {
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+				val := row.GetInt64(incomingColIndex)
+				outRows.AppendInt64ToColumn(i, val)
+			case common.TypeDouble:
+				val := row.GetFloat64(incomingColIndex)
+				outRows.AppendFloat64ToColumn(i, val)
+			case common.TypeVarchar:
+				val := row.GetString(incomingColIndex)
+				outRows.AppendStringToColumn(i, val)
+			case common.TypeDecimal:
+				val := row.GetDecimal(incomingColIndex)
+				outRows.AppendDecimalToColumn(i, val)
+			case common.TypeTimestamp:
+				val := row.GetTimestamp(incomingColIndex)
+				outRows.AppendTimestampToColumn(i, val)
+			default:
+				return fmt.Errorf("unexpected column type %v", colType)
 			}
 		}
-		return t.parent.HandleRows(newRows, ctx)
 	}
-	return t.parent.HandleRows(rows, ctx)
+	return nil
 }

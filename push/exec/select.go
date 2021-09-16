@@ -2,7 +2,6 @@ package exec
 
 import (
 	"errors"
-
 	"github.com/squareup/pranadb/common"
 )
 
@@ -18,8 +17,7 @@ func NewPushSelect(predicates []*common.Expression) *PushSelect {
 	}
 }
 
-func (p *PushSelect) calculateSchema(childColNames []string, childColTypes []common.ColumnType, childPkCols []int) {
-	p.colNames = childColNames
+func (p *PushSelect) calculateSchema(childColTypes []common.ColumnType, childPkCols []int) {
 	p.colTypes = childColTypes
 	p.keyCols = childPkCols
 	p.rowsFactory = common.NewRowsFactory(p.colTypes)
@@ -30,31 +28,74 @@ func (p *PushSelect) ReCalcSchemaFromChildren() error {
 		panic("must be one child")
 	}
 	child := p.children[0]
-	p.calculateSchema(child.ColNames(), child.ColTypes(), child.KeyCols())
+	p.calculateSchema(child.ColTypes(), child.KeyCols())
 	return nil
 }
 
-func (p *PushSelect) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
-	result := p.rowsFactory.NewRows(rows.RowCount())
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		ok := true
-		for _, predicate := range p.predicates {
-			accept, isNull, err := predicate.EvalBoolean(&row)
+func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	numRows := rowsBatch.Len()
+	resultRows := p.rowsFactory.NewRows(numRows)
+	resultBatch := NewCurrentRowsBatch(resultRows)
+	for i := 0; i < numRows; i++ {
+
+		currRow := rowsBatch.CurrentRow(i)
+		prevRow := rowsBatch.PreviousRow(i)
+
+		if currRow != nil && prevRow == nil {
+			// A new row
+			ok, err := p.evalPredicates(currRow)
 			if err != nil {
 				return err
 			}
-			if isNull {
-				return errors.New("null returned from evaluating select predicate")
+			if ok {
+				resultBatch.AppendEntry(nil, currRow)
 			}
-			if !accept {
-				ok = false
-				break
+		} else if currRow != nil && prevRow != nil {
+			// A modified row
+			okCurr, err := p.evalPredicates(currRow)
+			if err != nil {
+				return err
 			}
-		}
-		if ok {
-			result.AppendRow(row)
+			okPrev, err := p.evalPredicates(prevRow)
+			if err != nil {
+				return err
+			}
+			if okCurr && okPrev {
+				// Both the current and previous version pass the condition so this remains a modify
+				resultBatch.AppendEntry(prevRow, currRow)
+			} else if !okCurr && okPrev {
+				// Previous value passed the filter but current value doesn't so this becomes a delete
+				resultBatch.AppendEntry(prevRow, nil)
+			} else if okCurr && !okPrev {
+				// Passes now but didn't pass before - becomes an add
+				resultBatch.AppendEntry(nil, currRow)
+			}
+		} else if currRow == nil && prevRow != nil {
+			// A deleted row - pass it through if it previously was passed
+			ok, err := p.evalPredicates(prevRow)
+			if err != nil {
+				return err
+			}
+			if ok {
+				resultBatch.AppendEntry(prevRow, nil)
+			}
 		}
 	}
-	return p.parent.HandleRows(result, ctx)
+	return p.parent.HandleRows(resultBatch, ctx)
+}
+
+func (p *PushSelect) evalPredicates(row *common.Row) (bool, error) {
+	for _, predicate := range p.predicates {
+		accept, isNull, err := predicate.EvalBoolean(row)
+		if err != nil {
+			return false, err
+		}
+		if isNull {
+			return false, errors.New("null returned from evaluating select predicate")
+		}
+		if !accept {
+			return false, nil
+		}
+	}
+	return true, nil
 }

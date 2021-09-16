@@ -120,6 +120,7 @@ type TableInfo struct {
 	ColumnTypes    []ColumnType
 	IndexInfos     []*IndexInfo
 	ColsVisible    []bool
+	Internal       bool
 }
 
 func (i *TableInfo) GetTableInfo() *TableInfo { return i }

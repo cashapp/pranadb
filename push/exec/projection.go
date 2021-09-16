@@ -18,22 +18,9 @@ func NewPushProjection(projColumns []*common.Expression) *PushProjection {
 	}
 }
 
-func (p *PushProjection) calculateSchema(childColNames []string, childColTypes []common.ColumnType, childKeyCols []int) error {
-	colNum := 0
-	p.colNames = make([]string, len(p.projColumns))
+func (p *PushProjection) calculateSchema(childColTypes []common.ColumnType, childKeyCols []int) error {
 	p.colTypes = make([]common.ColumnType, len(p.projColumns))
 	for i, projColumn := range p.projColumns {
-		colIndex, ok := projColumn.GetColumnIndex()
-		if ok {
-			// It's a column expression
-			p.colNames[i] = childColNames[colIndex]
-		} else {
-			// Not a column expression - could be a cast or some other function.
-			// We generate a column name. In the case of a cast (implicit or explicit) we could theoretically preserve
-			// the underlying column name but this is hard to get to with the TiDB expression
-			p.colNames[i] = fmt.Sprintf("__gen_col%d", colNum)
-			colNum++
-		}
 		colType, err := projColumn.ReturnType(childColTypes)
 		if err != nil {
 			return err
@@ -80,96 +67,120 @@ func (p *PushProjection) ReCalcSchemaFromChildren() error {
 		panic("too many children")
 	}
 	child := p.children[0]
-	return p.calculateSchema(child.ColNames(), child.ColTypes(), child.KeyCols())
+	return p.calculateSchema(child.ColTypes(), child.KeyCols())
 }
 
-func (p *PushProjection) HandleRows(rows *common.Rows, ctx *ExecutionContext) error { // nolint: gocyclo
-	result := p.rowsFactory.NewRows(rows.RowCount())
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		for j, projColumn := range p.projColumns {
-			colType := p.colTypes[j]
-			switch colType.Type {
-			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-				val, null, err := projColumn.EvalInt64(&row)
-				if err != nil {
-					return err
-				}
-				if null {
-					result.AppendNullToColumn(j)
-				} else {
-					result.AppendInt64ToColumn(j, val)
-				}
-			case common.TypeDecimal:
-				val, null, err := projColumn.EvalDecimal(&row)
-				if err != nil {
-					return err
-				}
-				if null {
-					result.AppendNullToColumn(j)
-				} else {
-					result.AppendDecimalToColumn(j, val)
-				}
-			case common.TypeVarchar:
-				val, null, err := projColumn.EvalString(&row)
-				if err != nil {
-					return err
-				}
-				if null {
-					result.AppendNullToColumn(j)
-				} else {
-					result.AppendStringToColumn(j, val)
-				}
-			case common.TypeDouble:
-				val, null, err := projColumn.EvalFloat64(&row)
-				if err != nil {
-					return err
-				}
-				if null {
-					result.AppendNullToColumn(j)
-				} else {
-					result.AppendFloat64ToColumn(j, val)
-				}
-			case common.TypeTimestamp:
-				val, null, err := projColumn.EvalTimestamp(&row)
-				if err != nil {
-					return err
-				}
-				if null {
-					result.AppendNullToColumn(j)
-				} else {
-					result.AppendTimestampToColumn(j, val)
-				}
-			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	numRows := rowsBatch.Len()
+	result := p.rowsFactory.NewRows(numRows)
+	rc := 0
+	entries := make([]RowsEntry, numRows)
+	for i := 0; i < numRows; i++ {
+		pi := -1
+		prevRow := rowsBatch.PreviousRow(i)
+		if prevRow != nil {
+			if err := p.calcProjection(prevRow, result); err != nil {
+				return err
 			}
+			pi = rc
+			rc++
 		}
-
-		// Projections might not include the key columns, but we need to maintain these as they
-		// need to be used when persisting the row, and when looking it up to process
-		// any changes, so we append any invisible key column values to the end of the row
-		appendStart := len(p.projColumns)
-		for index, colNumber := range p.invisibleKeyColumns {
-			j := appendStart + index
-			colType := p.colTypes[j]
-			switch colType.Type {
-			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-				val := row.GetInt64(colNumber)
-				result.AppendInt64ToColumn(j, val)
-			case common.TypeDecimal:
-				val := row.GetDecimal(colNumber)
-				result.AppendDecimalToColumn(j, val)
-			case common.TypeVarchar:
-				val := row.GetString(colNumber)
-				result.AppendStringToColumn(j, val)
-			case common.TypeDouble:
-				val := row.GetFloat64(colNumber)
-				result.AppendFloat64ToColumn(j, val)
-			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+		ci := -1
+		currRow := rowsBatch.CurrentRow(i)
+		if currRow != nil {
+			if err := p.calcProjection(currRow, result); err != nil {
+				return err
 			}
+			ci = rc
+			rc++
+		}
+		entries[i] = RowsEntry{prevIndex: pi, currIndex: ci}
+	}
+	return p.parent.HandleRows(NewRowsBatch(result, entries), ctx)
+}
+
+func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) error { //nolint:gocyclo
+	for j, projColumn := range p.projColumns {
+		colType := p.colTypes[j]
+		switch colType.Type {
+		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+			val, null, err := projColumn.EvalInt64(row)
+			if err != nil {
+				return err
+			}
+			if null {
+				result.AppendNullToColumn(j)
+			} else {
+				result.AppendInt64ToColumn(j, val)
+			}
+		case common.TypeDecimal:
+			val, null, err := projColumn.EvalDecimal(row)
+			if err != nil {
+				return err
+			}
+			if null {
+				result.AppendNullToColumn(j)
+			} else {
+				result.AppendDecimalToColumn(j, val)
+			}
+		case common.TypeVarchar:
+			val, null, err := projColumn.EvalString(row)
+			if err != nil {
+				return err
+			}
+			if null {
+				result.AppendNullToColumn(j)
+			} else {
+				result.AppendStringToColumn(j, val)
+			}
+		case common.TypeDouble:
+			val, null, err := projColumn.EvalFloat64(row)
+			if err != nil {
+				return err
+			}
+			if null {
+				result.AppendNullToColumn(j)
+			} else {
+				result.AppendFloat64ToColumn(j, val)
+			}
+		case common.TypeTimestamp:
+			val, null, err := projColumn.EvalTimestamp(row)
+			if err != nil {
+				return err
+			}
+			if null {
+				result.AppendNullToColumn(j)
+			} else {
+				result.AppendTimestampToColumn(j, val)
+			}
+		default:
+			return fmt.Errorf("unexpected column type %d", colType)
 		}
 	}
 
-	return p.parent.HandleRows(result, ctx)
+	// Projections might not include the key columns, but we need to maintain these as they
+	// need to be used when persisting the row, and when looking it up to process
+	// any changes, so we append any invisible key column values to the end of the row
+	appendStart := len(p.projColumns)
+	for index, colNumber := range p.invisibleKeyColumns {
+		j := appendStart + index
+		colType := p.colTypes[j]
+		switch colType.Type {
+		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+			val := row.GetInt64(colNumber)
+			result.AppendInt64ToColumn(j, val)
+		case common.TypeDecimal:
+			val := row.GetDecimal(colNumber)
+			result.AppendDecimalToColumn(j, val)
+		case common.TypeVarchar:
+			val := row.GetString(colNumber)
+			result.AppendStringToColumn(j, val)
+		case common.TypeDouble:
+			val := row.GetFloat64(colNumber)
+			result.AppendFloat64ToColumn(j, val)
+		default:
+			return fmt.Errorf("unexpected column type %d", colType)
+		}
+	}
+	return nil
 }

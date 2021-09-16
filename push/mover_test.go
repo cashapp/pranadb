@@ -134,8 +134,9 @@ func TestHandleReceivedRows(t *testing.T) {
 	for receivingShardID, expectedRowsAtReceivingShard := range rowsByReceivingShard {
 
 		rawRowHandler := &rawRowHandler{}
-		err := pe.Mover().HandleReceivedRows(receivingShardID, rawRowHandler)
+		hasForwards, err := pe.Mover().HandleReceivedRows(receivingShardID, rawRowHandler)
 		require.NoError(t, err)
+		require.False(t, hasForwards)
 
 		actualRowsByRemoteConsumer := make(map[uint64][]rowInfo)
 		rawRows := rawRowHandler.rawRows
@@ -145,7 +146,9 @@ func TestHandleReceivedRows(t *testing.T) {
 			consumerRows := make([]rowInfo, len(rr))
 			actualRowsByRemoteConsumer[remoteConsumerID] = consumerRows
 			for i, rrr := range rr {
-				err := common.DecodeRow(rrr, colTypes, receivedRows)
+				lpvb, _ := common.ReadUint32FromBufferLE(rrr, 0)
+				currRowBytes := rrr[8+lpvb:]
+				err := common.DecodeRow(currRowBytes, colTypes, receivedRows)
 				require.NoError(t, err)
 				actRow := receivedRows.GetRow(rowCount)
 				receivedRowInfo := rowInfo{
@@ -241,8 +244,9 @@ func TestDedupOfForwards(t *testing.T) {
 	rowsHandled := 0
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
-		err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
+		hasForwards, err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
 		require.NoError(t, err)
+		require.False(t, hasForwards)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
 		}
@@ -301,8 +305,9 @@ func TestDedupOfForwards(t *testing.T) {
 	rowsHandled = 0
 	for remoteShardID := range remoteShardsIds {
 		rawRowHandler := &rawRowHandler{}
-		err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
+		hasForwards, err := pe.Mover().HandleReceivedRows(remoteShardID, rawRowHandler)
 		require.NoError(t, err)
+		require.False(t, hasForwards)
 		for _, rr := range rawRowHandler.rawRows {
 			rowsHandled += len(rr)
 		}
@@ -403,7 +408,9 @@ func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row
 	require.NotNil(t, v)
 	fRows := rf.NewRows(1)
 	require.NoError(t, err)
-	err = common.DecodeRow(v, colTypes, fRows)
+	lpvb, _ := common.ReadUint32FromBufferLE(v, 0)
+	currRowBytes := v[8+lpvb:]
+	err = common.DecodeRow(currRowBytes, colTypes, fRows)
 	require.NoError(t, err)
 	row := fRows.GetRow(0)
 	commontest.RowsEqual(t, *expectedRow, row, colTypes)
@@ -416,7 +423,7 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
 	batch := cluster.NewWriteBatch(sendingShardID, false)
 	for _, rowToSend := range rows {
-		err := pe.Mover().QueueForRemoteSend(rowToSend.remoteShardID, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
+		err := pe.Mover().QueueRowForRemoteSend(rowToSend.remoteShardID, nil, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
 		require.NoError(t, err)
 	}
 	err := store.WriteBatch(batch)

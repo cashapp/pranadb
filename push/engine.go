@@ -64,7 +64,7 @@ type shardListener struct {
 
 // TODO do we even need these?
 type remoteRowsHandler interface {
-	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
+	HandleRemoteRows(rowsBatch exec.RowsBatch, ctx *exec.ExecutionContext) error
 }
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) *PushEngine {
@@ -223,7 +223,7 @@ func (s *shardListener) scheduleHandleRemoteBatch() {
 }
 
 func (s *shardListener) maybeHandleRemoteBatch() error {
-	err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
+	hasForwards, err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
 	if err != nil {
 		// It's possible an error can occur in handling received rows if the source or aggregate table is not
 		// yet registered - this could be the case if rows are forwarded right after startup - in this case we can just
@@ -236,7 +236,10 @@ func (s *shardListener) maybeHandleRemoteBatch() error {
 		})
 		return nil
 	}
-	return s.p.mover.TransferData(s.shardID, true)
+	if hasForwards {
+		return s.p.mover.TransferData(s.shardID, true)
+	}
+	return nil
 }
 
 func (s *shardListener) Close() {
@@ -267,22 +270,44 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 	defer p.lock.RUnlock()
 
 	for entityID, rawRows := range entityValues {
-		rc, ok := p.remoteConsumers[entityID]
+
+		remoteConsumer, ok := p.remoteConsumers[entityID]
 		if !ok {
 			return fmt.Errorf("entity with id %d not registered", entityID)
 		}
-		rows := rc.RowsFactory.NewRows(len(rawRows))
-		for _, row := range rawRows {
-			err := common.DecodeRow(row, rc.ColTypes, rows)
-			if err != nil {
-				return err
+
+		rows := remoteConsumer.RowsFactory.NewRows(len(rawRows))
+		entries := make([]exec.RowsEntry, len(rawRows))
+		rc := 0
+		for i, row := range rawRows {
+			lpvb, _ := common.ReadUint32FromBufferLE(row, 0)
+			pi := -1
+			if lpvb != 0 {
+				prevBytes := row[4 : 4+lpvb]
+				if err := common.DecodeRow(prevBytes, remoteConsumer.ColTypes, rows); err != nil {
+					return err
+				}
+				pi = rc
+				rc++
 			}
+			lcvb, _ := common.ReadUint32FromBufferLE(row, int(4+lpvb))
+			ci := -1
+			if lcvb != 0 {
+				currBytes := row[8+lpvb:]
+				if err := common.DecodeRow(currBytes, remoteConsumer.ColTypes, rows); err != nil {
+					return err
+				}
+				ci = rc
+				rc++
+			}
+			entries[i] = exec.NewRowsEntry(pi, ci)
 		}
 		execContext := &exec.ExecutionContext{
 			WriteBatch: batch,
 			Mover:      p.mover,
 		}
-		err := rc.RowsHandler.HandleRemoteRows(rows, execContext)
+		rowsBatch := exec.NewRowsBatch(rows, entries)
+		err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, execContext)
 		if err != nil {
 			return err
 		}
@@ -325,20 +350,17 @@ func (p *PushEngine) checkForRowsToForward() error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *PushEngine) WaitForProcessingToComplete() error {
 
-	log.Infof("Waiting for schedulers to stop")
 	err := p.waitForSchedulers()
 	if err != nil {
 		return err
 	}
 
-	log.Infof("Waiting for no rows in forwarder table")
 	// Wait for no rows in the forwarder table
 	err = p.waitForNoRowsInTable(common.ForwarderTableID)
 	if err != nil {
 		return err
 	}
 
-	log.Infof("Waiting for no rows in receiver table")
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
@@ -473,4 +495,10 @@ func (p *PushEngine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardSchedule
 		schedulers[lls] = sched
 	}
 	return schedulers, nil
+}
+
+func (p *PushEngine) IsEmpty() bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	return len(p.sources) == 0 && len(p.materializedViews) == 0 && len(p.remoteConsumers) == 0
 }

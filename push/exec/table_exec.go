@@ -62,38 +62,86 @@ func (t *TableExecutor) RemoveConsumingNode(mvName string) {
 	delete(t.consumingNodes, mvName)
 }
 
-func (t *TableExecutor) HandleRemoteRows(rows *common.Rows, ctx *ExecutionContext) error {
-	return t.HandleRows(rows, ctx)
+func (t *TableExecutor) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	return t.HandleRows(rowsBatch, ctx)
 }
 
-func (t *TableExecutor) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
+func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	t.lock.RLock()
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		if err := table.Upsert(t.TableInfo, &row, ctx.WriteBatch); err != nil {
-			return err
+	numRows := rowsBatch.Len()
+	outRows := t.rowsFactory.NewRows(numRows)
+	rc := 0
+	entryNum := 0
+	entries := make([]RowsEntry, numRows)
+	for i := 0; i < numRows; i++ {
+		prevRow := rowsBatch.PreviousRow(i)
+		currentRow := rowsBatch.CurrentRow(i)
+
+		if currentRow != nil {
+			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
+			keyBuff, err := common.EncodeKeyCols(currentRow, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
+			if err != nil {
+				return err
+			}
+			v, err := t.store.LocalGet(keyBuff)
+			if err != nil {
+				return err
+			}
+			pi := -1
+			if v != nil {
+				// Row already exists in storage - this is the case where a new rows comes into a source for the same key
+				// we won't have previousRow provided for us in this case as Kafka does not provide this
+				if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
+					return err
+				}
+				pi = rc
+				rc++
+			}
+			outRows.AppendRow(*currentRow)
+			ci := rc
+			rc++
+			entries[entryNum] = RowsEntry{prevIndex: pi, currIndex: ci}
+			entryNum++
+			var valueBuff []byte
+			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
+			if err != nil {
+				return err
+			}
+			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
+		} else {
+			// It's a delete
+			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
+			keyBuff, err := common.EncodeKeyCols(prevRow, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
+			if err != nil {
+				return err
+			}
+			outRows.AppendRow(*prevRow)
+			entries[entryNum] = RowsEntry{prevIndex: rc, currIndex: -1}
+			rc++
+			entryNum++
+			ctx.WriteBatch.AddDelete(keyBuff)
 		}
 	}
-	err := t.handleForwardAndCapture(rows, ctx)
+	err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
 	t.lock.RUnlock()
 	return err
 }
 
-func (t *TableExecutor) handleForwardAndCapture(rows *common.Rows, ctx *ExecutionContext) error {
-	if err := t.ForwardToConsumingNodes(rows, ctx); err != nil {
+func (t *TableExecutor) handleForwardAndCapture(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	if err := t.ForwardToConsumingNodes(rowsBatch, ctx); err != nil {
 		return err
 	}
-	if t.filling && rows.RowCount() != 0 {
-		if err := t.captureChanges(t.fillTableID, rows, ctx); err != nil {
+	if t.filling && rowsBatch.Len() != 0 {
+		if err := t.captureChanges(t.fillTableID, rowsBatch, ctx); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (t *TableExecutor) ForwardToConsumingNodes(rows *common.Rows, ctx *ExecutionContext) error {
+func (t *TableExecutor) ForwardToConsumingNodes(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	for _, consumingNode := range t.consumingNodes {
-		if err := consumingNode.HandleRows(rows, ctx); err != nil {
+		if err := consumingNode.HandleRows(rowsBatch, ctx); err != nil {
 			return err
 		}
 	}
@@ -104,7 +152,7 @@ func (t *TableExecutor) RowsFactory() *common.RowsFactory {
 	return t.rowsFactory
 }
 
-func (t *TableExecutor) captureChanges(fillTableID uint64, rows *common.Rows, ctx *ExecutionContext) error {
+func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	shardID := ctx.WriteBatch.ShardID
 	ls, ok := t.lastSequences.Load(shardID)
 	var nextSeq int64
@@ -114,11 +162,12 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rows *common.Rows, ct
 		nextSeq = ls.(int64) + 1
 	}
 	wb := cluster.NewWriteBatch(shardID, false)
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
+	numRows := rowsBatch.Len()
+	for i := 0; i < numRows; i++ {
+		row := rowsBatch.CurrentRow(i)
 		key := table.EncodeTableKeyPrefix(fillTableID, shardID, 24)
 		key = common.KeyEncodeInt64(key, nextSeq)
-		value, err := common.EncodeRow(&row, t.colTypes, nil)
+		value, err := common.EncodeRow(row, t.colTypes, nil)
 		if err != nil {
 			return err
 		}
@@ -129,7 +178,7 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rows *common.Rows, ct
 	return t.store.WriteBatch(wb)
 }
 
-func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error {
+func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error { //nolint:gocyclo
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
@@ -140,8 +189,8 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 	// We need to pause all schedulers for the shards here.
 	// We must make sure there are no in-progress and uncommitted upserts for the source as they won't appear in the
 	// snapshot otherwise, and they won't be captured
-	for _, sched := range schedulers {
-		sched.Pause()
+	for _, sh := range schedulers {
+		sh.Pause()
 	}
 
 	// Lock the executor so no rows can be processed
@@ -250,6 +299,15 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 			return err
 		}
 	}
+
+	// The fill may cause forwarding of rows in case of an aggregation - so we need to trigger any transfer of data too
+	for shardID, sched := range schedulers {
+		sid := shardID
+		sched.ScheduleActionFireAndForget(func() error {
+			return mover.TransferData(sid, true)
+		})
+	}
+
 	return nil
 }
 
@@ -332,7 +390,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 		WriteBatch: wb,
 		Mover:      mover,
 	}
-	if err := pe.HandleRows(rows, ctx); err != nil {
+	if err := pe.HandleRows(NewCurrentRowsBatch(rows), ctx); err != nil {
 		return err
 	}
 	return t.store.WriteBatch(wb)

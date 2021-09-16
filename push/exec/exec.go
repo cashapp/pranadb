@@ -7,7 +7,7 @@ import (
 )
 
 type PushExecutor interface {
-	HandleRows(rows *common.Rows, ctx *ExecutionContext) error
+	HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error
 
 	SetParent(parent PushExecutor)
 	GetParent() PushExecutor
