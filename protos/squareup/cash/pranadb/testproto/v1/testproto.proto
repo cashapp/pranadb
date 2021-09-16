@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package squareup.cash.pranadb.testproto.v1;
 
-import "google/protobuf/empty.proto";
+import "squareup/cash/pranadb/testproto/v1/imports.proto";
 
 option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto";
 
@@ -34,6 +34,8 @@ message TestTypes {
   map<string, string> string_map_field = 15;
   map<int32, string> int_map_field = 16;
   map<string, SimpleValue> map_message_field = 17;
+
+  squareup.cash.pranadb.testproto.v1.Imported import_field = 18;
 }
 
 message Recursive {

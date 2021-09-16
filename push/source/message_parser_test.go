@@ -414,7 +414,7 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		TableInfo: tableInfo,
 		TopicInfo: topicInfo,
 	}
-	mp, err := NewMessageParser(sourceInfo, protolib.NewProtoRegistry(""))
+	mp, err := NewMessageParser(sourceInfo, protolib.EmptyRegistry)
 	require.NoError(t, err)
 
 	msg := &kafka.Message{

@@ -36,7 +36,7 @@ func setupMessageParserJSON() *MessageParser {
 		TableInfo: tableInfo,
 		TopicInfo: topicInfo,
 	}
-	mp, err := NewMessageParser(sourceInfo, protolib.NewProtoRegistry(""))
+	mp, err := NewMessageParser(sourceInfo, protolib.EmptyRegistry)
 	if err != nil {
 		panic(err)
 	}

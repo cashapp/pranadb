@@ -5,19 +5,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/sess"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"net"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
@@ -37,11 +39,13 @@ type Server struct {
 	expSessCheckTimer    *time.Timer
 	expSessCheckInterval time.Duration
 	sessTimeout          time.Duration
+	protoRegistry        *protolib.ProtoRegistry
 }
 
-func NewAPIServer(ce *command.Executor, cfg conf.Config) *Server {
+func NewAPIServer(ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
 	return &Server{
 		ce:                   ce,
+		protoRegistry:        protobufs,
 		serverAddress:        cfg.APIServerListenAddresses[cfg.NodeID],
 		expSessCheckInterval: cfg.APIServerSessionCheckInterval,
 		sessTimeout:          cfg.APIServerSessionTimeout,
@@ -219,6 +223,10 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		}
 	}
 	return nil
+}
+
+func (s *Server) RegisterProtobufs(ctx context.Context, request *service.RegisterProtobufsRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, s.protoRegistry.RegisterFiles(request.GetDescriptors())
 }
 
 type sessionEntry struct {

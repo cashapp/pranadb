@@ -1,0 +1,22 @@
+dataset:dataset_1 test_source_1 StringKeyProtobufValueEncoder:squareup.cash.pranadb.testproto.v1.Simple
+str1,1000
+str2,2000
+str3,3000
+str4,4000
+str5,5000
+str6,6000
+str7,7000
+str8,8000
+str9,9000
+str10,10000
+dataset:dataset_2 test_source_1 StringKeyProtobufValueEncoder:squareup.cash.pranadb.testproto.v1.Simple
+str1,1000,10000
+str2,2000,20000
+str3,3000,30000
+str4,4000,40000
+str5,5000,50000
+str6,6000,60000
+str7,7000,70000
+str8,8000,80000
+str9,9000,90000
+str10,1000,100000

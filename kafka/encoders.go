@@ -360,13 +360,13 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 	return message, nil
 }
 
-func NewStringKeyProtobufValueEncoderFactory(registry *protolib.ProtoRegistry) func(options string) (MessageEncoder, error) {
+func NewStringKeyProtobufValueEncoderFactory(registry protolib.Resolver) func(options string) (MessageEncoder, error) {
 	return func(options string) (MessageEncoder, error) {
 		return NewStringKeyProtobufValueEncoder(registry, options)
 	}
 }
 
-func NewStringKeyProtobufValueEncoder(protoRegistry *protolib.ProtoRegistry, options string) (MessageEncoder, error) {
+func NewStringKeyProtobufValueEncoder(protoRegistry protolib.Resolver, options string) (MessageEncoder, error) {
 	name := pref.FullName(options)
 	desc, err := protoRegistry.FindDescriptorByName(name)
 	if err != nil {

@@ -1,0 +1,4 @@
+// A noop proto file used to import descriptor.proto so protoc can use it to decode descriptors
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";

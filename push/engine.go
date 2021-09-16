@@ -43,7 +43,7 @@ type PushEngine struct {
 	rnd               *rand.Rand
 	cfg               *conf.Config
 	queryExec         common.SimpleQueryExec
-	protoRegistry     *protolib.ProtoRegistry
+	protoRegistry     protolib.Resolver
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -67,7 +67,7 @@ type remoteRowsHandler interface {
 	HandleRemoteRows(rows *common.Rows, ctx *exec.ExecutionContext) error
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry *protolib.ProtoRegistry) *PushEngine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) *PushEngine {
 	engine := PushEngine{
 		mover:         mover.NewMover(cluster),
 		cluster:       cluster,

@@ -37,10 +37,10 @@ type MessageParser struct {
 	keyDecoder       Decoder
 	valueDecoder     Decoder
 	repMap           map[string]interface{}
-	protobufRegistry *protolib.ProtoRegistry
+	protobufRegistry protolib.Resolver
 }
 
-func NewMessageParser(sourceInfo *common.SourceInfo, registry *protolib.ProtoRegistry) (*MessageParser, error) {
+func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver) (*MessageParser, error) {
 	selectors := sourceInfo.TopicInfo.ColSelectors
 	selectEvals := make([]evaluable, len(selectors))
 	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
@@ -201,7 +201,7 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 	return nil
 }
 
-func getDecoder(registry *protolib.ProtoRegistry, encoding common.KafkaEncoding) (Decoder, error) {
+func getDecoder(registry protolib.Resolver, encoding common.KafkaEncoding) (Decoder, error) {
 	var decoder Decoder
 	switch encoding.Encoding {
 	case common.EncodingJSON:

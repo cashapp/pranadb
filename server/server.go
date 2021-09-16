@@ -50,7 +50,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
-	protoRegistry := protolib.NewProtoRegistry(config.ProtobufDescriptorDir)
+	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry)
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
@@ -58,7 +58,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
-	apiServer := api.NewAPIServer(commandExecutor, config)
+	apiServer := api.NewAPIServer(commandExecutor, protoRegistry, config)
 
 	services := []service{
 		notifServer,
@@ -66,9 +66,9 @@ func NewServer(config conf.Config) (*Server, error) {
 		clus,
 		shardr,
 		commandExecutor,
-		protoRegistry,
 		pushEngine,
 		pullEngine,
+		protoRegistry,
 		schemaLoader,
 		apiServer,
 	}

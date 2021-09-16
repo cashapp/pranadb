@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"math"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const maxBufferedLines = 1000
@@ -227,6 +228,11 @@ func toColumnTypes(result *service.Columns) (names []string, types []common.Colu
 		names[i] = in.Name
 	}
 	return
+}
+
+func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProtobufsRequest, option ...grpc.CallOption) error {
+	_, err := c.client.RegisterProtobufs(ctx, in, option...)
+	return err
 }
 
 func (c *Client) sendHeartbeats() {
