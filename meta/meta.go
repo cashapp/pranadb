@@ -127,6 +127,16 @@ func (c *Controller) GetSource(schemaName string, name string) (*common.SourceIn
 	return source, ok
 }
 
+func (c *Controller) GetSchemaNames() []string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	var schemaNames []string
+	for name := range c.schemas {
+		schemaNames = append(schemaNames, name)
+	}
+	return schemaNames
+}
+
 func (c *Controller) GetSchema(schemaName string) (schema *common.Schema, ok bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

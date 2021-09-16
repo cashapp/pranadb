@@ -1,0 +1,49 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3",
+        "v.v4",
+        "v.v5",
+        "v.v6"
+    )
+    properties = (
+    )
+);
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+--load data dataset_1;
+
+--test with source;
+
+select * from test_source_1 where col0 = 1 order by col0;
+
+--test with mv;
+
+select * from test_mv_1 where col0 = 1 order by col0;
+
+-- TODO test with all different types of expressions;
+
+drop materialized view test_mv_1;
+
+drop source test_source_1;
+
+--delete topic testtopic;

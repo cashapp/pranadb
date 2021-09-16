@@ -16,6 +16,8 @@ type PullTableScan struct {
 	lastRowPrefix []byte
 	rangeStart    []byte
 	rangeEnd      []byte
+
+	includeCols []bool
 }
 
 var _ PullExecutor = &PullTableScan{}
@@ -27,15 +29,25 @@ type ScanRange struct {
 	HighExcl bool
 }
 
-func NewPullTableScan(tableInfo *common.TableInfo, storage cluster.Cluster, shardID uint64, scanRange *ScanRange) (*PullTableScan, error) {
+func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64, scanRange *ScanRange) (*PullTableScan, error) {
+
 	// The rows that we create for a pull query don't include hidden rows
-	var visibleColTypes []common.ColumnType
-	for i, colType := range tableInfo.ColumnTypes {
-		if tableInfo.ColsVisible == nil || tableInfo.ColsVisible[i] {
-			visibleColTypes = append(visibleColTypes, colType)
+	// Also, we don't always select all columns, depending on whether colIndexes has been specified
+	var resultColTypes []common.ColumnType
+	includedCols := make([]bool, len(tableInfo.ColumnTypes))
+	ciMap := map[int]struct{}{}
+	for _, colIndex := range colIndexes {
+		ciMap[colIndex] = struct{}{}
+	}
+	for i := 0; i < len(tableInfo.ColumnTypes); i++ {
+		_, ok := ciMap[i]
+		includedCols[i] = (colIndexes == nil || ok) && (tableInfo.ColsVisible == nil || tableInfo.ColsVisible[i])
+		if includedCols[i] {
+			resultColTypes = append(resultColTypes, tableInfo.ColumnTypes[i])
 		}
 	}
-	rf := common.NewRowsFactory(visibleColTypes)
+
+	rf := common.NewRowsFactory(resultColTypes)
 	base := pullExecutorBase{
 		colTypes:    tableInfo.ColumnTypes,
 		rowsFactory: rf,
@@ -81,6 +93,7 @@ func NewPullTableScan(tableInfo *common.TableInfo, storage cluster.Cluster, shar
 		shardID:          shardID,
 		rangeStart:       rangeStart,
 		rangeEnd:         rangeEnd,
+		includeCols:      includedCols,
 	}, nil
 }
 
@@ -121,7 +134,7 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			t.lastRowPrefix = kvPair.Key
 		}
-		if err := common.DecodeRowWithHiddenCols(kvPair.Value, t.tableInfo.ColumnTypes, t.tableInfo.ColsVisible, rows); err != nil {
+		if err := common.DecodeRowWithIgnoredCols(kvPair.Value, t.tableInfo.ColumnTypes, t.includeCols, rows); err != nil {
 			return nil, err
 		}
 	}

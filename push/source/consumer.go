@@ -83,7 +83,6 @@ func (m *MessageConsumer) consumerError(err error, clientError bool) {
 }
 
 func (m *MessageConsumer) rebalanceOccurring() error {
-	log.Info("Rebalance occurring")
 	// This wil be called on the message loop when the consumer calls in to getMessage, so we can simply ignore
 	// the current unprocessed batch of messages
 	m.msgBatch = nil

@@ -25,7 +25,7 @@ type Client struct {
 	serverAddress         string
 	conn                  *grpc.ClientConn
 	client                service.PranaDBServiceClient
-	executing             bool
+	currentStatement      string
 	sessionIDs            map[string]struct{}
 	heartbeatTimer        *time.Timer
 	heartbeatSendInterval time.Duration
@@ -75,8 +75,8 @@ func (c *Client) CreateSession() (string, error) {
 	if !c.started {
 		return "", errors.New("not started")
 	}
-	if c.executing {
-		return "", errors.New("statement currently executing")
+	if c.currentStatement != "" {
+		return "", fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -93,8 +93,8 @@ func (c *Client) CloseSession(sessionID string) error {
 	if !c.started {
 		return errors.New("not started")
 	}
-	if c.executing {
-		return errors.New("statement currently executing")
+	if c.currentStatement != "" {
+		return fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
 	delete(c.sessionIDs, sessionID)
@@ -109,11 +109,11 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 	if !c.started {
 		return nil, errors.New("not started")
 	}
-	if c.executing {
-		return nil, errors.New("statement already executing")
+	if c.currentStatement != "" {
+		return nil, fmt.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	ch := make(chan string, maxBufferedLines)
-	c.executing = true
+	c.currentStatement = statement
 	go c.doExecuteStatement(sessionID, statement, ch)
 	return ch, nil
 }
@@ -130,7 +130,7 @@ func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan 
 	}
 	close(ch)
 	c.lock.Lock()
-	c.executing = false
+	c.currentStatement = ""
 	c.lock.Unlock()
 }
 
@@ -177,26 +177,30 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 				row := rows.GetRow(ri)
 				sb := strings.Builder{}
 				sb.WriteRune('|')
-				for ci, ct := range rows.ColumnTypes() {
-					var sc string
-					switch ct.Type {
-					case common.TypeVarchar:
-						sc = row.GetString(ci)
-					case common.TypeTinyInt, common.TypeBigInt, common.TypeInt:
-						sc = fmt.Sprintf("%v", row.GetInt64(ci))
-					case common.TypeDecimal:
-						dec := row.GetDecimal(ci)
-						sc = dec.String()
-					case common.TypeDouble:
-						sc = fmt.Sprintf("%g", row.GetFloat64(ci))
-					case common.TypeTimestamp:
-						ts := row.GetTimestamp(ci)
-						sc = ts.String()
-					case common.TypeUnknown:
-						sc = "??"
+				for colIndex, colType := range rows.ColumnTypes() {
+					if row.IsNull(colIndex) {
+						sb.WriteString("null|")
+					} else {
+						var sc string
+						switch colType.Type {
+						case common.TypeVarchar:
+							sc = row.GetString(colIndex)
+						case common.TypeTinyInt, common.TypeBigInt, common.TypeInt:
+							sc = fmt.Sprintf("%v", row.GetInt64(colIndex))
+						case common.TypeDecimal:
+							dec := row.GetDecimal(colIndex)
+							sc = dec.String()
+						case common.TypeDouble:
+							sc = fmt.Sprintf("%g", row.GetFloat64(colIndex))
+						case common.TypeTimestamp:
+							ts := row.GetTimestamp(colIndex)
+							sc = ts.String()
+						case common.TypeUnknown:
+							sc = "??"
+						}
+						sb.WriteString(sc)
+						sb.WriteRune('|')
 					}
-					sb.WriteString(sc)
-					sb.WriteRune('|')
 				}
 				ch <- sb.String()
 				rowCount++

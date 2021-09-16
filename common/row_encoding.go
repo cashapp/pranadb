@@ -56,17 +56,17 @@ func encodeRowCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 }
 
 func DecodeRow(buffer []byte, colTypes []ColumnType, rows *Rows) error {
-	return DecodeRowWithHiddenCols(buffer, colTypes, nil, rows)
+	return DecodeRowWithIgnoredCols(buffer, colTypes, nil, rows)
 }
 
-func DecodeRowWithHiddenCols(buffer []byte, colTypes []ColumnType, colsVisible []bool, rows *Rows) error {
+func DecodeRowWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCol []bool, rows *Rows) error {
 	offset := 0
 	colIndex := 0
 	for i, colType := range colTypes {
-		colVisible := colsVisible == nil || colsVisible[i]
+		include := includeCol == nil || includeCol[i]
 		if buffer[offset] == 0 {
 			offset++
-			if colVisible {
+			if include {
 				rows.AppendNullToColumn(colIndex)
 			}
 		} else {
@@ -75,7 +75,7 @@ func DecodeRowWithHiddenCols(buffer []byte, colTypes []ColumnType, colsVisible [
 			case TypeTinyInt, TypeInt, TypeBigInt:
 				var u uint64
 				u, offset = ReadUint64FromBufferLE(buffer, offset)
-				if colVisible {
+				if include {
 					rows.AppendInt64ToColumn(colIndex, int64(u))
 				}
 			case TypeDecimal:
@@ -85,19 +85,19 @@ func DecodeRowWithHiddenCols(buffer []byte, colTypes []ColumnType, colsVisible [
 				if err != nil {
 					return err
 				}
-				if colVisible {
+				if include {
 					rows.AppendDecimalToColumn(colIndex, val)
 				}
 			case TypeDouble:
 				var val float64
 				val, offset = ReadFloat64FromBufferLE(buffer, offset)
-				if colVisible {
+				if include {
 					rows.AppendFloat64ToColumn(colIndex, val)
 				}
 			case TypeVarchar:
 				var val string
 				val, offset = ReadStringFromBufferLE(buffer, offset)
-				if colVisible {
+				if include {
 					rows.AppendStringToColumn(colIndex, val)
 				}
 			case TypeTimestamp:
@@ -109,14 +109,14 @@ func DecodeRowWithHiddenCols(buffer []byte, colTypes []ColumnType, colsVisible [
 				if err != nil {
 					return err
 				}
-				if colVisible {
+				if include {
 					rows.AppendTimestampToColumn(colIndex, val)
 				}
 			default:
 				return fmt.Errorf("unexpected column type %d", colType)
 			}
 		}
-		if colVisible {
+		if include {
 			colIndex++
 		}
 	}
