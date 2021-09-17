@@ -3,6 +3,7 @@ package dragon
 import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
 	"io"
@@ -93,6 +94,7 @@ func (s *sequenceODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i
 func (s *sequenceODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	startPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, tableSequenceClusterID, 16)
 	endPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID+1, tableSequenceClusterID, 16)
+	log.Infof("Restoring sequence snapshot on node %d", s.dragon.cnf.NodeID)
 	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
 }
 
