@@ -2,6 +2,7 @@ package dragon
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"math"
 	"strings"
@@ -152,6 +153,7 @@ func (s *locksODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan str
 	defer s.locksLock.Unlock()
 	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
 	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
+	log.Infof("Restoring locks snapshot on node %d", s.dragon.cnf.NodeID)
 	if err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir); err != nil {
 		return err
 	}

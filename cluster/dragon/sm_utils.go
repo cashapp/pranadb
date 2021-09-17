@@ -1,6 +1,7 @@
 package dragon
 
 import (
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math"
@@ -57,39 +58,59 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 }
 
 func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix []byte, reader io.Reader, ingestDir string) error {
+	log.Info("Creating temp snapshot recover file")
 	f, err := ioutil.TempFile(ingestDir, "")
 	if err != nil {
+		log.Errorf("Failed to create temp snapshot recover file %+v", err)
 		return err
 	}
 	path := f.Name()
+	log.Infof("Created temp snapshot recover file %s", path)
 	defer func() {
 		// Remove the file if we fail to ingest, to not leave around garbage data filling up the disk.
 		// After pebble ingests the file, it will be moved, so we expect this to fail in the good case.
 		// Thus ignore any errors.
+		log.Infof("In defer func, closing and deleting snapshot recover file %s", path)
 		_ = f.Close()
 		_ = os.Remove(path)
+		log.Infof("In defer func, closed and deleted snapshot recover file %s", path)
 	}()
 
+	log.Info("Copying reader to temp file")
 	if _, err := io.Copy(f, reader); err != nil {
 		return err
 	}
 	if err := f.Sync(); err != nil {
+		log.Errorf("Failed to sync temp snapshot recover file %+v", err)
 		return err
 	}
 	if err := f.Close(); err != nil {
+		log.Errorf("Failed to close temp snapshot recover file %+v", err)
 		return err
 	}
+	log.Info("Copied reader to temp file")
 
 	batch := peb.NewBatch()
 	// Delete the data for the state machine - we're going to replace it
 	if err := batch.DeleteRange(startPrefix, endPrefix, &pebble.WriteOptions{}); err != nil {
 		return err
 	}
+	log.Info("deleted data for shard, now applying snapshot to pebble")
 	if err := peb.Apply(batch, syncWriteOptions); err != nil {
+		log.Errorf("Failed to apply delete range %+v", err)
 		return err
 	}
+	log.Info("Applied delete range to pebble, now applying snapshot to pebble")
 
-	return peb.Ingest([]string{path})
+	err = peb.Ingest([]string{path})
+
+	if err == nil {
+		log.Info("successfully applied snapshot")
+	} else {
+		log.Errorf("failed to apply snapshot to pebble %+v", err)
+	}
+
+	return err
 }
 
 func syncPebble(peb *pebble.DB) error {

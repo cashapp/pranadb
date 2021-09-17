@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
@@ -238,6 +239,7 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	startPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID)
 	endPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID+1)
+	log.Infof("Restoring data snapshot on node %d shardid %d", s.dragon.cnf.NodeID, s.shardID)
 	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
 	if err != nil {
 		return err
