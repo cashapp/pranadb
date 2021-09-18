@@ -334,7 +334,7 @@ type sqlTest struct {
 	prana         *server.Server
 	topics        []*kafka.Topic
 	cli           *client.Client
-	sessionID     string
+	ssessionID    string
 	currentSchema string
 }
 
@@ -516,7 +516,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := st.cli.ExecuteStatement(st.sessionID, fmt.Sprintf("select * from %s", tableName))
+		ch, err := st.cli.ExecuteStatement(st.ssessionID, fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
 			return false, err
 		}
@@ -712,7 +712,7 @@ func (st *sqlTest) executeCloseSession(require *require.Assertions) {
 }
 
 func (st *sqlTest) closeClient(require *require.Assertions) {
-	err := st.cli.CloseSession(st.sessionID)
+	err := st.cli.CloseSession(st.ssessionID)
 	require.NoError(err)
 	err = st.cli.Stop()
 	require.NoError(err)
@@ -884,7 +884,7 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
 	isUse := strings.HasPrefix(statement, "use ")
-	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
+	resChan, err := st.cli.ExecuteStatement(st.ssessionID, statement)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {
@@ -923,7 +923,7 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	require.NoError(err)
 	sessID, err := cli.CreateSession()
 	require.NoError(err)
-	st.sessionID = sessID
+	st.ssessionID = sessID
 	return cli
 }
 
