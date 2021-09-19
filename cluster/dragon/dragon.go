@@ -6,6 +6,7 @@ import (
 	"github.com/lni/dragonboat/v3/client"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -229,6 +230,9 @@ func (d *Dragon) Start() error {
 	datadir := filepath.Join(d.cnf.DataDir, fmt.Sprintf("node-%d", d.cnf.NodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
+	if err := os.MkdirAll(d.ingestDir, os.ModePerm); err != nil {
+		return err
+	}
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}
