@@ -41,7 +41,7 @@ jobs:
         run: go test -tags integration ./kafkatest -count=1 -- -kafka-provider=kafka
         if: ${{ always() }}
   slack-on-fail:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, linux ]
     needs: [ integration ]
     if: always() && (needs.integration.result == 'failure' || needs.integration.result == 'error')
     steps:
