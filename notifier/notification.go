@@ -13,6 +13,7 @@ const (
 	NotificationTypeUnknown NotificationType = iota
 	NotificationTypeDDLStatement
 	NotificationTypeCloseSession
+	NotificationTypeReloadProtobuf
 )
 
 func TypeForNotification(notification Notification) NotificationType {
@@ -21,6 +22,8 @@ func TypeForNotification(notification Notification) NotificationType {
 		return NotificationTypeDDLStatement
 	case *notifications.SessionClosedMessage:
 		return NotificationTypeCloseSession
+	case *notifications.ReloadProtobuf:
+		return NotificationTypeReloadProtobuf
 	default:
 		return NotificationTypeUnknown
 	}
@@ -62,6 +65,8 @@ func DeserializeNotification(data []byte) (Notification, error) {
 		msg = &notifications.DDLStatementInfo{}
 	case NotificationTypeCloseSession:
 		msg = &notifications.SessionClosedMessage{}
+	case NotificationTypeReloadProtobuf:
+		msg = &notifications.ReloadProtobuf{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}

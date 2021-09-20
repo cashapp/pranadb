@@ -11,6 +11,8 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/table"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -59,14 +61,14 @@ var descriptorRowsFactory = common.NewRowsFactory(ProtobufTableInfo.ColumnTypes)
 type ProtoRegistry struct {
 	mu struct {
 		sync.RWMutex
-		registry   *protoregistry.Files
-		descByPath map[string]*descriptorpb.FileDescriptorProto
+		registry *protoregistry.Files
 	}
 	loadDir     string
 	dirResolver *diskBackedRegistry
 	meta        *meta.Controller
 	cluster     cluster.Cluster
 	queryExec   common.SimpleQueryExec
+	notify      func(message notifier.Notification) error
 }
 
 // NewProtoRegistry initializes a new file descriptor store. "loadDir" is an optional directory
@@ -78,7 +80,6 @@ func NewProtoRegistry(metaController *meta.Controller, clus cluster.Cluster, que
 		queryExec: queryExec,
 		loadDir:   loadDir,
 	}
-	pr.mu.descByPath = make(map[string]*descriptorpb.FileDescriptorProto)
 	return pr
 }
 
@@ -94,16 +95,24 @@ func (s *ProtoRegistry) Start() error {
 		}
 		s.dirResolver = r.(*diskBackedRegistry) // nolint: forcetypeassert
 	}
-	if s.queryExec != nil {
-		if err := s.loadFromTable(); err != nil {
-			return err
-		}
-	}
-	r, err := buildRegistry(s.mu.descByPath)
+
+	return s.reloadProtobufsFromTable()
+}
+
+func (s *ProtoRegistry) reloadProtobufsFromTable() error {
+	descByPath, err := s.loadFromTable()
 	if err != nil {
 		return err
 	}
+	r, err := buildRegistry(descByPath)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
 	s.mu.registry = r
+	s.mu.Unlock()
+
 	return nil
 }
 
@@ -146,17 +155,19 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 		return errors.WithStack(err)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, fd := range descriptors.File {
-		s.mu.descByPath[fd.GetName()] = fd
-	}
-	r, err := buildRegistry(s.mu.descByPath)
-	if err != nil {
+	if err := s.notify(&notifications.ReloadProtobuf{}); err != nil {
 		return errors.WithStack(err)
 	}
-	s.mu.registry = r
-	return err
+
+	return nil
+}
+
+func (s *ProtoRegistry) SetNotifier(notify func(message notifier.Notification) error) {
+	s.notify = notify
+}
+
+func (s *ProtoRegistry) HandleNotification(n notifier.Notification) error {
+	return s.reloadProtobufsFromTable()
 }
 
 func encodeDescriptorToRow(fd *descriptorpb.FileDescriptorProto) *common.Row {
@@ -171,11 +182,11 @@ func encodeDescriptorToRow(fd *descriptorpb.FileDescriptorProto) *common.Row {
 	return &row
 }
 
-func (s *ProtoRegistry) loadFromTable() error {
+func (s *ProtoRegistry) loadFromTable() (map[string]*descriptorpb.FileDescriptorProto, error) {
 	rows, err := s.queryExec.ExecuteQuery(meta.SystemSchemaName,
 		"select path, fd from "+ProtobufTableName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	protos := make(map[string]*descriptorpb.FileDescriptorProto, rows.RowCount())
@@ -184,14 +195,11 @@ func (s *ProtoRegistry) loadFromTable() error {
 		rawFd := row.GetString(1)
 		fd := &descriptorpb.FileDescriptorProto{}
 		if err := proto.Unmarshal([]byte(rawFd), fd); err != nil {
-			return err
+			return nil, err
 		}
 		protos[fd.GetName()] = fd
 	}
-	s.mu.Lock()
-	s.mu.descByPath = protos
-	s.mu.Unlock()
-	return nil
+	return protos, nil
 }
 
 type diskBackedRegistry struct {

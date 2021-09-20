@@ -17,3 +17,7 @@ message DDLStatementInfo {
 message SessionClosedMessage {
   string session_id = 1;
 }
+
+message ReloadProtobuf {
+
+}
