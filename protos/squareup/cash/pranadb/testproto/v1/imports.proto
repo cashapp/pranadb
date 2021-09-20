@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.testproto.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto";
+
+message Imported {
+  string string_field = 1;
+  google.protobuf.Timestamp time_field = 2;
+}

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.testproto.v1;
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto";
+
+message Simple {
+  string key = 1;
+  int64 val1 = 2;
+  int64 val2 = 3;
+}

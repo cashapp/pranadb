@@ -2,10 +2,12 @@ package sqltest
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,8 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/protolib"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
@@ -207,8 +212,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
-	protoRegistry := protolib.NewProtoRegistry(ProtoDescriptorDir)
-	require.NoError(w.t, protoRegistry.Start())
+	protoRegistry, err := protolib.NewDirBackedRegistry(ProtoDescriptorDir)
+	require.NoError(w.t, err)
 	w.registerEncoders(protoRegistry)
 	w.fakeKafka = kafka.NewFakeKafka()
 
@@ -234,6 +239,9 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 		if TestPrefix != "" && (strings.Index(fileName, TestPrefix) != 0) {
 			continue
 		}
+		if file.IsDir() {
+			continue
+		}
 		if !strings.HasSuffix(fileName, "_test_data.txt") && !strings.HasSuffix(fileName, "_test_out.txt") && !strings.HasSuffix(fileName, "_test_script.txt") {
 			log.Fatalf("test file %s has invalid name. test files should be of the form <test_name>_test_data.txt, <test_name>_test_script.txt or <test_name>_test_out.txt,", fileName)
 		}
@@ -256,7 +264,7 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	}
 }
 
-func (w *sqlTestsuite) registerEncoders(registry *protolib.ProtoRegistry) {
+func (w *sqlTestsuite) registerEncoders(registry protolib.Resolver) {
 	w.registerEncoder(&kafka.JSONKeyJSONValueEncoder{})
 	w.registerEncoder(&kafka.StringKeyTLJSONValueEncoder{})
 	w.registerEncoder(&kafka.Int64BEKeyTLJSONValueEncoder{})
@@ -418,6 +426,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeEnableCommitOffsets(require, command)
 		} else if strings.HasPrefix(command, "--disable commit offsets") {
 			st.executeDisableCommitOffsets(require, command)
+		} else if strings.HasPrefix(command, "--register protobuf") {
+			st.executeRegisterProtobufCommand(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -872,6 +882,19 @@ func (st *sqlTest) setCommitOffsets(require *require.Assertions, sourceName stri
 		require.NoError(err)
 		source.SetCommitOffsets(enable)
 	}
+}
+
+func (st *sqlTest) executeRegisterProtobufCommand(require *require.Assertions, cmd string) {
+	parts := strings.Split(cmd, " ")
+	fileName := parts[len(parts)-1]
+	text, err := ioutil.ReadFile(filepath.Join("testdata/protodesc", fileName))
+	require.NoError(err)
+
+	fd := &descriptorpb.FileDescriptorSet{}
+	require.NoError(proto.UnmarshalText(string(text), fd))
+
+	err = st.cli.RegisterProtobufs(context.Background(), &service.RegisterProtobufsRequest{Descriptors: fd})
+	require.NoError(err)
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {

@@ -1,0 +1,13 @@
+
+ÿ
+google/protobuf/timestamp.protogoogle.protobuf";
+	Timestamp
+seconds (Rseconds
+nanos (RnanosB…
+com.google.protobufBTimestampProtoPZ2google.golang.org/protobuf/types/known/timestamppbø¢GPBªGoogle.Protobuf.WellKnownTypesbproto3
+²
+0squareup/cash/pranadb/testproto/v1/imports.proto"squareup.cash.pranadb.testproto.v1google/protobuf/timestamp.proto"h
+Imported!
+string_field (	RstringField9
+
+time_field (2.google.protobuf.TimestampR	timeFieldBGZEgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testprotobproto3

@@ -357,7 +357,7 @@ func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
 	metaController := meta.NewController(clus)
 	shard := sharder.NewSharder(clus)
 	config := conf.NewTestConfig(0)
-	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{}, protolib.NewProtoRegistry(""))
+	pe := NewPushEngine(clus, shard, metaController, config, &dummySimpleQueryExecutor{}, protolib.EmptyRegistry)
 	clus.RegisterShardListenerFactory(&delegatingShardListenerFactory{delegate: pe})
 	clus.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clus.Start()

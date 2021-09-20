@@ -1,0 +1,26 @@
+# descriptor for squareup/cash/pranadb/testproto/v1/simple.proto
+file {
+  name: "squareup/cash/pranadb/testproto/v1/simple.proto"
+  package: "squareup.cash.pranadb.testproto.v1"
+  message_type {
+    name: "Simple"
+    field {
+      name: "key"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+      json_name: "key"
+    }
+    field {
+      name: "val1"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+      json_name: "val1"
+    }
+  }
+  options {
+    go_package: "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto"
+  }
+  syntax: "proto3"
+}
