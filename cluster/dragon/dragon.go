@@ -230,7 +230,7 @@ func (d *Dragon) Start() error {
 	datadir := filepath.Join(d.cnf.DataDir, fmt.Sprintf("node-%d", d.cnf.NodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
-	if err := os.MkdirAll(d.ingestDir, 0o755); err != nil {
+	if err := os.MkdirAll(d.ingestDir, 0o750); err != nil {
 		return err
 	}
 
