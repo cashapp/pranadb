@@ -129,9 +129,9 @@ func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan 
 	} else {
 		ch <- fmt.Sprintf("%d rows returned", rc)
 	}
-	close(ch)
 	c.lock.Lock()
 	c.currentStatement = ""
+	close(ch)
 	c.lock.Unlock()
 }
 
