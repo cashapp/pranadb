@@ -1,116 +1,38 @@
 package main
 
 import (
-	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/client"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/client"
+	"github.com/squareup/pranadb/cmd/prana/commands"
+
 	"github.com/alecthomas/kong"
-	"github.com/chzyer/readline"
 )
 
-var arguments struct {
-	Addr string `help:"Address of PranaDB server to connect to." default:"127.0.0.1:6584"`
-	VI   bool   `help:"Enable VI mode."`
+var CLI struct {
+	Shell       commands.ShellCommand       `cmd:"" help:"Start a SQL shell for Prana"`
+	UploadProto commands.UploadProtoCommand `cmd:"" help:"Upload a protobuf file descriptor set that can be used by Prana to decode sources"`
+	Addr        string                      `help:"Address of PranaDB server to connect to." default:"127.0.0.1:6584"`
 }
 
 func main() {
-	cm := &cliMain{}
-	cm.run()
-}
-
-type cliMain struct {
-	cl        *client.Client
-	kctx      *kong.Context
-	sessionID string
-}
-
-func (c *cliMain) run() {
-	err := c.doRun()
-	if c.sessionID != "" {
-		if err := c.cl.CloseSession(c.sessionID); err != nil {
-			log.Errorf("failed to close session %v", err)
-		}
+	if err := run(); err != nil {
+		log.Fatalf("%+v\n", err)
 	}
-	if c.cl != nil {
-		if err := c.cl.Stop(); err != nil {
-			log.Errorf("failed to close cli %v", err)
-		}
-	}
-	c.kctx.FatalIfErrorf(err)
 }
 
-func (c *cliMain) doRun() error {
-	c.kctx = kong.Parse(&arguments)
+func run() error {
+	ctx := kong.Parse(&CLI)
 
-	cl := client.NewClient(arguments.Addr, time.Second*5)
+	cl := client.NewClient(CLI.Addr, time.Second*5)
 	if err := cl.Start(); err != nil {
 		return err
 	}
-	c.cl = cl
-
-	session, err := cl.CreateSession()
-	if err != nil {
-		return err
-	}
-	c.sessionID = session
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-
-	rl, err := readline.NewEx(&readline.Config{
-		HistoryFile:            filepath.Join(home, ".prana.history"),
-		DisableAutoSaveHistory: true,
-		VimMode:                arguments.VI,
-	})
-	if err != nil {
-		return err
-	}
-	for {
-		// Gather multi-line statement terminated by a ;
-		rl.SetPrompt("pranadb> ")
-		cmd := []string{}
-		for {
-			line, err := rl.Readline()
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			cmd = append(cmd, line)
-			if strings.HasSuffix(line, ";") {
-				break
-			}
-			rl.SetPrompt("         ")
+	defer func() {
+		if err := cl.Stop(); err != nil {
+			log.Errorf("failed to close cli %v", err)
 		}
-		statement := strings.Join(cmd, " ")
-		_ = rl.SaveHistory(statement)
-
-		if err := c.sendStatement(statement, cl); err != nil {
-			return err
-		}
-	}
-}
-
-func (c *cliMain) sendStatement(statement string, cli *client.Client) error {
-	ch, err := cli.ExecuteStatement(c.sessionID, statement)
-	if err != nil {
-		return err
-	}
-	for line := range ch {
-		fmt.Println(line)
-	}
-	return nil
+	}()
+	return ctx.Run(cl)
 }

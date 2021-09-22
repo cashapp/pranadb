@@ -145,6 +145,12 @@ func (s *ProtoRegistry) FindFileByPath(path string) (protoreflect.FileDescriptor
 }
 
 func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSet) error {
+	// Ensure the descriptor set is valid and contains all transitive dependencies.
+	_, err := protodesc.NewFiles(descriptors)
+	if err != nil {
+		return err
+	}
+
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	for _, fd := range descriptors.File {
 		if err := table.Upsert(ProtobufTableInfo.TableInfo, encodeDescriptorToRow(fd), wb); err != nil {

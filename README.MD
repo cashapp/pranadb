@@ -45,7 +45,7 @@ Wait for all the servers to report they are started.
 Now we're going to start a Prana CLI. Open another terminal and type:
 
 ```
-go run cmd/prana/main.go
+go run cmd/prana/main.go shell
 ```
 
 The CLI should start and give you a prompt like this:
