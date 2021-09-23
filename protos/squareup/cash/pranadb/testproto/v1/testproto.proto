@@ -36,6 +36,13 @@ message TestTypes {
   map<string, SimpleValue> map_message_field = 17;
 
   squareup.cash.pranadb.testproto.v1.Imported import_field = 18;
+  Count enum_field = 19;
+}
+
+enum Count {
+  COUNT_UNSPECIFIED = 0;
+  COUNT_ONE = 1;
+  COUNT_TWO = 2;
 }
 
 message Recursive {
