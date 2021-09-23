@@ -24,8 +24,6 @@ create source test_source_1(
         "v.key",
         "v.val1"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -76,8 +74,6 @@ create source test_source_1(
         "v.val1",
         "v.val2"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -127,8 +123,6 @@ create source test_source_1(
         "v.key",
         "v.val1",
         "v.val2"
-    )
-    properties = (
     )
 );
 0 rows returned

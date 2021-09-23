@@ -24,8 +24,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 
 create materialized view test_mv_1 as select * from test_source_1;

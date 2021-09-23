@@ -25,8 +25,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -76,8 +74,6 @@ create source test_source_2(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -126,8 +122,6 @@ create source test_source_3(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 0 rows returned

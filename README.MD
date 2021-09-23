@@ -98,7 +98,6 @@ pranadb> create source payments(
                  "v.currency",
                  "h.fraud_score"
              )
-             properties = ()
          );
 0 rows returned
 pranadb>

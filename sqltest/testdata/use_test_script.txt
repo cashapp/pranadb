@@ -30,8 +30,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 -- this mv name is also used in schema test2;
 create materialized view test_mv_1 as select * from test_source_1;
@@ -64,8 +62,6 @@ create source test_source_2(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 -- this mv name is only used in schema test1;
@@ -102,8 +98,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 -- mv with same name as in test1;
 create materialized view test_mv_1 as select * from test_source_1;
@@ -137,8 +131,6 @@ create source test_source_3(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 create materialized view test_mv_3 as select * from test_source_3;

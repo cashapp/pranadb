@@ -43,7 +43,7 @@ func TestLoader(t *testing.T) {
 							"k.k0",
 							"v.v1",
 							"v.v2"
-						)
+						),
 						properties = (
 							"prop1" = "val1",
 							"prop2" = "val2"
@@ -64,7 +64,7 @@ func TestLoader(t *testing.T) {
 							"k.k0",
 							"v.v1",
 							"v.v2"
-						)
+						),
 						properties = (
 							"prop1" = "val1",
 							"prop2" = "val2"
@@ -83,7 +83,7 @@ func TestLoader(t *testing.T) {
 							"v.v1",
 							"v.v2",
 							"v.v3"
-						)
+						),
 						properties = (
 							"prop1" = "val1",
 							"prop2" = "val2"
@@ -109,7 +109,7 @@ func TestLoader(t *testing.T) {
 							"v.v1",
 							"v.v2",
 							"v.v3"
-						)
+						),
 						properties = (
 							"prop1" = "val1",
 							"prop2" = "val2"
