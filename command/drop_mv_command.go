@@ -11,13 +11,14 @@ import (
 )
 
 type DropMVCommand struct {
-	lock       sync.Mutex
-	e          *Executor
-	schemaName string
-	sql        string
-	mvName     string
-	mv         *push.MaterializedView
-	schema     *common.Schema
+	lock        sync.Mutex
+	e           *Executor
+	schemaName  string
+	sql         string
+	mvName      string
+	mv          *push.MaterializedView
+	schema      *common.Schema
+	originating bool
 }
 
 func (c *DropMVCommand) CommandType() DDLCommandType {
@@ -42,10 +43,11 @@ func (c *DropMVCommand) LockName() string {
 
 func NewOriginatingDropMVCommand(e *Executor, schemaName string, sql string, mvName string) *DropMVCommand {
 	return &DropMVCommand{
-		e:          e,
-		schemaName: schemaName,
-		sql:        sql,
-		mvName:     mvName,
+		e:           e,
+		schemaName:  schemaName,
+		sql:         sql,
+		mvName:      mvName,
+		originating: true,
 	}
 }
 
@@ -107,13 +109,13 @@ func (c *DropMVCommand) OnPrepare() error {
 func (c *DropMVCommand) OnCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	// Remove the mv from the push engine and delete all it's data
 	// Deleting the data could take some time
 	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
 		return err
 	}
-	return c.mv.Drop()
+	// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
+	return c.mv.Drop(c.originating)
 }
 
 func (c *DropMVCommand) AfterCommit() error {

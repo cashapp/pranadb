@@ -64,13 +64,17 @@ func (m *MaterializedView) Disconnect() error {
 	return m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, true, false)
 }
 
-func (m *MaterializedView) Drop() error {
+func (m *MaterializedView) Drop(deleteData bool) error {
 	// Will already have been disconnected
-	err := m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, false, true)
+	err := m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, false, deleteData)
 	if err != nil {
 		return err
 	}
-	return m.deleteTableData(m.Info.ID)
+	if deleteData {
+		return m.deleteTableData(m.Info.ID)
+	} else {
+		return nil
+	}
 }
 
 func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
@@ -133,11 +137,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 func (m *MaterializedView) deleteTableData(tableID uint64) error {
 	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
 	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
-	err := m.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix)
-	if err != nil {
-		return err
-	}
-	return nil
+	return m.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix)
 }
 
 func (m *MaterializedView) addConsumingExecutor(mvName string, executor exec.PushExecutor) {

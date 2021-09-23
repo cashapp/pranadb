@@ -178,7 +178,7 @@ func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes [
 	lenEndPrefix, offset := common.ReadUint32FromBufferLE(bytes, offset)
 	endPrefix := bytes[offset : offset+int(lenEndPrefix)]
 
-	return batch.DeleteRange(startPrefix, endPrefix, &pebble.WriteOptions{})
+	return batch.DeleteRange(startPrefix, endPrefix, nosyncWriteOptions)
 }
 
 func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
