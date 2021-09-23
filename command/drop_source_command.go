@@ -116,9 +116,8 @@ func (c *DropSourceCommand) OnCommit() error {
 	if c.originating {
 		// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
 		return src.Drop()
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (c *DropSourceCommand) AfterCommit() error {

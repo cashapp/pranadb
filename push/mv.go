@@ -72,9 +72,8 @@ func (m *MaterializedView) Drop(deleteData bool) error {
 	}
 	if deleteData {
 		return m.deleteTableData(m.Info.ID)
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
