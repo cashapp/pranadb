@@ -42,7 +42,7 @@ func TestParse(t *testing.T) {
 			sensor_id bigint,
 			location varchar,
 			temperature double,
-			primary key (sensor_id)
+			primary key (sensor_id, location)
 		) with (
 			brokername = "testbroker",
 			topicname = "testtopic",
@@ -65,7 +65,7 @@ func TestParse(t *testing.T) {
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 38, Line: 3, Column: 4}, Name: "sensor_id", Type: common.Type(3)}},
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 59, Line: 4, Column: 4}, Name: "location", Type: common.Type(6)}},
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 80, Line: 5, Column: 4}, Name: "temperature", Type: common.Type(4)}},
-					{PrimaryKey: "sensor_id"},
+					{PrimaryKey: []string{"sensor_id", "location"}},
 				},
 				TopicInformation: &TopicInformation{
 					BrokerName:     "testbroker",
