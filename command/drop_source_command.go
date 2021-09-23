@@ -10,12 +10,13 @@ import (
 )
 
 type DropSourceCommand struct {
-	lock       sync.Mutex
-	e          *Executor
-	schemaName string
-	sql        string
-	sourceName string
-	sourceInfo *common.SourceInfo
+	lock        sync.Mutex
+	e           *Executor
+	schemaName  string
+	sql         string
+	sourceName  string
+	sourceInfo  *common.SourceInfo
+	originating bool
 }
 
 func (c *DropSourceCommand) CommandType() DDLCommandType {
@@ -40,10 +41,11 @@ func (c *DropSourceCommand) LockName() string {
 
 func NewOriginatingDropSourceCommand(e *Executor, schemaName string, sql string, sourceName string) *DropSourceCommand {
 	return &DropSourceCommand{
-		e:          e,
-		schemaName: schemaName,
-		sql:        sql,
-		sourceName: sourceName,
+		e:           e,
+		schemaName:  schemaName,
+		sql:         sql,
+		sourceName:  sourceName,
+		originating: true,
 	}
 }
 
@@ -111,7 +113,11 @@ func (c *DropSourceCommand) OnCommit() error {
 	if err != nil {
 		return err
 	}
-	return src.Drop()
+	if c.originating {
+		// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
+		return src.Drop()
+	}
+	return nil
 }
 
 func (c *DropSourceCommand) AfterCommit() error {
