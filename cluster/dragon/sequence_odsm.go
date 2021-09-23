@@ -88,6 +88,7 @@ func (s *sequenceODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i
 		panic("not a snapshot")
 	}
 	prefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, tableSequenceClusterID, 16)
+	log.Printf("Saving sequence snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, tableSequenceClusterID, prefix)
 	return saveSnapshotDataToWriter(snapshot, prefix, writer, tableSequenceClusterID)
 }
 

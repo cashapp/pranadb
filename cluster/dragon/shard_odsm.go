@@ -233,6 +233,7 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 	}
 	prefix := make([]byte, 0, 8)
 	prefix = common.AppendUint64ToBufferBE(prefix, s.shardID)
+	log.Printf("Saving data snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, s.shardID, prefix)
 	return saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
 }
 

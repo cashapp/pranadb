@@ -145,6 +145,7 @@ func (s *locksODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i2 <
 		panic("not a snapshot")
 	}
 	prefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
+	log.Printf("Saving locks snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, locksClusterID, prefix)
 	return saveSnapshotDataToWriter(snapshot, prefix, writer, locksClusterID)
 }
 
