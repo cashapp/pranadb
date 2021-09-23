@@ -70,7 +70,7 @@ func (m *MaterializedView) Drop() error {
 	if err != nil {
 		return err
 	}
-	return m.deleteMvTableData(m.Info.ID)
+	return m.deleteTableData(m.Info.ID)
 }
 
 func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
@@ -103,12 +103,18 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 			return fmt.Errorf("cannot disconnect %s: invalid table type", tbl)
 		}
 	case *exec.Aggregator:
-		err := m.pe.UnregisterRemoteConsumer(op.AggTableInfo.ID)
-		if err != nil {
-			return err
+		if disconnect {
+			err := m.pe.UnregisterRemoteConsumer(op.FullAggTableInfo.ID)
+			if err != nil {
+				return err
+			}
 		}
 		if deleteData {
-			err := m.deleteMvTableData(op.AggTableInfo.ID)
+			err := m.deleteTableData(op.PartialAggTableInfo.ID)
+			if err != nil {
+				return err
+			}
+			err = m.deleteTableData(op.FullAggTableInfo.ID)
 			if err != nil {
 				return err
 			}
@@ -124,7 +130,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 	return nil
 }
 
-func (m *MaterializedView) deleteMvTableData(tableID uint64) error {
+func (m *MaterializedView) deleteTableData(tableID uint64) error {
 	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
 	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
 	err := m.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix)
@@ -180,14 +186,14 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 		}
 	case *exec.Aggregator:
 		if registerRemote {
-			colTypes := op.GetChildren()[0].ColTypes()
+			colTypes := op.FullAggTableInfo.ColumnTypes
 			rf := common.NewRowsFactory(colTypes)
 			rc := &RemoteConsumer{
 				RowsFactory: rf,
 				ColTypes:    colTypes,
 				RowsHandler: op,
 			}
-			err := m.pe.RegisterRemoteConsumer(op.AggTableInfo.ID, rc)
+			err := m.pe.RegisterRemoteConsumer(op.FullAggTableInfo.ID, rc)
 			if err != nil {
 				return err
 			}

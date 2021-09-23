@@ -9,7 +9,6 @@ import (
 
 // Test utils for this package
 
-var colNames = []string{"sensor_id", "location", "temperature", "cost"}
 var colTypes = []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.DoubleColumnType, common.NewDecimalColumnType(10, 2)}
 
 func toRows(t *testing.T, rows [][]interface{}, colTypes []common.ColumnType) *common.Rows {
@@ -39,8 +38,8 @@ type rowGatherer struct {
 func (r *rowGatherer) SetColNames(colNames []string) {
 }
 
-func (r *rowGatherer) HandleRows(rows *common.Rows, ctx *ExecutionContext) error {
-	r.Rows = rows
+func (r *rowGatherer) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	r.Rows = rowsBatch.Rows()
 	return nil
 }
 

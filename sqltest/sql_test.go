@@ -37,6 +37,7 @@ import (
 // Set this to the name of a test if you want to only run that test, e.g. during development
 const (
 	TestPrefix         = ""
+	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
 )
@@ -47,6 +48,17 @@ var (
 )
 
 const apiServerListenAddressBase = 63401
+
+func TestSQLFakeCluster(t *testing.T) {
+	testSQL(t, true, 1)
+}
+
+func TestSQLClustered(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
+	testSQL(t, false, 3)
+}
 
 type sqlTestsuite struct {
 	fakeCluster  bool
@@ -76,17 +88,6 @@ func (w *sqlTestsuite) T() *testing.T {
 func (w *sqlTestsuite) SetT(t *testing.T) {
 	t.Helper()
 	w.suite.SetT(t)
-}
-
-func TestSQLFakeCluster(t *testing.T) {
-	testSQL(t, true, 1)
-}
-
-func TestSQLClustered(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	testSQL(t, false, 3)
 }
 
 func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
@@ -237,6 +238,9 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 	for _, file := range files {
 		fileName := file.Name()
 		if TestPrefix != "" && (strings.Index(fileName, TestPrefix) != 0) {
+			continue
+		}
+		if ExcludedTestPrefix != "" && (strings.Index(fileName, ExcludedTestPrefix) == 0) {
 			continue
 		}
 		if file.IsDir() {
@@ -465,6 +469,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 				}
 			}
 		}
+
+		require.True(prana.GetPushEngine().IsEmpty(), "PushEngine state not empty at end of test")
 
 		// This can be async - a replica can be taken off line and snap-shotted while the delete range is occurring
 		// and the query can look at it's stale data - it will eventually come right once it has caught up
@@ -919,6 +925,9 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	if isUse && successful {
 		st.currentSchema = statement[4:]
 	}
+	// In the case of a create mv with an aggregation, rows can be forwarded to other shards so it might not be fully
+	// filled by the time the command returns
+	st.waitForProcessingToComplete(require)
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Infof("Statement execute time ms %d", dur.Milliseconds())

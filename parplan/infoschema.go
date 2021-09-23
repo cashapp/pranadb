@@ -47,17 +47,16 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 	var tabInfos []*model.TableInfo
 	tablesMap := make(map[string]tidbTable.Table)
 	for _, tableInfo := range schemaInfo.TablesInfos {
+		if tableInfo.Internal {
+			continue
+		}
 
 		var columns []*model.ColumnInfo
-
 		for columnIndex, columnType := range tableInfo.ColumnTypes {
-
 			if tableInfo.ColsVisible != nil && !tableInfo.ColsVisible[columnIndex] {
 				continue
 			}
-
 			colType := common.ConvertPranaTypeToTiDBType(columnType)
-
 			col := &model.ColumnInfo{
 				State:     model.StatePublic,
 				Offset:    columnIndex,
@@ -65,16 +64,13 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 				FieldType: *colType,
 				ID:        int64(columnIndex + 1),
 			}
-
 			for pkIndex := range tableInfo.PrimaryKeyCols {
 				if columnIndex == pkIndex {
 					col.Flag |= mysql.PriKeyFlag
 				}
 			}
-
 			columns = append(columns, col)
 		}
-
 		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo

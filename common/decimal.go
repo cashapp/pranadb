@@ -8,6 +8,10 @@ type Decimal struct {
 	decimal *types.MyDecimal
 }
 
+func ZeroDecimal() *Decimal {
+	return &Decimal{decimal: &types.MyDecimal{}}
+}
+
 func NewDecimal(dec *types.MyDecimal) *Decimal {
 	return &Decimal{decimal: dec}
 }
@@ -64,6 +68,22 @@ func (d *Decimal) Decode(buffer []byte, offset int, precision int, scale int) (i
 	}
 	d.decimal = mydec
 	return offset + binSize, nil
+}
+
+func (d *Decimal) Add(other *Decimal) (*Decimal, error) {
+	result := &types.MyDecimal{}
+	if err := types.DecimalAdd(d.decimal, other.decimal, result); err != nil {
+		return nil, err
+	}
+	return NewDecimal(result), nil
+}
+
+func (d *Decimal) Subtract(other *Decimal) (*Decimal, error) {
+	result := &types.MyDecimal{}
+	if err := types.DecimalSub(d.decimal, other.decimal, result); err != nil {
+		return nil, err
+	}
+	return NewDecimal(result), nil
 }
 
 func (d *Decimal) String() string {

@@ -11,6 +11,7 @@ type WriteBatch struct {
 	puts         *common.ByteSliceMap
 	Deletes      *common.ByteSliceMap
 	NotifyRemote bool
+	HasForwards  bool
 }
 
 func NewWriteBatch(shardID uint64, notifyRemote bool) *WriteBatch {

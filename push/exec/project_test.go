@@ -76,7 +76,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	expectedColTypes []common.ColumnType, projExprs ...*common.Expression) {
 	t.Helper()
 	proj := NewPushProjection(projExprs)
-	err := proj.calculateSchema(colNames, colTypes, nil)
+	err := proj.calculateSchema(colTypes, nil)
 	require.NoError(t, err)
 
 	execCtx := &ExecutionContext{
@@ -86,7 +86,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	proj.SetParent(rg)
 
 	inpRows := toRows(t, inputRows, colTypes)
-	err = proj.HandleRows(inpRows, execCtx)
+	err = proj.HandleRows(NewCurrentRowsBatch(inpRows), execCtx)
 	require.NoError(t, err)
 
 	gathered := rg.Rows

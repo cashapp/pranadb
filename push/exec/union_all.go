@@ -26,13 +26,11 @@ func (t *UnionAll) ReCalcSchemaFromChildren() error {
 
 	// For a UNION ALL we take rows from all inputs even if keys are same, so we can't use key of children as one row might overwrite the other
 	// We therefore generate an internal id from a sequence and add this at the end
-	t.colNames = child0.ColNames()
 	t.colTypes = child0.ColTypes()
 	t.colsVisible = child0.ColsVisible()
 
 	t.genIDColIndex = len(child0.ColTypes())
 
-	t.colNames = append(t.colNames, "__gen_id0")
 	t.colTypes = append(t.colTypes, common.VarcharColumnType)
 	t.colsVisible = append(t.colsVisible, false)
 
@@ -56,15 +54,12 @@ func (t *UnionAll) generateID(shardID uint64) string {
 	return string(key)
 }
 
-func (t *UnionAll) HandleRows(incoming *common.Rows, ctx *ExecutionContext) error {
-	in, err := maybeCastRows(incoming)
-	if err != nil {
-		return err
-	}
-	out := t.rowsFactory.NewRows(incoming.RowCount())
+func (t *UnionAll) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	numRows := rowsBatch.Len()
+	out := t.rowsFactory.NewRows(numRows)
 	// TODO this could be optimised by just taking the columns from the incoming chunk and adding them to the new rows
-	for i := 0; i < incoming.RowCount(); i++ {
-		inRow := in.GetRow(i)
+	for i := 0; i < numRows; i++ {
+		inRow := rowsBatch.CurrentRow(i)
 		for i := 0; i < len(t.colTypes)-1; i++ {
 			colType := t.colTypes[i]
 			switch colType.Type {
@@ -82,12 +77,10 @@ func (t *UnionAll) HandleRows(incoming *common.Rows, ctx *ExecutionContext) erro
 				panic("unexpected column type")
 			}
 		}
+		// TODO if the child is an aggregation and can output modifies and deletes then generating an id won't work
+		// as won't identify the previous row
 		id := t.generateID(ctx.WriteBatch.ShardID)
 		out.AppendStringToColumn(t.genIDColIndex, id)
 	}
-	return t.parent.HandleRows(out, ctx)
-}
-
-func maybeCastRows(incoming *common.Rows) (*common.Rows, error) {
-	return incoming, nil
+	return t.parent.HandleRows(NewCurrentRowsBatch(out), ctx)
 }

@@ -330,7 +330,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 			return err
 		}
 		// TODO we can consider an optimisation where execute on any local shards directly
-		err = s.mover.QueueForRemoteSend(destShardID, &row, shardID, tableID, colTypes, batch)
+		err = s.mover.QueueRowForRemoteSend(destShardID, nil, &row, shardID, tableID, colTypes, batch)
 		if err != nil {
 			return err
 		}

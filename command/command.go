@@ -116,7 +116,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		sequences, err := e.generateTableIDSequences(2)
+		sequences, err := e.generateTableIDSequences(3)
 		if err != nil {
 			return nil, err
 		}

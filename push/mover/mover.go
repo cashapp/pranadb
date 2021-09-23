@@ -25,28 +25,51 @@ func NewMover(cluster cluster.Cluster) *Mover {
 	}
 }
 
-func (m *Mover) QueueForRemoteSend(remoteShardID uint64, row *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
+func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row, currRow *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
+	var prevValueBuff []byte
+	if prevRow != nil {
+		prevValueBuff = make([]byte, 0, 32)
+		var err error
+		prevValueBuff, err = common.EncodeRow(prevRow, colTypes, prevValueBuff)
+		if err != nil {
+			return err
+		}
+	}
+	var currValueBuff []byte
+	if currRow != nil {
+		currValueBuff = make([]byte, 0, 32)
+		var err error
+		currValueBuff, err = common.EncodeRow(currRow, colTypes, currValueBuff)
+		if err != nil {
+			return err
+		}
+	}
+	return m.QueueForRemoteSend(remoteShardID, prevValueBuff, currValueBuff, localShardID, remoteConsumerID, batch)
+}
+
+func (m *Mover) QueueForRemoteSend(remoteShardID uint64, prevValueBuff []byte, currValueBuff []byte, localShardID uint64, remoteConsumerID uint64, batch *cluster.WriteBatch) error {
 	sequence, err := m.nextForwardSequence(localShardID)
 	if err != nil {
 		return err
 	}
-
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, sequence)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteConsumerID)
-
-	valueBuff := make([]byte, 0, 32)
-	valueBuff, err = common.EncodeRow(row, colTypes, valueBuff)
-	if err != nil {
-		return err
-	}
-	batch.AddPut(queueKeyBytes, valueBuff)
+	lpvb := len(prevValueBuff)
+	lcvb := len(currValueBuff)
+	buff := make([]byte, 0, lpvb+lcvb+8)
+	buff = common.AppendUint32ToBufferLE(buff, uint32(lpvb))
+	buff = append(buff, prevValueBuff...)
+	buff = common.AppendUint32ToBufferLE(buff, uint32(lcvb))
+	buff = append(buff, currValueBuff...)
+	batch.AddPut(queueKeyBytes, buff)
 	sequence++
+	batch.HasForwards = true
 	return m.updateNextForwardSequence(localShardID, sequence, batch)
 }
 
-// TransferData TODO instead of reading from storage, we can pass rows from QueueForRemoteSend to here via
+// TransferData TODO instead of reading from storage, we can pass rows from QueueRowForRemoteSend to here via
 // a channel - this will avoid scan of storage
 func (m *Mover) TransferData(localShardID uint64, del bool) error {
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 16)
@@ -132,14 +155,14 @@ type forwardBatch struct {
 	deleteBatch *cluster.WriteBatch
 }
 
-func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) error {
+func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRowHandler) (bool, error) {
 	batch := cluster.NewWriteBatch(receivingShardID, false)
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
 
 	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
-		return err
+		return false, err
 	}
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
@@ -149,7 +172,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 		if !ok {
 			lastReceivedSeq, err = m.lastReceivingSequence(receivingShardID, sendingShardID)
 			if err != nil {
-				return err
+				return false, err
 			}
 		}
 
@@ -173,20 +196,17 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	if len(remoteConsumerRows) > 0 {
 		err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 	for sendingShardID, lastReceivedSequence := range receivingSequences {
-		err = m.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)
-		if err != nil {
-			return err
-		}
+		m.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)
 	}
 	err = m.cluster.WriteBatch(batch)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return batch.HasForwards, nil
 }
 
 // TODO consider caching sequences in memory to avoid reading from storage each time
@@ -241,12 +261,11 @@ func (m *Mover) lastReceivingSequence(receivingShardID uint64, sendingShardID ui
 	return res, nil
 }
 
-func (m *Mover) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
+func (m *Mover) updateLastReceivingSequence(receivingShardID uint64, sendingShardID uint64, sequence uint64, batch *cluster.WriteBatch) {
 	seqKey := m.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
-	return nil
 }
 
 func (m *Mover) genForwardSequenceKey(localShardID uint64) []byte {
