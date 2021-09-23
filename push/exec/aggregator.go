@@ -2,7 +2,6 @@ package exec
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -169,8 +168,6 @@ func (a *Aggregator) calcPartialAggregations(row *common.Row, readRows *common.R
 
 func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
 	stateHolders map[string]*aggStateHolder, shardID uint64, numCols int) error {
-
-	log.Printf("Calculating full agg with row %s", currRow.String())
 
 	key, err := a.createKey(currRow, shardID, a.colTypes, a.keyCols, a.FullAggTableInfo.ID)
 	if err != nil {

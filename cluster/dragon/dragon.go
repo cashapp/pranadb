@@ -78,10 +78,10 @@ func (s *snapshot) Close() {
 
 func init() {
 	// This should be customizable, but these are good defaults
-	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
 	logger.GetLogger("raft").SetLevel(logger.ERROR)
 	logger.GetLogger("rsm").SetLevel(logger.ERROR)
-	logger.GetLogger("transport").SetLevel(logger.ERROR)
+	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Otherwise we get loads of spam in logs
 	logger.GetLogger("grpc").SetLevel(logger.ERROR)
 }
 
@@ -280,6 +280,8 @@ func (d *Dragon) Start() error {
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
+	log.Infof("Prana node %d waiting for a quorum", d.cnf.NodeID)
+
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
@@ -293,9 +295,9 @@ func (d *Dragon) Start() error {
 		return err
 	}
 
-	log.Infof("Dragon node %d started", d.cnf.NodeID)
-
 	d.started = true
+
+	log.Infof("Prana node %d quorum attained", d.cnf.NodeID)
 
 	return nil
 }
