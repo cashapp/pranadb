@@ -395,7 +395,7 @@ func (s *Source) startupLastOffset(partitionID int32) int64 {
 }
 
 func GenerateGroupID(clusterID int, sourceInfo *common.SourceInfo) string {
-	return fmt.Sprintf("prana-source-%d-%s-%s", clusterID, sourceInfo.SchemaName, sourceInfo.Name)
+	return fmt.Sprintf("prana-source-%d-%s-%s-%d", clusterID, sourceInfo.SchemaName, sourceInfo.Name, sourceInfo.ID)
 }
 
 func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
