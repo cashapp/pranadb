@@ -65,13 +65,13 @@ func (s *ShardScheduler) Pause() {
 
 func (s *ShardScheduler) exitRunLoop() {
 	ch := make(chan error, 1)
-	s.submitAction(&actionHolder{
+	s.actions <- &actionHolder{
 		action: func() error {
 			return nil
 		},
 		errChan: ch,
 		exit:    true,
-	})
+	}
 	<-ch
 }
 
