@@ -167,9 +167,9 @@ create source test_source_1(
     )
 );
 
-select * from test_source_1 order by col0_1;
+--wait for committed test_source_1 20;
 
---load data dataset_1;
+-- the previous rows should be loaded into the new source as it has a new consumer group id;
 select * from test_source_1 order by col0_1;
 
 drop source test_source_1;
