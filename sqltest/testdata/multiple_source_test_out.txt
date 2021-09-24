@@ -25,8 +25,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -74,8 +72,6 @@ create source test_source_2(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 
@@ -122,8 +118,6 @@ create source test_source_3(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 0 rows returned
@@ -247,8 +241,6 @@ create source test_source_3(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 Failed to execute statement: PDB0008 - Source already exists: test.test_source_3
 
@@ -291,8 +283,6 @@ create source test_source_1(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 0 rows returned

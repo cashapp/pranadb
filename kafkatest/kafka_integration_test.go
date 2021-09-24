@@ -96,7 +96,7 @@ create source payments(
         "v.payment_type",
         "v.currency",
         "h.fraud_score"
-    )
+    ),
     properties = ()
 )
 `, paymentTopicName)

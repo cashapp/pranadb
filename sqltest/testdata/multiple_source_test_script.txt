@@ -24,8 +24,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 
 select * from test_source_1 order by col0_1;
@@ -58,8 +56,6 @@ create source test_source_2(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 
 select * from test_source_2 order by col0_2;
@@ -91,8 +87,6 @@ create source test_source_3(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 
@@ -135,8 +129,6 @@ create source test_source_3(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 
 drop source test_source_3;
@@ -172,8 +164,6 @@ create source test_source_1(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 

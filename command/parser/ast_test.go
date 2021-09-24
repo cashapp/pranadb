@@ -53,7 +53,7 @@ func TestParse(t *testing.T) {
 				"k.k0",
 				"v.v1",
 				"v.v2"
-			)
+			),
 			properties = (
 			"prop1" = "val1",
 			"prop2" = "val2"
@@ -67,17 +67,17 @@ func TestParse(t *testing.T) {
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 80, Line: 5, Column: 4}, Name: "temperature", Type: common.Type(4)}},
 					{PrimaryKey: []string{"sensor_id", "location"}},
 				},
-				TopicInformation: &TopicInformation{
-					BrokerName:     "testbroker",
-					TopicName:      "testtopic",
-					HeaderEncoding: "json",
-					KeyEncoding:    "json",
-					ValueEncoding:  "json",
-					ColSelectors:   []string{"k.k0", "v.v1", "v.v2"},
-					Properties: []*TopicInfoProperty{
+				TopicInformation: []*TopicInformation{
+					{BrokerName: "testbroker"},
+					{TopicName: "testtopic"},
+					{HeaderEncoding: "json"},
+					{KeyEncoding: "json"},
+					{ValueEncoding: "json"},
+					{ColSelectors: []string{"k.k0", "v.v1", "v.v2"}},
+					{Properties: []*TopicInfoProperty{
 						{Key: "prop1", Value: "val1"},
 						{Key: "prop2", Value: "val2"},
-					},
+					}},
 				},
 			},
 		}}, ""},

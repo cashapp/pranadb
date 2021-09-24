@@ -128,6 +128,7 @@ func (c *CreateSourceCommand) AfterCommit() error {
 	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateCommitted)
 }
 
+// nolint: gocyclo
 func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.SourceInfo, error) {
 	var (
 		colNames []string
@@ -162,37 +163,70 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		}
 	}
 
-	headerEncoding := common.KafkaEncodingFromString(ast.TopicInformation.HeaderEncoding)
-	if headerEncoding.Encoding == common.EncodingUnknown {
-		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.HeaderEncoding)
+	var (
+		headerEncoding, keyEncoding, valueEncoding common.KafkaEncoding
+		propsMap                                   map[string]string
+		colSelectors                               []string
+		brokerName, topicName                      string
+	)
+	for _, opt := range ast.TopicInformation {
+		switch {
+		case opt.HeaderEncoding != "":
+			headerEncoding = common.KafkaEncodingFromString(opt.HeaderEncoding)
+			if headerEncoding.Encoding == common.EncodingUnknown {
+				return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.HeaderEncoding)
+			}
+		case opt.KeyEncoding != "":
+			keyEncoding = common.KafkaEncodingFromString(opt.KeyEncoding)
+			if keyEncoding.Encoding == common.EncodingUnknown {
+				return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.KeyEncoding)
+			}
+		case opt.ValueEncoding != "":
+			valueEncoding = common.KafkaEncodingFromString(opt.ValueEncoding)
+			if valueEncoding.Encoding == common.EncodingUnknown {
+				return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.ValueEncoding)
+			}
+		case opt.Properties != nil:
+			propsMap = make(map[string]string, len(opt.Properties))
+			for _, prop := range opt.Properties {
+				propsMap[prop.Key] = prop.Value
+			}
+		case opt.ColSelectors != nil:
+			cs := opt.ColSelectors
+			colSelectors = make([]string, len(cs))
+			for i := 0; i < len(cs); i++ {
+				colSelectors[i] = cs[i]
+			}
+		case opt.BrokerName != "":
+			brokerName = opt.BrokerName
+		case opt.TopicName != "":
+			topicName = opt.TopicName
+		}
 	}
-	keyEncoding := common.KafkaEncodingFromString(ast.TopicInformation.KeyEncoding)
-	if keyEncoding.Encoding == common.EncodingUnknown {
-		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.KeyEncoding)
+	if headerEncoding == common.KafkaEncodingUnknown {
+		return nil, perrors.NewPranaError(perrors.InvalidStatement, "headerEncoding is required")
 	}
-	valueEncoding := common.KafkaEncodingFromString(ast.TopicInformation.ValueEncoding)
-	if valueEncoding.Encoding == common.EncodingUnknown {
-		return nil, perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "Unknown topic encoding %s", ast.TopicInformation.ValueEncoding)
+	if keyEncoding == common.KafkaEncodingUnknown {
+		return nil, perrors.NewPranaError(perrors.InvalidStatement, "keyEncoding is required")
 	}
-	props := ast.TopicInformation.Properties
-	propsMap := make(map[string]string, len(props))
-	for _, prop := range props {
-		propsMap[prop.Key] = prop.Value
+	if valueEncoding == common.KafkaEncodingUnknown {
+		return nil, perrors.NewPranaError(perrors.InvalidStatement, "valueEncoding is required")
 	}
-
-	cs := ast.TopicInformation.ColSelectors
-	colSelectors := make([]string, len(cs))
-	for i := 0; i < len(cs); i++ {
-		colSelectors[i] = cs[i]
+	if brokerName == "" {
+		return nil, perrors.NewPranaError(perrors.InvalidStatement, "brokerName is required")
+	}
+	if topicName == "" {
+		return nil, perrors.NewPranaError(perrors.InvalidStatement, "topicName is required")
 	}
 	lc := len(colSelectors)
 	if lc > 0 && lc != len(colTypes) {
 		return nil, perrors.NewPranaErrorf(perrors.WrongNumberColumnSelectors,
 			"Number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
 	}
+
 	topicInfo := &common.TopicInfo{
-		BrokerName:     ast.TopicInformation.BrokerName,
-		TopicName:      ast.TopicInformation.TopicName,
+		BrokerName:     brokerName,
+		TopicName:      topicName,
 		HeaderEncoding: headerEncoding,
 		KeyEncoding:    keyEncoding,
 		ValueEncoding:  valueEncoding,

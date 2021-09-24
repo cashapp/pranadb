@@ -31,8 +31,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 -- this mv name is also used in schema test2;
@@ -91,8 +89,6 @@ create source test_source_2(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 0 rows returned
@@ -156,8 +152,6 @@ create source test_source_1(
         "v.v5",
         "v.v6"
     )
-    properties = (
-    )
 );
 0 rows returned
 -- mv with same name as in test1;
@@ -217,8 +211,6 @@ create source test_source_3(
         "v.v4",
         "v.v5",
         "v.v6"
-    )
-    properties = (
     )
 );
 0 rows returned

@@ -23,8 +23,6 @@ create source latest_sensor_readings(
         "v.v4",
         "v.v5"
     )
-    properties = (
-    )
 );
 0 rows returned
 

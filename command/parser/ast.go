@@ -92,18 +92,18 @@ type TableOption struct {
 type CreateSource struct {
 	Name string `@Ident`
 	// TODO: Add selection of columns from source. Inline in the column type definitions? Separate clause?
-	Options          []*TableOption    `"(" @@ ("," @@)* ")"` // Table options.
-	TopicInformation *TopicInformation `"WITH" "(" @@ ")"`
+	Options          []*TableOption      `"(" @@ ("," @@)* ")"` // Table options.
+	TopicInformation []*TopicInformation `"WITH" "(" @@ ("," @@)* ")"`
 }
 
 type TopicInformation struct {
-	BrokerName     string               `"BrokerName" "=" @String ","`
-	TopicName      string               `"TopicName" "=" @String ","`
-	HeaderEncoding string               `"HeaderEncoding" "=" @String ","`
-	KeyEncoding    string               `"KeyEncoding" "=" @String ","`
-	ValueEncoding  string               `"ValueEncoding" "=" @String ","`
-	ColSelectors   []string             `"ColumnSelectors" "=" "(" (@String ("," @String)*)? ")"`
-	Properties     []*TopicInfoProperty `"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+	BrokerName     string               `"BrokerName" "=" @String`
+	TopicName      string               `|"TopicName" "=" @String`
+	HeaderEncoding string               `|"HeaderEncoding" "=" @String`
+	KeyEncoding    string               `|"KeyEncoding" "=" @String`
+	ValueEncoding  string               `|"ValueEncoding" "=" @String`
+	ColSelectors   []string             `|"ColumnSelectors" "=" "(" (@String ("," @String)*)? ")"`
+	Properties     []*TopicInfoProperty `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type ColSelector struct {
