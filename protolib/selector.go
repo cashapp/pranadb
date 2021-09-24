@@ -5,6 +5,7 @@ package protolib
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -69,6 +70,7 @@ func ParseSelector(str string) (Selector, error) {
 // Select returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selector
 // references nested value of a nil message, the default Go value will be returned. Array out of index will still panic.
 // ErrNotFound is returned if a non-existing field is referenced. Other errors may be returned on failed type conversion.
+// nolint: gocyclo
 func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	if len(s) == 0 {
 		return msg, nil
@@ -103,7 +105,7 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 				var k pref.MapKey
 				k = newIntMapKey(f.MapKey(), idx)
 				if !k.IsValid() {
-					return pref.MapKey{}, fmt.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
+					return nil, fmt.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
 				}
 				if err != nil {
 					return nil, err
@@ -141,7 +143,14 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 		// The selector expression ends at the root of a one_of field.
 		return nil, fmt.Errorf("selector %q terminates on an oneof field", s)
 	}
-	return v.Interface(), nil
+	ret := v.Interface()
+	if r := reflect.ValueOf(ret); r.Type().Kind() == reflect.Ptr && r.IsNil() {
+		return nil, nil
+	}
+	if e, ok := ret.(pref.EnumNumber); ok {
+		return int32(e), nil
+	}
+	return ret, nil
 }
 
 func newIntMapKey(keyDesc pref.FieldDescriptor, k int) pref.MapKey {

@@ -101,6 +101,7 @@ func TestSelect(t *testing.T) {
 			"batman":   {Value: "robin"},
 			"superman": {Value: "flash"},
 		},
+		EnumField: 1,
 	}
 	bin, err := proto.Marshal(data)
 	require.NoError(t, err)
@@ -132,6 +133,7 @@ func TestSelect(t *testing.T) {
 		{name: "index string map using int", selector: "string_map_field[88]", wantErr: errors.New(""), wantErrMsg: "cannot convert int to map key of kind \"string\" at \"string_map_field\""},
 		{name: "partial oneof selector", selector: "oneof_field", wantErr: errors.New(""), wantErrMsg: "selector \"oneof_field\" terminates on an oneof field"},
 		{name: "index into oneof field", selector: "oneof_field[3]", wantErr: errors.New(""), wantErrMsg: "cannot get index 3 of oneof field at \"oneof_field\""},
+		{name: "enum", selector: "enum_field", want: int32(1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
