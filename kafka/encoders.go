@@ -442,6 +442,8 @@ func protoSet(msg *dynamicpb.Message, fd pref.FieldDescriptor, v interface{}) {
 			v = uint64(t)
 		case pref.BoolKind:
 			v = t != 0
+		case pref.EnumKind:
+			v = pref.EnumNumber(t)
 		default:
 			// fallthrough
 		}
