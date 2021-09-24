@@ -29,16 +29,16 @@ jobs:
       - name: Build
         run: go build ./...
       - name: SQLTests
-        run: go test -v -race -count=1 -timeout 20m -failfast -p 1 -tags confluent ./sqltest
+        run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags confluent ./sqltest
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and SegmentIO Kafka client
-        run: go test -v -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using RedPanda and Confluent Kafka client
-        run: go test -v -race -count=1 -timeout 20m -failfast -p 1 -tags confluent,integration ./kafkatest -- -kafka-provider=redpanda
+        run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags confluent,integration ./kafkatest -- -kafka-provider=redpanda
         if: ${{ always() }}
       - name: Kafka tests using Kafka and SegmentIO Kafka client
-        run: go test -v -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./kafkatest -- -kafka-provider=kafka
+        run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./kafkatest -- -kafka-provider=kafka
         if: ${{ always() }}
   slack-on-fail:
     runs-on: [ self-hosted, linux ]
