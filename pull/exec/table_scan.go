@@ -5,7 +5,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
-	"math"
 )
 
 type PullTableScan struct {
@@ -23,8 +22,8 @@ type PullTableScan struct {
 var _ PullExecutor = &PullTableScan{}
 
 type ScanRange struct {
-	LowVal   int64
-	HighVal  int64
+	LowVal   interface{}
+	HighVal  interface{}
 	LowExcl  bool
 	HighExcl bool
 }
@@ -56,27 +55,26 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 	var rangeStart, rangeEnd []byte
 	var err error
 	tableShardPrefix := table.EncodeTableKeyPrefix(tableInfo.ID, shardID, 16)
+
+	// If a query contains a select (aka a filter, where clause) on a primary key this is often pushed down to the
+	// table scan as a range
 	if scanRange != nil {
-		// If a query contains a select (aka a filter, where clause) on a primary key this is often pushed down to the
-		// table scan as a range
-		if scanRange.LowVal != math.MinInt64 {
-			lr := scanRange.LowVal
-			if scanRange.LowExcl {
-				lr++
-			}
-			rangeStart, err = common.EncodeKey([]interface{}{lr}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
-			if err != nil {
-				return nil, err
-			}
+		rangeStart, err = common.EncodeKey([]interface{}{scanRange.LowVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
+		if err != nil {
+			return nil, err
 		}
-		if scanRange.HighVal != math.MaxInt64 {
-			hr := scanRange.HighVal
-			if !scanRange.HighExcl {
-				hr++
-			}
-			rangeEnd, err = common.EncodeKey([]interface{}{hr}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
-			if err != nil {
-				return nil, err
+		if scanRange.LowExcl {
+			rangeStart = common.IncrementBytesBigEndian(rangeStart)
+		}
+		rangeEnd, err = common.EncodeKey([]interface{}{scanRange.HighVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
+		if err != nil {
+			return nil, err
+		}
+		if !scanRange.HighExcl {
+			if !allBitsSet(rangeEnd) {
+				rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
+			} else {
+				rangeEnd = nil
 			}
 		}
 	}
@@ -139,4 +137,13 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		}
 	}
 	return rows, nil
+}
+
+func allBitsSet(bytes []byte) bool {
+	for _, b := range bytes {
+		if b != 255 {
+			return false
+		}
+	}
+	return true
 }

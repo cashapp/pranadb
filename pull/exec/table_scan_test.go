@@ -101,8 +101,8 @@ func TestTableScanWithLimit2(t *testing.T) {
 
 func TestTableScanWithRangeIncLowIncHigh(t *testing.T) {
 	scanRange := &ScanRange{
-		LowVal:   3,
-		HighVal:  4,
+		LowVal:   int64(3),
+		HighVal:  int64(4),
 		LowExcl:  false,
 		HighExcl: false,
 	}
@@ -115,8 +115,8 @@ func TestTableScanWithRangeIncLowIncHigh(t *testing.T) {
 
 func TestTableScanWithRangeIncLowExclHigh(t *testing.T) {
 	scanRange := &ScanRange{
-		LowVal:   3,
-		HighVal:  4,
+		LowVal:   int64(3),
+		HighVal:  int64(4),
 		LowExcl:  false,
 		HighExcl: true,
 	}
@@ -128,8 +128,8 @@ func TestTableScanWithRangeIncLowExclHigh(t *testing.T) {
 
 func TestTableScanWithRangeExclLowIncHigh(t *testing.T) {
 	scanRange := &ScanRange{
-		LowVal:   3,
-		HighVal:  5,
+		LowVal:   int64(3),
+		HighVal:  int64(5),
 		LowExcl:  true,
 		HighExcl: false,
 	}
@@ -142,8 +142,8 @@ func TestTableScanWithRangeExclLowIncHigh(t *testing.T) {
 
 func TestTableScanWithRangeExclLowExclHigh(t *testing.T) {
 	scanRange := &ScanRange{
-		LowVal:   1,
-		HighVal:  5,
+		LowVal:   int64(1),
+		HighVal:  int64(5),
 		LowExcl:  true,
 		HighExcl: true,
 	}

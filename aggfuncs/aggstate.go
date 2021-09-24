@@ -109,7 +109,7 @@ func (as *AggState) SetDecimal(index int, val common.Decimal) error {
 
 func (as *AggState) GetDecimal(index int) common.Decimal {
 	if as.decimalState == nil {
-		return common.Decimal{}
+		return *common.ZeroDecimal()
 	}
 	return as.decimalState[index]
 }

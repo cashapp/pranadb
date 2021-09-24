@@ -1,0 +1,166 @@
+-- we test various point lookups that cause a table scan with a range that selects only one row;
+
+-- test with the MV having a varchar PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token varchar,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_1;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances order by customer_token;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token='cust_0007';
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;
+
+-- test with the MV having a bigint PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token bigint,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_2;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances order by customer_token;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7;
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;
+
+-- test with the MV having an INT PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token int,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_2;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances order by customer_token;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7;
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;
+
+-- test with the MV having an TINYINT PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token tinyint,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_2;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances order by customer_token;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7;
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;
+
+-- test with the MV having a DOUBLE PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token double,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_3;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances order by customer_token;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7.0;
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;

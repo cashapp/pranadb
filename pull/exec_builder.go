@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pingcap/tidb/planner/util"
-	"github.com/pingcap/tidb/types"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
 
@@ -128,12 +127,9 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 				}
 				lowD := rng.LowVal[0]
 				highD := rng.HighVal[0]
-				if lowD.Kind() != types.KindInt64 {
-					return nil, errors.New("only int64 range supported")
-				}
 				scanRange = &exec.ScanRange{
-					LowVal:   lowD.GetInt64(),
-					HighVal:  highD.GetInt64(),
+					LowVal:   lowD.GetValue(),
+					HighVal:  highD.GetValue(),
 					LowExcl:  rng.LowExclude,
 					HighExcl: rng.HighExclude,
 				}
