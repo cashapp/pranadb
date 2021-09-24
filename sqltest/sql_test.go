@@ -17,6 +17,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
+	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -610,7 +611,7 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			line = line[8:]
 			parts := strings.Split(line, " ")
 			lp := len(parts)
-			require.True(lp == 2 || lp == 3, fmt.Sprintf("invalid dataset line in file %s: %s", fileName, line))
+			require.True(lp >= 2 && lp <= 4, fmt.Sprintf("invalid dataset line in file %s: %s", fileName, line))
 			dataSetName := parts[0]
 			if dsName != dataSetName {
 				if currDataSet != nil {
@@ -622,12 +623,12 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			require.NotEmpty(st.currentSchema, "no schema selected")
 			sourceInfo, ok := st.prana.GetMetaController().GetSource(st.currentSchema, sourceName)
 			require.True(ok, fmt.Sprintf("unknown source %s", sourceName))
-			if lp == 3 {
+			if lp >= 3 {
 				encoderName := parts[2]
 				options := ""
 				if strings.Contains(encoderName, ":") {
-					parts := strings.SplitN(encoderName, ":", 2)
-					encoderName, options = parts[0], parts[1]
+					encParts := strings.SplitN(encoderName, ":", 2)
+					encoderName, options = encParts[0], encParts[1]
 				}
 				factory, ok := st.testSuite.encoders[encoderName]
 				require.True(ok, fmt.Sprintf("unknown encoder %s", encoderName))
@@ -636,9 +637,14 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			} else {
 				encoder = defaultEncoder
 			}
-			rf := common.NewRowsFactory(sourceInfo.TableInfo.ColumnTypes)
+			colTypes := sourceInfo.TableInfo.ColumnTypes
+			if lp >= 4 {
+				colTypes, err = parseColumnTypes(parts[3])
+				require.NoError(err)
+			}
+			rf := common.NewRowsFactory(colTypes)
 			rows := rf.NewRows(100)
-			currDataSet = &dataset{name: dataSetName, sourceInfo: sourceInfo, rows: rows, colTypes: sourceInfo.TableInfo.ColumnTypes}
+			currDataSet = &dataset{name: dataSetName, sourceInfo: sourceInfo, rows: rows, colTypes: colTypes}
 		} else {
 			if currDataSet == nil {
 				continue
@@ -710,7 +716,7 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
 	initialCommitted := st.getNumCommitted(require, dataset.sourceInfo.ID)
-	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.rows, encoder)
+	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.colTypes, dataset.rows, encoder)
 	require.NoError(err)
 	if !noWait {
 		st.waitForCommitted(require, dataset.rows.RowCount()+initialCommitted, dataset.sourceInfo.ID)
@@ -963,6 +969,24 @@ func trimBothEnds(str string) string {
 	str = strings.TrimLeft(str, " \t\n")
 	str = strings.TrimRight(str, " \t\n")
 	return str
+}
+
+func parseColumnTypes(str string) ([]common.ColumnType, error) {
+	parts := strings.Split(str, ",")
+	cols := make([]common.ColumnType, 0, len(parts))
+	for _, p := range parts {
+		t := common.Type(0)
+		if err := t.Capture([]string{p}); err != nil {
+			return nil, err
+		}
+		def := parser.ColumnDef{Type: t}
+		ct, err := def.ToColumnType()
+		if err != nil {
+			return nil, err
+		}
+		cols = append(cols, ct)
+	}
+	return cols, nil
 }
 
 func openFile(fileName string) (*os.File, func()) {

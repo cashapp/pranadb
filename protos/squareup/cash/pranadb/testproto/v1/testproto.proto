@@ -21,22 +21,22 @@ message TestTypes {
   uint64 uint64_field = 6;
   bool bool_field = 7;
   string string_field = 8;
-  bytes bytes_field = 9;
-  Nested nested_field = 10;
-  repeated string repeated_string_field = 11;
-  Recursive recursive_field = 12;
+  Count enum_field = 9;
+  bytes bytes_field = 10;
+  Nested nested_field = 11;
+  repeated string repeated_string_field = 12;
+  Recursive recursive_field = 13;
 
   oneof oneof_field {
-    string one_string = 13;
-    int64 one_int64 = 14;
+    string one_string = 14;
+    int64 one_int64 = 15;
   }
 
-  map<string, string> string_map_field = 15;
-  map<int32, string> int_map_field = 16;
-  map<string, SimpleValue> map_message_field = 17;
+  map<string, string> string_map_field = 16;
+  map<int32, string> int_map_field = 17;
+  map<string, SimpleValue> map_message_field = 18;
 
-  squareup.cash.pranadb.testproto.v1.Imported import_field = 18;
-  Count enum_field = 19;
+  squareup.cash.pranadb.testproto.v1.Imported import_field = 19;
 }
 
 enum Count {

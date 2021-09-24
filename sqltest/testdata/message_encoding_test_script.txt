@@ -430,6 +430,8 @@ create source test_source_1(
     col5 bigint,
     col6 tinyint,
     col7 varchar,
+    col8 int,
+    col9 varchar,
     primary key (col7)
 ) with (
     brokername = "testbroker",
@@ -445,7 +447,9 @@ create source test_source_1(
         "v.uint32_field",
         "v.uint64_field",
         "v.bool_field",
-        "k"
+        "k",
+        "v.enum_field",
+        "v.enum_field"
     ),
     properties = (
         "prop1" = "val1",

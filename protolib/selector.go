@@ -11,6 +11,7 @@ import (
 
 	"github.com/alecthomas/participle/v2"
 	pref "google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type selectorAST struct {
@@ -147,8 +148,8 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	if r := reflect.ValueOf(ret); r.Type().Kind() == reflect.Ptr && r.IsNil() {
 		return nil, nil
 	}
-	if e, ok := ret.(pref.EnumNumber); ok {
-		return int32(e), nil
+	if e, ok := ret.(pref.EnumNumber); ok && f.Enum() != nil {
+		return dynamicpb.NewEnumType(f.Enum()).New(e), nil
 	}
 	return ret, nil
 }

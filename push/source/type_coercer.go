@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/squareup/pranadb/common"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -48,6 +49,8 @@ func CoerceInt64(val interface{}) (int64, error) {
 			return 0, fmt.Errorf("string value %s cannot be coerced to int64 %v", v, err)
 		}
 		return r, nil
+	case protoreflect.Enum:
+		return int64(v.Number()), nil
 	default:
 		return 0, coerceFailedErr(v, "int64")
 	}
@@ -99,6 +102,8 @@ func CoerceString(val interface{}) (string, error) {
 		return fmt.Sprintf("%f", v), nil
 	case common.Decimal:
 		return v.String(), nil
+	case protoreflect.Enum:
+		return string(v.Descriptor().Values().ByNumber(v.Number()).Name()), nil
 	default:
 		return "", coerceFailedErr(v, "string")
 	}

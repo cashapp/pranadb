@@ -11,7 +11,7 @@ import (
 var timestampBase = time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
 
 // IngestRows ingests rows given schema and source name - convenience method for use in tests
-func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, encoder MessageEncoder) error {
+func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.ColumnType, rows *common.Rows, encoder MessageEncoder) error {
 	topicName := sourceInfo.TopicInfo.TopicName
 	topic, ok := f.GetTopic(topicName)
 	if !ok {
@@ -21,7 +21,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, rows *common.Rows, 
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		// We give each
-		if err := IngestRow(topic, &row, sourceInfo.ColumnTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
+		if err := IngestRow(topic, &row, colTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
 			return err
 		}
 		timestamp = timestamp.Add(1 * time.Second)
