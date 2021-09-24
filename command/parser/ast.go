@@ -85,7 +85,7 @@ func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
 }
 
 type TableOption struct {
-	PrimaryKey string     `  "PRIMARY" "KEY" "(" @Ident ")"`
+	PrimaryKey []string   `  "PRIMARY" "KEY" "(" @Ident ( "," @Ident )* ")"`
 	Column     *ColumnDef `| @@`
 }
 

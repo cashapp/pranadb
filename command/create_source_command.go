@@ -148,12 +148,14 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			}
 			colTypes = append(colTypes, colType)
 
-		case option.PrimaryKey != "":
-			index, ok := colIndex[option.PrimaryKey]
-			if !ok {
-				return nil, fmt.Errorf("invalid primary key column %q", option.PrimaryKey)
+		case len(option.PrimaryKey) > 0:
+			for _, pk := range option.PrimaryKey {
+				index, ok := colIndex[pk]
+				if !ok {
+					return nil, fmt.Errorf("invalid primary key column %q", option.PrimaryKey)
+				}
+				pkCols = append(pkCols, index)
 			}
-			pkCols = append(pkCols, index)
 
 		default:
 			panic(repr.String(option))
