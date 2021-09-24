@@ -16,9 +16,10 @@ type ShardScheduler struct {
 type Action func() error
 
 type actionHolder struct {
-	action  Action
-	errChan chan error
-	pause   bool
+	action    Action
+	errChan   chan error
+	exit      bool
+	closeChan bool
 }
 
 func NewShardScheduler(shardID uint64) *ShardScheduler {
@@ -45,8 +46,8 @@ func (s *ShardScheduler) Stop() {
 		// If already stopped do nothing
 		return
 	}
+	s.exitRunLoop(true)
 	s.started = false
-	close(s.actions)
 }
 
 func (s *ShardScheduler) Pause() {
@@ -58,16 +59,21 @@ func (s *ShardScheduler) Pause() {
 	if s.paused {
 		return
 	}
+	s.exitRunLoop(false)
+	s.paused = true
+}
+
+func (s *ShardScheduler) exitRunLoop(closeChan bool) {
 	ch := make(chan error, 1)
 	s.actions <- &actionHolder{
 		action: func() error {
 			return nil
 		},
-		errChan: ch,
-		pause:   true,
+		errChan:   ch,
+		exit:      true,
+		closeChan: closeChan,
 	}
 	<-ch
-	s.paused = true
 }
 
 func (s *ShardScheduler) Resume() {
@@ -89,8 +95,11 @@ func (s *ShardScheduler) runLoop() {
 		if !ok {
 			break
 		}
-		if holder.pause {
+		if holder.exit {
 			holder.errChan <- nil
+			if holder.closeChan {
+				close(s.actions)
+			}
 			break
 		}
 		err := holder.action()
