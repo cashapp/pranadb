@@ -46,6 +46,7 @@ func (s *ShardScheduler) Stop() {
 		return
 	}
 	s.exitRunLoop()
+	close(s.actions)
 	s.started = false
 }
 
@@ -64,13 +65,13 @@ func (s *ShardScheduler) Pause() {
 
 func (s *ShardScheduler) exitRunLoop() {
 	ch := make(chan error, 1)
-	s.actions <- &actionHolder{
+	s.submitAction(&actionHolder{
 		action: func() error {
 			return nil
 		},
 		errChan: ch,
 		exit:    true,
-	}
+	})
 	<-ch
 }
 
@@ -109,19 +110,28 @@ func (s *ShardScheduler) runLoop() {
 func (s *ShardScheduler) ScheduleAction(action Action) chan error {
 	// Channel size is 1 - we don't want writer to block waiting for reader
 	ch := make(chan error, 1)
-	s.actions <- &actionHolder{
+	s.submitAction(&actionHolder{
 		action:  action,
 		errChan: ch,
-	}
+	})
 	return ch
 }
 
 func (s *ShardScheduler) ScheduleActionFireAndForget(action Action) {
-	s.actions <- &actionHolder{
+	s.submitAction(&actionHolder{
 		action: action,
-	}
+	})
 }
 
 func (s *ShardScheduler) ShardID() uint64 {
 	return s.shardID
+}
+
+func (s *ShardScheduler) submitAction(action *actionHolder) {
+	s.lock.Lock()
+	if !s.started {
+		return
+	}
+	s.actions <- action
+	s.lock.Unlock()
 }
