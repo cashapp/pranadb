@@ -18,7 +18,7 @@ type Action func() error
 type actionHolder struct {
 	action  Action
 	errChan chan error
-	pause   bool
+	exit    bool
 }
 
 func NewShardScheduler(shardID uint64) *ShardScheduler {
@@ -45,8 +45,9 @@ func (s *ShardScheduler) Stop() {
 		// If already stopped do nothing
 		return
 	}
-	s.started = false
+	s.exitRunLoop()
 	close(s.actions)
+	s.started = false
 }
 
 func (s *ShardScheduler) Pause() {
@@ -58,16 +59,20 @@ func (s *ShardScheduler) Pause() {
 	if s.paused {
 		return
 	}
+	s.exitRunLoop()
+	s.paused = true
+}
+
+func (s *ShardScheduler) exitRunLoop() {
 	ch := make(chan error, 1)
 	s.actions <- &actionHolder{
 		action: func() error {
 			return nil
 		},
 		errChan: ch,
-		pause:   true,
+		exit:    true,
 	}
 	<-ch
-	s.paused = true
 }
 
 func (s *ShardScheduler) Resume() {
@@ -89,7 +94,7 @@ func (s *ShardScheduler) runLoop() {
 		if !ok {
 			break
 		}
-		if holder.pause {
+		if holder.exit {
 			holder.errChan <- nil
 			break
 		}
@@ -105,19 +110,28 @@ func (s *ShardScheduler) runLoop() {
 func (s *ShardScheduler) ScheduleAction(action Action) chan error {
 	// Channel size is 1 - we don't want writer to block waiting for reader
 	ch := make(chan error, 1)
-	s.actions <- &actionHolder{
+	s.submitAction(&actionHolder{
 		action:  action,
 		errChan: ch,
-	}
+	})
 	return ch
 }
 
 func (s *ShardScheduler) ScheduleActionFireAndForget(action Action) {
-	s.actions <- &actionHolder{
+	s.submitAction(&actionHolder{
 		action: action,
-	}
+	})
 }
 
 func (s *ShardScheduler) ShardID() uint64 {
 	return s.shardID
+}
+
+func (s *ShardScheduler) submitAction(action *actionHolder) {
+	s.lock.Lock()
+	if !s.started {
+		return
+	}
+	s.actions <- action
+	s.lock.Unlock()
 }
