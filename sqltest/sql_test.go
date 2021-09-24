@@ -37,7 +37,7 @@ import (
 
 // Set this to the name of a test if you want to only run that test, e.g. during development
 const (
-	TestPrefix         = ""
+	TestPrefix         = "multiple_source"
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -831,6 +831,7 @@ func (st *sqlTest) executeWaitForCommitted(require *require.Assertions, command 
 }
 
 func (st *sqlTest) waitForCommitted(require *require.Assertions, numrows int, sourceID uint64) {
+	log.Printf("Waiting for committed %d", numrows)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		totCommitted := st.getNumCommitted(require, sourceID)
 		if totCommitted == numrows {
