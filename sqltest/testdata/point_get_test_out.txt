@@ -259,7 +259,7 @@ create source raw_ledger_events(
 --load data dataset_4;
 create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
 0 rows returned
-select * from customer_balances;
+select * from customer_balances order by customer_token;
 |customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
 |6000.000000000000000000000000000000|1|65343.000000000000000000000000000000|65343|65343|
 |7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|123|5433|

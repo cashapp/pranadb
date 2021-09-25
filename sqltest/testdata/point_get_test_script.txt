@@ -191,7 +191,7 @@ create source raw_ledger_events(
 );
 --load data dataset_4;
 create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
-select * from customer_balances;
+select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7000.00;
 drop materialized view customer_balances;
