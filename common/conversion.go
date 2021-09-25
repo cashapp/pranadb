@@ -3,7 +3,7 @@ package common
 import (
 	"fmt"
 	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/types"
+	"github.com/pingcap/tidb/types"
 )
 
 func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
@@ -19,6 +19,8 @@ func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
 		ft = types.NewFieldType(mysql.TypeDouble)
 	case TypeDecimal:
 		ft = types.NewFieldType(mysql.TypeNewDecimal)
+		ft.Flen = columnType.DecPrecision
+		ft.Decimal = columnType.DecScale
 	case TypeVarchar:
 		ft = types.NewFieldType(mysql.TypeVarchar)
 	case TypeTimestamp:
@@ -50,4 +52,12 @@ func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {
 	default:
 		panic(fmt.Sprintf("unknown colum type %d", columnType.Tp))
 	}
+}
+
+func TiDBValueToPranaValue(tidbValue interface{}) interface{} {
+	mydec, ok := tidbValue.(*types.MyDecimal)
+	if ok {
+		return *NewDecimal(mydec)
+	}
+	return tidbValue
 }

@@ -164,3 +164,36 @@ select * from customer_balances where customer_token=7.0;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
+
+-- test with the MV having a DECIMAL PK;
+--create topic testtopic;
+use test;
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token decimal(10, 2),
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		"v.v0",
+        "v.v1",
+		"v.v2",
+		"v.v3",
+		"v.v4"
+	)
+);
+--load data dataset_4;
+create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+select * from customer_balances;
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7000.00;
+drop materialized view customer_balances;
+drop source raw_ledger_events;
+--delete topic testtopic;
