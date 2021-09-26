@@ -3,8 +3,8 @@ on:
   schedule:
     - cron: '*/21 * * * *'
   push:
-    branches:
-      - force-integration-tests # Push this branch to force this job to run
+    paths:
+      - '.github/workflows/**'
 jobs:
   integration:
     name: Integration Tests
