@@ -13,7 +13,6 @@ jobs:
       - name: Cache
         uses: actions/cache@v2
         with:
-
           path: |
             ~/.cache/go-build
             ~/.cache/golangci-lint
