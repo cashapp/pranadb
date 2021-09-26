@@ -152,18 +152,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 
 	executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
 	if err != nil {
-
-		log.Errorf("failed to execute statement %v", err)
-		// Seriously golang why do you make it so hard to log stack traces??
-		type stackTracer interface {
-			StackTrace() errors.StackTrace
-		}
-		if err, ok := err.(stackTracer); ok {
-			for _, f := range err.StackTrace() {
-				log.Errorf("%+s:%d\n", f, f) // Or your own formatting
-			}
-		}
-
+		log.Errorf("failed to execute statement %+v", err)
 		_, ok := err.(perrors.PranaError)
 		if !ok {
 			err = findCause(err)

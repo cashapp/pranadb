@@ -128,8 +128,8 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 				lowD := rng.LowVal[0]
 				highD := rng.HighVal[0]
 				scanRange = &exec.ScanRange{
-					LowVal:   lowD.GetValue(),
-					HighVal:  highD.GetValue(),
+					LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
+					HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
 					LowExcl:  rng.LowExclude,
 					HighExcl: rng.HighExclude,
 				}
