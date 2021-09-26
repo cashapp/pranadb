@@ -1,7 +1,7 @@
 name: "Hourly Integration Tests"
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '*/21 * * * *'
   push:
     branches:
       - force-integration-tests # Push this branch to force this job to run
