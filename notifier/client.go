@@ -4,7 +4,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -129,8 +128,16 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 		clientConn, ok := c.connections[serverAddress]
 		if !ok {
 			var err error
-			nc, err := net.Dial("tcp", serverAddress)
+			addr, err := net.ResolveTCPAddr("tcp", serverAddress)
+			var nc *net.TCPConn
+			if err == nil {
+				nc, err = net.DialTCP("tcp", nil, addr)
+				if err == nil {
+					err = nc.SetNoDelay(true)
+				}
+			}
 			if err != nil {
+				log.Warnf("failed to connect to %s %v", serverAddress, err)
 				c.makeUnavailable(serverAddress)
 				maybeRemoveFromConnCount(ri)
 				continue
@@ -149,7 +156,7 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 			return err
 		}
 		if err := writeMessage(notificationMessageType, bytes, clientConn.conn); err != nil {
-			clientConn.stop()
+			clientConn.Stop()
 			c.makeUnavailable(serverAddress)
 			c.connectionClosed(clientConn)
 			maybeRemoveFromConnCount(ri)
@@ -193,7 +200,7 @@ func (c *client) Stop() error {
 		return nil
 	}
 	for _, conn := range c.connections {
-		conn.stop()
+		conn.Stop()
 	}
 	c.connections = make(map[string]*clientConnection)
 	c.unavailableServers = make(map[string]time.Time)
@@ -294,36 +301,39 @@ func (r *responseInfo) connClosed(conn *clientConnection) {
 }
 
 type clientConnection struct {
+	lock          sync.Mutex
 	client        *client
 	serverAddress string
 	conn          net.Conn
 	loopCh        chan error
-	hbTimer       atomic.Value
-	hbReceived    common.AtomicBool
-}
-
-func (cc *clientConnection) setHbTimer(t *time.Timer) {
-	cc.hbTimer.Store(t)
-}
-
-func (cc *clientConnection) getHbTimer() *time.Timer {
-	v := cc.hbTimer.Load()
-	t, ok := v.(*time.Timer)
-	if !ok {
-		panic("not a pointer to a timer")
-	}
-	return t
+	hbTimer       *time.Timer
+	hbReceived    bool
+	started       bool
 }
 
 func (cc *clientConnection) start() {
+	cc.lock.Lock()
+	defer cc.lock.Unlock()
 	cc.loopCh = make(chan error, 10)
 	go readMessage(cc.handleMessage, cc.loopCh, cc.conn)
 	cc.sendHeartbeat()
+	cc.started = true
 }
 
-func (cc *clientConnection) stop() {
-	if t := cc.getHbTimer(); t != nil {
-		t.Stop()
+func (cc *clientConnection) Stop() {
+	cc.stop(true)
+}
+
+func (cc *clientConnection) stop(lock bool) {
+	if lock {
+		cc.lock.Lock()
+	}
+	cc.started = false
+	if cc.hbTimer != nil {
+		cc.hbTimer.Stop()
+	}
+	if lock {
+		cc.lock.Unlock()
 	}
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
@@ -339,26 +349,32 @@ func (cc *clientConnection) sendHeartbeat() {
 		cc.heartbeatFailed()
 		return
 	}
-	cc.hbReceived.Set(false)
-	t := time.AfterFunc(cc.client.heartbeatInterval, func() {
-		if cc.hbReceived.Get() {
-			cc.sendHeartbeat()
-		} else {
-			log.Warnf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
-			cc.heartbeatFailed()
-		}
-	})
-	cc.setHbTimer(t)
+	cc.hbReceived = false
+	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
+	cc.hbTimer = t
+}
+
+func (cc *clientConnection) heartTimerFired() {
+	cc.lock.Lock()
+	if cc.hbReceived {
+		cc.sendHeartbeat()
+	} else if cc.started {
+		cc.heartbeatFailed()
+	}
+	cc.lock.Unlock()
 }
 
 func (cc *clientConnection) heartbeatFailed() {
-	cc.stop()
+	log.Warnf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
+	cc.stop(false)
 	cc.client.makeUnavailableWithLock(cc.serverAddress)
 	cc.client.connectionClosed(cc)
 }
 
 func (cc *clientConnection) heartbeatReceived() {
-	cc.hbReceived.Set(true)
+	cc.lock.Lock()
+	cc.hbReceived = true
+	cc.lock.Unlock()
 }
 
 func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) {
