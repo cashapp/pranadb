@@ -18,15 +18,14 @@ var CLI struct {
 }
 
 func main() {
-	defer common.PanicHandler()
 	if err := run(); err != nil {
 		log.Fatalf("%+v\n", err)
 	}
 }
 
 func run() error {
+	defer common.PanicHandler()
 	ctx := kong.Parse(&CLI)
-
 	cl := client.NewClient(CLI.Addr, time.Second*5)
 	if err := cl.Start(); err != nil {
 		return err
