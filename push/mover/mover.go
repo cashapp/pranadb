@@ -221,7 +221,7 @@ func (m *Mover) nextForwardSequence(localShardID uint64) (uint64, error) {
 		}
 		nextSeq, _ = common.ReadUint64FromBufferLE(seqBytes, 0)
 	} else {
-		nextSeq = v.(uint64)
+		nextSeq = v.(uint64) //nolint:forcetypeassert
 	}
 	return nextSeq, nil
 }
