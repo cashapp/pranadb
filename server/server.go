@@ -142,6 +142,9 @@ func (s *Server) Start() error {
 			return err
 		}
 	}
+	if err := s.pushEngine.Ready(); err != nil {
+		return err
+	}
 	s.started = true
 
 	log.Infof("Prana server %d started", s.nodeID)

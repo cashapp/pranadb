@@ -25,8 +25,6 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-const remoteBatchRetryDelay = 1 * time.Second
-
 type PushEngine struct {
 	lock              sync.RWMutex
 	localShardsLock   sync.RWMutex
@@ -44,6 +42,7 @@ type PushEngine struct {
 	cfg               *conf.Config
 	queryExec         common.SimpleQueryExec
 	protoRegistry     protolib.Resolver
+	readyToReceive    common.AtomicBool
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -88,12 +87,14 @@ func (p *PushEngine) Start() error {
 	if p.started {
 		return nil
 	}
-	err := p.checkForRowsToForward()
-	if err != nil {
-		return err
-	}
 	p.started = true
 	return nil
+}
+
+// Ready signals that the push engine is now ready to receive any incoming data
+func (p *PushEngine) Ready() error {
+	p.readyToReceive.Set(true)
+	return p.checkForPendingData()
 }
 
 func (p *PushEngine) Stop() error {
@@ -102,6 +103,7 @@ func (p *PushEngine) Stop() error {
 	if !p.started {
 		return nil
 	}
+	p.readyToReceive.Set(false)
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
 			return err
@@ -210,36 +212,28 @@ func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	}
 }
 
-// RemoteWriteOccurred TODO we should also periodically call maybeHandleRemoteBatch as the call can fail if there
-// is no remote entity registered, i.e. the source or aggregate table hasn't been registered yet.
-// This could happen at startup when data is forwarded to a node but it hasn't completed loading all entities at startup
-// yet. In this case we want to retry
 func (s *shardListener) RemoteWriteOccurred() {
+	if !s.p.readyToReceive.Get() {
+		return
+	}
 	s.scheduleHandleRemoteBatch()
 }
 
 func (s *shardListener) scheduleHandleRemoteBatch() {
-	s.sched.ScheduleActionFireAndForget(s.maybeHandleRemoteBatch)
+	s.p.maybeHandleRemoteBatch(s.sched)
 }
 
-func (s *shardListener) maybeHandleRemoteBatch() error {
-	hasForwards, err := s.p.mover.HandleReceivedRows(s.shardID, s.p)
-	if err != nil {
-		// It's possible an error can occur in handling received rows if the source or aggregate table is not
-		// yet registered - this could be the case if rows are forwarded right after startup - in this case we can just
-		// retry
-		log.Errorf("failed to handle received rows %v will retry after delay", err)
-		time.AfterFunc(remoteBatchRetryDelay, func() {
-			if err := s.maybeHandleRemoteBatch(); err != nil {
-				log.Errorf("failed to process remote batch %v", err)
-			}
-		})
+func (p *PushEngine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
+	scheduler.ScheduleActionFireAndForget(func() error {
+		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
+		if err != nil {
+			return err
+		}
+		if hasForwards {
+			return p.mover.TransferData(scheduler.ShardID(), true)
+		}
 		return nil
-	}
-	if hasForwards {
-		return s.p.mover.TransferData(s.shardID, true)
-	}
-	return nil
+	})
 }
 
 func (s *shardListener) Close() {
@@ -329,9 +323,10 @@ func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, er
 	return p.schedulers[shardID], nil
 }
 
-func (p *PushEngine) checkForRowsToForward() error {
-	// If the node failed previously there may be un-forwarded rows in the forwarder table
-	// If there are we need to forwarded them
+func (p *PushEngine) checkForPendingData() error {
+	// If the node failed previously or received messages it was unable to handle as it was starting up then
+	// there could be rows in the forwarder table that need to be handled or incoming rows in the receiver table
+	// we check and process these, if there are any
 	for _, scheduler := range p.schedulers {
 		ch := scheduler.ScheduleAction(func() error {
 			return p.mover.TransferData(scheduler.ShardID(), true)
@@ -343,6 +338,7 @@ func (p *PushEngine) checkForRowsToForward() error {
 		if err != nil {
 			return err
 		}
+		p.maybeHandleRemoteBatch(scheduler)
 	}
 	return nil
 }
@@ -466,6 +462,7 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source
 		ColTypes:    colTypes,
 		RowsHandler: src.TableExecutor(),
 	}
+	log.Printf("Registering source table as remote consumer with id %d", sourceInfo.TableInfo.ID)
 	p.remoteConsumers[sourceInfo.TableInfo.ID] = rc
 
 	p.sources[sourceInfo.TableInfo.ID] = src

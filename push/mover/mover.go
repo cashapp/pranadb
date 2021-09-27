@@ -14,15 +14,11 @@ type RawRowHandler interface {
 
 type Mover struct {
 	cluster          cluster.Cluster
-	lock             sync.RWMutex
-	forwardSequences map[uint64]uint64
+	forwardSequences sync.Map
 }
 
 func NewMover(cluster cluster.Cluster) *Mover {
-	return &Mover{
-		cluster:          cluster,
-		forwardSequences: make(map[uint64]uint64),
-	}
+	return &Mover{cluster: cluster}
 }
 
 func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row, currRow *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
@@ -212,13 +208,8 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 // TODO consider caching sequences in memory to avoid reading from storage each time
 // Return the next forward sequence value
 func (m *Mover) nextForwardSequence(localShardID uint64) (uint64, error) {
-
-	// TODO Rlocks don't scale well over multiple cores - we can remove this one by caching
-	// the last sequence on the scheduler and passing it in the context
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-
-	lastSeq, ok := m.forwardSequences[localShardID]
+	var nextSeq uint64
+	v, ok := m.forwardSequences.Load(localShardID)
 	if !ok {
 		seqKey := m.genForwardSequenceKey(localShardID)
 		seqBytes, err := m.cluster.LocalGet(seqKey)
@@ -228,11 +219,11 @@ func (m *Mover) nextForwardSequence(localShardID uint64) (uint64, error) {
 		if seqBytes == nil {
 			return 1, nil
 		}
-		lastSeq, _ = common.ReadUint64FromBufferLE(seqBytes, 0)
-		m.forwardSequences[localShardID] = lastSeq
+		nextSeq, _ = common.ReadUint64FromBufferLE(seqBytes, 0)
+	} else {
+		nextSeq = v.(uint64)
 	}
-
-	return lastSeq, nil
+	return nextSeq, nil
 }
 
 func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, batch *cluster.WriteBatch) error {
@@ -240,10 +231,7 @@ func (m *Mover) updateNextForwardSequence(localShardID uint64, sequence uint64, 
 	seqValueBytes := make([]byte, 0, 8)
 	seqValueBytes = common.AppendUint64ToBufferLE(seqValueBytes, sequence)
 	batch.AddPut(seqKey, seqValueBytes)
-	// TODO remove this lock!
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	m.forwardSequences[localShardID] = sequence
+	m.forwardSequences.Store(localShardID, sequence)
 	return nil
 }
 
