@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/squareup/pranadb/common"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -17,6 +18,7 @@ var CLI struct {
 }
 
 func main() {
+	defer common.PanicHandler()
 	if err := run(); err != nil {
 		log.Fatalf("%+v\n", err)
 	}
