@@ -78,7 +78,7 @@ func (l *Loader) Start() error {
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
 			mvt, ok := mvTables[tk]
 			if !ok {
-				log.Warnf("mv %s %s not loaded", info.SchemaName, info.MaterializedViewName)
+				log.Warnf("found internal table %s but mv %s %s not loaded", info.Name, info.SchemaName, info.MaterializedViewName)
 				continue
 			}
 			mvt.sequences = append(mvt.sequences, info.ID)

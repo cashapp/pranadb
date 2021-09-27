@@ -2,7 +2,6 @@ package meta
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/squareup/pranadb/cluster"
@@ -267,7 +266,6 @@ func (c *Controller) DeleteSource(sourceID uint64) error {
 }
 
 func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
-	log.Printf("Deleting mv %s from storage, internal tables are %v", internalTableIDs)
 	if err := c.deleteEntityWithID(mvInfo.ID); err != nil {
 		return err
 	}
@@ -282,7 +280,6 @@ func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo,
 func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string, internalTables []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	log.Printf("Unregistering MV %s internal tables are %v", internalTables)
 	schema, ok := c.schemas[schemaName]
 	if !ok {
 		return fmt.Errorf("no such schema %s", schemaName)
@@ -309,8 +306,13 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 	return nil
 }
 
+func (c *Controller) DeleteEntityWithID(tableID uint64) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.deleteEntityWithID(tableID)
+}
+
 func (c *Controller) deleteEntityWithID(tableID uint64) error {
-	log.Printf("Deleting entity with id %d", tableID)
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)

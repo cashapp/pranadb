@@ -267,7 +267,21 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 
 		remoteConsumer, ok := p.remoteConsumers[entityID]
 		if !ok {
-			return fmt.Errorf("entity with id %d not registered", entityID)
+			// Does the entity exist in storage?
+			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id, prepare_state from tables where id=%d", entityID))
+			if err != nil {
+				return err
+			}
+			if rows.RowCount() == 1 {
+				// The entity is in storage but not deployed - this might happen if a node joined when a create source/mv
+				// was in progress so did not get the notifications but did see it in storage - in this case
+				// we periodically scan sys.tables to check for any non registered entities TODO
+				return fmt.Errorf("entity with id %d not registered", entityID)
+			}
+			// The entity does not exist in storage - it must correspond to a dropped entity - we can ignore the row
+			// and it will get deleted from the receiver table
+			log.Warnf("Received rows - Entity with id %d is not registered and does not exist in storage. Will be ignored as likely corresponds to a dropped source or materialized view.", entityID)
+			continue
 		}
 
 		rows := remoteConsumer.RowsFactory.NewRows(len(rawRows))

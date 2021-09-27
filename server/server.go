@@ -145,6 +145,13 @@ func (s *Server) Start() error {
 	if err := s.pushEngine.Ready(); err != nil {
 		return err
 	}
+
+	if err := s.metaController.DeleteEntityWithID(1013); err != nil {
+		log.Errorf("Failed to delete entity %v", err)
+	}
+	if err := s.metaController.DeleteEntityWithID(1019); err != nil {
+		log.Errorf("Failed to delete entity %v", err)
+	}
 	s.started = true
 
 	log.Infof("Prana server %d started", s.nodeID)
