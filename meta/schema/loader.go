@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
@@ -77,7 +78,8 @@ func (l *Loader) Start() error {
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
 			mvt, ok := mvTables[tk]
 			if !ok {
-				return fmt.Errorf("mv %s %s not loaded", info.SchemaName, info.Name)
+				log.Warnf("found internal table %s but mv %s %s not loaded", info.Name, info.SchemaName, info.MaterializedViewName)
+				continue
 			}
 			mvt.sequences = append(mvt.sequences, info.ID)
 			mvt.internalTables = append(mvt.internalTables, info)

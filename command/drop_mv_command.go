@@ -95,7 +95,7 @@ func (c *DropMVCommand) OnPrepare() error {
 	for _, it := range c.mv.InternalTables {
 		itNames = append(itNames, it.Name)
 	}
-	if err := c.e.metaController.UnregisterMaterializedview(c.schemaName, c.mv.Info.Name, itNames); err != nil {
+	if err := c.e.metaController.UnregisterMaterializedView(c.schemaName, c.mv.Info.Name, itNames); err != nil {
 		return err
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)

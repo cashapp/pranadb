@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/squareup/pranadb/common"
 	"os"
 
 	"github.com/alecthomas/kong"
@@ -18,6 +19,7 @@ type arguments struct {
 }
 
 func main() {
+	defer common.PanicHandler()
 	r := &runner{}
 	if err := r.run(os.Args[1:], true); err != nil {
 		log.WithError(err).Fatal("startup failed")

@@ -38,9 +38,11 @@ func NewSession(id string, sessCloser RemoteSessionCloser) *Session {
 }
 
 func (s *Session) UseSchema(schema *common.Schema) {
-	s.Schema = schema
-	s.pushPlanner = nil
-	s.pullPlanner = nil
+	if s.Schema == nil || s.Schema != schema {
+		s.Schema = schema
+		s.pushPlanner = nil
+		s.pullPlanner = nil
+	}
 }
 
 func (s *Session) PullPlanner() *parplan.Planner {

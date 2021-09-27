@@ -262,22 +262,22 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 }
 
 func (c *Controller) DeleteSource(sourceID uint64) error {
-	return c.deleteEntityWIthID(sourceID)
+	return c.deleteEntityWithID(sourceID)
 }
 
 func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
-	if err := c.deleteEntityWIthID(mvInfo.ID); err != nil {
+	if err := c.deleteEntityWithID(mvInfo.ID); err != nil {
 		return err
 	}
 	for _, it := range internalTableIDs {
-		if err := c.deleteEntityWIthID(it.ID); err != nil {
+		if err := c.deleteEntityWithID(it.ID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string, internalTables []string) error {
+func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string, internalTables []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
@@ -306,7 +306,13 @@ func (c *Controller) UnregisterMaterializedview(schemaName string, mvName string
 	return nil
 }
 
-func (c *Controller) deleteEntityWIthID(tableID uint64) error {
+func (c *Controller) DeleteEntityWithID(tableID uint64) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.deleteEntityWithID(tableID)
+}
+
+func (c *Controller) deleteEntityWithID(tableID uint64) error {
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
