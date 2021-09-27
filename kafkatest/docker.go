@@ -108,7 +108,7 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 
 	pool, err := dockertest.NewPool("")
 	require.NoError(t, err)
-	pool.MaxWait = 60 * time.Second
+	pool.MaxWait = 5 * time.Minute
 
 	log.Info("Starting RedPanda on :" + kafkaAPIPort)
 	log.Info("Run `docker logs -f redpanda` for logs")
@@ -182,7 +182,7 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 
 	pool, err := dockertest.NewPool("")
 	require.NoError(t, err)
-	pool.MaxWait = 2 * time.Minute
+	pool.MaxWait = 5 * time.Minute
 
 	docker, err := dc.NewClientFromEnv()
 	require.NoError(t, err)
