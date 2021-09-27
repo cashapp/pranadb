@@ -51,7 +51,10 @@ var (
 	updateFlag     = flag.Bool("update", false, "If set, expected test results in *test_out.txt will be updated")
 )
 
-const apiServerListenAddressBase = 63401
+const (
+	apiServerListenAddressBase = 63401
+	clientPageSize             = 3 // We set this to a small value to exercise the paging logic
+)
 
 func TestSQLFakeCluster(t *testing.T) {
 	testSQL(t, true, 1)
@@ -970,6 +973,7 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
 	cli := client.NewClient(apiServerAddress, 5*time.Second)
+	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
 	require.NoError(err)
 	sessID, err := cli.CreateSession()

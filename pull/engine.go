@@ -144,17 +144,18 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 	newSession := false
 	if !ok {
 		s = sess.NewSession(queryInfo.SessionID, nil)
-		s.UseSchema(schema)
 		newSession = true
 	}
+
 	// We lock the session, not because of concurrent access but because we need a memory barrier
 	// as the session is mutated on subsequent calls which can be on different goroutines
 	s.Lock.Lock()
 	defer s.Lock.Unlock()
+	s.UseSchema(schema)
 	if s.CurrentQuery == nil {
 		s.QueryInfo = queryInfo
 		s.PullPlanner().SetPSArgs(queryInfo.PsArgs)
-		s.PullPlanner().RefreshInfoSchema()
+
 		if queryInfo.IsPs {
 			// Prepared Statement
 			ps, ok := s.PsCache[queryInfo.PsID]
@@ -198,7 +199,7 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 		}
 	} else {
 		// We can delete the session if there are no more prepared statements or if current query is complete
-		if len(s.PsCache) != 0 && s.CurrentQuery != nil {
+		if len(s.PsCache) == 0 && s.CurrentQuery == nil {
 			p.sessionCache().Delete(queryInfo.SessionID)
 		}
 	}

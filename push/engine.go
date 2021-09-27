@@ -476,7 +476,6 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source
 		ColTypes:    colTypes,
 		RowsHandler: src.TableExecutor(),
 	}
-	log.Printf("Registering source table as remote consumer with id %d", sourceInfo.TableInfo.ID)
 	p.remoteConsumers[sourceInfo.TableInfo.ID] = rc
 
 	p.sources[sourceInfo.TableInfo.ID] = src

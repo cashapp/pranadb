@@ -30,12 +30,14 @@ type Client struct {
 	sessionIDs            map[string]struct{}
 	heartbeatTimer        *time.Timer
 	heartbeatSendInterval time.Duration
+	pageSize              int
 }
 
 func NewClient(serverAddress string, heartbeatSendInterval time.Duration) *Client {
 	return &Client{
 		serverAddress:         serverAddress,
 		heartbeatSendInterval: heartbeatSendInterval,
+		pageSize:              1000,
 	}
 }
 
@@ -68,6 +70,12 @@ func (c *Client) Stop() error {
 		c.heartbeatTimer.Stop()
 	}
 	return c.conn.Close()
+}
+
+func (c *Client) SetPageSize(pageSize int) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.pageSize = pageSize
 }
 
 func (c *Client) CreateSession() (string, error) {
@@ -139,7 +147,7 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 	stream, err := c.client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
 		SessionId: sessionID,
 		Statement: statement,
-		PageSize:  1000,
+		PageSize:  int32(c.pageSize),
 	})
 	if err != nil {
 		return 0, err
