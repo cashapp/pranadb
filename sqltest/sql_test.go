@@ -3,6 +3,7 @@ package sqltest
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/protolib"
@@ -46,6 +48,7 @@ const (
 var (
 	lock           sync.Mutex
 	defaultEncoder = &kafka.JSONKeyJSONValueEncoder{}
+	updateFlag     = flag.Bool("update", false, "If set, expected test results in *test_out.txt will be updated")
 )
 
 const apiServerListenAddressBase = 63401
@@ -365,10 +368,7 @@ func (st *sqlTest) run() {
 	require.NotEmpty(st.testDataFile, fmt.Sprintf("sql test %s is missing test data file %s", st.testName, fmt.Sprintf("%s_test_data.txt", st.testName)))
 	require.NotEmpty(st.outFile, fmt.Sprintf("sql test %s is missing out file %s", st.testName, fmt.Sprintf("%s_test_out.txt", st.testName)))
 
-	scriptFile, closeFunc := openFile("./testdata/" + st.scriptFile)
-	defer closeFunc()
-
-	b, err := ioutil.ReadAll(scriptFile)
+	b, err := os.ReadFile("./testdata/" + st.scriptFile)
 	require.NoError(err)
 	scriptContents := string(b)
 
@@ -518,13 +518,25 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
 	}
 
-	outfile, closeFunc := openFile("./testdata/" + st.outFile)
-	defer closeFunc()
-	b, err := ioutil.ReadAll(outfile)
+	b, err := os.ReadFile("./testdata/" + st.outFile)
 	require.NoError(err)
 	expectedOutput := string(b)
 	actualOutput := st.output.String()
-	require.Equal(trimBothEnds(expectedOutput), trimBothEnds(actualOutput))
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(actualOutput, expectedOutput, false)
+	if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
+		diff := dmp.DiffPrettyText(diffs)
+		if *updateFlag {
+			f, err := os.Create("./testdata/" + st.outFile)
+			defer f.Close()
+			require.NoError(err)
+			_, err = f.WriteString(actualOutput)
+			require.NoError(err)
+		} else {
+			st.testSuite.T().Error("Test output did not match:")
+			fmt.Println(diff)
+		}
+	}
 
 	dur := time.Now().Sub(start)
 	log.Infof("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
