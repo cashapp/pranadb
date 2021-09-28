@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/common"
 )
@@ -26,7 +27,16 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 }
 
 // GetRows returns the projected columns.
-func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // nolint: gocyclo
+
+func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) {
+	rows, err = p.getRows(limit)
+	if err != nil {
+		log.Printf("Failed to get rows in pullprojection %+v", err)
+	}
+	return rows, err
+}
+
+func (p *PullProjection) getRows(limit int) (rows *common.Rows, err error) { // nolint: gocyclo
 
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)

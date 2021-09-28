@@ -3,6 +3,7 @@ package exec
 import (
 	"fmt"
 	"github.com/cznic/mathutil"
+	log "github.com/sirupsen/logrus"
 	"sort"
 	"strings"
 
@@ -37,7 +38,15 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 	}
 }
 
-func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
+func (p *PullSort) GetRows(limit int) (rows *common.Rows, err error) {
+	rows, err = p.getRows(limit)
+	if err != nil {
+		log.Printf("Failed to get rows in pullsort %+v", err)
+	}
+	return rows, err
+}
+
+func (p *PullSort) getRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}

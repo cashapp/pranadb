@@ -71,11 +71,11 @@ func (p *PushProjection) ReCalcSchemaFromChildren() error {
 }
 
 func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
-	numRows := rowsBatch.Len()
-	result := p.rowsFactory.NewRows(numRows)
+	numEntries := rowsBatch.Len()
+	result := p.rowsFactory.NewRows(numEntries)
 	rc := 0
-	entries := make([]RowsEntry, numRows)
-	for i := 0; i < numRows; i++ {
+	entries := make([]RowsEntry, numEntries)
+	for i := 0; i < numEntries; i++ {
 		pi := -1
 		prevRow := rowsBatch.PreviousRow(i)
 		if prevRow != nil {

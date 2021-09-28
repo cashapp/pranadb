@@ -200,10 +200,12 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	if !ok {
 		panic("expected []byte")
 	}
-
+	if bytes[0] == 0 {
+		msg := string(bytes[1:])
+		return nil, fmt.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
+	}
 	rows := rowsFactory.NewRows(1)
-	rows.Deserialize(bytes)
-
+	rows.Deserialize(bytes[1:])
 	return rows, nil
 }
 

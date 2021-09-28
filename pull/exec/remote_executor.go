@@ -3,6 +3,7 @@ package exec
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/meta"
 	"strings"
 	"sync/atomic"
@@ -86,7 +87,15 @@ func (re *RemoteExecutor) Reset() {
 	re.pullExecutorBase.Reset()
 }
 
-func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
+func (p *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
+	rows, err = p.getRows(limit)
+	if err != nil {
+		log.Printf("Failed to get rows in remoteexecutor %+v", err)
+	}
+	return rows, err
+}
+
+func (re *RemoteExecutor) getRows(limit int) (rows *common.Rows, err error) {
 
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
