@@ -29,7 +29,6 @@ type TableExecutor struct {
 }
 
 func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
-	log.Printf("Col types for push table executor %s are %s", tableInfo.Name, common.ColTypesToString(tableInfo.ColumnTypes))
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,

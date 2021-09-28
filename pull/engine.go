@@ -190,11 +190,9 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 			}
 			s.CurrentQuery = remExecutor.RemoteDag
 		}
-	} else {
+	} else if s.QueryInfo.Query != queryInfo.Query {
 		// Sanity check
-		if s.QueryInfo.Query != queryInfo.Query {
-			panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", s.QueryInfo.Query, queryInfo.Query))
-		}
+		panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", s.QueryInfo.Query, queryInfo.Query))
 	}
 	rows, err := p.getRowsFromCurrentQuery(s, int(queryInfo.Limit))
 	if err != nil {

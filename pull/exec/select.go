@@ -3,7 +3,6 @@ package exec
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 )
 
@@ -27,14 +26,6 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 }
 
 func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
-	rows, err = p.getRows(limit)
-	if err != nil {
-		log.Printf("Failed to get rows in pullselect %+v", err)
-	}
-	return rows, err
-}
-
-func (p *PullSelect) getRows(limit int) (rows *common.Rows, err error) {
 
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)

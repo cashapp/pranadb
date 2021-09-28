@@ -86,7 +86,6 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 	if rangeEnd == nil {
 		rangeEnd = table.EncodeTableKeyPrefix(tableInfo.ID+1, shardID, 16)
 	}
-	log.Printf("Pull table scan for table %s col types are %s", tableInfo.Name, common.ColTypesToString(rf.ColumnTypes))
 	return &PullTableScan{
 		pullExecutorBase: base,
 		tableInfo:        tableInfo,
@@ -104,14 +103,6 @@ func (p *PullTableScan) Reset() {
 }
 
 func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
-	rows, err = p.getRows(limit)
-	if err != nil {
-		log.Printf("Failed to get rows in pulltablescan %+v", err)
-	}
-	return rows, err
-}
-
-func (p *PullTableScan) getRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
