@@ -219,8 +219,7 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 }
 
 func (c *Controller) checkTableID(tableID uint64) error {
-	_, ok := c.tableIDs[tableID]
-	if ok {
+	if _, ok := c.tableIDs[tableID]; ok {
 		return fmt.Errorf("cannot register. table with id %d already exists", tableID)
 	}
 	return nil
