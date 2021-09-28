@@ -91,11 +91,15 @@ func (l *Loader) Start() error {
 	for _, tk := range mvsToStart {
 		mvt := mvTables[tk]
 		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
+		seqGen := common.NewPreallocSeqGen(mvt.sequences)
+		// It's important that we remove the first id from the seq generator as that's the MV id
+		// If we don't do this then the internal tables will end up with different ids than last time!
+		mvID := seqGen.GenerateSequence()
 		mv, err := push.CreateMaterializedView(
 			l.pushEngine,
 			parplan.NewPlanner(schema, false),
-			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvt.mvInfo.ID,
-			common.NewPreallocSeqGen(mvt.sequences))
+			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvID,
+			seqGen)
 		if err != nil {
 			return err
 		}
