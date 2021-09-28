@@ -76,6 +76,14 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	if ok {
 		return perrors.NewSourceAlreadyExistsError(c.schemaName, c.sourceInfo.Name)
 	}
+	rows, err := c.e.pullEngine.ExecuteQuery("sys",
+		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.sourceInfo.SchemaName, c.sourceInfo.Name, meta.TableKindSource))
+	if err != nil {
+		return err
+	}
+	if rows.RowCount() != 0 {
+		return fmt.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
+	}
 	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
 }
 

@@ -128,7 +128,7 @@ func (s *ProtoRegistry) FindDescriptorByName(name protoreflect.FullName) (protor
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	fd, err := s.mu.registry.FindDescriptorByName(name)
-	if err == protoregistry.NotFound {
+	if err == protoregistry.NotFound && s.dirResolver != nil {
 		return s.dirResolver.FindDescriptorByName(name)
 	}
 	return fd, err

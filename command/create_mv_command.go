@@ -81,7 +81,14 @@ func (c *CreateMVCommand) BeforePrepare() error {
 	if ok {
 		return perrors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
 	}
-
+	rows, err := c.e.pullEngine.ExecuteQuery("sys",
+		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
+	if err != nil {
+		return err
+	}
+	if rows.RowCount() != 0 {
+		return fmt.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+	}
 	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
 }
 

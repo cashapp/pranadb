@@ -293,6 +293,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 			if lpvb != 0 {
 				prevBytes := row[4 : 4+lpvb]
 				if err := common.DecodeRow(prevBytes, remoteConsumer.ColTypes, rows); err != nil {
+					log.Errorf("Failed to decode prev row %v rowbytes %v", err, prevBytes)
 					return err
 				}
 				pi = rc
@@ -303,6 +304,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 			if lcvb != 0 {
 				currBytes := row[8+lpvb:]
 				if err := common.DecodeRow(currBytes, remoteConsumer.ColTypes, rows); err != nil {
+					log.Errorf("Failed to decode curr row %v rowbytes %v", err, currBytes)
 					return err
 				}
 				ci = rc

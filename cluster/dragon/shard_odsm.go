@@ -193,6 +193,7 @@ func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
 }
 
 func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
+	defer common.PanicHandler()
 	buff, ok := i.([]byte)
 	if !ok {
 		panic("expected []byte")
@@ -208,9 +209,17 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 		}
 		rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 		if err != nil {
-			return nil, err
+			var buff []byte
+			buff = append(buff, 0) // Zero byte signifies error
+			buff = append(buff, err.Error()...)
+			// Note - we don't send back an error to Dragon if a query failed - we only return an error
+			// for an unrecoverable error.
+			return buff, nil
 		}
-		buff = rows.Serialize()
+		b := rows.Serialize()
+		buff := make([]byte, 0, 1+len(b))
+		buff = append(buff, 1) // 1 signifies no error
+		buff = append(buff, b...)
 		return buff, nil
 	} else {
 		panic("invalid lookup type")

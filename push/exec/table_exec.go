@@ -3,6 +3,7 @@ package exec
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/push/mover"
@@ -68,12 +69,11 @@ func (t *TableExecutor) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionCont
 
 func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	t.lock.RLock()
-	numRows := rowsBatch.Len()
-	outRows := t.rowsFactory.NewRows(numRows)
+	numEntries := rowsBatch.Len()
+	outRows := t.rowsFactory.NewRows(numEntries)
 	rc := 0
-	entryNum := 0
-	entries := make([]RowsEntry, numRows)
-	for i := 0; i < numRows; i++ {
+	entries := make([]RowsEntry, numEntries)
+	for i := 0; i < numEntries; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
 
@@ -100,25 +100,28 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			outRows.AppendRow(*currentRow)
 			ci := rc
 			rc++
-			entries[entryNum] = RowsEntry{prevIndex: pi, currIndex: ci}
-			entryNum++
+			entries[i].prevIndex = pi
+			entries[i].currIndex = ci
 			var valueBuff []byte
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
 				return err
 			}
+			if t.TableInfo.Name == "total_balances" {
+				log.Printf("Encoded total_balances row for storage key %v value %v coltypes %s", keyBuff, valueBuff, common.ColTypesToString(t.colTypes))
+			}
 			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
 		} else {
 			// It's a delete
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
-			keyBuff, err := common.EncodeKeyCols(prevRow, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
+			keyBuff, err := common.EncodeKeyCols(prevRow, t.TableInfo.PrimaryKeyCols, t.colTypes, keyBuff)
 			if err != nil {
 				return err
 			}
 			outRows.AppendRow(*prevRow)
-			entries[entryNum] = RowsEntry{prevIndex: rc, currIndex: -1}
+			entries[i].prevIndex = rc
+			entries[i].currIndex = -1
 			rc++
-			entryNum++
 			ctx.WriteBatch.AddDelete(keyBuff)
 		}
 	}

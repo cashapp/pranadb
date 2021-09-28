@@ -190,8 +190,16 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 			}
 			s.CurrentQuery = remExecutor.RemoteDag
 		}
+	} else if s.QueryInfo.Query != queryInfo.Query {
+		// Sanity check
+		panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", s.QueryInfo.Query, queryInfo.Query))
 	}
 	rows, err := p.getRowsFromCurrentQuery(s, int(queryInfo.Limit))
+	if err != nil {
+		// Make sure we remove current query in case of error
+		s.CurrentQuery = nil
+		return nil, err
+	}
 	if newSession {
 		// We only need to store the session for later if there is an outstanding query or there are prepared statements
 		if len(s.PsCache) != 0 || s.CurrentQuery != nil {

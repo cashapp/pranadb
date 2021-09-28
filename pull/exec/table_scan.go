@@ -2,6 +2,8 @@ package exec
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/table"
@@ -95,22 +97,22 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 	}, nil
 }
 
-func (t *PullTableScan) Reset() {
-	t.lastRowPrefix = nil
-	t.pullExecutorBase.Reset()
+func (p *PullTableScan) Reset() {
+	p.lastRowPrefix = nil
+	p.pullExecutorBase.Reset()
 }
 
-func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
+func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
 		return nil, fmt.Errorf("invalid limit %d", limit)
 	}
 
 	var skipFirst bool
 	var startPrefix []byte
-	if t.lastRowPrefix == nil {
-		startPrefix = t.rangeStart
+	if p.lastRowPrefix == nil {
+		startPrefix = p.rangeStart
 	} else {
-		startPrefix = t.lastRowPrefix
+		startPrefix = p.lastRowPrefix
 		skipFirst = true
 	}
 
@@ -119,21 +121,24 @@ func (t *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		// We read one extra row as we'll skip the first
 		limitToUse++
 	}
-	kvPairs, err := t.storage.LocalScan(startPrefix, t.rangeEnd, limitToUse)
+	kvPairs, err := p.storage.LocalScan(startPrefix, p.rangeEnd, limitToUse)
 	if err != nil {
 		return nil, err
 	}
 	numRows := len(kvPairs)
-	rows = t.rowsFactory.NewRows(numRows)
+	rows = p.rowsFactory.NewRows(numRows)
 	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
 			continue
 		}
 		if i == numRows-1 {
-			t.lastRowPrefix = kvPair.Key
+			p.lastRowPrefix = kvPair.Key
 		}
-		if err := common.DecodeRowWithIgnoredCols(kvPair.Value, t.tableInfo.ColumnTypes, t.includeCols, rows); err != nil {
-			return nil, err
+		if err := common.DecodeRowWithIgnoredCols(kvPair.Value, p.tableInfo.ColumnTypes, p.includeCols, rows); err != nil {
+			if err != nil {
+				log.Printf("Failed to decode row in pulltablescan %+v row %v, coltypes %s included cols %v startrange %v endrange %v startrangestring %s endrangestring %s key %v keystring %s", err, kvPair.Value, common.ColTypesToString(p.rowsFactory.ColumnTypes), p.includeCols, startPrefix, p.rangeEnd, common.DumpDataKey(startPrefix), common.DumpDataKey(p.rangeEnd), kvPair.Key, common.DumpDataKey(kvPair.Key))
+			}
+			return nil, errors.WithStack(err)
 		}
 	}
 	return rows, nil
