@@ -54,6 +54,253 @@ select * from test_mv_1;
 |225.000000000000000000000000000000|
 1 rows returned
 
+create materialized view test_mv_2 as select round(sum(reading_2), 3) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_2;
+|round(sum(reading_2), 3)|
+|16643.855|
+1 rows returned
+
+create materialized view test_mv_3 as select sum(reading_3) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_3;
+|sum(reading_3)|
+|97700874.260000000000000000000000000000|
+1 rows returned
+
+create materialized view test_mv_4 as select sum(reading_1) from latest_sensor_readings having sum(reading_1) < 0;
+0 rows returned
+select * from test_mv_4;
+|sum(reading_1)|
+0 rows returned
+
+create materialized view test_mv_5 as select round(sum(reading_2), 3) from latest_sensor_readings having sum(reading_2) < 0;
+0 rows returned
+select * from test_mv_5;
+|round(sum(reading_2), 3)|
+0 rows returned
+
+create materialized view test_mv_6 as select sum(reading_3) from latest_sensor_readings having sum(reading_3) < 0;
+0 rows returned
+select * from test_mv_6;
+|sum(reading_3)|
+0 rows returned
+
+create materialized view test_mv_7 as select sum(reading_1) from latest_sensor_readings having sum(reading_1) > 0;
+0 rows returned
+select * from test_mv_7;
+|sum(reading_1)|
+|225.000000000000000000000000000000|
+1 rows returned
+
+create materialized view test_mv_8 as select round(sum(reading_2), 3) from latest_sensor_readings having sum(reading_2) > 0;
+0 rows returned
+select * from test_mv_8;
+|round(sum(reading_2), 3)|
+|16643.855|
+1 rows returned
+
+create materialized view test_mv_9 as select sum(reading_3) from latest_sensor_readings having sum(reading_3) > 0;
+0 rows returned
+select * from test_mv_9;
+|sum(reading_3)|
+|97700874.260000000000000000000000000000|
+1 rows returned
+
+-- Group by one column;
+
+create materialized view test_mv_10 as select country, sum(reading_1) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_10 order by country;
+|country|sum(reading_1)|
+|au|2535.000000000000000000000000000000|
+|uk|3273.000000000000000000000000000000|
+|usa|-5583.000000000000000000000000000000|
+3 rows returned
+
+create materialized view test_mv_11 as select country, round(sum(reading_2), 3) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_11 order by country;
+|country|round(sum(reading_2), 3)|
+|au|8655.085|
+|uk|9859.2|
+|usa|-1870.43|
+3 rows returned
+
+create materialized view test_mv_12 as select country, sum(reading_3) from latest_sensor_readings group by country;
+0 rows returned
+select * from test_mv_12 order by country;
+|country|sum(reading_3)|
+|au|98737867.100000000000000000000000000000|
+|uk|-515658.950000000000000000000000000000|
+|usa|-521333.890000000000000000000000000000|
+3 rows returned
+
+create materialized view test_mv_13 as select country, sum(reading_1) from latest_sensor_readings group by country having sum(reading_1) > 0;
+0 rows returned
+select * from test_mv_13 order by country;
+|country|sum(reading_1)|
+|au|2535.000000000000000000000000000000|
+|uk|3273.000000000000000000000000000000|
+2 rows returned
+
+create materialized view test_mv_14 as select country, round(sum(reading_2), 3) from latest_sensor_readings group by country having sum(reading_2) > 0;
+0 rows returned
+select * from test_mv_14 order by country;
+|country|round(sum(reading_2), 3)|
+|au|8655.085|
+|uk|9859.2|
+2 rows returned
+
+create materialized view test_mv_15 as select country, sum(reading_3) from latest_sensor_readings group by country having sum(reading_3) > 0;
+0 rows returned
+select * from test_mv_15 order by country;
+|country|sum(reading_3)|
+|au|98737867.100000000000000000000000000000|
+1 rows returned
+
+-- Group by two columns;
+
+create materialized view test_mv_16 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_16 order by country, city;
+|country|city|sum(reading_1)|
+|au|melbourne|0.000000000000000000000000000000|
+|au|sydney|2535.000000000000000000000000000000|
+|uk|bristol|261.000000000000000000000000000000|
+|uk|london|3012.000000000000000000000000000000|
+|usa|new york|-1847.000000000000000000000000000000|
+|usa|san francisco|-3736.000000000000000000000000000000|
+6 rows returned
+
+create materialized view test_mv_17 as select country, city, round(sum(reading_2), 3) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_17 order by country, city;
+|country|city|round(sum(reading_2), 3)|
+|au|melbourne|764.32|
+|au|sydney|7890.765|
+|uk|bristol|8991.76|
+|uk|london|867.44|
+|usa|new york|-1327.31|
+|usa|san francisco|-543.12|
+6 rows returned
+
+create materialized view test_mv_18 as select country, city, sum(reading_3) from latest_sensor_readings group by country, city;
+0 rows returned
+select * from test_mv_18 order by country, city;
+|country|city|sum(reading_3)|
+|au|melbourne|9686.120000000000000000000000000000|
+|au|sydney|98728180.980000000000000000000000000000|
+|uk|bristol|-648989.020000000000000000000000000000|
+|uk|london|133330.070000000000000000000000000000|
+|usa|new york|-512758.510000000000000000000000000000|
+|usa|san francisco|-8575.380000000000000000000000000000|
+6 rows returned
+
+create materialized view test_mv_19 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+0 rows returned
+select * from test_mv_19 order by country, city;
+|country|city|sum(reading_1)|
+|au|sydney|2535.000000000000000000000000000000|
+|uk|bristol|261.000000000000000000000000000000|
+|uk|london|3012.000000000000000000000000000000|
+3 rows returned
+
+create materialized view test_mv_20 as select country, city, round(sum(reading_2), 3) from latest_sensor_readings group by country, city having sum(reading_2) > 0;
+0 rows returned
+select * from test_mv_20 order by country, city;
+|country|city|round(sum(reading_2), 3)|
+|au|melbourne|764.32|
+|au|sydney|7890.765|
+|uk|bristol|8991.76|
+|uk|london|867.44|
+4 rows returned
+
+create materialized view test_mv_21 as select country, city, sum(reading_3) from latest_sensor_readings group by country, city having sum(reading_3) > 0;
+0 rows returned
+select * from test_mv_21 order by country, city;
+|country|city|sum(reading_3)|
+|au|melbourne|9686.120000000000000000000000000000|
+|au|sydney|98728180.980000000000000000000000000000|
+|uk|london|133330.070000000000000000000000000000|
+3 rows returned
+
+-- without aggregate in projection;
+
+create materialized view test_mv_22 as select country, city from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+0 rows returned
+select * from test_mv_22 order by country, city;
+|country|city|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+3 rows returned
+
+create materialized view test_mv_23 as select country, city from latest_sensor_readings group by country, city having sum(reading_2) > 0;
+0 rows returned
+select * from test_mv_23 order by country, city;
+|country|city|
+|au|melbourne|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+4 rows returned
+
+create materialized view test_mv_24 as select country, city from latest_sensor_readings group by country, city having sum(reading_3) > 0;
+0 rows returned
+select * from test_mv_24 order by country, city;
+|country|city|
+|au|melbourne|
+|au|sydney|
+|uk|london|
+3 rows returned
+
+drop materialized view test_mv_24;
+0 rows returned
+drop materialized view test_mv_23;
+0 rows returned
+drop materialized view test_mv_22;
+0 rows returned
+drop materialized view test_mv_21;
+0 rows returned
+drop materialized view test_mv_20;
+0 rows returned
+drop materialized view test_mv_19;
+0 rows returned
+drop materialized view test_mv_18;
+0 rows returned
+drop materialized view test_mv_17;
+0 rows returned
+drop materialized view test_mv_16;
+0 rows returned
+drop materialized view test_mv_15;
+0 rows returned
+drop materialized view test_mv_14;
+0 rows returned
+drop materialized view test_mv_13;
+0 rows returned
+drop materialized view test_mv_12;
+0 rows returned
+drop materialized view test_mv_11;
+0 rows returned
+drop materialized view test_mv_10;
+0 rows returned
+drop materialized view test_mv_9;
+0 rows returned
+drop materialized view test_mv_8;
+0 rows returned
+drop materialized view test_mv_7;
+0 rows returned
+drop materialized view test_mv_6;
+0 rows returned
+drop materialized view test_mv_5;
+0 rows returned
+drop materialized view test_mv_4;
+0 rows returned
+drop materialized view test_mv_3;
+0 rows returned
+drop materialized view test_mv_2;
+0 rows returned
 drop materialized view test_mv_1;
 0 rows returned
 drop source latest_sensor_readings;
