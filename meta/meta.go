@@ -61,10 +61,11 @@ var SourceOffsetsTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 }}
 
 type Controller struct {
-	lock    sync.RWMutex
-	schemas map[string]*common.Schema
-	started bool
-	cluster cluster.Cluster
+	lock     sync.RWMutex
+	schemas  map[string]*common.Schema
+	started  bool
+	cluster  cluster.Cluster
+	tableIDs map[uint64]struct{}
 }
 
 func NewController(store cluster.Cluster) *Controller {
@@ -180,6 +181,9 @@ func (c *Controller) existsTable(schema *common.Schema, name string) error {
 func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if err := c.checkTableID(sourceInfo.ID); err != nil {
+		return err
+	}
 	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
 	err := c.existsTable(schema, sourceInfo.Name)
 	if err != nil {
@@ -214,9 +218,19 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 	return c.cluster.WriteBatch(wb)
 }
 
+func (c *Controller) checkTableID(tableID uint64) error {
+	if _, ok := c.tableIDs[tableID]; ok {
+		return fmt.Errorf("cannot register. table with id %d already exists", tableID)
+	}
+	return nil
+}
+
 func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if err := c.checkTableID(mvInfo.ID); err != nil {
+		return err
+	}
 	schema := c.getOrCreateSchema(mvInfo.SchemaName)
 	err := c.existsTable(schema, mvInfo.Name)
 	if err != nil {
@@ -232,6 +246,9 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 }
 
 func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
+	if err := c.checkTableID(info.ID); err != nil {
+		return err
+	}
 	schema := c.getOrCreateSchema(info.SchemaName)
 	err := c.existsTable(schema, info.Name)
 	if err != nil {
@@ -256,6 +273,7 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	if _, ok := tbl.(*common.SourceInfo); !ok {
 		return fmt.Errorf("%s is not a source", tbl)
 	}
+	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(sourceName)
 	c.maybeDeleteSchema(schema)
 	return nil
@@ -291,15 +309,17 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 	if _, ok := tbl.(*common.MaterializedViewInfo); !ok {
 		return fmt.Errorf("%s is not a materialized view", tbl)
 	}
+	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(mvName)
 	for _, it := range internalTables {
-		tbl, ok := schema.GetTable(it)
+		internalTbl, ok := schema.GetTable(it)
 		if !ok {
 			return fmt.Errorf("no such internal table %s", it)
 		}
-		if _, ok := tbl.(*common.InternalTableInfo); !ok {
-			return fmt.Errorf("%s is not an internal table", tbl)
+		if _, ok := internalTbl.(*common.InternalTableInfo); !ok {
+			return fmt.Errorf("%s is not an internal table", internalTbl)
 		}
+		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)
 	}
 	c.maybeDeleteSchema(schema)
