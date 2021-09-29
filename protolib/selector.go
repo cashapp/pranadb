@@ -145,10 +145,10 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	}
 	if oneOf != nil {
 		// When the selector terminates on a oneof field we return the name of the field as the value
-		// or _unspecified_ if the oneof field is not there
+		// or nil if the oneof field is not there
 		f := v.Message().WhichOneof(oneOf)
 		if f == nil {
-			return "_unspecified_", nil
+			return nil, nil
 		} else {
 			fName := f.Name()
 			return string(fName), nil
