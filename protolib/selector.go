@@ -5,7 +5,6 @@ package protolib
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"reflect"
 	"strconv"
 	"strings"
@@ -147,15 +146,11 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	if oneOf != nil {
 		// When the selector terminates on a oneof field we return the name of the field as the value
 		// or _unspecified_ if the oneof field is not there
-		msg := v.Message()
-		log.Printf("oneof message is %v", msg)
-		f := msg.WhichOneof(oneOf)
-		log.Printf("one of field is %v", f)
+		f := v.Message().WhichOneof(oneOf)
 		if f == nil {
 			return "_unspecified_", nil
 		} else {
 			fName := f.Name()
-			log.Printf("one of field name is %s", string(fName))
 			return string(fName), nil
 		}
 	}
