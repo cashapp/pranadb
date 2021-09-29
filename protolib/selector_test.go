@@ -127,13 +127,13 @@ func TestSelect(t *testing.T) {
 		{name: "string map", selector: "string_map_field[\"lois\"]", want: "lane"},
 		{name: "int map", selector: "int_map_field[88]", want: "eighty-eight"},
 		{name: "map message", selector: "map_message_field[\"batman\"].value", want: "robin"},
+		{name: "partial oneof selector", selector: "oneof_field", want: "one_int64"},
 		{name: "one of", selector: "oneof_field.one_int64", want: int64(1000)},
 		// respect that protos are nice about nil values
 		{name: "nil dereference", selector: "recursive_field.recursive_field.recursive_field.recursive_field.string_field", want: ""},
 		{name: "invalid field", selector: "recursive_field.not_a_field.nope", wantErr: &ErrNotFound{}, wantErrMsg: "Value at \"recursive_field.not_a_field\" not found while looking for \"recursive_field.not_a_field.nope\""},
 		{name: "index list using string", selector: "repeated_string_field[\"hello\"]", wantErr: errors.New(""), wantErrMsg: "cannot index list at \"repeated_string_field.hello\" with string"},
 		{name: "index string map using int", selector: "string_map_field[88]", wantErr: errors.New(""), wantErrMsg: "cannot convert int to map key of kind \"string\" at \"string_map_field\""},
-		{name: "partial oneof selector", selector: "oneof_field", wantErr: errors.New(""), wantErrMsg: "selector \"oneof_field\" terminates on an oneof field"},
 		{name: "index into oneof field", selector: "oneof_field[3]", wantErr: errors.New(""), wantErrMsg: "cannot get index 3 of oneof field at \"oneof_field\""},
 		{name: "enum", selector: "enum_field", want: dynamicpb.NewEnumType(fd.Enums().ByName("Count")).New(1)},
 	}

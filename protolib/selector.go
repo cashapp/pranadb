@@ -141,8 +141,8 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 		}
 	}
 	if oneOf != nil {
-		// The selector expression ends at the root of a one_of field.
-		return nil, fmt.Errorf("selector %q terminates on an oneof field", s)
+		// When the selector terminates on a oneof field we return the name of the field as the value
+		return string(v.Message().WhichOneof(oneOf).Name()), nil
 	}
 	ret := v.Interface()
 	if r := reflect.ValueOf(ret); r.Type().Kind() == reflect.Ptr && r.IsNil() {
