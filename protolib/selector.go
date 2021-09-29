@@ -149,10 +149,8 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 		f := v.Message().WhichOneof(oneOf)
 		if f == nil {
 			return nil, nil
-		} else {
-			fName := f.Name()
-			return string(fName), nil
 		}
+		return string(f.Name()), nil
 	}
 	ret := v.Interface()
 	if r := reflect.ValueOf(ret); r.Type().Kind() == reflect.Ptr && r.IsNil() {
