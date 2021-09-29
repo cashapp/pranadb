@@ -146,12 +146,13 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	}
 	if oneOf != nil {
 		// When the selector terminates on a oneof field we return the name of the field as the value
+		// or _unspecified_ if the oneof field is not there
 		msg := v.Message()
 		log.Printf("oneof message is %v", msg)
 		f := msg.WhichOneof(oneOf)
 		log.Printf("one of field is %v", f)
 		if f == nil {
-			return nil, fmt.Errorf("cannot find field for oneof %v", oneOf)
+			return "_unspecified_", nil
 		} else {
 			fName := f.Name()
 			log.Printf("one of field name is %s", string(fName))
