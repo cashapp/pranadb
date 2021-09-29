@@ -136,6 +136,7 @@ func TestSelect(t *testing.T) {
 		{name: "index string map using int", selector: "string_map_field[88]", wantErr: errors.New(""), wantErrMsg: "cannot convert int to map key of kind \"string\" at \"string_map_field\""},
 		{name: "index into oneof field", selector: "oneof_field[3]", wantErr: errors.New(""), wantErrMsg: "cannot get index 3 of oneof field at \"oneof_field\""},
 		{name: "enum", selector: "enum_field", want: dynamicpb.NewEnumType(fd.Enums().ByName("Count")).New(1)},
+		{name: "invalid oneof", selector: "oneof_field.one_wibble", wantErr: errors.New(""), wantErrMsg: "unknown oneof field \"one_wibble\""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
