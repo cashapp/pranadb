@@ -5,6 +5,7 @@ package protolib
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"reflect"
 	"strconv"
 	"strings"
@@ -90,6 +91,9 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 				return nil, fmt.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
 			}
 			f = oneOf.Fields().ByName(pref.Name(*token.Field))
+			if f == nil {
+				return nil, fmt.Errorf("unknown oneof field \"%s\"", *token.Field)
+			}
 			populated := msg.WhichOneof(oneOf)
 			if populated.Number() != f.Number() {
 				// Different one_of field than the one being accessed is populated.
@@ -142,7 +146,17 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 	}
 	if oneOf != nil {
 		// When the selector terminates on a oneof field we return the name of the field as the value
-		return string(v.Message().WhichOneof(oneOf).Name()), nil
+		msg := v.Message()
+		log.Printf("oneof message is %v", msg)
+		f := msg.WhichOneof(oneOf)
+		log.Printf("one of field is %v", f)
+		if f == nil {
+			return nil, fmt.Errorf("cannot find field for oneof %v", oneOf)
+		} else {
+			fName := f.Name()
+			log.Printf("one of field name is %s", string(fName))
+			return string(fName), nil
+		}
 	}
 	ret := v.Interface()
 	if r := reflect.ValueOf(ret); r.Type().Kind() == reflect.Ptr && r.IsNil() {
