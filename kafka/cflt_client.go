@@ -4,7 +4,6 @@
 package kafka
 
 import (
-	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -94,7 +93,7 @@ func (cmp *ConfluentMessageProvider) GetMessage(pollTimeout time.Duration) (*Mes
 	case kafka.Error:
 		return nil, e
 	default:
-		return nil, fmt.Errorf("unexpected result from poll %v", e)
+		return nil, perrors.NewNonUserErrorf("unexpected result from poll %v", e)
 	}
 }
 

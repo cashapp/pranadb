@@ -3,6 +3,7 @@ package exec
 import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/perrors"
 )
 
 type Scan struct {
@@ -134,7 +135,7 @@ func (t *Scan) appendResultRow(row *common.Row, outRows *common.Rows) error {
 				val := row.GetTimestamp(incomingColIndex)
 				outRows.AppendTimestampToColumn(i, val)
 			default:
-				return fmt.Errorf("unexpected column type %v", colType)
+				return perrors.Errorf("unexpected column type %v", colType)
 			}
 		}
 	}

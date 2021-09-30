@@ -266,7 +266,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 		time.AfterFunc(delay, func() {
 			err := s.Start()
 			if err != nil {
-				log.Errorf("Failed to start source %v", err)
+				log.Errorf("Failed to start source %+v", err)
 			}
 		})
 	}

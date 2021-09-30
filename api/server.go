@@ -117,7 +117,7 @@ func (s *Server) CloseSession(ctx context.Context, request *service.CloseSession
 	}
 	s.sessions.Delete(request.GetSessionId())
 	if err := sessEntry.session.Close(); err != nil {
-		log.Errorf("failed to close session %v", err)
+		log.Errorf("failed to close session %+v", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -264,7 +264,7 @@ func (s *Server) checkExpiredSessions() {
 			log.Debugf("Deleting expired session %v", key)
 			s.sessions.Delete(key)
 			if err := se.session.Close(); err != nil {
-				log.Errorf("failed to close session %v", err)
+				log.Errorf("failed to close session %+v", err)
 			}
 		}
 		return true

@@ -3,6 +3,7 @@ package exec
 import (
 	"fmt"
 	"github.com/cznic/mathutil"
+	"github.com/squareup/pranadb/perrors"
 	"sort"
 	"strings"
 
@@ -39,7 +40,7 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 
 func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	if limit < 1 {
-		return nil, fmt.Errorf("invalid limit %d", limit)
+		return nil, perrors.Errorf("invalid limit %d", limit)
 	}
 
 	if p.rows == nil {
@@ -56,7 +57,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 			}
 			if unsorted.RowCount()+rc > OrderByMaxRows {
 				// TODO needs test
-				return nil, fmt.Errorf("query with order by cannot return more than %d rows", OrderByMaxRows)
+				return nil, perrors.Errorf("query with order by cannot return more than %d rows", OrderByMaxRows)
 			}
 			unsorted.AppendAll(batch)
 			if rc < limit {

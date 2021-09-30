@@ -1,7 +1,7 @@
 package kafka
 
 import (
-	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"time"
 
 	"github.com/squareup/pranadb/common"
@@ -15,7 +15,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.C
 	topicName := sourceInfo.TopicInfo.TopicName
 	topic, ok := f.GetTopic(topicName)
 	if !ok {
-		return fmt.Errorf("cannot find topic %s", topicName)
+		return perrors.Errorf("cannot find topic %s", topicName)
 	}
 	timestamp := timestampBase
 	for i := 0; i < rows.RowCount(); i++ {

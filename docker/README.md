@@ -1,4 +1,3 @@
-
 ### Build docker image.
 
 ```bash
@@ -8,6 +7,7 @@ docker build -f docker/Dockerfile -t pranadb:latest .
 ```
 
 ### Run locally.
+
 ```bash
 cd $PROJECT_DIR
 

@@ -58,7 +58,7 @@ func InvokeCloser(closer io.Closer) {
 	if closer != nil {
 		err := closer.Close()
 		if err != nil {
-			log.Errorf("failed to close closer %v", err)
+			log.Errorf("failed to close closer %+v", err)
 		}
 	}
 }

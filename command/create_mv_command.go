@@ -87,7 +87,7 @@ func (c *CreateMVCommand) BeforePrepare() error {
 		return err
 	}
 	if rows.RowCount() != 0 {
-		return fmt.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+		return perrors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
 	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
 }
@@ -145,10 +145,10 @@ func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 	ast, err := parser.Parse(c.createMVSQL)
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, err
 	}
 	if ast.Create == nil || ast.Create.MaterializedView == nil {
-		return nil, fmt.Errorf("not a create materialized view %s", c.createMVSQL)
+		return nil, perrors.Errorf("not a create materialized view %s", c.createMVSQL)
 	}
 	return c.createMVFromAST(ast.Create.MaterializedView)
 }

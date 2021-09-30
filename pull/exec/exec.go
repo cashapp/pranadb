@@ -1,8 +1,8 @@
 package exec
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/perrors"
 	"time"
 
 	"github.com/squareup/pranadb/common"
@@ -29,9 +29,9 @@ func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
 	case ExecutorTypeTableScan:
 		return &PullTableScan{}, nil
 	case ExecutorTypeAggregation:
-		return nil, fmt.Errorf("not implemented")
+		return nil, perrors.Errorf("not implemented")
 	default:
-		return nil, fmt.Errorf("unexpected executorType %d", executorType)
+		return nil, perrors.Errorf("unexpected executorType %d", executorType)
 	}
 }
 

@@ -41,7 +41,7 @@ func (gm *GenManager) RegisterGenerator(gen MessageGenerator) error {
 	gm.lock.Lock()
 	defer gm.lock.Unlock()
 	if _, ok := gm.generators[gen.Name()]; ok {
-		return fmt.Errorf("generator already registered with name %s", gen.Name())
+		return perrors.Errorf("generator already registered with name %s", gen.Name())
 	}
 	gm.generators[gen.Name()] = gen
 	return nil
@@ -58,7 +58,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 
 	gen, ok := gm.generators[genName]
 	if !ok {
-		return fmt.Errorf("no generator with registered with name %s", genName)
+		return perrors.Errorf("no generator with registered with name %s", genName)
 	}
 
 	msgsSent := int64(0)
@@ -132,7 +132,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	}
 	failed := false
 	for err := range errChan {
-		log.Errorf("error producing messages: %v", err)
+		log.Errorf("error producing messages: %+v", err)
 		failed = true
 	}
 	if failed {

@@ -1,11 +1,11 @@
 package exec
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -104,7 +104,7 @@ func (p *PullTableScan) Reset() {
 
 func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
-		return nil, fmt.Errorf("invalid limit %d", limit)
+		return nil, perrors.Errorf("invalid limit %d", limit)
 	}
 
 	var skipFirst bool

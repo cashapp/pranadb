@@ -8,6 +8,7 @@ import (
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/exec"
 )
 
@@ -95,7 +96,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
 			default:
-				return nil, nil, fmt.Errorf("unexpected aggregate function %s", aggFunc.Name)
+				return nil, nil, perrors.Errorf("unexpected aggregate function %s", aggFunc.Name)
 			}
 			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
 			af := &exec.AggregateFunctionInfo{
@@ -200,7 +201,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		tableName := phsyIndexScan.Table.Name
 		table, ok := schema.GetTable(tableName.L)
 		if !ok {
-			return nil, nil, fmt.Errorf("cannot find table %s", tableName.L)
+			return nil, nil, perrors.Errorf("cannot find table %s", tableName.L)
 		}
 		info := table.GetTableInfo()
 		executor, err = exec.NewScan(tableName.L, info.PrimaryKeyCols)
@@ -208,7 +209,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			return nil, nil, err
 		}
 	default:
-		return nil, nil, fmt.Errorf("unexpected plan type %T", plan)
+		return nil, nil, perrors.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PushExecutor
@@ -242,7 +243,7 @@ func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *com
 		tableName := op.TableName
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
-			return fmt.Errorf("unknown source or materialized view %s", tableName)
+			return perrors.Errorf("unknown source or materialized view %s", tableName)
 		}
 		tableInfo := tbl.GetTableInfo()
 		op.SetSchema(tableInfo)

@@ -143,7 +143,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	case ast.Use != "":
 		return e.execUse(session, ast.Use)
 	}
-	return nil, fmt.Errorf("invalid statement %s", sql)
+	return nil, perrors.Errorf("invalid statement %s", sql)
 }
 
 func (e *Executor) CreateSession() *sess.Session {
@@ -190,11 +190,10 @@ func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExec
 	// TODO we should really use the parser to do this
 	sql = strings.ToLower(sql)
 	if strings.Index(sql, "prepare ") != 0 {
-		return nil, perrors.MaybeAddStack(fmt.Errorf("in valid prepare command %s", sql))
+		return nil, perrors.Errorf("in valid prepare command %s", sql)
 	}
 	sql = sql[8:]
-	dag, err := e.pullEngine.PrepareSQLStatement(session, sql)
-	return dag, perrors.MaybeAddStack(err)
+	return e.pullEngine.PrepareSQLStatement(session, sql)
 }
 
 func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (exec.PullExecutor, error) {
@@ -203,8 +202,7 @@ func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (
 	for i := range args {
 		args[i] = execute.Args[i]
 	}
-	dag, err := e.pullEngine.ExecutePreparedStatement(session, execute.PsID, args)
-	return dag, perrors.MaybeAddStack(err)
+	return e.pullEngine.ExecutePreparedStatement(session, execute.PsID, args)
 }
 
 func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {

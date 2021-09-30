@@ -5,6 +5,7 @@ package protolib
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -87,11 +88,11 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 		case oneOf != nil:
 			msg = v.Message()
 			if token.NumberIndex != nil {
-				return nil, fmt.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
+				return nil, perrors.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
 			}
 			f = oneOf.Fields().ByName(pref.Name(*token.Field))
 			if f == nil {
-				return nil, fmt.Errorf("unknown oneof field \"%s\"", *token.Field)
+				return nil, perrors.Errorf("unknown oneof field \"%s\"", *token.Field)
 			}
 			populated := msg.WhichOneof(oneOf)
 			if populated.Number() != f.Number() {
@@ -109,7 +110,7 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 				var k pref.MapKey
 				k = newIntMapKey(f.MapKey(), idx)
 				if !k.IsValid() {
-					return nil, fmt.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
+					return nil, perrors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
 				}
 				if err != nil {
 					return nil, err
@@ -117,19 +118,19 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 				v = v.Map().Get(k)
 				f = f.MapValue()
 			default:
-				return nil, fmt.Errorf("cannot get index %d of %q", idx, f.Kind())
+				return nil, perrors.Errorf("cannot get index %d of %q", idx, f.Kind())
 			}
 		case token.Field != nil:
 			fieldName := *token.Field
 			switch {
 			case f.IsMap():
 				if f.MapKey().Kind() != pref.StringKind {
-					return nil, fmt.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
+					return nil, perrors.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
 				}
 				v = v.Map().Get(pref.ValueOfString(fieldName).MapKey())
 				f = f.MapValue()
 			case f.IsList():
-				return nil, fmt.Errorf("cannot index list at %q with string", s[0:tail])
+				return nil, perrors.Errorf("cannot index list at %q with string", s[0:tail])
 			case f.Message() != nil:
 				var ok bool
 				v, f, oneOf, ok = getField(v.Message(), fieldName)
@@ -137,7 +138,7 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 					return nil, &ErrNotFound{missingPath: s[0:tail], targetPath: s}
 				}
 			default:
-				return nil, fmt.Errorf("cannot get field %s of %q", fieldName, f.Kind())
+				return nil, perrors.Errorf("cannot get field %s of %q", fieldName, f.Kind())
 			}
 		default:
 			panic("invalid path token")

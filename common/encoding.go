@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/binary"
 	"github.com/pingcap/parser/mysql"
+	"github.com/squareup/pranadb/perrors"
 	"math"
 	"unsafe"
 )
@@ -60,7 +61,7 @@ func AppendDecimalToBuffer(buffer []byte, dec Decimal, precision, scale int) ([]
 func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
 	enc, err := ts.ToPackedUint()
 	if err != nil {
-		return nil, err
+		return nil, perrors.MaybeAddStack(err)
 	}
 	buffer = AppendUint64ToBufferLE(buffer, enc)
 	return buffer, nil
@@ -146,7 +147,7 @@ func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp
 	ts := Timestamp{}
 	enc, off := ReadUint64FromBufferLE(buffer, offset)
 	if err := ts.FromPackedUint(enc); err != nil {
-		return Timestamp{}, 0, err
+		return Timestamp{}, 0, perrors.MaybeAddStack(err)
 	}
 	ts.SetType(mysql.TypeTimestamp)
 	ts.SetFsp(fsp)

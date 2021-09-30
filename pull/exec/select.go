@@ -2,8 +2,8 @@ package exec
 
 import (
 	"errors"
-	"fmt"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/perrors"
 )
 
 type PullSelect struct {
@@ -28,7 +28,7 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 
 	if limit < 1 {
-		return nil, fmt.Errorf("invalid limit %d", limit)
+		return nil, perrors.Errorf("invalid limit %d", limit)
 	}
 
 	rows, err = p.GetChildren()[0].GetRows(limit)

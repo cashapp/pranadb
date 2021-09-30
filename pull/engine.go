@@ -69,7 +69,7 @@ func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exe
 		return nil, errors.WithStack(err)
 	}
 	if ast.Select == "" {
-		return nil, fmt.Errorf("only sql queries can be prepared %s", sql)
+		return nil, perrors.Errorf("only sql queries can be prepared %s", sql)
 	}
 	tiAst, err := session.PullPlanner().Parse(sql)
 	if err != nil {
@@ -315,7 +315,7 @@ func (p *PullEngine) clearSessionsForNode(nodeID int) {
 func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
-		return nil, fmt.Errorf("no such schema %s", schemaName)
+		return nil, perrors.Errorf("no such schema %s", schemaName)
 	}
 	sess := sess.NewSession("", nil)
 	sess.UseSchema(schema)

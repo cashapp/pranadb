@@ -1,10 +1,10 @@
 package command
 
 import (
-	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"sync"
 	"sync/atomic"
@@ -108,7 +108,7 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 	} else {
 		com, ok := d.commands[skey]
 		if !ok {
-			return fmt.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+			return perrors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		}
 		if err := com.OnCommit(); err != nil {
 			return err
@@ -148,7 +148,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 func (d *DDLCommandRunner) releaseLock(lockName string) {
 	ok, err := d.ce.cluster.ReleaseLock(lockName)
 	if err != nil {
-		log.Errorf("error in releasing DDL lock %v", err)
+		log.Errorf("error in releasing DDL lock %+v", err)
 	}
 	if !ok {
 		log.Errorf("failed to release ddl lock %s", lockName)
@@ -189,7 +189,7 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 			return nil
 		}
 		if time.Now().Sub(start) > schemaLockAttemptTimeout {
-			return fmt.Errorf("timed out waiting to get ddl schema lock for schema %s", lockName)
+			return perrors.Errorf("timed out waiting to get ddl schema lock for schema %s", lockName)
 		}
 		time.Sleep(schemaLockRetryDelay)
 	}
