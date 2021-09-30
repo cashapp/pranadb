@@ -94,7 +94,7 @@ func (cmp *ConfluentMessageProvider) GetMessage(pollTimeout time.Duration) (*Mes
 	case kafka.Error:
 		return nil, e
 	default:
-		return nil, perrors.NewNonUserErrorf("unexpected result from poll %v", e)
+		return nil, perrors.Errorf("unexpected result from poll %+v", e)
 	}
 }
 
