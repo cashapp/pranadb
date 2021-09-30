@@ -23,7 +23,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 	}
 	defer func() {
 		if err := cl.CloseSession(sessionID); err != nil {
-			log.Errorf("failed to close session %v", err)
+			log.Errorf("failed to close session %+v", err)
 		}
 	}()
 

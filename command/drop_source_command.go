@@ -1,7 +1,6 @@
 package command
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
@@ -135,7 +134,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 			return nil, err
 		}
 		if ast.Drop == nil && !ast.Drop.Source {
-			return nil, fmt.Errorf("not a drop source command %s", c.sql)
+			return nil, perrors.Errorf("not a drop source command %s", c.sql)
 		}
 		c.sourceName = ast.Drop.Name
 	}

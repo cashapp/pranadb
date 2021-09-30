@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"io"
 	"math"
 	"strings"
@@ -85,7 +86,7 @@ func (c *Client) CreateSession() (string, error) {
 		return "", errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return "", fmt.Errorf("statement currently executing: %s", c.currentStatement)
+		return "", perrors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -103,7 +104,7 @@ func (c *Client) CloseSession(sessionID string) error {
 		return errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return fmt.Errorf("statement currently executing: %s", c.currentStatement)
+		return perrors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
 	delete(c.sessionIDs, sessionID)
@@ -119,7 +120,7 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 		return nil, errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return nil, fmt.Errorf("statement currently executing: %s", c.currentStatement)
+		return nil, perrors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	ch := make(chan string, maxBufferedLines)
 	c.currentStatement = statement
@@ -253,7 +254,7 @@ func (c *Client) sendHeartbeats() {
 		_, err := c.client.Heartbeat(context.Background(), &service.HeartbeatRequest{SessionId: sessID})
 		if err != nil {
 			err = stripgRPCPrefix(err)
-			log.Errorf("heartbeat failed %v", err)
+			log.Errorf("heartbeat failed %+v", err)
 			delete(c.sessionIDs, sessID)
 		}
 	}
@@ -271,7 +272,7 @@ func stripgRPCPrefix(err error) error {
 		msg := err.Error()[ind:]
 		//Error string needs to be capitalized as this is what is displayed to the user in the CLI
 		//nolint:stylecheck
-		return fmt.Errorf("Failed to execute statement: %s", msg)
+		return perrors.Errorf("Failed to execute statement: %s", msg)
 	}
 	return err
 }

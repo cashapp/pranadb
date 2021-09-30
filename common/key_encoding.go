@@ -1,7 +1,7 @@
 package common
 
 import (
-	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"math"
 )
 
@@ -42,7 +42,7 @@ func KeyEncodeString(buffer []byte, val string) []byte {
 func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
 	enc, err := val.ToPackedUint()
 	if err != nil {
-		return nil, err
+		return nil, perrors.MaybeAddStack(err)
 	}
 	buffer = AppendUint64ToBufferBE(buffer, enc)
 	return buffer, nil
@@ -55,13 +55,13 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			valInt64, ok := value.(int64)
 			if !ok {
-				return nil, fmt.Errorf("expected %v to be int64", value)
+				return nil, perrors.Errorf("expected %v to be int64", value)
 			}
 			buffer = KeyEncodeInt64(buffer, valInt64)
 		case TypeDecimal:
 			valDec, ok := value.(Decimal)
 			if !ok {
-				return nil, fmt.Errorf("expected %v to be Decimal", value)
+				return nil, perrors.Errorf("expected %v to be Decimal", value)
 			}
 			var err error
 			buffer, err = KeyEncodeDecimal(buffer, valDec, colType.DecPrecision, colType.DecScale)
@@ -71,19 +71,19 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 		case TypeDouble:
 			valFloat64, ok := value.(float64)
 			if !ok {
-				return nil, fmt.Errorf("expected %v to be float64", value)
+				return nil, perrors.Errorf("expected %v to be float64", value)
 			}
 			buffer = KeyEncodeFloat64(buffer, valFloat64)
 		case TypeVarchar:
 			valString, ok := value.(string)
 			if !ok {
-				return nil, fmt.Errorf("expected %v to be string", value)
+				return nil, perrors.Errorf("expected %v to be string", value)
 			}
 			buffer = KeyEncodeString(buffer, valString)
 		case TypeTimestamp:
 			valTime, ok := value.(Timestamp)
 			if !ok {
-				return nil, fmt.Errorf("expected %v to be Timestamp", value)
+				return nil, perrors.Errorf("expected %v to be Timestamp", value)
 			}
 			var err error
 			buffer, err = KeyEncodeTimestamp(buffer, valTime)
@@ -91,7 +91,7 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 				return nil, err
 			}
 		default:
-			return nil, fmt.Errorf("unexpected column type %d", colType)
+			return nil, perrors.Errorf("unexpected column type %d", colType)
 		}
 	}
 	return buffer, nil
@@ -137,7 +137,7 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unexpected column type %d", colType)
+		return nil, perrors.Errorf("unexpected column type %d", colType)
 	}
 	return buffer, nil
 }

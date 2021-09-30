@@ -82,7 +82,7 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 		return err
 	}
 	if rows.RowCount() != 0 {
-		return fmt.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
+		return perrors.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
 	}
 	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
 }
@@ -96,10 +96,10 @@ func (c *CreateSourceCommand) OnPrepare() error {
 	if c.sourceInfo == nil {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
-			return perrors.MaybeAddStack(err)
+			return err
 		}
 		if ast.Create == nil || ast.Create.Source == nil {
-			return fmt.Errorf("not a create source %s", c.sql)
+			return perrors.Errorf("not a create source %s", c.sql)
 		}
 		c.sourceInfo, err = c.getSourceInfo(ast.Create.Source)
 		if err != nil {
@@ -161,7 +161,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			for _, pk := range option.PrimaryKey {
 				index, ok := colIndex[pk]
 				if !ok {
-					return nil, fmt.Errorf("invalid primary key column %q", option.PrimaryKey)
+					return nil, perrors.Errorf("invalid primary key column %q", option.PrimaryKey)
 				}
 				pkCols = append(pkCols, index)
 			}

@@ -193,7 +193,7 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := docker.RemoveNetwork(network.ID); err != nil {
-			log.Errorf("Failed to remove docker network `prana`: %v", err)
+			log.Errorf("Failed to remove docker network `prana`: %+v", err)
 		}
 	})
 

@@ -3,6 +3,7 @@ package push
 import (
 	"errors"
 	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"math/rand"
 	"sync"
 	"time"
@@ -133,7 +134,7 @@ func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source
 
 	src, ok := p.sources[sourceInfo.ID]
 	if !ok {
-		return nil, fmt.Errorf("no such source %d", sourceInfo.ID)
+		return nil, perrors.Errorf("no such source %d", sourceInfo.ID)
 	}
 	if src.IsRunning() {
 		return nil, errors.New("source is running")
@@ -150,7 +151,7 @@ func (p *PushEngine) RegisterRemoteConsumer(id uint64, rc *RemoteConsumer) error
 	defer p.lock.Unlock()
 
 	if _, ok := p.remoteConsumers[id]; ok {
-		return fmt.Errorf("remote consumer with id %d already registered", id)
+		return perrors.Errorf("remote consumer with id %d already registered", id)
 	}
 	p.remoteConsumers[id] = rc
 	return nil
@@ -162,7 +163,7 @@ func (p *PushEngine) UnregisterRemoteConsumer(id uint64) error {
 
 	_, ok := p.remoteConsumers[id]
 	if !ok {
-		return fmt.Errorf("remote consumer with id %d not registered", id)
+		return perrors.Errorf("remote consumer with id %d not registered", id)
 	}
 	delete(p.remoteConsumers, id)
 	return nil
@@ -173,7 +174,7 @@ func (p *PushEngine) GetMaterializedView(mvID uint64) (*MaterializedView, error)
 	defer p.lock.RUnlock()
 	mv, ok := p.materializedViews[mvID]
 	if !ok {
-		return nil, fmt.Errorf("no such materialized view %d", mvID)
+		return nil, perrors.Errorf("no such materialized view %d", mvID)
 	}
 	return mv, nil
 }
@@ -183,7 +184,7 @@ func (p *PushEngine) RemoveMV(mvID uint64) error {
 	defer p.lock.Unlock()
 	_, ok := p.materializedViews[mvID]
 	if !ok {
-		return fmt.Errorf("cannot find materialized view with id %d", mvID)
+		return perrors.Errorf("cannot find materialized view with id %d", mvID)
 	}
 	delete(p.materializedViews, mvID)
 	return nil
@@ -276,7 +277,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 				// The entity is in storage but not deployed - this might happen if a node joined when a create source/mv
 				// was in progress so did not get the notifications but did see it in storage - in this case
 				// we periodically scan sys.tables to check for any non registered entities TODO
-				return fmt.Errorf("entity with id %d not registered", entityID)
+				return perrors.Errorf("entity with id %d not registered", entityID)
 			}
 			// The entity does not exist in storage - it must correspond to a dropped entity - we can ignore the row
 			// and it will get deleted from the receiver table
@@ -293,7 +294,6 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 			if lpvb != 0 {
 				prevBytes := row[4 : 4+lpvb]
 				if err := common.DecodeRow(prevBytes, remoteConsumer.ColTypes, rows); err != nil {
-					log.Errorf("Failed to decode prev row %v rowbytes %v", err, prevBytes)
 					return err
 				}
 				pi = rc
@@ -304,7 +304,6 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 			if lcvb != 0 {
 				currBytes := row[8+lpvb:]
 				if err := common.DecodeRow(currBytes, remoteConsumer.ColTypes, rows); err != nil {
-					log.Errorf("Failed to decode curr row %v rowbytes %v", err, currBytes)
 					return err
 				}
 				ci = rc
@@ -434,10 +433,10 @@ func (p *PushEngine) ExistRowsInLocalTable(tableID uint64, localShards []uint64)
 
 func (p *PushEngine) VerifyNoSourcesOrMVs() error {
 	if len(p.sources) > 0 {
-		return fmt.Errorf("there is %d source", len(p.sources))
+		return perrors.Errorf("there is %d source", len(p.sources))
 	}
 	if len(p.materializedViews) > 0 {
-		return fmt.Errorf("there is %d materialized view", len(p.materializedViews))
+		return perrors.Errorf("there is %d materialized view", len(p.materializedViews))
 	}
 	return nil
 }
@@ -502,7 +501,7 @@ func (p *PushEngine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardSchedule
 	for _, lls := range p.localLeaderShards {
 		sched, ok := p.schedulers[lls]
 		if !ok {
-			return nil, fmt.Errorf("no scheduler for local leader shard %d", lls)
+			return nil, perrors.Errorf("no scheduler for local leader shard %d", lls)
 		}
 		schedulers[lls] = sched
 	}

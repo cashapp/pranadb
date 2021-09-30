@@ -1,8 +1,8 @@
 package aggfuncs
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/perrors"
 )
 
 type AggregateFunction interface {
@@ -65,7 +65,7 @@ func NewAggregateFunction(argExpression *common.Expression, funcType AggFunction
 	case FirstRowAggregateFunctionType:
 		return &FirstRowAggregateFunction{aggregateFunctionBase: base}, nil
 	default:
-		return nil, fmt.Errorf("unexpected aggregate function type %d", funcType)
+		return nil, perrors.Errorf("unexpected aggregate function type %d", funcType)
 	}
 }
 

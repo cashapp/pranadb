@@ -1,8 +1,8 @@
 package dragon
 
 import (
-	"fmt"
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/perrors"
 	"io"
 	"math"
 	"strings"
@@ -100,7 +100,7 @@ outer:
 			}
 			s.setResult(true, entries, i)
 		} else {
-			return nil, fmt.Errorf("unknown lock command %s", command)
+			return nil, perrors.Errorf("unknown lock command %s", command)
 		}
 	}
 	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, locksClusterID); err != nil {

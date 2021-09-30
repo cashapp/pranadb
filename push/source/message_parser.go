@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/squareup/pranadb/perrors"
 	"reflect"
 	"strings"
 
@@ -195,7 +196,7 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			}
 			rows.AppendTimestampToColumn(i, tsVal)
 		default:
-			return fmt.Errorf("unsupported col type %d", colType.Type)
+			return perrors.Errorf("unsupported col type %d", colType.Type)
 		}
 	}
 	return nil
@@ -221,11 +222,11 @@ func getDecoder(registry protolib.Resolver, encoding common.KafkaEncoding) (Deco
 	case common.EncodingProtobuf:
 		desc, err := registry.FindDescriptorByName(protoreflect.FullName(encoding.SchemaName))
 		if err != nil {
-			return nil, fmt.Errorf("could not find protobuf descriptor for %q", encoding.SchemaName)
+			return nil, perrors.Errorf("could not find protobuf descriptor for %q", encoding.SchemaName)
 		}
 		msgDesc, ok := desc.(protoreflect.MessageDescriptor)
 		if !ok {
-			return nil, fmt.Errorf("expected to find MessageDescriptor at %q, but was %q", encoding.SchemaName, reflect.TypeOf(msgDesc))
+			return nil, perrors.Errorf("expected to find MessageDescriptor at %q, but was %q", encoding.SchemaName, reflect.TypeOf(msgDesc))
 		}
 		decoder = &ProtobufDecoder{desc: msgDesc}
 	default:
@@ -318,7 +319,7 @@ func gvalEvaluable(selector string) (evaluable, error) {
 func protoEvaluable(selector string) (evaluable, error) {
 	prefix := selector[0:1]
 	if len(selector) <= 2 || selector[1] != '.' {
-		return nil, fmt.Errorf("invalid protobuf selector %q", selector)
+		return nil, perrors.Errorf("invalid protobuf selector %q", selector)
 	}
 	sel, err := protolib.ParseSelector(selector[2:])
 	if err != nil {

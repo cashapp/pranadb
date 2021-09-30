@@ -2,9 +2,9 @@ package perrors
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"strings"
 )
-import gerrors "github.com/pkg/errors"
 
 type ErrorCode int
 
@@ -98,6 +98,14 @@ func NewPranaError(errorCode ErrorCode, msg string) PranaError {
 	return PranaError{Code: errorCode, Msg: msg}
 }
 
+func Errorf(msgFormat string, args ...interface{}) error {
+	return MaybeAddStack(fmt.Errorf(msgFormat, args...))
+}
+
+func Error(msg string) error {
+	return MaybeAddStack(errors.New(msg))
+}
+
 // PranaError is any kind of error that is exposed to the user via external interfaces like the CLI
 type PranaError struct {
 	Code ErrorCode
@@ -111,7 +119,7 @@ func (u PranaError) Error() string {
 func MaybeAddStack(err error) error {
 	_, ok := err.(PranaError)
 	if !ok {
-		return gerrors.WithStack(err)
+		return errors.WithStack(err)
 	}
 	return err
 }

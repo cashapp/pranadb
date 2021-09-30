@@ -1,7 +1,6 @@
 package command
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
@@ -100,7 +99,7 @@ func (c *DropMVCommand) OnPrepare() error {
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)
 	if !ok {
-		return fmt.Errorf("no such schema %s", c.schemaName)
+		return perrors.Errorf("no such schema %s", c.schemaName)
 	}
 	c.schema = schema
 	return c.mv.Disconnect()
@@ -134,7 +133,7 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 			return nil, err
 		}
 		if ast.Drop == nil && !ast.Drop.MaterializedView {
-			return nil, fmt.Errorf("not a drop materialized view command %s", c.sql)
+			return nil, perrors.Errorf("not a drop materialized view command %s", c.sql)
 		}
 		c.mvName = ast.Drop.Name
 	}

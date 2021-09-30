@@ -1,8 +1,8 @@
 package exec
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/perrors"
 )
 
 type PullProjection struct {
@@ -29,7 +29,7 @@ func NewPullProjection(colNames []string, colTypes []common.ColumnType, projColu
 func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // nolint: gocyclo
 
 	if limit < 1 {
-		return nil, fmt.Errorf("invalid limit %d", limit)
+		return nil, perrors.Errorf("invalid limit %d", limit)
 	}
 
 	rows, err = p.GetChildren()[0].GetRows(limit)
@@ -96,7 +96,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 					result.AppendTimestampToColumn(j, val)
 				}
 			default:
-				return nil, fmt.Errorf("unexpected column type %d", colType)
+				return nil, perrors.Errorf("unexpected column type %d", colType)
 			}
 		}
 

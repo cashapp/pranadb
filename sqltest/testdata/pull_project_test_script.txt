@@ -30,7 +30,7 @@ create materialized view test_mv_1 as select * from test_source_1;
 
 --load data dataset_1;
 
--test with source;
+--test with source;
 
 select * from test_source_1 order by col0;
 

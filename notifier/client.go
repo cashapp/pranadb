@@ -337,7 +337,7 @@ func (cc *clientConnection) stop(lock bool) {
 	}
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
-		log.Errorf("Failed to close connection %v", err)
+		log.Errorf("Failed to close connection %+v", err)
 	}
 	<-cc.loopCh
 	cc.client.connectionClosed(cc)
@@ -345,7 +345,7 @@ func (cc *clientConnection) stop(lock bool) {
 
 func (cc *clientConnection) sendHeartbeat() {
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
-		log.Errorf("failed to send heartbeat %v", err)
+		log.Errorf("failed to send heartbeat %+v", err)
 		cc.heartbeatFailed()
 		return
 	}

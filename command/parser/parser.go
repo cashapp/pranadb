@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"github.com/squareup/pranadb/perrors"
 	"regexp"
 
 	"github.com/alecthomas/participle/v2"
@@ -46,5 +47,5 @@ func Parse(sql string) (*AST, error) {
 	}
 	ast := &AST{}
 	err := parser.ParseString("", sql, ast)
-	return ast, err
+	return ast, perrors.MaybeAddStack(err)
 }

@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 	}
 	dragonCluster, err = startDragonCluster(dataDir)
 	if err != nil {
-		panic(fmt.Sprintf("failed to start dragon cluster %v", err))
+		panic(fmt.Sprintf("failed to start dragon cluster %+v", err))
 	}
 	defer func() {
 		stopDragonCluster()

@@ -32,7 +32,7 @@ func run() error {
 	}
 	defer func() {
 		if err := cl.Stop(); err != nil {
-			log.Errorf("failed to close cli %v", err)
+			log.Errorf("failed to close cli %+v", err)
 		}
 	}()
 	return ctx.Run(cl)

@@ -1,7 +1,7 @@
 package common
 
 import (
-	"fmt"
+	"github.com/squareup/pranadb/perrors"
 )
 
 // Values in rows are typically encoded in little-endian order
@@ -49,7 +49,7 @@ func encodeRowCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 				return nil, err
 			}
 		default:
-			return nil, fmt.Errorf("unexpected column type %d", colType)
+			return nil, perrors.Errorf("unexpected column type %d", colType)
 		}
 	}
 	return buffer, nil
@@ -113,7 +113,7 @@ func DecodeRowWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCol [
 					rows.AppendTimestampToColumn(colIndex, val)
 				}
 			default:
-				return fmt.Errorf("unexpected column type %d", colType)
+				return perrors.Errorf("unexpected column type %d", colType)
 			}
 		}
 		if include {

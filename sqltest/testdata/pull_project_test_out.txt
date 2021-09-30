@@ -33,8 +33,7 @@ create materialized view test_mv_1 as select * from test_source_1;
 
 --load data dataset_1;
 
--test with source;
-Failed to execute statement: PDB0002 - 1:1: unexpected token "-"
+--test with source;
 
 select * from test_source_1 order by col0;
 |col0|col1|col2|col3|col4|col5|col6|
