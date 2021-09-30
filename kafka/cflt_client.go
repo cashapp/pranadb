@@ -6,6 +6,7 @@ package kafka
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/perrors"
 	"sync"
 	"time"
 )
