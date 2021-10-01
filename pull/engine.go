@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 )
 
-type PullEngine struct {
+type Engine struct {
 	lock               sync.RWMutex
 	started            bool
 	remoteSessionCache atomic.Value
@@ -26,8 +26,8 @@ type PullEngine struct {
 	nodeID             int
 }
 
-func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *PullEngine {
-	engine := PullEngine{
+func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *Engine {
+	engine := Engine{
 		cluster:        cluster,
 		metaController: metaController,
 		nodeID:         cluster.GetNodeID(),
@@ -36,7 +36,7 @@ func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *Pu
 	return &engine
 }
 
-func (p *PullEngine) Start() error {
+func (p *Engine) Start() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.started {
@@ -46,7 +46,7 @@ func (p *PullEngine) Start() error {
 	return nil
 }
 
-func (p *PullEngine) Stop() error {
+func (p *Engine) Stop() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if !p.started {
@@ -63,7 +63,7 @@ func (p *PullEngine) Stop() error {
 // When the statement is executed the first time, a execution DAG will be built from the AST and the arguments
 // We can't build the DAG before seeing real arguments as the planner needs the types.
 // We then cache the DAG so the second time it is executed we reuse the same DAG.
-func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
+func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -81,7 +81,7 @@ func (p *PullEngine) PrepareSQLStatement(session *sess.Session, sql string) (exe
 	return exec.NewSingleValueBigIntRow(psID, "PS_ID"), nil
 }
 
-func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
+func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
 	ps, ok := session.PsCache[psID]
 	if !ok {
 		return nil, perrors.NewUnknownPreparedStatementError(psID)
@@ -118,7 +118,7 @@ func (p *PullEngine) ExecutePreparedStatement(session *sess.Session, psID int64,
 	return ps.Dag, nil
 }
 
-func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (exec.PullExecutor, error) {
+func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullExecutor, error) {
 	qi := session.QueryInfo
 	qi.SessionID = session.ID
 	qi.SchemaName = session.Schema.Name
@@ -127,7 +127,7 @@ func (p *PullEngine) BuildPullQuery(session *sess.Session, query string) (exec.P
 	return p.buildPullQueryExecutionFromQuery(session, query, false, false)
 }
 
-func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
+func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
 
 	p.lock.Lock()
 	if !p.started {
@@ -214,7 +214,7 @@ func (p *PullEngine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInf
 	return rows, err
 }
 
-func (p *PullEngine) getRowsFromCurrentQuery(session *sess.Session, limit int) (*common.Rows, error) {
+func (p *Engine) getRowsFromCurrentQuery(session *sess.Session, limit int) (*common.Rows, error) {
 	rows, err := CurrentQuery(session).GetRows(limit)
 	if err != nil {
 		return nil, err
@@ -226,7 +226,7 @@ func (p *PullEngine) getRowsFromCurrentQuery(session *sess.Session, limit int) (
 	return rows, nil
 }
 
-func (p *PullEngine) getCachedSession(sessionID string) (*sess.Session, bool) {
+func (p *Engine) getCachedSession(sessionID string) (*sess.Session, bool) {
 	d, ok := p.sessionCache().Load(sessionID)
 	if !ok {
 		return nil, false
@@ -238,7 +238,7 @@ func (p *PullEngine) getCachedSession(sessionID string) (*sess.Session, bool) {
 	return s, true
 }
 
-func (p *PullEngine) findRemoteExecutor(executor exec.PullExecutor) *exec.RemoteExecutor {
+func (p *Engine) findRemoteExecutor(executor exec.PullExecutor) *exec.RemoteExecutor {
 	// We only execute the part of the dag beyond the table reader - this is the remote part
 	remExecutor, ok := executor.(*exec.RemoteExecutor)
 	if ok {
@@ -253,7 +253,7 @@ func (p *PullEngine) findRemoteExecutor(executor exec.PullExecutor) *exec.Remote
 	return nil
 }
 
-func (p *PullEngine) NumCachedSessions() (int, error) {
+func (p *Engine) NumCachedSessions() (int, error) {
 	numEntries := 0
 	p.sessionCache().Range(func(key, value interface{}) bool {
 		numEntries++
@@ -262,7 +262,7 @@ func (p *PullEngine) NumCachedSessions() (int, error) {
 	return numEntries, nil
 }
 
-func (p *PullEngine) HandleNotification(notification notifier.Notification) error {
+func (p *Engine) HandleNotification(notification notifier.Notification) error {
 	sessCloseMsg := notification.(*notifications.SessionClosedMessage) // nolint: forcetypeassert
 	p.sessionCache().Delete(sessCloseMsg.GetSessionId())
 	return nil
@@ -280,14 +280,14 @@ func CurrentQuery(session *sess.Session) exec.PullExecutor {
 	return cq
 }
 
-func (p *PullEngine) NodeJoined(nodeID int) {
+func (p *Engine) NodeJoined(nodeID int) {
 }
 
-func (p *PullEngine) NodeLeft(nodeID int) {
+func (p *Engine) NodeLeft(nodeID int) {
 	p.clearSessionsForNode(nodeID)
 }
 
-func (p *PullEngine) clearSessionsForNode(nodeID int) {
+func (p *Engine) clearSessionsForNode(nodeID int) {
 	// The node may have crashed - we remove any sessions for that node
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -312,7 +312,7 @@ func (p *PullEngine) clearSessionsForNode(nodeID int) {
 }
 
 // ExecuteQuery - Lightweight query interface - used internally for loading a moderate amount of rows
-func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
+func (p *Engine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
 		return nil, perrors.Errorf("no such schema %s", schemaName)
@@ -342,6 +342,6 @@ func (p *PullEngine) ExecuteQuery(schemaName string, query string) (rows *common
 	return rows, nil
 }
 
-func (p *PullEngine) sessionCache() *sync.Map {
+func (p *Engine) sessionCache() *sync.Map {
 	return p.remoteSessionCache.Load().(*sync.Map)
 }

@@ -316,7 +316,7 @@ func TestDedupOfForwards(t *testing.T) {
 	require.Equal(t, 0, rowsHandled)
 }
 
-func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Cluster, shard *sharder.Sharder, pe *PushEngine) {
+func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Cluster, shard *sharder.Sharder, pe *Engine) {
 	t.Helper()
 
 	colTypes := []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType}
@@ -353,7 +353,7 @@ func testQueueForRemoteSend(t *testing.T, startSequence int, store cluster.Clust
 	require.Equal(t, uint64(numRows+startSequence), lastSeq)
 }
 
-func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *PushEngine) {
+func startup(t *testing.T) (cluster.Cluster, *sharder.Sharder, *Engine) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("-short: skipped")
@@ -417,7 +417,7 @@ func loadRowAndVerifySame(t *testing.T, keyBytes []byte, expectedRow *common.Row
 }
 
 // nolint: unparam
-func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *common.RowsFactory, shard *sharder.Sharder, pe *PushEngine,
+func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *common.RowsFactory, shard *sharder.Sharder, pe *Engine,
 	localShardID uint64, store cluster.Cluster, sendingShardID uint64) []rowInfo {
 	t.Helper()
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
