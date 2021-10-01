@@ -523,15 +523,14 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 	b, err := os.ReadFile("./testdata/" + st.outFile)
 	require.NoError(err)
-	expectedOutput := string(b)
-	actualOutput := st.output.String()
 	if !UseFancyDiff {
 		// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
 		// to a basic check - this shows only the changed lines, not all the lines
-		require.Equal(expectedOutput, actualOutput)
+		require.Equal(string(b), st.output.String())
 	} else {
 		dmp := diffmatchpatch.New()
-		diffs := dmp.DiffMain(actualOutput, expectedOutput, false)
+		actualOutput := st.output.String()
+		diffs := dmp.DiffMain(actualOutput, string(b), false)
 		if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
 			diff := dmp.DiffPrettyText(diffs)
 			if *updateFlag {
