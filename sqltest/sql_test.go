@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/protolib"
@@ -37,12 +37,12 @@ import (
 	"github.com/squareup/pranadb/table"
 )
 
-// Set this to the name of a test if you want to only run that test, e.g. during development
 const (
-	TestPrefix         = ""
+	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
+	UseFancyDiff       = false
 )
 
 var (
@@ -525,19 +525,25 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	require.NoError(err)
 	expectedOutput := string(b)
 	actualOutput := st.output.String()
-	dmp := diffmatchpatch.New()
-	diffs := dmp.DiffMain(actualOutput, expectedOutput, false)
-	if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
-		diff := dmp.DiffPrettyText(diffs)
-		if *updateFlag {
-			f, err := os.Create("./testdata/" + st.outFile)
-			defer f.Close()
-			require.NoError(err)
-			_, err = f.WriteString(actualOutput)
-			require.NoError(err)
-		} else {
-			st.testSuite.T().Error("Test output did not match:")
-			fmt.Println(diff)
+	if !UseFancyDiff {
+		// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
+		// to a basic check - this shows only the changed lines, not all the lines
+		require.Equal(expectedOutput, actualOutput)
+	} else {
+		dmp := diffmatchpatch.New()
+		diffs := dmp.DiffMain(actualOutput, expectedOutput, false)
+		if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
+			diff := dmp.DiffPrettyText(diffs)
+			if *updateFlag {
+				f, err := os.Create("./testdata/" + st.outFile)
+				defer f.Close()
+				require.NoError(err)
+				_, err = f.WriteString(actualOutput)
+				require.NoError(err)
+			} else {
+				st.testSuite.T().Error("Test output did not match:")
+				fmt.Println(diff)
+			}
 		}
 	}
 

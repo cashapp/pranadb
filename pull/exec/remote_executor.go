@@ -88,7 +88,6 @@ func (re *RemoteExecutor) Reset() {
 }
 
 func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
-
 	if limit < 1 {
 		return nil, perrors.Errorf("invalid limit %d", limit)
 	}

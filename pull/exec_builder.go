@@ -2,12 +2,11 @@ package pull
 
 import (
 	"errors"
+	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/planner/util"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/sess"
-
-	"github.com/pingcap/tidb/planner/core"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/pull/exec"

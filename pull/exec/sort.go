@@ -10,8 +10,6 @@ import (
 	"github.com/squareup/pranadb/common"
 )
 
-const childCallLimit = 1000
-
 // PullSort - a simple in memory sort executor
 // TODO this won't work for large resultsets - we need to store in chunks on disk and use a multi-way merge sort in
 // that case
@@ -44,10 +42,10 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	}
 
 	if p.rows == nil {
-		unsorted := p.rowsFactory.NewRows(childCallLimit)
+		unsorted := p.rowsFactory.NewRows(queryBatchSize)
 		for {
 			// We call getRows on the child until there are no more rows to get
-			batch, err := p.GetChildren()[0].GetRows(childCallLimit)
+			batch, err := p.GetChildren()[0].GetRows(queryBatchSize)
 			if err != nil {
 				return nil, err
 			}
@@ -55,12 +53,12 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 			if rc == 0 {
 				break
 			}
-			if unsorted.RowCount()+rc > OrderByMaxRows {
+			if unsorted.RowCount()+rc > orderByMaxRows {
 				// TODO needs test
-				return nil, perrors.Errorf("query with order by cannot return more than %d rows", OrderByMaxRows)
+				return nil, perrors.Errorf("query with order by cannot return more than %d rows", orderByMaxRows)
 			}
 			unsorted.AppendAll(batch)
-			if rc < limit {
+			if rc < queryBatchSize {
 				break
 			}
 		}
