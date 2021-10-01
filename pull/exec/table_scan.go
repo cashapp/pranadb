@@ -2,7 +2,6 @@ package exec
 
 import (
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/perrors"
@@ -121,6 +120,7 @@ func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 		// We read one extra row as we'll skip the first
 		limitToUse++
 	}
+
 	kvPairs, err := p.storage.LocalScan(startPrefix, p.rangeEnd, limitToUse)
 	if err != nil {
 		return nil, err
@@ -135,9 +135,6 @@ func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 			p.lastRowPrefix = kvPair.Key
 		}
 		if err := common.DecodeRowWithIgnoredCols(kvPair.Value, p.tableInfo.ColumnTypes, p.includeCols, rows); err != nil {
-			if err != nil {
-				log.Printf("Failed to decode row in pulltablescan %+v row %v, coltypes %s included cols %v startrange %v endrange %v startrangestring %s endrangestring %s key %v keystring %s", err, kvPair.Value, common.ColTypesToString(p.rowsFactory.ColumnTypes), p.includeCols, startPrefix, p.rangeEnd, common.DumpDataKey(startPrefix), common.DumpDataKey(p.rangeEnd), kvPair.Key, common.DumpDataKey(kvPair.Key))
-			}
 			return nil, errors.WithStack(err)
 		}
 	}

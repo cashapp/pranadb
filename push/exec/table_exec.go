@@ -2,7 +2,6 @@ package exec
 
 import (
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/perrors"
@@ -106,9 +105,6 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
 				return err
-			}
-			if t.TableInfo.Name == "total_balances" {
-				log.Printf("Encoded total_balances row for storage key %v value %v coltypes %s", keyBuff, valueBuff, common.ColTypesToString(t.colTypes))
 			}
 			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
 		} else {

@@ -38,7 +38,7 @@ func NewClient(serverAddress string, heartbeatSendInterval time.Duration) *Clien
 	return &Client{
 		serverAddress:         serverAddress,
 		heartbeatSendInterval: heartbeatSendInterval,
-		pageSize:              1000,
+		pageSize:              10000,
 	}
 }
 
@@ -145,6 +145,7 @@ func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan 
 }
 
 func (c *Client) doExecuteStatementWithError(sessionID string, statement string, ch chan string) (int, error) {
+
 	stream, err := c.client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
 		SessionId: sessionID,
 		Statement: statement,

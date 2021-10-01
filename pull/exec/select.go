@@ -1,14 +1,17 @@
 package exec
 
 import (
-	"errors"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/perrors"
 )
 
+const batchSize = 10000
+
 type PullSelect struct {
 	pullExecutorBase
-	predicates []*common.Expression
+	predicates    []*common.Expression
+	availRows     *common.Rows
+	moreInputRows bool
 }
 
 func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates []*common.Expression) *PullSelect {
@@ -22,6 +25,7 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 	return &PullSelect{
 		pullExecutorBase: base,
 		predicates:       predicates,
+		moreInputRows:    true,
 	}
 }
 
@@ -31,32 +35,80 @@ func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 		return nil, perrors.Errorf("invalid limit %d", limit)
 	}
 
-	rows, err = p.GetChildren()[0].GetRows(limit)
-	if err != nil {
-		return nil, err
+	var capac int
+	if limit < batchSize {
+		capac = limit
+	} else {
+		capac = batchSize
 	}
-	result := p.rowsFactory.NewRows(rows.RowCount())
-	// TODO duplicated logic from push select
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		ok := true
-		for _, predicate := range p.predicates {
-			accept, isNull, err := predicate.EvalBoolean(&row)
+
+	if p.availRows == nil {
+		p.availRows = p.rowsFactory.NewRows(capac)
+	}
+
+	rc := p.availRows.RowCount()
+
+	if rc < limit && p.moreInputRows {
+		for {
+			rows, err = p.GetChildren()[0].GetRows(batchSize)
 			if err != nil {
 				return nil, err
 			}
-			if isNull {
-				return nil, errors.New("null returned from evaluating select predicate")
+			numRows := rows.RowCount()
+
+			for i := 0; i < numRows; i++ {
+				row := rows.GetRow(i)
+				ok := true
+				for _, predicate := range p.predicates {
+					accept, isNull, err := predicate.EvalBoolean(&row)
+					if err != nil {
+						return nil, err
+					}
+					if isNull || !accept {
+						ok = false
+						break
+					}
+				}
+				if ok {
+					p.availRows.AppendRow(row)
+				}
 			}
-			if !accept {
-				ok = false
+			if numRows < batchSize {
+				// There are no more rows in the input
+				p.moreInputRows = false
+				break
+			}
+			if p.availRows.RowCount() >= limit {
+				// We have enough to return
 				break
 			}
 		}
-		if ok {
-			result.AppendRow(row)
-		}
 	}
 
-	return result, nil
+	if p.availRows.RowCount() < limit {
+		res := p.availRows
+		p.availRows = nil
+		return res, nil
+	}
+
+	// We have at least limit rows available, we return limit of them and keep the rest in case GetRows is
+	// called again
+	availableCount := p.availRows.RowCount()
+	out := p.rowsFactory.NewRows(limit)
+
+	var newOutRows *common.Rows
+	for i := 0; i < availableCount; i++ {
+		row := p.availRows.GetRow(i)
+		if i < limit {
+			out.AppendRow(row)
+		} else {
+			if newOutRows == nil {
+				newOutRows = p.rowsFactory.NewRows(availableCount - limit)
+			}
+			newOutRows.AppendRow(row)
+		}
+	}
+	p.availRows = newOutRows
+
+	return out, nil
 }

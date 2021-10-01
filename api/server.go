@@ -196,21 +196,23 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	}
 
 	// Then start sending pages until complete.
-	requestedPageSize := int(in.PageSize)
-	pageSize := requestedPageSize
-	for pageSize >= requestedPageSize {
+	limit := int(in.PageSize)
+	for {
 		// Transcode rows.
-		rows, err := executor.GetRows(requestedPageSize)
+		rows, err := executor.GetRows(limit)
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		pageSize = rows.RowCount()
+		numRows := rows.RowCount()
 		results := &service.Page{
-			Count: uint64(pageSize),
+			Count: uint64(numRows),
 			Rows:  rows.Serialize(),
 		}
 		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
 			return errors.WithStack(err)
+		}
+		if numRows < limit {
+			break
 		}
 	}
 	return nil

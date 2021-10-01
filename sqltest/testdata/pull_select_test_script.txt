@@ -32,11 +32,59 @@ create materialized view test_mv_1 as select * from test_source_1;
 
 --test with source;
 
-select * from test_source_1 where col0 = 1 order by col0;
+select * from test_source_1 order by col0;
+
+select * from test_source_1 where col0 = 1;
+
+select * from test_source_1 where col1 = 600;
+select * from test_source_1 where col1 is null;
+select * from test_source_1 where col1 is not null order by col0;
+
+select * from test_source_1 where col2 = 5000;
+select * from test_source_1 where col2 is null;
+select * from test_source_1 where col2 is not null order by col0;
+
+select * from test_source_1 where col3 = 8234.4321;
+select * from test_source_1 where col3 is null;
+select * from test_source_1 where col3 is not null order by col0;
+
+select * from test_source_1 where col4 = 93345678.99;
+select * from test_source_1 where col4 is null;
+select * from test_source_1 where col4 is not null order by col0;
+
+select * from test_source_1 where col5 = 'str8';
+select * from test_source_1 where col5 is null;
+select * from test_source_1 where col5 is not null order by col0;
+
+select * from test_source_1 where col1 = 600 or col5 ='str7' order by col0;
 
 --test with mv;
 
-select * from test_mv_1 where col0 = 1 order by col0;
+select * from test_mv_1 order by col0;
+
+select * from test_mv_1 where col0 = 1;
+
+select * from test_mv_1 where col1 = 600;
+select * from test_mv_1 where col1 is null;
+select * from test_mv_1 where col1 is not null order by col0;
+
+select * from test_mv_1 where col2 = 5000;
+select * from test_mv_1 where col2 is null;
+select * from test_mv_1 where col2 is not null order by col0;
+
+select * from test_mv_1 where col3 = 8234.4321;
+select * from test_mv_1 where col3 is null;
+select * from test_mv_1 where col3 is not null order by col0;
+
+select * from test_mv_1 where col4 = 93345678.99;
+select * from test_mv_1 where col4 is null;
+select * from test_mv_1 where col4 is not null order by col0;
+
+select * from test_mv_1 where col5 = 'str8';
+select * from test_mv_1 where col5 is null;
+select * from test_mv_1 where col5 is not null order by col0;
+
+select * from test_mv_1 where col1 = 600 or col5 ='str7' order by col0;
 
 -- TODO test with all different types of expressions;
 

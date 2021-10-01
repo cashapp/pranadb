@@ -1,10 +1,6 @@
 package exec
 
 import (
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/perrors"
-	"time"
-
 	"github.com/squareup/pranadb/common"
 )
 
@@ -17,25 +13,16 @@ const (
 )
 
 const (
-	OrderByMaxRows    = 10000
-	loadRowsBatchSize = 100
-	loadRowsTimeout   = time.Second * 5
+	orderByMaxRows = 50000
+	queryBatchSize = 10000
 )
 
-func CreateExecutor(executorType ExecutorType) (PullExecutor, error) {
-	switch executorType {
-	case ExecutorTypeSelect:
-		return &PullSelect{}, nil
-	case ExecutorTypeTableScan:
-		return &PullTableScan{}, nil
-	case ExecutorTypeAggregation:
-		return nil, perrors.Errorf("not implemented")
-	default:
-		return nil, perrors.Errorf("unexpected executorType %d", executorType)
-	}
-}
-
 type PullExecutor interface {
+	/*
+		GetRows returns up to a maximum of limit rows. If less than limit rows are returned that means there are no more
+		rows to return. If limit rows are returned it means there may be more rows to return and the caller should call
+		GetRows again until less than limit rows are returned.
+	*/
 	GetRows(limit int) (rows *common.Rows, err error)
 	SetParent(parent PullExecutor)
 	AddChild(child PullExecutor)
@@ -100,29 +87,4 @@ func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {
 		child.SetParent(parent)
 		parent.AddChild(child)
 	}
-}
-
-// LoadAllInBatches loads all the rows from the query - only use this if you expect the number of rows to be
-// reasonably small. It will timeout.
-func LoadAllInBatches(exec PullExecutor) (*common.Rows, error) {
-	start := time.Now()
-	var rows *common.Rows
-	for {
-		r, err := exec.GetRows(loadRowsBatchSize)
-		if err != nil {
-			return nil, err
-		}
-		if rows == nil {
-			rows = r
-		} else {
-			rows.AppendAll(r)
-		}
-		if r.RowCount() < loadRowsBatchSize {
-			break
-		}
-		if time.Now().Sub(start) >= loadRowsTimeout {
-			return nil, errors.New("timed out in loading all rows")
-		}
-	}
-	return rows, nil
 }
