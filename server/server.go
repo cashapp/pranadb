@@ -99,8 +99,8 @@ type Server struct {
 	cluster         cluster.Cluster
 	shardr          *sharder.Sharder
 	metaController  *meta.Controller
-	pushEngine      *push.PushEngine
-	pullEngine      *pull.PullEngine
+	pushEngine      *push.Engine
+	pullEngine      *pull.Engine
 	commandExecutor *command.Executor
 	schemaLoader    *schema.Loader
 	notifServer     notifier.Server
@@ -181,11 +181,11 @@ func (s *Server) GetSharder() *sharder.Sharder {
 	return s.shardr
 }
 
-func (s *Server) GetPushEngine() *push.PushEngine {
+func (s *Server) GetPushEngine() *push.Engine {
 	return s.pushEngine
 }
 
-func (s *Server) GetPullEngine() *pull.PullEngine {
+func (s *Server) GetPullEngine() *pull.Engine {
 	return s.pullEngine
 }
 

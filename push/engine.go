@@ -26,14 +26,14 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
-type PushEngine struct {
+type Engine struct {
 	lock              sync.RWMutex
 	localShardsLock   sync.RWMutex
 	started           bool
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
 	materializedViews map[uint64]*MaterializedView
-	remoteConsumers   map[uint64]*RemoteConsumer
+	remoteConsumers   sync.Map
 	mover             *mover.Mover
 	localLeaderShards []uint64
 	cluster           cluster.Cluster
@@ -48,8 +48,6 @@ type PushEngine struct {
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
 // e.g. a source or an aggregator
-// TODO we don't need this if we pass the [][]byte straight to the handler in the source/mv
-// which already knows these fields
 type RemoteConsumer struct {
 	RowsFactory *common.RowsFactory
 	ColTypes    []common.ColumnType
@@ -58,17 +56,16 @@ type RemoteConsumer struct {
 
 type shardListener struct {
 	shardID uint64
-	p       *PushEngine
+	p       *Engine
 	sched   *sched.ShardScheduler
 }
 
-// TODO do we even need these?
 type remoteRowsHandler interface {
 	HandleRemoteRows(rowsBatch exec.RowsBatch, ctx *exec.ExecutionContext) error
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) *PushEngine {
-	engine := PushEngine{
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) *Engine {
+	engine := Engine{
 		mover:         mover.NewMover(cluster),
 		cluster:       cluster,
 		sharder:       sharder,
@@ -82,23 +79,24 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 	return &engine
 }
 
-func (p *PushEngine) Start() error {
+func (p *Engine) Start() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.started {
 		return nil
 	}
+
 	p.started = true
 	return nil
 }
 
 // Ready signals that the push engine is now ready to receive any incoming data
-func (p *PushEngine) Ready() error {
+func (p *Engine) Ready() error {
 	p.readyToReceive.Set(true)
 	return p.checkForPendingData()
 }
 
-func (p *PushEngine) Stop() error {
+func (p *Engine) Stop() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if !p.started {
@@ -118,7 +116,7 @@ func (p *PushEngine) Stop() error {
 	return nil
 }
 
-func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
+func (p *Engine) GetSource(sourceID uint64) (*source.Source, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	source, ok := p.sources[sourceID]
@@ -128,7 +126,7 @@ func (p *PushEngine) GetSource(sourceID uint64) (*source.Source, error) {
 	return source, nil
 }
 
-func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+func (p *Engine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -141,35 +139,35 @@ func (p *PushEngine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source
 	}
 
 	delete(p.sources, sourceInfo.ID)
-	delete(p.remoteConsumers, sourceInfo.ID)
+	p.remoteConsumers.Delete(sourceInfo.ID)
 
 	return src, nil
 }
 
-func (p *PushEngine) RegisterRemoteConsumer(id uint64, rc *RemoteConsumer) error {
+func (p *Engine) RegisterRemoteConsumer(id uint64, rc *RemoteConsumer) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	if _, ok := p.remoteConsumers[id]; ok {
+	if _, ok := p.remoteConsumers.Load(id); ok {
 		return perrors.Errorf("remote consumer with id %d already registered", id)
 	}
-	p.remoteConsumers[id] = rc
+	p.remoteConsumers.Store(id, rc)
 	return nil
 }
 
-func (p *PushEngine) UnregisterRemoteConsumer(id uint64) error {
+func (p *Engine) UnregisterRemoteConsumer(id uint64) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	_, ok := p.remoteConsumers[id]
+	_, ok := p.remoteConsumers.Load(id)
 	if !ok {
 		return perrors.Errorf("remote consumer with id %d not registered", id)
 	}
-	delete(p.remoteConsumers, id)
+	p.remoteConsumers.Delete(id)
 	return nil
 }
 
-func (p *PushEngine) GetMaterializedView(mvID uint64) (*MaterializedView, error) {
+func (p *Engine) GetMaterializedView(mvID uint64) (*MaterializedView, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	mv, ok := p.materializedViews[mvID]
@@ -179,7 +177,7 @@ func (p *PushEngine) GetMaterializedView(mvID uint64) (*MaterializedView, error)
 	return mv, nil
 }
 
-func (p *PushEngine) RemoveMV(mvID uint64) error {
+func (p *Engine) RemoveMV(mvID uint64) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	_, ok := p.materializedViews[mvID]
@@ -190,14 +188,14 @@ func (p *PushEngine) RemoveMV(mvID uint64) error {
 	return nil
 }
 
-func (p *PushEngine) RegisterMV(mv *MaterializedView) error {
+func (p *Engine) RegisterMV(mv *MaterializedView) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.materializedViews[mv.Info.TableInfo.ID] = mv
 	return nil
 }
 
-func (p *PushEngine) CreateShardListener(shardID uint64) cluster.ShardListener {
+func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
@@ -224,7 +222,7 @@ func (s *shardListener) scheduleHandleRemoteBatch() {
 	s.p.maybeHandleRemoteBatch(s.sched)
 }
 
-func (p *PushEngine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
+func (p *Engine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
 	scheduler.ScheduleActionFireAndForget(func() error {
 		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
 		if err != nil {
@@ -253,20 +251,16 @@ func (s *shardListener) Close() {
 	s.p.localLeaderShards = locShards
 }
 
-func (p *PushEngine) removeScheduler(shardID uint64) {
+func (p *Engine) removeScheduler(shardID uint64) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	delete(p.schedulers, shardID)
 }
 
-func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
-	// TODO use copy on write and atomic references to entities to avoid read lock
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
 
 	for entityID, rawRows := range entityValues {
-
-		remoteConsumer, ok := p.remoteConsumers[entityID]
+		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
 			// Does the entity exist in storage?
 			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id, prepare_state from tables where id=%d", entityID))
@@ -285,6 +279,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 			continue
 		}
 
+		remoteConsumer := rcVal.(*RemoteConsumer) //nolint:forcetypeassert
 		rows := remoteConsumer.RowsFactory.NewRows(len(rawRows))
 		entries := make([]exec.RowsEntry, len(rawRows))
 		rc := 0
@@ -325,7 +320,7 @@ func (p *PushEngine) HandleRawRows(entityValues map[uint64][][]byte, batch *clus
 }
 
 // ChooseLocalScheduler chooses a local scheduler by hashing the key
-func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
+func (p *Engine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
 	p.localShardsLock.RLock()
 	defer p.localShardsLock.RUnlock()
 	if len(p.localLeaderShards) == 0 {
@@ -338,7 +333,7 @@ func (p *PushEngine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, er
 	return p.schedulers[shardID], nil
 }
 
-func (p *PushEngine) checkForPendingData() error {
+func (p *Engine) checkForPendingData() error {
 	// If the node failed previously or received messages it was unable to handle as it was starting up then
 	// there could be rows in the forwarder table that need to be handled or incoming rows in the receiver table
 	// we check and process these, if there are any
@@ -359,7 +354,7 @@ func (p *PushEngine) checkForPendingData() error {
 }
 
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
-func (p *PushEngine) WaitForProcessingToComplete() error {
+func (p *Engine) WaitForProcessingToComplete() error {
 
 	err := p.waitForSchedulers()
 	if err != nil {
@@ -381,7 +376,7 @@ func (p *PushEngine) WaitForProcessingToComplete() error {
 	return nil
 }
 
-func (p *PushEngine) waitForSchedulers() error {
+func (p *Engine) waitForSchedulers() error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -404,7 +399,7 @@ func (p *PushEngine) waitForSchedulers() error {
 	return nil
 }
 
-func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
+func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
 	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
@@ -416,7 +411,7 @@ func (p *PushEngine) waitForNoRowsInTable(tableID uint64) error {
 	return err
 }
 
-func (p *PushEngine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
+func (p *Engine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
 	for _, shardID := range localShards {
 		startPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
 		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
@@ -431,7 +426,7 @@ func (p *PushEngine) ExistRowsInLocalTable(tableID uint64, localShards []uint64)
 	return false, nil
 }
 
-func (p *PushEngine) VerifyNoSourcesOrMVs() error {
+func (p *Engine) VerifyNoSourcesOrMVs() error {
 	if len(p.sources) > 0 {
 		return perrors.Errorf("there is %d source", len(p.sources))
 	}
@@ -441,14 +436,14 @@ func (p *PushEngine) VerifyNoSourcesOrMVs() error {
 	return nil
 }
 
-func (p *PushEngine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
+func (p *Engine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	sched, ok := p.schedulers[shardID]
 	return sched, ok
 }
 
-func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -477,24 +472,23 @@ func (p *PushEngine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source
 		ColTypes:    colTypes,
 		RowsHandler: src.TableExecutor(),
 	}
-	p.remoteConsumers[sourceInfo.TableInfo.ID] = rc
-
+	p.remoteConsumers.Store(sourceInfo.TableInfo.ID, rc)
 	p.sources[sourceInfo.TableInfo.ID] = src
 	return src, nil
 }
 
-func (p *PushEngine) Mover() *mover.Mover {
+func (p *Engine) Mover() *mover.Mover {
 	return p.mover
 }
 
-func (p *PushEngine) createMaps() {
-	p.remoteConsumers = make(map[uint64]*RemoteConsumer)
+func (p *Engine) createMaps() {
+	p.remoteConsumers = sync.Map{}
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
 }
 
-func (p *PushEngine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, error) {
+func (p *Engine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	schedulers := make(map[uint64]*sched.ShardScheduler, len(p.localLeaderShards))
@@ -508,8 +502,13 @@ func (p *PushEngine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardSchedule
 	return schedulers, nil
 }
 
-func (p *PushEngine) IsEmpty() bool {
+func (p *Engine) IsEmpty() bool {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	return len(p.sources) == 0 && len(p.materializedViews) == 0 && len(p.remoteConsumers) == 0
+	numRecs := 0
+	p.remoteConsumers.Range(func(key, value interface{}) bool {
+		numRecs++
+		return true
+	})
+	return len(p.sources) == 0 && len(p.materializedViews) == 0 && numRecs == 0
 }

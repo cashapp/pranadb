@@ -12,7 +12,7 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *PullEngine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
+func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
 	ast, err := session.PullPlanner().Parse(query)
 	if err != nil {
 		return nil, err
@@ -20,7 +20,7 @@ func (p *PullEngine) buildPullQueryExecutionFromQuery(session *sess.Session, que
 	return p.buildPullQueryExecutionFromAst(session, ast, prepare, remote)
 }
 
-func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
+func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
@@ -57,7 +57,7 @@ func (p *PullEngine) buildPullQueryExecutionFromAst(session *sess.Session, ast p
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
+func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -164,7 +164,7 @@ func (p *PullEngine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan,
 	return executor, nil
 }
 
-func (p *PullEngine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {
+func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {
 	lbi := len(byItems)
 	desc := make([]bool, lbi)
 	sortByExprs := make([]*common.Expression, lbi)

@@ -14,11 +14,11 @@ import (
 // controller and the push engine.
 type Loader struct {
 	meta       *meta.Controller
-	pushEngine *push.PushEngine
+	pushEngine *push.Engine
 	queryExec  common.SimpleQueryExec
 }
 
-func NewLoader(m *meta.Controller, push *push.PushEngine, queryExec common.SimpleQueryExec) *Loader {
+func NewLoader(m *meta.Controller, push *push.Engine, queryExec common.SimpleQueryExec) *Loader {
 	return &Loader{
 		meta:       m,
 		pushEngine: push,

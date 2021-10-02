@@ -22,8 +22,8 @@ import (
 type Executor struct {
 	cluster           cluster.Cluster
 	metaController    *meta.Controller
-	pushEngine        *push.PushEngine
-	pullEngine        *pull.PullEngine
+	pushEngine        *push.Engine
+	pullEngine        *pull.Engine
 	notifClient       notifier.Client
 	sessionIDSequence int64
 	ddlRunner         *DDLCommandRunner
@@ -36,8 +36,8 @@ type sessCloser struct {
 
 func NewCommandExecutor(
 	metaController *meta.Controller,
-	pushEngine *push.PushEngine,
-	pullEngine *pull.PullEngine,
+	pushEngine *push.Engine,
+	pullEngine *pull.Engine,
 	cluster cluster.Cluster,
 	notifClient notifier.Client,
 ) *Executor {
@@ -166,11 +166,11 @@ func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 }
 
 // GetPushEngine is only used in testing
-func (e *Executor) GetPushEngine() *push.PushEngine {
+func (e *Executor) GetPushEngine() *push.Engine {
 	return e.pushEngine
 }
 
-func (e *Executor) GetPullEngine() *pull.PullEngine {
+func (e *Executor) GetPullEngine() *pull.Engine {
 	return e.pullEngine
 }
 

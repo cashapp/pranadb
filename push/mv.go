@@ -11,7 +11,7 @@ import (
 )
 
 type MaterializedView struct {
-	pe             *PushEngine
+	pe             *Engine
 	schema         *common.Schema
 	Info           *common.MaterializedViewInfo
 	tableExecutor  *exec.TableExecutor
@@ -21,7 +21,7 @@ type MaterializedView struct {
 }
 
 // CreateMaterializedView creates the materialized view but does not register it in memory
-func CreateMaterializedView(pe *PushEngine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
+func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
 	tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
 	mv := MaterializedView{
 		pe:      pe,
