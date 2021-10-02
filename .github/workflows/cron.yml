@@ -1,4 +1,4 @@
-name: "Hourly Integration Tests"
+name: "Continuous Integration Tests"
 on:
   schedule:
     - cron: '*/30 * * * *'
