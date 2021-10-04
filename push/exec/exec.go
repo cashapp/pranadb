@@ -79,6 +79,10 @@ func (p *pushExecutorBase) ColsVisible() []bool {
 	return p.colsVisible
 }
 
+func (p *pushExecutorBase) ReCalcSchemaFromChildren() error {
+	return nil
+}
+
 func ConnectPushExecutors(childExecutors []PushExecutor, parent PushExecutor) {
 	for _, child := range childExecutors {
 		child.SetParent(parent)
