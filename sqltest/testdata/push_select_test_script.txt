@@ -16,13 +16,13 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
-        v.v1,
-        v.v2,
-        v.v3,
-        v.v4,
-        v.v5,
-        v.v6
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
     )
 );
 

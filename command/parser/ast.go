@@ -100,13 +100,13 @@ type CreateSource struct {
 }
 
 type TopicInformation struct {
-	BrokerName     string                  `"BrokerName" "=" @String`
-	TopicName      string                  `|"TopicName" "=" @String`
-	HeaderEncoding string                  `|"HeaderEncoding" "=" @String`
-	KeyEncoding    string                  `|"KeyEncoding" "=" @String`
-	ValueEncoding  string                  `|"ValueEncoding" "=" @String`
-	ColSelectors   []*selector.SelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
-	Properties     []*TopicInfoProperty    `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+	BrokerName     string                        `"BrokerName" "=" @String`
+	TopicName      string                        `|"TopicName" "=" @String`
+	HeaderEncoding string                        `|"HeaderEncoding" "=" @String`
+	KeyEncoding    string                        `|"KeyEncoding" "=" @String`
+	ValueEncoding  string                        `|"ValueEncoding" "=" @String`
+	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
+	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type ColSelector struct {

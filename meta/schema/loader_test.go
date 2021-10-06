@@ -40,9 +40,9 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							k.k0,
-							v.v1,
-							v.v2
+							meta("key").k0,
+							v1,
+							v2
 						),
 						properties = (
 							"prop1" = "val1",
@@ -61,9 +61,9 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							k.k0,
-							v.v1,
-							v.v2
+							meta("key").k0,
+							v1,
+							v2
 						),
 						properties = (
 							"prop1" = "val1",
@@ -79,10 +79,10 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							k.k0,
-							v.v1,
-							v.v2,
-							v.v3
+							meta("key").k0,
+							v1,
+							v2,
+							v3
 						),
 						properties = (
 							"prop1" = "val1",
@@ -105,10 +105,10 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							k.k0,
-							v.v1,
-							v.v2,
-							v.v3
+							meta("key").k0,
+							v1,
+							v2,
+							v3
 						),
 						properties = (
 							"prop1" = "val1",

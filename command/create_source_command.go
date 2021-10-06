@@ -108,12 +108,14 @@ func (c *CreateSourceCommand) validate() error {
 	}
 
 	for _, sel := range topicInfo.ColSelectors {
-		if len(sel) == 0 || sel[0].Field == nil {
+		if sel.MetaKey == nil && len(sel.Selector) == 0 {
 			return perrors.NewPranaErrorf(perrors.InvalidSelector, "invalid column selector %q", sel)
 		}
-		f := *sel[0].Field
-		if !(f == "h" || f == "k" || f == "v" || f == "t") {
-			return perrors.NewPranaErrorf(perrors.InvalidSelector, "invalid column selector %q", sel)
+		if sel.MetaKey != nil {
+			f := *sel.MetaKey
+			if !(f == "header" || f == "key" || f == "timestamp") {
+				return perrors.NewPranaErrorf(perrors.InvalidSelector, `invalid metadata key in column selector %q. Valid values are "header", "key", "timestamp".`, sel)
+			}
 		}
 	}
 
@@ -207,7 +209,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	var (
 		headerEncoding, keyEncoding, valueEncoding common.KafkaEncoding
 		propsMap                                   map[string]string
-		colSelectors                               []selector.Selector
+		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
 	)
 	for _, opt := range ast.TopicInformation {
@@ -234,7 +236,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			}
 		case opt.ColSelectors != nil:
 			cs := opt.ColSelectors
-			colSelectors = make([]selector.Selector, len(cs))
+			colSelectors = make([]selector.ColumnSelector, len(cs))
 			for i := 0; i < len(cs); i++ {
 				colSelectors[i] = cs[i].ToSelector()
 			}

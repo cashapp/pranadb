@@ -32,7 +32,7 @@ type MessageParser struct {
 	headerDecoder    Decoder
 	keyDecoder       Decoder
 	valueDecoder     Decoder
-	repMap           map[string]interface{}
+	evalContext      *evalContext
 	protobufRegistry protolib.Resolver
 }
 
@@ -42,40 +42,37 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
 	// don't use them
 	var (
+		decodeHeader, decodeKey, decodeValue    bool
 		headerDecoder, keyDecoder, valueDecoder Decoder
 
-		encoding common.KafkaEncoding
-		err      error
+		err error
 	)
 	topic := sourceInfo.TopicInfo
 	for i, selector := range selectors {
-		prefix := selector[0].Field
-		if prefix == nil {
-			return nil, errors.Errorf("invalid selector: %s", selector)
-		}
-		switch *prefix {
-		case "h":
-			encoding = topic.HeaderEncoding
-			headerDecoder, err = getDecoder(registry, encoding)
-		case "k":
-			encoding = topic.KeyEncoding
-			keyDecoder, err = getDecoder(registry, encoding)
-		case "v":
-			encoding = topic.ValueEncoding
-			valueDecoder, err = getDecoder(registry, encoding)
-		case "t":
-			// timestamp selector, no decoding required
-		default:
-			panic(fmt.Sprintf("invalid selector %q", selector))
-		}
-		if err != nil {
-			return nil, err
-		}
-
+		selector := selector
 		selectEvals[i] = selector.Select
+
+		metaKey := selector.MetaKey
+		if metaKey == nil {
+			decodeValue = true
+		} else {
+			switch *metaKey {
+			case "header":
+				decodeHeader = true
+			case "key":
+				decodeKey = true
+			case "timestamp":
+				// timestamp selector, no decoding required
+			default:
+				panic(fmt.Sprintf("invalid selector %q", selector))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	repMap := make(map[string]interface{}, 4)
-	return &MessageParser{
+
+	mp := &MessageParser{
 		rowsFactory:      common.NewRowsFactory(sourceInfo.ColumnTypes),
 		protobufRegistry: registry,
 		sourceInfo:       sourceInfo,
@@ -83,8 +80,29 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 		headerDecoder:    headerDecoder,
 		keyDecoder:       keyDecoder,
 		valueDecoder:     valueDecoder,
-		repMap:           repMap,
-	}, nil
+		evalContext: &evalContext{
+			meta: make(map[string]interface{}, 3),
+		},
+	}
+	if decodeHeader {
+		mp.headerDecoder, err = getDecoder(registry, topic.HeaderEncoding)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+	if decodeKey {
+		mp.keyDecoder, err = getDecoder(registry, topic.KeyEncoding)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+	if decodeValue {
+		mp.valueDecoder, err = getDecoder(registry, topic.ValueEncoding)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+	return mp, nil
 }
 
 func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, error) {
@@ -135,10 +153,10 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 		}
 	}
 
-	m.repMap["h"] = hdrs
-	m.repMap["k"] = km
-	m.repMap["v"] = vm
-	m.repMap["t"] = message.TimeStamp
+	m.evalContext.meta["header"] = hdrs
+	m.evalContext.meta["key"] = km
+	m.evalContext.meta["timestamp"] = message.TimeStamp
+	m.evalContext.value = vm
 
 	return nil
 }
@@ -146,7 +164,7 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 func (m *MessageParser) evalColumns(rows *common.Rows) error {
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
-		val, err := eval(m.repMap)
+		val, err := eval(m.evalContext.meta, m.evalContext.value)
 		if err != nil {
 			return err
 		}
@@ -220,7 +238,7 @@ func getDecoder(registry protolib.Resolver, encoding common.KafkaEncoding) (Deco
 		}
 		decoder = &ProtobufDecoder{desc: msgDesc}
 	default:
-		panic("unsupported encoding")
+		panic(fmt.Sprintf("unsupported encoding %+v", encoding))
 	}
 	return decoder, nil
 }
@@ -294,4 +312,8 @@ func (p *ProtobufDecoder) Decode(bytes []byte) (interface{}, error) {
 	return msg, err
 }
 
-type evaluable func(v interface{}) (interface{}, error)
+type evaluable func(meta map[string]interface{}, v interface{}) (interface{}, error)
+type evalContext struct {
+	meta  map[string]interface{}
+	value interface{}
+}

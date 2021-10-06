@@ -14,8 +14,8 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
-        v.v1
+        meta("key").k0,
+        v1
     )
 );
 
@@ -35,12 +35,12 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
+        meta("key").k0,
         v1,
     )
 );
 
--- TEST3 - missing prefix on column selector;
+-- TEST3 - invalid meta key on column selector;
 ------------------------------------------------------------;
 
 create source test_source_1(
@@ -54,7 +54,7 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
+        meta("notvalid").k0,
         v1
     )
 );
@@ -73,7 +73,7 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "protobuf:foo.bar.MissingType",
     columnselectors = (
-        k.k0,
+        meta("key").k0,
         v1
     )
 );

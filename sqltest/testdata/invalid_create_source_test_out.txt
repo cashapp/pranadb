@@ -15,8 +15,8 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
-        v.v1
+        meta("key").k0,
+        v1
     )
 );
 0 rows returned
@@ -38,13 +38,13 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
+        meta("key").k0,
         v1,
     )
 );
 Failed to execute statement: PDB0002 - 13:11: unexpected token "," (expected ")")
 
--- TEST3 - missing prefix on column selector;
+-- TEST3 - invalid meta key on column selector;
 ------------------------------------------------------------;
 
 create source test_source_1(
@@ -58,11 +58,11 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        k.k0,
+        meta("notvalid").k0,
         v1
     )
 );
-Failed to execute statement: PDB0018 - invalid column selector "v1"
+Failed to execute statement: PDB0018 - invalid metadata key in column selector "meta(\"notvalid\").k0". Valid values are "header", "key", "timestamp".
 
 -- TEST4 - protobuf not registered;
 ------------------------------------------------------------;
@@ -78,7 +78,7 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "protobuf:foo.bar.MissingType",
     columnselectors = (
-        k.k0,
+        meta("key").k0,
         v1
     )
 );

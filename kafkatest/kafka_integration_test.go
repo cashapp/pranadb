@@ -88,13 +88,13 @@ create source payments(
     keyencoding = "stringbytes",
     valueencoding = "json",
     columnselectors = (
-        k,
-        v.customer_id,
-        t,
-        v.amount,
-        v.payment_type,
-        v.currency,
-        h.fraud_score
+        meta("key"),
+        customer_id,
+        meta("timestamp"),
+        amount,
+        payment_type,
+        currency,
+        meta("header").fraud_score
     ),
     properties = ()
 )
