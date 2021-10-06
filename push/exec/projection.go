@@ -2,7 +2,6 @@ package exec
 
 import (
 	"fmt"
-
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 )
@@ -73,6 +72,7 @@ func (p *PushProjection) ReCalcSchemaFromChildren() error {
 }
 
 func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+
 	numEntries := rowsBatch.Len()
 	result := p.rowsFactory.NewRows(numEntries)
 	rc := 0

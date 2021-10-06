@@ -15,57 +15,58 @@ func NewUnionAll() (*UnionAll, error) {
 	}, nil
 }
 
-func (t *UnionAll) ReCalcSchemaFromChildren() error {
+func (u *UnionAll) ReCalcSchemaFromChildren() error {
 
-	child0 := t.children[0]
+	child0 := u.children[0]
 
-	t.colTypes = child0.ColTypes()
-	t.colsVisible = child0.ColsVisible()
+	u.colTypes = child0.ColTypes()
+	u.colsVisible = child0.ColsVisible()
 
-	t.genIDColIndex = len(child0.ColTypes())
+	u.genIDColIndex = len(child0.ColTypes())
 
-	t.colTypes = append(t.colTypes, common.VarcharColumnType)
-	t.colsVisible = append(t.colsVisible, false)
+	u.colTypes = append(u.colTypes, common.VarcharColumnType)
+	u.colsVisible = append(u.colsVisible, false)
 
-	t.keyCols = []int{t.genIDColIndex}
-	t.rowsFactory = common.NewRowsFactory(t.colTypes)
+	u.keyCols = []int{u.genIDColIndex}
+	u.rowsFactory = common.NewRowsFactory(u.colTypes)
 
 	// When a row is incoming we need to know which source it came from as we generate the new key from this, in order to
 	// do this we create an intermediate object for each input which calls HandleRowsWithIndex passing in the index
 	var newChildren []PushExecutor
-	for i, exec := range t.children {
+	for i, exec := range u.children {
 		forwarder := &RowWithIndexForwarder{
 			pushExecutorBase: pushExecutorBase{},
 			index:            i,
-			unionAll:         t,
+			unionAll:         u,
 		}
 		newChildren = append(newChildren, forwarder)
 		exec.SetParent(forwarder)
-		forwarder.SetParent(t)
+		forwarder.SetParent(u)
 		forwarder.AddChild(exec)
 	}
-	t.children = newChildren
+	u.children = newChildren
 
 	return nil
 }
 
-func (t *UnionAll) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+func (u *UnionAll) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	panic("should not be called")
 }
 
-func (t *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *ExecutionContext) error {
+func (u *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *ExecutionContext) error {
+
 	numRows := rowsBatch.Len()
 
 	// TODO this could be optimised by just taking the columns from the incoming chunk and adding them to the new rows
 
-	out := t.rowsFactory.NewRows(numRows)
+	out := u.rowsFactory.NewRows(numRows)
 	entries := make([]RowsEntry, numRows)
 	rc := 0
 	for i := 0; i < numRows; i++ {
-		prevRow := rowsBatch.CurrentRow(i)
+		prevRow := rowsBatch.PreviousRow(i)
 		pi := -1
 		if prevRow != nil {
-			if err := t.appendRow(index, prevRow, out); err != nil {
+			if err := u.appendRow(index, prevRow, out); err != nil {
 				return err
 			}
 			pi = rc
@@ -74,7 +75,7 @@ func (t *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *Exec
 		currRow := rowsBatch.CurrentRow(i)
 		ci := -1
 		if currRow != nil {
-			if err := t.appendRow(index, currRow, out); err != nil {
+			if err := u.appendRow(index, currRow, out); err != nil {
 				return err
 			}
 			ci = rc
@@ -82,12 +83,13 @@ func (t *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *Exec
 		}
 		entries[i] = NewRowsEntry(pi, ci)
 	}
-	return t.parent.HandleRows(NewRowsBatch(out, entries), ctx)
+
+	return u.parent.HandleRows(NewRowsBatch(out, entries), ctx)
 }
 
-func (t *UnionAll) appendRow(index int, inRow *common.Row, out *common.Rows) error {
-	for i := 0; i < len(t.colTypes)-1; i++ {
-		colType := t.colTypes[i]
+func (u *UnionAll) appendRow(index int, inRow *common.Row, out *common.Rows) error {
+	for i := 0; i < len(u.colTypes)-1; i++ {
+		colType := u.colTypes[i]
 		switch colType.Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			out.AppendInt64ToColumn(i, inRow.GetInt64(i))
@@ -103,16 +105,16 @@ func (t *UnionAll) appendRow(index int, inRow *common.Row, out *common.Rows) err
 			panic("unexpected column type")
 		}
 	}
-	id, err := t.generateID(inRow, index)
+	id, err := u.generateID(inRow, index)
 	if err != nil {
 		return err
 	}
-	out.AppendStringToColumn(t.genIDColIndex, id)
+	out.AppendStringToColumn(u.genIDColIndex, id)
 	return nil
 }
 
-func (t *UnionAll) generateID(row *common.Row, index int) (string, error) {
-	actualChild := t.children[index].GetChildren()[0]
+func (u *UnionAll) generateID(row *common.Row, index int) (string, error) {
+	actualChild := u.children[index].GetChildren()[0]
 	// We create the key by prefixing with the index, then appending the key from the actual child
 	var key []byte
 	key = common.AppendUint32ToBufferLE(key, uint32(index))

@@ -1,0 +1,84 @@
+--create topic sensor_readings1;
+--create topic sensor_readings2;
+use test;
+create source latest_sensor_readings1(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3"
+    )
+);
+
+create source latest_sensor_readings2(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        "k.k0",
+        "v.v1",
+        "v.v2",
+        "v.v3"
+    )
+);
+
+--load data dataset_1;
+--load data dataset_2;
+
+select * from latest_sensor_readings1 order by sensor_id;
+select * from latest_sensor_readings2 order by sensor_id;
+
+create materialized view combined_readings as
+select sensor_id, country, city, reading_1 from latest_sensor_readings1
+union all
+select sensor_id, country, city, reading_1 from latest_sensor_readings2;
+
+select * from combined_readings order by sensor_id, country, city, reading_1;
+
+create materialized view agg_readings as
+select country, city, sum(reading_1), count(reading_1) from combined_readings group by country, city;
+
+select * from agg_readings order by country, city;
+
+-- create another mv including only those [country, city] which have a sum reading_1 > 750;
+create materialized view high_agg_readings as
+select country, city, sum(reading_1), count(reading_1) from combined_readings group by country, city
+having sum(reading_1) > 750;
+
+select * from high_agg_readings order by country, city;
+
+-- now we add some more data such that some of the included [country, city] disappear - this is a deletion;
+-- and some previous not included appear (addition);
+
+--load data dataset_3;
+--load data dataset_4;
+
+select * from high_agg_readings order by country, city;
+
+drop materialized view high_agg_readings;
+drop materialized view agg_readings;
+drop materialized view combined_readings;
+drop source latest_sensor_readings1;
+drop source latest_sensor_readings2;
+
+--delete topic sensor_readings2;
+--delete topic sensor_readings1;

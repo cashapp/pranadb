@@ -11,17 +11,12 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
-	"log"
-	"strings"
 )
 
 // Builds the push DAG but does not register anything in memory
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
-	if strings.Index(query, "select col0, col5 from test_source_1") != -1 {
-		log.Printf("foo")
-	}
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
 	if err != nil {
@@ -85,14 +80,8 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			switch aggFunc.Name {
 			case "sum":
 				funcType = aggfuncs.SumAggregateFunctionType
-			case "avg":
-				funcType = aggfuncs.AverageAggregateFunctionType
 			case "count":
 				funcType = aggfuncs.CountAggregateFunctionType
-			case "max":
-				funcType = aggfuncs.MaxAggregateFunctionType
-			case "min":
-				funcType = aggfuncs.MinAggregateFunctionType
 			case "firstrow":
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++

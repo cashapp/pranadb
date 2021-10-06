@@ -1,14 +1,13 @@
 package push
 
 import (
-	"reflect"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
+	"reflect"
 )
 
 type MaterializedView struct {
@@ -24,6 +23,7 @@ type MaterializedView struct {
 // CreateMaterializedView creates the materialized view but does not register it in memory
 func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
 	tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
+
 	mv := MaterializedView{
 		pe:      pe,
 		schema:  schema,
