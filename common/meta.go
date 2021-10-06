@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/command/parser/selector"
 )
 
 type Type int
@@ -265,7 +266,7 @@ type TopicInfo struct {
 	KeyEncoding    KafkaEncoding
 	ValueEncoding  KafkaEncoding
 	HeaderEncoding KafkaEncoding
-	ColSelectors   []string
+	ColSelectors   []selector.Selector
 	Properties     map[string]string
 }
 

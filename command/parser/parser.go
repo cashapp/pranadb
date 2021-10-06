@@ -1,8 +1,9 @@
 package parser
 
 import (
-	"github.com/squareup/pranadb/perrors"
 	"regexp"
+
+	"github.com/squareup/pranadb/perrors"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer/stateful"
@@ -13,7 +14,7 @@ var (
 		{`Ident`, "((?i)[a-zA-Z_][a-zA-Z_0-9]*)|`[^`]*`", nil},
 		{`Number`, `[-+]?\d*\.?\d+([eE][-+]?\d+)?`, nil},
 		{`String`, `'[^']*'|"[^"]*"`, nil},
-		{`Punct`, `<>|!=|<=|>=|[-+*/%,.()=<>;]`, nil},
+		{`Punct`, `<>|!=|<=|>=|\]|\[|[-+*/%,.()=<>;]`, nil},
 		{`Whitespace`, `\s+`, nil},
 	})
 	parser = participle.MustBuild(&AST{},

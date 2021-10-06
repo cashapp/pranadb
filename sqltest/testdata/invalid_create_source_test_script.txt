@@ -1,0 +1,81 @@
+--create topic testtopic;
+
+-- TEST1 - correct registration;
+------------------------------------------------------------;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        k.k0,
+        v.v1
+    )
+);
+
+drop source test_source_1;
+
+-- TEST2 - invalid syntax trailing comma;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        k.k0,
+        v1,
+    )
+);
+
+-- TEST3 - missing prefix on column selector;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        k.k0,
+        v1
+    )
+);
+
+-- TEST4 - protobuf not registered;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "protobuf:foo.bar.MissingType",
+    columnselectors = (
+        k.k0,
+        v1
+    )
+);
+
+--delete topic testtopic;

@@ -1,18 +1,15 @@
 package source
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
 	"reflect"
-	"strings"
 
-	"github.com/PaesslerAG/gval"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
+	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protolib"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -26,8 +23,6 @@ var (
 	kafkaDecoderLong    = newKafkaDecoder(common.KafkaEncodingInt64BE)
 	kafkaDecoderShort   = newKafkaDecoder(common.KafkaEncodingInt16BE)
 	kafkaDecoderString  = newKafkaDecoder(common.KafkaEncodingStringBytes)
-
-	evalCtx = context.Background()
 )
 
 type MessageParser struct {
@@ -51,21 +46,24 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 
 		encoding common.KafkaEncoding
 		err      error
-		eval     evaluable
 	)
 	topic := sourceInfo.TopicInfo
 	for i, selector := range selectors {
-		switch {
-		case strings.HasPrefix(selector, "h"):
+		prefix := selector[0].Field
+		if prefix == nil {
+			return nil, errors.Errorf("invalid selector: %s", selector)
+		}
+		switch *prefix {
+		case "h":
 			encoding = topic.HeaderEncoding
 			headerDecoder, err = getDecoder(registry, encoding)
-		case strings.HasPrefix(selector, "k"):
+		case "k":
 			encoding = topic.KeyEncoding
 			keyDecoder, err = getDecoder(registry, encoding)
-		case strings.HasPrefix(selector, "v"):
+		case "v":
 			encoding = topic.ValueEncoding
 			valueDecoder, err = getDecoder(registry, encoding)
-		case strings.HasPrefix(selector, "t"):
+		case "t":
 			// timestamp selector, no decoding required
 		default:
 			panic(fmt.Sprintf("invalid selector %q", selector))
@@ -74,15 +72,7 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 			return nil, err
 		}
 
-		if encoding.Encoding == common.EncodingProtobuf {
-			eval, err = protoEvaluable(selector)
-		} else {
-			eval, err = gvalEvaluable(selector)
-		}
-		if err != nil {
-			return nil, err
-		}
-		selectEvals[i] = eval
+		selectEvals[i] = selector.Select
 	}
 	repMap := make(map[string]interface{}, 4)
 	return &MessageParser{
@@ -304,28 +294,4 @@ func (p *ProtobufDecoder) Decode(bytes []byte) (interface{}, error) {
 	return msg, err
 }
 
-type evaluable func(repMap map[string]interface{}) (interface{}, error)
-
-func gvalEvaluable(selector string) (evaluable, error) {
-	e, err := gval.Base().NewEvaluable(selector)
-	if err != nil {
-		return nil, err
-	}
-	return func(repMap map[string]interface{}) (interface{}, error) {
-		return e(evalCtx, repMap)
-	}, nil
-}
-
-func protoEvaluable(selector string) (evaluable, error) {
-	prefix := selector[0:1]
-	if len(selector) <= 2 || selector[1] != '.' {
-		return nil, perrors.Errorf("invalid protobuf selector %q", selector)
-	}
-	sel, err := protolib.ParseSelector(selector[2:])
-	if err != nil {
-		return nil, err
-	}
-	return func(repMap map[string]interface{}) (interface{}, error) {
-		return sel.Select(repMap[prefix].(protoreflect.Message))
-	}, nil
-}
+type evaluable func(v interface{}) (interface{}, error)

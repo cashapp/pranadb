@@ -6,10 +6,12 @@ import (
 
 	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/source"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type CreateSourceCommand struct {
@@ -66,12 +68,20 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Before prepare we just persist the source info in the tables table
 	var err error
 	c.sourceInfo, err = c.getSourceInfo(c.ast)
 	if err != nil {
 		return err
 	}
+	if err = c.validate(); err != nil {
+		return err
+	}
+
+	// Before prepare we just persist the source info in the tables table
+	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
+}
+
+func (c *CreateSourceCommand) validate() error {
 	_, ok := c.e.metaController.GetSource(c.schemaName, c.sourceInfo.Name)
 	if ok {
 		return perrors.NewSourceAlreadyExistsError(c.schemaName, c.sourceInfo.Name)
@@ -84,7 +94,30 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	if rows.RowCount() != 0 {
 		return perrors.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
 	}
-	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
+
+	topicInfo := c.sourceInfo.TopicInfo
+
+	for _, enc := range []common.KafkaEncoding{topicInfo.HeaderEncoding, topicInfo.KeyEncoding, topicInfo.ValueEncoding} {
+		if enc.Encoding != common.EncodingProtobuf {
+			continue
+		}
+		_, err := c.e.protoRegistry.FindDescriptorByName(protoreflect.FullName(enc.SchemaName))
+		if err != nil {
+			return perrors.NewPranaErrorf(perrors.UnknownTopicEncoding, "proto message %q not registered", enc.SchemaName)
+		}
+	}
+
+	for _, sel := range topicInfo.ColSelectors {
+		if len(sel) == 0 || sel[0].Field == nil {
+			return perrors.NewPranaErrorf(perrors.InvalidSelector, "invalid column selector %q", sel)
+		}
+		f := *sel[0].Field
+		if !(f == "h" || f == "k" || f == "v" || f == "t") {
+			return perrors.NewPranaErrorf(perrors.InvalidSelector, "invalid column selector %q", sel)
+		}
+	}
+
+	return nil
 }
 
 func (c *CreateSourceCommand) OnPrepare() error {
@@ -174,7 +207,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	var (
 		headerEncoding, keyEncoding, valueEncoding common.KafkaEncoding
 		propsMap                                   map[string]string
-		colSelectors                               []string
+		colSelectors                               []selector.Selector
 		brokerName, topicName                      string
 	)
 	for _, opt := range ast.TopicInformation {
@@ -201,9 +234,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			}
 		case opt.ColSelectors != nil:
 			cs := opt.ColSelectors
-			colSelectors = make([]string, len(cs))
+			colSelectors = make([]selector.Selector, len(cs))
 			for i := 0; i < len(cs); i++ {
-				colSelectors[i] = cs[i]
+				colSelectors[i] = cs[i].ToSelector()
 			}
 		case opt.BrokerName != "":
 			brokerName = opt.BrokerName

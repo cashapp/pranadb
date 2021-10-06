@@ -90,13 +90,13 @@ pranadb> create source payments(
              keyencoding = "stringbytes",
              valueencoding = "json",
              columnselectors = (
-                 "k",
-                 "v.customer_id",
-                 "t",
-                 "v.amount",
-                 "v.payment_type",
-                 "v.currency",
-                 "h.fraud_score"
+                 k,
+                 v.customer_id,
+                 t,
+                 v.amount,
+                 v.payment_type,
+                 v.currency,
+                 h.fraud_score
              )
          );
 0 rows returned

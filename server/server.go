@@ -54,7 +54,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry)
 	clus.RegisterShardListenerFactory(pushEngine)
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient)
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, protoRegistry)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)

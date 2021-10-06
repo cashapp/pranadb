@@ -1,40 +1,45 @@
-// Package protolib contains tools for working with protobufs.
+// Package selector contains a selector library for JSON and Protobuf.
+// It's in its own standalone package only to avoid circular dependencies
 //
 // nolint:govet
-package protolib
+package selector
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/alecthomas/participle/v2/lexer/stateful"
+	"github.com/squareup/pranadb/perrors"
 
 	"github.com/alecthomas/participle/v2"
 	pref "google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-type selectorAST struct {
-	Field string         `@Ident`
-	Index *indexSelector `( "[" @@ "]" )?`
-	Next  *selectorAST   `("." @@)?`
+type SelectorAST struct {
+	Field string       `@Ident`
+	Index []*Index     `( "[" @@ "]" )*`
+	Next  *SelectorAST `("." @@)?`
 }
 
-type indexSelector struct {
-	Number *int    `@Int |`
+type Index struct {
+	Number *int    `@Number |`
 	String *string `@String`
 }
 
-func (a *selectorAST) ToSelector() Selector {
+func (a *SelectorAST) ToSelector() Selector {
 	var sel []Path
 	for ; a != nil; a = a.Next {
 		sel = append(sel, Path{Field: &a.Field})
-		if a.Index != nil {
-			if a.Index.Number != nil {
-				sel = append(sel, Path{NumberIndex: a.Index.Number})
-			} else {
-				sel = append(sel, Path{Field: a.Index.String})
+		if len(a.Index) > 0 {
+			for _, idx := range a.Index {
+				if idx.Number != nil {
+					sel = append(sel, Path{NumberIndex: idx.Number})
+				} else {
+					sel = append(sel, Path{Field: idx.String})
+				}
 			}
 		}
 	}
@@ -60,20 +65,61 @@ func (e *ErrNotFound) Error() string {
 	return fmt.Sprintf("Value at %q not found while looking for %q", e.missingPath, e.targetPath)
 }
 
-var selectorParser = participle.MustBuild(&selectorAST{}, participle.Unquote("String"))
+var lex = stateful.MustSimple([]stateful.Rule{
+	{`Ident`, "((?i)[a-zA-Z_][a-zA-Z_0-9]*)|`[^`]*`", nil},
+	{`Number`, `[-+]?\d*\.?\d+([eE][-+]?\d+)?`, nil},
+	{`String`, `'[^']*'|"[^"]*"`, nil},
+	{`Punct`, `<>|!=|<=|>=|\]|\[|[-+*/%,.()=<>;]`, nil},
+	{`Whitespace`, `\s+`, nil},
+})
+var selectorParser = participle.MustBuild(&SelectorAST{},
+	participle.Lexer(lex),
+	participle.Unquote("String"),
+)
 
 // ParseSelector parses a selector expression into an executable Selector.
 func ParseSelector(str string) (Selector, error) {
-	s := &selectorAST{}
+	s := &SelectorAST{}
 	err := selectorParser.ParseString("", str, s)
 	return s.ToSelector(), err
 }
 
-// Select returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selector
+// Select evaluates the selector expression against the given value. The only supported types are
+//     map[string]interface{}
+//     []interface{}
+//     google.golang.org/protobuf/reflect.Message
+func (s Selector) Select(v interface{}) (interface{}, error) {
+	var ok bool
+	for i, token := range s {
+		switch vv := v.(type) {
+		case map[string]interface{}:
+			if token.NumberIndex != nil {
+				return nil, perrors.Errorf("cannot use string to index map with number key at %q", s[0:i+1])
+			}
+			v, ok = vv[*token.Field]
+			if !ok {
+				return nil, nil
+			}
+		case []interface{}:
+			if token.Field != nil {
+				return nil, perrors.Errorf("cannot index array using %q at %q", *token.Field, s[0:i+1])
+			}
+			if len(vv) <= *token.NumberIndex {
+				return nil, &ErrNotFound{s[0 : i+1], s}
+			}
+			v = vv[*token.NumberIndex]
+		case pref.Message:
+			return s[i:].SelectProto(vv)
+		}
+	}
+	return v, nil
+}
+
+// SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selector
 // references nested value of a nil message, the default Go value will be returned. Array out of index will still panic.
 // ErrNotFound is returned if a non-existing field is referenced. Other errors may be returned on failed type conversion.
 // nolint: gocyclo
-func (s Selector) Select(msg pref.Message) (interface{}, error) {
+func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 	if len(s) == 0 {
 		return msg, nil
 	}
@@ -106,6 +152,7 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 			switch {
 			case f.IsList():
 				v = v.List().Get(idx)
+				f = noRepeatField{f}
 			case f.IsMap():
 				var k pref.MapKey
 				k = newIntMapKey(f.MapKey(), idx)
@@ -138,7 +185,7 @@ func (s Selector) Select(msg pref.Message) (interface{}, error) {
 					return nil, &ErrNotFound{missingPath: s[0:tail], targetPath: s}
 				}
 			default:
-				return nil, perrors.Errorf("cannot get field %s of %q", fieldName, f.Kind())
+				return nil, perrors.Errorf("cannot get field %q of %q", fieldName, f.Kind())
 			}
 		default:
 			panic("invalid path token")
@@ -210,4 +257,24 @@ func getField(msg pref.Message, name string) (pref.Value, pref.FieldDescriptor, 
 		return pref.Value{}, nil, nil, false
 	}
 	return msg.Get(field), field, nil, true
+}
+
+// noRepeatField wraps the field descriptor to make a list/map field report as a scalar field.
+type noRepeatField struct {
+	pref.FieldDescriptor
+}
+
+func (f noRepeatField) Cardinality() pref.Cardinality {
+	if f.FieldDescriptor.Cardinality() == pref.Repeated {
+		return pref.Optional
+	}
+	return f.FieldDescriptor.Cardinality()
+}
+
+func (f noRepeatField) IsList() bool {
+	return false
+}
+
+func (f noRepeatField) IsMap() bool {
+	return false
 }

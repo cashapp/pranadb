@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
@@ -264,11 +265,10 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
 			currTestName = fileName[:index]
 			currSQLTest = &sqlTest{testName: currTestName, testSuite: w, rnd: rand.New(rand.NewSource(time.Now().UTC().UnixNano()))}
 			w.tests[currTestName] = currSQLTest
+			currSQLTest.outFile = currTestName + "_test_out.txt"
 		}
 		if strings.HasSuffix(fileName, "_test_data.txt") {
 			currSQLTest.testDataFile = fileName
-		} else if strings.HasSuffix(fileName, "_test_out.txt") {
-			currSQLTest.outFile = fileName
 		} else if strings.HasSuffix(fileName, "_test_script.txt") {
 			currSQLTest.scriptFile = fileName
 		}
@@ -369,7 +369,9 @@ func (st *sqlTest) run() {
 
 	require.NotEmpty(st.scriptFile, fmt.Sprintf("sql test %s is missing script file %s", st.testName, fmt.Sprintf("%s_test_script.txt", st.testName)))
 	require.NotEmpty(st.testDataFile, fmt.Sprintf("sql test %s is missing test data file %s", st.testName, fmt.Sprintf("%s_test_data.txt", st.testName)))
-	require.NotEmpty(st.outFile, fmt.Sprintf("sql test %s is missing out file %s", st.testName, fmt.Sprintf("%s_test_out.txt", st.testName)))
+	if !*updateFlag {
+		require.NotEmpty(st.outFile, fmt.Sprintf("sql test %s is missing out file %s", st.testName, fmt.Sprintf("%s_test_out.txt", st.testName)))
+	}
 
 	b, err := os.ReadFile("./testdata/" + st.scriptFile)
 	require.NoError(err)
@@ -521,25 +523,25 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
 	}
 
-	b, err := os.ReadFile("./testdata/" + st.outFile)
-	require.NoError(err)
-	if !UseFancyDiff {
-		// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
-		// to a basic check - this shows only the changed lines, not all the lines
-		require.Equal(string(b), st.output.String())
+	if *updateFlag {
+		f, err := os.Create("./testdata/" + st.outFile)
+		defer f.Close()
+		require.NoError(err)
+		_, err = f.WriteString(st.output.String())
+		require.NoError(err)
 	} else {
-		dmp := diffmatchpatch.New()
-		actualOutput := st.output.String()
-		diffs := dmp.DiffMain(actualOutput, string(b), false)
-		if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
-			diff := dmp.DiffPrettyText(diffs)
-			if *updateFlag {
-				f, err := os.Create("./testdata/" + st.outFile)
-				defer f.Close()
-				require.NoError(err)
-				_, err = f.WriteString(actualOutput)
-				require.NoError(err)
-			} else {
+		b, err := os.ReadFile("./testdata/" + st.outFile)
+		require.NoError(err)
+		if !UseFancyDiff {
+			// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
+			// to a basic check - this shows only the changed lines, not all the lines
+			require.Equal(string(b), st.output.String())
+		} else {
+			dmp := diffmatchpatch.New()
+			actualOutput := st.output.String()
+			diffs := dmp.DiffMain(actualOutput, string(b), false)
+			if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
+				diff := dmp.DiffPrettyText(diffs)
 				st.testSuite.T().Error("Test output did not match:")
 				fmt.Println(diff)
 			}

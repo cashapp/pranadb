@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
@@ -387,6 +388,18 @@ func TestParseMessagesFloat64BEHeaders(t *testing.T) {
 		vf)
 }
 
+func compileSelectors(raw []string) ([]selector.Selector, error) {
+	cs := make([]selector.Selector, len(raw))
+	for i := range raw {
+		col, err := selector.ParseSelector(raw[i])
+		if err != nil {
+			return nil, err
+		}
+		cs[i] = col
+	}
+	return cs, nil
+}
+
 //nolint:unparam
 func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnType, headerEncoding common.KafkaEncoding, keyEncoding common.KafkaEncoding,
 	valueEncoding common.KafkaEncoding, headers []kafka.MessageHeader, keyBytes []byte, valueBytes []byte, colSelectors []string, timestamp time.Time,
@@ -401,13 +414,15 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		ColumnTypes:    colTypes,
 		IndexInfos:     nil,
 	}
+	selectors, err := compileSelectors(colSelectors)
+	require.NoError(t, err)
 	topicInfo := &common.TopicInfo{
 		BrokerName:     "test_broker",
 		TopicName:      "test_topic",
 		HeaderEncoding: headerEncoding,
 		KeyEncoding:    keyEncoding,
 		ValueEncoding:  valueEncoding,
-		ColSelectors:   colSelectors,
+		ColSelectors:   selectors,
 		Properties:     nil,
 	}
 	sourceInfo := &common.SourceInfo{

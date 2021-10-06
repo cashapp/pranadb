@@ -1,6 +1,7 @@
-package protolib
+package selector
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -34,8 +35,11 @@ func TestParseSelector(t *testing.T) {
 			selector: `hello.great["5"].world`,
 			want:     newSelector("hello", "great", "5", "world"),
 		},
-		{name: "nested map is invalid", selector: `hello["great"]["world"]`, wantErr: true},
-		{name: "nested array is invalid", selector: `hello[3][2]`, wantErr: true},
+		{
+			name:     "complicated",
+			selector: `hello[0][1]["2"]["world"].foo[3]`,
+			want:     newSelector("hello", 0, 1, "2", "world", "foo", 3),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -43,6 +47,7 @@ func TestParseSelector(t *testing.T) {
 			if test.wantErr {
 				require.Error(t, err)
 			} else {
+				require.NoError(t, err)
 				require.Equal(t, test.want, sel)
 			}
 		})
@@ -65,6 +70,56 @@ func newSelector(s ...interface{}) Selector {
 }
 
 func TestSelect(t *testing.T) {
+	rawJSON := `{
+  "number": 123.456,
+  "string": "hello world",
+  "list": [345, "foo"],
+  "nested": {
+    "string": "a nested string"
+  },
+  "objlist": [{"mon": 1}, {"tues": 2}]
+}`
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(rawJSON), &data))
+	data["proto"] = &testproto.TestTypes{
+		StringField: "proto string",
+	}
+
+	tests := []struct {
+		name       string
+		selector   string
+		want       interface{}
+		wantErr    error
+		wantErrMsg string
+	}{
+		{name: "number", selector: "number", want: 123.456},
+		{name: "string", selector: "string", want: "hello world"},
+		{name: "list", selector: "list", want: []interface{}{float64(345), "foo"}},
+		{name: "number in list", selector: "list[0]", want: float64(345)},
+		{name: "string in list", selector: "list[1]", want: "foo"},
+		{name: "nested string", selector: "nested.string", want: "a nested string"},
+		{name: "object in list", selector: "objlist[1].tues", want: float64(2)},
+		{name: "object in list map index syntax", selector: `objlist[1]["tues"]`, want: float64(2)},
+		{name: "list out of bounds", selector: "list[2]", wantErr: &ErrNotFound{}, wantErrMsg: "Value at \"list[2]\" not found while looking for \"list[2]\""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sel, err := ParseSelector(test.selector)
+			require.NoError(t, err)
+			v, err := sel.Select(data)
+			if test.wantErr != nil {
+				require.Error(t, err)
+				require.ErrorAs(t, err, &test.wantErr)
+				require.Equal(t, test.wantErrMsg, test.wantErr.Error())
+			} else {
+				require.Equal(t, test.want, v)
+			}
+		})
+	}
+}
+
+func TestSelectProto(t *testing.T) {
 	data := &testproto.TestTypes{
 		DoubleField: 1.2,
 		FloatField:  2.3,
@@ -127,13 +182,16 @@ func TestSelect(t *testing.T) {
 		{name: "string map", selector: "string_map_field[\"lois\"]", want: "lane"},
 		{name: "int map", selector: "int_map_field[88]", want: "eighty-eight"},
 		{name: "map message", selector: "map_message_field[\"batman\"].value", want: "robin"},
+		{name: "map message indexing", selector: "map_message_field[\"batman\"][\"value\"]", want: "robin"},
 		{name: "partial oneof selector", selector: "oneof_field", want: "one_int64"},
 		{name: "one of", selector: "oneof_field.one_int64", want: int64(1000)},
 		// respect that protos are nice about nil values
 		{name: "nil dereference", selector: "recursive_field.recursive_field.recursive_field.recursive_field.string_field", want: ""},
 		{name: "invalid field", selector: "recursive_field.not_a_field.nope", wantErr: &ErrNotFound{}, wantErrMsg: "Value at \"recursive_field.not_a_field\" not found while looking for \"recursive_field.not_a_field.nope\""},
 		{name: "index list using string", selector: "repeated_string_field[\"hello\"]", wantErr: errors.New(""), wantErrMsg: "cannot index list at \"repeated_string_field.hello\" with string"},
+		{name: "index list twice", selector: "repeated_string_field[1][2]", wantErr: errors.New(""), wantErrMsg: "cannot get index 2 of \"string\""},
 		{name: "index string map using int", selector: "string_map_field[88]", wantErr: errors.New(""), wantErrMsg: "cannot convert int to map key of kind \"string\" at \"string_map_field\""},
+		{name: "index string map twice", selector: "string_map_field[\"lois\"][\"nope\"]", wantErr: errors.New(""), wantErrMsg: "cannot get field \"nope\" of \"string\""},
 		{name: "index into oneof field", selector: "oneof_field[3]", wantErr: errors.New(""), wantErrMsg: "cannot get index 3 of oneof field at \"oneof_field\""},
 		{name: "enum", selector: "enum_field", want: dynamicpb.NewEnumType(fd.Enums().ByName("Count")).New(1)},
 		{name: "invalid oneof", selector: "oneof_field.one_wibble", wantErr: errors.New(""), wantErrMsg: "unknown oneof field \"one_wibble\""},
