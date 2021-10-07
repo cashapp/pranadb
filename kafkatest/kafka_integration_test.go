@@ -5,6 +5,11 @@ package kafkatest
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"sync"
+	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -15,12 +20,6 @@ import (
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-
-	"io/ioutil"
-	"os"
-	"sync"
-	"testing"
-	"time"
 )
 
 const numPartitions = 25
@@ -89,13 +88,13 @@ create source payments(
     keyencoding = "stringbytes",
     valueencoding = "json",
     columnselectors = (
-        "k",
-        "v.customer_id",
-        "t",
-        "v.amount",
-        "v.payment_type",
-        "v.currency",
-        "h.fraud_score"
+        k,
+        v.customer_id,
+        t,
+        v.amount,
+        v.payment_type,
+        v.currency,
+        h.fraud_score
     ),
     properties = ()
 )

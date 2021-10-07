@@ -5,6 +5,7 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/alecthomas/repr"
+	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
 )
@@ -50,9 +51,10 @@ func TestParse(t *testing.T) {
 			keyencoding = "json",
 			valueencoding = "json",
 			columnselectors = (
-				"k.k0",
-				"v.v1",
-				"v.v2"
+				k.k0,
+				v.v1,
+				v.v2,
+				v[0][1].foo["test"]
 			),
 			properties = (
 			"prop1" = "val1",
@@ -73,7 +75,15 @@ func TestParse(t *testing.T) {
 					{HeaderEncoding: "json"},
 					{KeyEncoding: "json"},
 					{ValueEncoding: "json"},
-					{ColSelectors: []string{"k.k0", "v.v1", "v.v2"}},
+					{ColSelectors: []*selector.SelectorAST{
+						{Field: "k", Next: &selector.SelectorAST{Field: "k0"}},
+						{Field: "v", Next: &selector.SelectorAST{Field: "v1"}},
+						{Field: "v", Next: &selector.SelectorAST{Field: "v2"}},
+						{Field: "v", Index: []*selector.Index{{Number: intRef(0)}, {Number: intRef(1)}},
+							Next: &selector.SelectorAST{Field: "foo", Index: []*selector.Index{{String: stringRef("test")}}},
+						},
+					},
+					},
 					{Properties: []*TopicInfoProperty{
 						{Key: "prop1", Value: "val1"},
 						{Key: "prop2", Value: "val2"},
@@ -112,4 +122,12 @@ func TestParse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func intRef(v int) *int {
+	return &v
+}
+
+func stringRef(v string) *string {
+	return &v
 }

@@ -15,12 +15,12 @@ create source latest_sensor_readings(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3",
-        "v.v4",
-        "v.v5"
+        k.k0,
+        v.v1,
+        v.v2,
+        v.v3,
+        v.v4,
+        v.v5
     )
 );
 

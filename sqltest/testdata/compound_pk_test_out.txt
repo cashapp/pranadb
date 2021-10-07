@@ -14,10 +14,10 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3"
+        k.k0,
+        v.v1,
+        v.v2,
+        v.v3
     ),
     properties = (
         "prop1" = "val1",

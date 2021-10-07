@@ -2,10 +2,13 @@ package command
 
 import (
 	"fmt"
-	"github.com/alecthomas/participle/v2"
-	"github.com/squareup/pranadb/common"
 	"strings"
 	"sync/atomic"
+
+	"github.com/alecthomas/participle/v2"
+	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
@@ -25,6 +28,7 @@ type Executor struct {
 	pushEngine        *push.Engine
 	pullEngine        *pull.Engine
 	notifClient       notifier.Client
+	protoRegistry     protolib.Resolver
 	sessionIDSequence int64
 	ddlRunner         *DDLCommandRunner
 }
@@ -34,19 +38,14 @@ type sessCloser struct {
 	notifClient notifier.Client
 }
 
-func NewCommandExecutor(
-	metaController *meta.Controller,
-	pushEngine *push.Engine,
-	pullEngine *pull.Engine,
-	cluster cluster.Cluster,
-	notifClient notifier.Client,
-) *Executor {
+func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine, cluster cluster.Cluster, notifClient notifier.Client, protoRegistry protolib.Resolver) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
 		pullEngine:        pullEngine,
 		notifClient:       notifClient,
+		protoRegistry:     protoRegistry,
 		sessionIDSequence: -1,
 	}
 	commandRunner := NewDDLCommandRunner(ex)
@@ -76,8 +75,8 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 
 	ast, err := parser.Parse(sql)
 	if err != nil {
-		_, ok := err.(participle.Error)
-		if ok {
+		var perr participle.Error
+		if errors.As(err, &perr) {
 			return nil, perrors.NewInvalidStatementError(err.Error())
 		}
 		return nil, err

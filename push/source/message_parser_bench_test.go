@@ -23,12 +23,16 @@ func setupMessageParserJSON() *MessageParser {
 		IndexInfos:     nil,
 	}
 	colSelectors := []string{"k.F1", "v.F1", "v.F2"}
+	selectors, err := compileSelectors(colSelectors)
+	if err != nil {
+		panic(err)
+	}
 	topicInfo := &common.TopicInfo{
 		BrokerName:    "test_broker",
 		TopicName:     "test_topic",
 		KeyEncoding:   common.KafkaEncodingJSON,
 		ValueEncoding: common.KafkaEncodingJSON,
-		ColSelectors:  colSelectors,
+		ColSelectors:  selectors,
 		Properties:    nil,
 	}
 

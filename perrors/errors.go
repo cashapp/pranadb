@@ -2,8 +2,9 @@ package perrors
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type ErrorCode int
@@ -28,6 +29,7 @@ const (
 	UnsupportedBrokerClientType
 	UnknownTopicEncoding
 	WrongNumberColumnSelectors
+	InvalidSelector
 )
 
 func NewInternalError(seq int64) PranaError {

@@ -40,9 +40,9 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2"
+							k.k0,
+							v.v1,
+							v.v2
 						),
 						properties = (
 							"prop1" = "val1",
@@ -61,9 +61,9 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2"
+							k.k0,
+							v.v1,
+							v.v2
 						),
 						properties = (
 							"prop1" = "val1",
@@ -79,10 +79,10 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2",
-							"v.v3"
+							k.k0,
+							v.v1,
+							v.v2,
+							v.v3
 						),
 						properties = (
 							"prop1" = "val1",
@@ -105,10 +105,10 @@ func TestLoader(t *testing.T) {
 						keyencoding = "json",
 						valueencoding = "json",
 						columnselectors = (
-							"k.k0",
-							"v.v1",
-							"v.v2",
-							"v.v3"
+							k.k0,
+							v.v1,
+							v.v2,
+							v.v3
 						),
 						properties = (
 							"prop1" = "val1",
@@ -173,7 +173,7 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	config := conf.NewTestConfig(fakeKafka.ID)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry)
-	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif)
+	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, protolib.EmptyRegistry)
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)

@@ -18,11 +18,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned
@@ -64,11 +64,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned
@@ -110,11 +110,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned
@@ -156,11 +156,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned
@@ -202,11 +202,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned
@@ -248,11 +248,11 @@ create source raw_ledger_events(
 	keyencoding = "stringbytes",
 	valueencoding = "json",
 	columnselectors = (
-		"v.v0",
-        "v.v1",
-		"v.v2",
-		"v.v3",
-		"v.v4"
+		v.v0,
+        v.v1,
+		v.v2,
+		v.v3,
+		v.v4
 	)
 );
 0 rows returned

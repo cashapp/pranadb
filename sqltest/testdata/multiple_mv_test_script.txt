@@ -16,13 +16,13 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3",
-        "v.v4",
-        "v.v5",
-        "v.v6"
+        k.k0,
+        v.v1,
+        v.v2,
+        v.v3,
+        v.v4,
+        v.v5,
+        v.v6
     )
 );
 
@@ -49,13 +49,13 @@ create source test_source_2(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3",
-        "v.v4",
-        "v.v5",
-        "v.v6"
+        k.k0,
+        v.v1,
+        v.v2,
+        v.v3,
+        v.v4,
+        v.v5,
+        v.v6
     )
 );
 
@@ -82,13 +82,13 @@ create source test_source_3(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3",
-        "v.v4",
-        "v.v5",
-        "v.v6"
+        k.k0,
+        v.v1,
+        v.v2,
+        v.v3,
+        v.v4,
+        v.v5,
+        v.v6
     )
 );
 

@@ -4,9 +4,11 @@
 package parser
 
 import (
-	"github.com/squareup/pranadb/perrors"
 	"strconv"
 	"strings"
+
+	"github.com/squareup/pranadb/command/parser/selector"
+	"github.com/squareup/pranadb/perrors"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
@@ -98,13 +100,13 @@ type CreateSource struct {
 }
 
 type TopicInformation struct {
-	BrokerName     string               `"BrokerName" "=" @String`
-	TopicName      string               `|"TopicName" "=" @String`
-	HeaderEncoding string               `|"HeaderEncoding" "=" @String`
-	KeyEncoding    string               `|"KeyEncoding" "=" @String`
-	ValueEncoding  string               `|"ValueEncoding" "=" @String`
-	ColSelectors   []string             `|"ColumnSelectors" "=" "(" (@String ("," @String)*)? ")"`
-	Properties     []*TopicInfoProperty `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+	BrokerName     string                  `"BrokerName" "=" @String`
+	TopicName      string                  `|"TopicName" "=" @String`
+	HeaderEncoding string                  `|"HeaderEncoding" "=" @String`
+	KeyEncoding    string                  `|"KeyEncoding" "=" @String`
+	ValueEncoding  string                  `|"ValueEncoding" "=" @String`
+	ColSelectors   []*selector.SelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
+	Properties     []*TopicInfoProperty    `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type ColSelector struct {
