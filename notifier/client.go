@@ -77,7 +77,7 @@ func (c *client) makeUnavailableWithLock(serverAddress string) {
 // BroadcastSync broadcasts a notification to all nodes and waits until all nodes have responded before returning
 func (c *client) BroadcastSync(notif Notification) error {
 	nf := c.createNotifcationMessage(notif, true)
-	respChan := make(chan bool, 1)
+	respChan := make(chan bool, len(c.serverAddresses))
 	ri := &responseInfo{respChan: respChan, conns: make(map[*clientConnection]struct{})}
 	c.responseChannels.Store(nf.sequence, ri)
 	if err := c.broadcast(nf, ri); err != nil {
