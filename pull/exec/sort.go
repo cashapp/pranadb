@@ -2,10 +2,11 @@ package exec
 
 import (
 	"fmt"
-	"github.com/cznic/mathutil"
-	"github.com/squareup/pranadb/perrors"
 	"sort"
 	"strings"
+
+	"github.com/cznic/mathutil"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/common"
 )
@@ -38,7 +39,7 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 
 func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 	if limit < 1 {
-		return nil, perrors.Errorf("invalid limit %d", limit)
+		return nil, errors.Errorf("invalid limit %d", limit)
 	}
 
 	if p.rows == nil {
@@ -55,7 +56,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 			}
 			if unsorted.RowCount()+rc > orderByMaxRows {
 				// TODO needs test
-				return nil, perrors.Errorf("query with order by cannot return more than %d rows", orderByMaxRows)
+				return nil, errors.Errorf("query with order by cannot return more than %d rows", orderByMaxRows)
 			}
 			unsorted.AppendAll(batch)
 			if rc < queryBatchSize {

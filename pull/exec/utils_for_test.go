@@ -1,8 +1,9 @@
 package exec
 
 import (
-	"github.com/squareup/pranadb/common/commontest"
 	"testing"
+
+	"github.com/squareup/pranadb/common/commontest"
 
 	"github.com/squareup/pranadb/common"
 )

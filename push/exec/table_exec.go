@@ -1,14 +1,14 @@
 package exec
 
 import (
-	"github.com/pkg/errors"
+	"sync"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
-	"sync"
 )
 
 const lockAndLoadMaxRows = 10
@@ -429,7 +429,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 				return
 			}
 			if len(kvp) != int(numRows) {
-				ch <- perrors.Errorf("node %d expected %d rows got %d start seq %d end seq %d startPrefix %s endPrefix %s",
+				ch <- errors.Errorf("node %d expected %d rows got %d start seq %d end seq %d startPrefix %s endPrefix %s",
 					t.store.GetNodeID(),
 					numRows, len(kvp), startSeq, theEndSeq, common.DumpDataKey(startPrefix), common.DumpDataKey(endPrefix))
 				return

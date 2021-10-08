@@ -1,10 +1,8 @@
-package perrors
+package errors
 
 import (
 	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 type ErrorCode int
@@ -100,12 +98,8 @@ func NewPranaError(errorCode ErrorCode, msg string) PranaError {
 	return PranaError{Code: errorCode, Msg: msg}
 }
 
-func Errorf(msgFormat string, args ...interface{}) error {
-	return MaybeAddStack(fmt.Errorf(msgFormat, args...))
-}
-
 func Error(msg string) error {
-	return MaybeAddStack(errors.New(msg))
+	return New(msg)
 }
 
 // PranaError is any kind of error that is exposed to the user via external interfaces like the CLI
@@ -121,7 +115,7 @@ func (u PranaError) Error() string {
 func MaybeAddStack(err error) error {
 	_, ok := err.(PranaError)
 	if !ok {
-		return errors.WithStack(err)
+		return WithStack(err)
 	}
 	return err
 }

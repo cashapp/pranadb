@@ -3,9 +3,9 @@ package schema
 import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/push/source"
 )
@@ -68,7 +68,7 @@ func (l *Loader) Start() error {
 			tk := tableKey{info.SchemaName, info.Name}
 			_, ok := mvTables[tk]
 			if ok {
-				return perrors.Errorf("mv %s %s already loaded", info.SchemaName, info.Name)
+				return errors.Errorf("mv %s %s already loaded", info.SchemaName, info.Name)
 			}
 			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
 			mvTables[tk] = mvt
@@ -84,7 +84,7 @@ func (l *Loader) Start() error {
 			mvt.sequences = append(mvt.sequences, info.ID)
 			mvt.internalTables = append(mvt.internalTables, info)
 		default:
-			return perrors.Errorf("unknown table kind %s", kind)
+			return errors.Errorf("unknown table kind %s", kind)
 		}
 	}
 

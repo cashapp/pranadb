@@ -1,12 +1,13 @@
 package sess
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/pull/exec"
-	"sync"
-	"sync/atomic"
 )
 
 // Session represents a user's session with Prana

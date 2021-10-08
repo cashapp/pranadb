@@ -2,9 +2,10 @@ package exec
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/meta"
 	"sync"
 	"testing"
+
+	"github.com/squareup/pranadb/meta"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"

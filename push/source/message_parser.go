@@ -6,10 +6,9 @@ import (
 	"reflect"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/protolib"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -204,7 +203,7 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			}
 			rows.AppendTimestampToColumn(i, tsVal)
 		default:
-			return perrors.Errorf("unsupported col type %d", colType.Type)
+			return errors.Errorf("unsupported col type %d", colType.Type)
 		}
 	}
 	return nil
@@ -230,11 +229,11 @@ func getDecoder(registry protolib.Resolver, encoding common.KafkaEncoding) (Deco
 	case common.EncodingProtobuf:
 		desc, err := registry.FindDescriptorByName(protoreflect.FullName(encoding.SchemaName))
 		if err != nil {
-			return nil, perrors.Errorf("could not find protobuf descriptor for %q", encoding.SchemaName)
+			return nil, errors.Errorf("could not find protobuf descriptor for %q", encoding.SchemaName)
 		}
 		msgDesc, ok := desc.(protoreflect.MessageDescriptor)
 		if !ok {
-			return nil, perrors.Errorf("expected to find MessageDescriptor at %q, but was %q", encoding.SchemaName, reflect.TypeOf(msgDesc))
+			return nil, errors.Errorf("expected to find MessageDescriptor at %q, but was %q", encoding.SchemaName, reflect.TypeOf(msgDesc))
 		}
 		decoder = &ProtobufDecoder{desc: msgDesc}
 	default:

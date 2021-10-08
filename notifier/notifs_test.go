@@ -2,15 +2,16 @@ package notifier
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/stretchr/testify/require"
 )
 
 // We test primarily with SessionClosedMessage as this allows us to pass simply an arbitrarily sized string so we can

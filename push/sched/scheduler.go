@@ -1,8 +1,9 @@
 package sched
 
 import (
-	log "github.com/sirupsen/logrus"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ShardScheduler struct {

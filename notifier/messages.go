@@ -2,8 +2,9 @@ package notifier
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"net"
+
+	"github.com/squareup/pranadb/common"
 )
 
 type messageType byte

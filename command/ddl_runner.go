@@ -1,14 +1,15 @@
 package command
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/notifier"
-	"github.com/squareup/pranadb/perrors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 )
 
 const (
@@ -108,7 +109,7 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 	} else {
 		com, ok := d.commands[skey]
 		if !ok {
-			return perrors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+			return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		}
 		if err := com.OnCommit(); err != nil {
 			return err
@@ -189,7 +190,7 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 			return nil
 		}
 		if time.Now().Sub(start) > schemaLockAttemptTimeout {
-			return perrors.Errorf("timed out waiting to get ddl schema lock for schema %s", lockName)
+			return errors.Errorf("timed out waiting to get ddl schema lock for schema %s", lockName)
 		}
 		time.Sleep(schemaLockRetryDelay)
 	}

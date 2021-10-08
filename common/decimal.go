@@ -2,7 +2,7 @@ package common
 
 import (
 	"github.com/pingcap/tidb/types"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 )
 
 type Decimal struct {
@@ -59,14 +59,14 @@ func (d *Decimal) CompareTo(dec *Decimal) int {
 
 func (d *Decimal) Encode(buffer []byte, precision int, scale int) ([]byte, error) {
 	b, err := d.decimal.WriteBin(precision, scale, buffer)
-	return b, perrors.MaybeAddStack(err)
+	return b, errors.MaybeAddStack(err)
 }
 
 func (d *Decimal) Decode(buffer []byte, offset int, precision int, scale int) (int, error) {
 	mydec := &types.MyDecimal{}
 	binSize, err := mydec.FromBin(buffer[offset:], precision, scale)
 	if err != nil {
-		return 0, perrors.MaybeAddStack(err)
+		return 0, errors.MaybeAddStack(err)
 	}
 	d.decimal = mydec
 	return offset + binSize, nil
@@ -75,7 +75,7 @@ func (d *Decimal) Decode(buffer []byte, offset int, precision int, scale int) (i
 func (d *Decimal) Add(other *Decimal) (*Decimal, error) {
 	result := &types.MyDecimal{}
 	if err := types.DecimalAdd(d.decimal, other.decimal, result); err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	return NewDecimal(result), nil
 }
@@ -83,7 +83,7 @@ func (d *Decimal) Add(other *Decimal) (*Decimal, error) {
 func (d *Decimal) Subtract(other *Decimal) (*Decimal, error) {
 	result := &types.MyDecimal{}
 	if err := types.DecimalSub(d.decimal, other.decimal, result); err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	return NewDecimal(result), nil
 }

@@ -1,9 +1,10 @@
 package commontest
 
 import (
+	"testing"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestDecimalFromString(t *testing.T) {

@@ -2,8 +2,9 @@ package parplan
 
 import (
 	"context"
-	"github.com/squareup/pranadb/perrors"
 	"math"
+
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/sessctx"
 
@@ -73,7 +74,7 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.Physical
 		err = core.Preprocess(p.ctx, stmt.stmt)
 	}
 	if err != nil {
-		return nil, nil, perrors.MaybeAddStack(err)
+		return nil, nil, errors.MaybeAddStack(err)
 	}
 	logicalPlan, err := p.createLogicalPlan(context.TODO(), p.ctx, stmt.stmt, p.is)
 	if err != nil {
@@ -92,7 +93,7 @@ func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionc
 	builder, _ := core.NewPlanBuilder(sessionContext, is, hintProcessor)
 	plan, err := builder.Build(ctx, node)
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	logicalPlan, isLogicalPlan := plan.(core.LogicalPlan)
 	if !isLogicalPlan {
@@ -113,7 +114,7 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 		}
 		physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
 		if err != nil {
-			return nil, perrors.MaybeAddStack(err)
+			return nil, errors.MaybeAddStack(err)
 		}
 		return physicalPlan, nil
 	}
@@ -121,7 +122,7 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 	flag := uint64(math.MaxUint64)
 	physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, flag, logicalPlan)
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	return physicalPlan, nil
 }

@@ -1,8 +1,9 @@
 package meta
 
 import (
-	"github.com/squareup/pranadb/perrors"
 	"sync"
+
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -172,7 +173,7 @@ func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error 
 
 func (c *Controller) existsTable(schema *common.Schema, name string) error {
 	if _, ok := schema.GetTable(name); ok {
-		return perrors.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
+		return errors.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
 	}
 	return nil
 }
@@ -220,7 +221,7 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 
 func (c *Controller) checkTableID(tableID uint64) error {
 	if _, ok := c.tableIDs[tableID]; ok {
-		return perrors.Errorf("cannot register. table with id %d already exists", tableID)
+		return errors.Errorf("cannot register. table with id %d already exists", tableID)
 	}
 	return nil
 }
@@ -264,14 +265,14 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
 	if !ok {
-		return perrors.Errorf("no such schema %s", schemaName)
+		return errors.Errorf("no such schema %s", schemaName)
 	}
 	tbl, ok := schema.GetTable(sourceName)
 	if !ok {
-		return perrors.Errorf("no such source %s", sourceName)
+		return errors.Errorf("no such source %s", sourceName)
 	}
 	if _, ok := tbl.(*common.SourceInfo); !ok {
-		return perrors.Errorf("%s is not a source", tbl)
+		return errors.Errorf("%s is not a source", tbl)
 	}
 	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(sourceName)
@@ -300,24 +301,24 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 	defer c.lock.Unlock()
 	schema, ok := c.schemas[schemaName]
 	if !ok {
-		return perrors.Errorf("no such schema %s", schemaName)
+		return errors.Errorf("no such schema %s", schemaName)
 	}
 	tbl, ok := schema.GetTable(mvName)
 	if !ok {
-		return perrors.Errorf("no such mv %s", mvName)
+		return errors.Errorf("no such mv %s", mvName)
 	}
 	if _, ok := tbl.(*common.MaterializedViewInfo); !ok {
-		return perrors.Errorf("%s is not a materialized view", tbl)
+		return errors.Errorf("%s is not a materialized view", tbl)
 	}
 	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(mvName)
 	for _, it := range internalTables {
 		internalTbl, ok := schema.GetTable(it)
 		if !ok {
-			return perrors.Errorf("no such internal table %s", it)
+			return errors.Errorf("no such internal table %s", it)
 		}
 		if _, ok := internalTbl.(*common.InternalTableInfo); !ok {
-			return perrors.Errorf("%s is not an internal table", internalTbl)
+			return errors.Errorf("%s is not an internal table", internalTbl)
 		}
 		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)

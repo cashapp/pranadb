@@ -3,7 +3,7 @@ package parser
 import (
 	"regexp"
 
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer/stateful"
@@ -48,5 +48,5 @@ func Parse(sql string) (*AST, error) {
 	}
 	ast := &AST{}
 	err := parser.ParseString("", sql, ast)
-	return ast, perrors.MaybeAddStack(err)
+	return ast, errors.MaybeAddStack(err)
 }

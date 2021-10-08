@@ -2,12 +2,13 @@ package common
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"reflect"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ByteSliceMap struct {

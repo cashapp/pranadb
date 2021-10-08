@@ -1,8 +1,8 @@
 package exec
 
 import (
-	"errors"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 type PushSelect struct {

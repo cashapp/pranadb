@@ -2,12 +2,13 @@ package client
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/server"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestSessionTimeout(t *testing.T) {

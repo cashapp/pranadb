@@ -2,10 +2,11 @@ package conf
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
+	"github.com/stretchr/testify/require"
 )
 
 type configPair struct {
@@ -201,9 +202,9 @@ func TestValidate(t *testing.T) {
 	for _, cp := range invalidConfigs {
 		err := cp.conf.Validate()
 		require.Error(t, err)
-		pe, ok := err.(perrors.PranaError)
+		pe, ok := err.(errors.PranaError)
 		require.True(t, ok)
-		require.Equal(t, perrors.InvalidConfiguration, int(pe.Code))
+		require.Equal(t, errors.InvalidConfiguration, int(pe.Code))
 		require.Equal(t, cp.errMsg, pe.Msg)
 	}
 }

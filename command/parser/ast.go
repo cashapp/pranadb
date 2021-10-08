@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/squareup/pranadb/command/parser/selector"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
@@ -66,7 +66,7 @@ func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
 	ct, ok := common.ColumnTypesByType[c.Type]
 	if ok {
 		if len(c.Parameters) != 0 {
-			return common.ColumnType{}, perrors.MaybeAddStack(participle.Errorf(c.Pos, ""))
+			return common.ColumnType{}, errors.MaybeAddStack(participle.Errorf(c.Pos, ""))
 		}
 		return ct, nil
 	}

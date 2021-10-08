@@ -2,19 +2,18 @@ package msggen
 
 import (
 	"context"
-	"errors"
 	"fmt"
-
 	"math/rand"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/squareup/pranadb/errors"
+
 	kafkaclient "github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/sharder"
 )
 
@@ -41,7 +40,7 @@ func (gm *GenManager) RegisterGenerator(gen MessageGenerator) error {
 	gm.lock.Lock()
 	defer gm.lock.Unlock()
 	if _, ok := gm.generators[gen.Name()]; ok {
-		return perrors.Errorf("generator already registered with name %s", gen.Name())
+		return errors.Errorf("generator already registered with name %s", gen.Name())
 	}
 	gm.generators[gen.Name()] = gen
 	return nil
@@ -58,7 +57,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 
 	gen, ok := gm.generators[genName]
 	if !ok {
-		return perrors.Errorf("no generator with registered with name %s", genName)
+		return errors.Errorf("no generator with registered with name %s", genName)
 	}
 
 	msgsSent := int64(0)
@@ -147,7 +146,7 @@ func setProperty(cfg *kafkaclient.Writer, k, v string) error {
 	case "bootstrap.servers":
 		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
 	default:
-		return perrors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
 	}
 	return nil
 }

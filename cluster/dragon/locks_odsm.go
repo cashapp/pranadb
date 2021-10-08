@@ -1,12 +1,13 @@
 package dragon
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/perrors"
 	"io"
 	"math"
 	"strings"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
@@ -100,7 +101,7 @@ outer:
 			}
 			s.setResult(true, entries, i)
 		} else {
-			return nil, perrors.Errorf("unknown lock command %s", command)
+			return nil, errors.Errorf("unknown lock command %s", command)
 		}
 	}
 	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, locksClusterID); err != nil {

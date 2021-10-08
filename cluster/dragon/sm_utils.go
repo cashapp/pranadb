@@ -1,12 +1,13 @@
 package dragon
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/perrors"
 	"io"
 	"io/ioutil"
 	"math"
 	"os"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/sstable"
@@ -32,7 +33,7 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 		theShardID, _ := common.ReadUint64FromBufferBE(k, 0)
 		if theShardID != shardID {
 			// Sanity check
-			return perrors.Errorf("wrong shard id is %d was expecting %d key is %v upper bound is %v", theShardID, shardID, k, upper)
+			return errors.Errorf("wrong shard id is %d was expecting %d key is %v upper bound is %v", theShardID, shardID, k, upper)
 		}
 		lk := len(k)
 		lv := len(v)

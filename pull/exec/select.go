@@ -2,7 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 )
 
 const batchSize = 10000
@@ -32,7 +32,7 @@ func NewPullSelect(colNames []string, colTypes []common.ColumnType, predicates [
 func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 
 	if limit < 1 {
-		return nil, perrors.Errorf("invalid limit %d", limit)
+		return nil, errors.Errorf("invalid limit %d", limit)
 	}
 
 	var capac int

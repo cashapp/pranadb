@@ -1,8 +1,9 @@
 package commontest
 
 import (
-	"github.com/squareup/pranadb/common"
 	"testing"
+
+	"github.com/squareup/pranadb/common"
 
 	"github.com/stretchr/testify/require"
 )

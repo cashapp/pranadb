@@ -2,19 +2,19 @@ package pull
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/command/parser"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/notifier"
-	"github.com/squareup/pranadb/perrors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
-	"github.com/squareup/pranadb/pull/exec"
-	"github.com/squareup/pranadb/sess"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/pull/exec"
+	"github.com/squareup/pranadb/sess"
 )
 
 type Engine struct {
@@ -69,7 +69,7 @@ func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.Pu
 		return nil, errors.WithStack(err)
 	}
 	if ast.Select == "" {
-		return nil, perrors.Errorf("only sql queries can be prepared %s", sql)
+		return nil, errors.Errorf("only sql queries can be prepared %s", sql)
 	}
 	tiAst, err := session.PullPlanner().Parse(sql)
 	if err != nil {
@@ -84,7 +84,7 @@ func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.Pu
 func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, args []interface{}) (exec.PullExecutor, error) {
 	ps, ok := session.PsCache[psID]
 	if !ok {
-		return nil, perrors.NewUnknownPreparedStatementError(psID)
+		return nil, errors.NewUnknownPreparedStatementError(psID)
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
 	session.PullPlanner().SetPSArgs(args)
@@ -315,7 +315,7 @@ func (p *Engine) clearSessionsForNode(nodeID int) {
 func (p *Engine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
-		return nil, perrors.Errorf("no such schema %s", schemaName)
+		return nil, errors.Errorf("no such schema %s", schemaName)
 	}
 	sess := sess.NewSession("", nil)
 	sess.UseSchema(schema)

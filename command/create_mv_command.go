@@ -2,13 +2,14 @@ package command
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push"
-	"sync"
 )
 
 type CreateMVCommand struct {
@@ -79,7 +80,7 @@ func (c *CreateMVCommand) BeforePrepare() error {
 
 	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
 	if ok {
-		return perrors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
+		return errors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
 	}
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
@@ -87,7 +88,7 @@ func (c *CreateMVCommand) BeforePrepare() error {
 		return err
 	}
 	if rows.RowCount() != 0 {
-		return perrors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
 	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
 }
@@ -148,7 +149,7 @@ func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 		return nil, err
 	}
 	if ast.Create == nil || ast.Create.MaterializedView == nil {
-		return nil, perrors.Errorf("not a create materialized view %s", c.createMVSQL)
+		return nil, errors.Errorf("not a create materialized view %s", c.createMVSQL)
 	}
 	return c.createMVFromAST(ast.Create.MaterializedView)
 }

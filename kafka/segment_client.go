@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 )
 
 // Kafka Message Provider implementation that uses the SegmentIO golang client
@@ -150,7 +150,7 @@ func setProperty(cfg *kafka.ReaderConfig, k, v string) error {
 	case "bootstrap.servers":
 		cfg.Brokers = strings.Split(v, ",")
 	default:
-		return perrors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
 	}
 	return nil
 }

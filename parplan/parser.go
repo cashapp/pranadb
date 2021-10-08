@@ -1,12 +1,13 @@
 package parplan
 
 import (
+	"sort"
+
 	pc_parser "github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/charset"
 	driver "github.com/pingcap/tidb/types/parser_driver"
-	"github.com/squareup/pranadb/perrors"
-	"sort"
+	"github.com/squareup/pranadb/errors"
 )
 
 func newParser() *parser {
@@ -31,7 +32,7 @@ func (p *parser) Parse(sql string) (stmt AstHandle, err error) {
 		}
 	}
 	if len(stmtNodes) != 1 {
-		return AstHandle{}, perrors.Errorf("expected 1 statement got %d", len(stmtNodes))
+		return AstHandle{}, errors.Errorf("expected 1 statement got %d", len(stmtNodes))
 	}
 
 	// We gather the param marker expressions then sort them in order of where they appear in the original sql

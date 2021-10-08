@@ -2,13 +2,14 @@ package kafka
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common/commontest"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common/commontest"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetFakeKafkas(t *testing.T) {

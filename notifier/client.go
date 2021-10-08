@@ -1,13 +1,14 @@
 package notifier
 
 import (
-	"github.com/golang/protobuf/proto"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/errors"
 )
 
 const (

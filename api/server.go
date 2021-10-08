@@ -10,21 +10,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"github.com/squareup/pranadb/sess"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
-
-	pingerrors "github.com/pingcap/errors"
+	pingerrors "github.com/pingcap/errors" //nolint: depguard
 )
 
 // Server over gRPC.
@@ -125,7 +123,7 @@ func (s *Server) CloseSession(ctx context.Context, request *service.CloseSession
 func (s *Server) lookupSession(sessionID string) (*sessionEntry, error) {
 	v, ok := s.sessions.Load(sessionID)
 	if !ok {
-		return nil, perrors.NewUnknownSessionIDError(sessionID)
+		return nil, errors.NewUnknownSessionIDError(sessionID)
 	}
 	session, ok := v.(*sessionEntry)
 	if !ok {
@@ -155,19 +153,19 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
 	if err != nil {
 		log.Errorf("failed to execute statement %+v", err)
-		_, ok := err.(perrors.PranaError)
+		_, ok := err.(errors.PranaError)
 		if !ok {
 			err = findCause(err)
 			e, ok := err.(*pingerrors.Error)
 			if ok {
 				msg := e.GetMsg()
-				return perrors.NewInvalidStatementError(msg)
+				return errors.NewInvalidStatementError(msg)
 			}
 			// For internal errors we don't return internal error messages to the CLI as this would leak
 			// server implementation details. Instead we generate a sequence number and add that to the message
 			// and log the internal error in the server logs with the sequence number so it can be looked up
 			seq := atomic.AddInt64(&s.errorSequence, 1)
-			pe := perrors.NewInternalError(seq)
+			pe := errors.NewInternalError(seq)
 			log.Errorf("internal error occurred with sequence number %d\n%v", seq, err)
 			return pe
 		}

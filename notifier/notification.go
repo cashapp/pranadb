@@ -2,7 +2,7 @@ package notifier
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 )
