@@ -202,7 +202,7 @@ func TestValidate(t *testing.T) {
 	for _, cp := range invalidConfigs {
 		err := cp.conf.Validate()
 		require.Error(t, err)
-		pe, ok := err.(errors.PranaError)
+		pe, ok := errors.Cause(err).(errors.PranaError)
 		require.True(t, ok)
 		require.Equal(t, errors.InvalidConfiguration, int(pe.Code))
 		require.Equal(t, cp.errMsg, pe.Msg)

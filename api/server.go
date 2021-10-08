@@ -153,23 +153,22 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
 	if err != nil {
 		log.Errorf("failed to execute statement %+v", err)
-		_, ok := err.(errors.PranaError)
-		if !ok {
-			err = findCause(err)
-			e, ok := err.(*pingerrors.Error)
-			if ok {
-				msg := e.GetMsg()
-				return errors.NewInvalidStatementError(msg)
-			}
-			// For internal errors we don't return internal error messages to the CLI as this would leak
-			// server implementation details. Instead we generate a sequence number and add that to the message
-			// and log the internal error in the server logs with the sequence number so it can be looked up
-			seq := atomic.AddInt64(&s.errorSequence, 1)
-			pe := errors.NewInternalError(seq)
-			log.Errorf("internal error occurred with sequence number %d\n%v", seq, err)
-			return pe
+		var perr errors.PranaError
+		if errors.As(err, &perr) {
+			return perr
 		}
-		return err
+		// pingcap errors use the legacy Causer interface
+		if pingcapErr, ok := errors.Cause(err).(*pingerrors.Error); ok {
+			msg := pingcapErr.GetMsg()
+			return errors.NewInvalidStatementError(msg)
+		}
+		// For internal errors we don't return internal error messages to the CLI as this would leak
+		// server implementation details. Instead we generate a sequence number and add that to the message
+		// and log the internal error in the server logs with the sequence number so it can be looked up
+		seq := atomic.AddInt64(&s.errorSequence, 1)
+		perr = errors.NewInternalError(seq)
+		log.Errorf("internal error occurred with sequence number %d\n%v", seq, err)
+		return perr
 	}
 
 	// First send column definitions.
@@ -283,25 +282,4 @@ func (s *Server) SessionCount() int {
 
 func (s *Server) GetListenAddress() string {
 	return s.serverAddress
-}
-
-// standard cause recursion is broken for pingcap errors so we have to do it ourselves
-func findCause(err error) error {
-	type causer interface {
-		Cause() error
-	}
-
-	for err != nil {
-		cause, ok := err.(causer)
-		if !ok {
-			break
-		}
-		// pingcap cause can return nil
-		newErr := cause.Cause()
-		if newErr == nil {
-			return err
-		}
-		err = newErr
-	}
-	return err
 }

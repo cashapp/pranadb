@@ -3,7 +3,7 @@
 //
 // Stack Traces
 //
-// github.com/pkg/errors includes a stacktrace for every wrapped call. This creates a lot of noise in GAP applications
+// github.com/pkg/errors includes a stacktrace for every wrapped call. This creates a lot of noise in applications
 // since we prefer to always a wrap an error to ensure a logged error always has a stacktrace. This package attempts
 // to remove stack traces when it can detect the traces have a shared caller. Typically you are left with only the
 // root stack trace.
@@ -99,7 +99,7 @@ func Cause(err error) error {
 		if !ok {
 			break
 		}
-		// all GAP errors implement Cause, so check if this is the last GAP error
+		// all stackErr errors implement Cause, so check if this is the last error
 		if cause.Cause() == nil {
 			break
 		}
@@ -203,10 +203,10 @@ func (e *stackErr) Cause() error {
 func (e *stackErr) StackTrace() errors.StackTrace {
 	var cStack errors.StackTrace
 	if sCause, ok := e.cause.(stackTracer); ok {
-		if gCause, ok := e.cause.(*stackErr); ok {
-			// need to special case gapErrs so we don't recursively call this method. it can return nil even if there
+		if pCause, ok := e.cause.(*stackErr); ok {
+			// need to special case stackErr so we don't recursively call this method. it can return nil even if there
 			// is a stacktrace for the cause.
-			cStack = gCause.stack
+			cStack = pCause.stack
 		} else {
 			cStack = sCause.StackTrace()
 		}

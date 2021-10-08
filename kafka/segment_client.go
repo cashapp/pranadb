@@ -69,7 +69,7 @@ func (smp *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*
 
 	msg, err := smp.reader.FetchMessage(ctx)
 	if err != nil {
-		if err == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, nil
 		}
 		return nil, err
