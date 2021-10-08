@@ -188,7 +188,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			colNames = append(colNames, col.Name)
 			colType, err := col.ToColumnType()
 			if err != nil {
-				return nil, errors.MaybeAddStack(err)
+				return nil, errors.WithStack(err)
 			}
 			colTypes = append(colTypes, colType)
 

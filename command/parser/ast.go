@@ -66,7 +66,7 @@ func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
 	ct, ok := common.ColumnTypesByType[c.Type]
 	if ok {
 		if len(c.Parameters) != 0 {
-			return common.ColumnType{}, errors.MaybeAddStack(participle.Errorf(c.Pos, ""))
+			return common.ColumnType{}, errors.WithStack(participle.Errorf(c.Pos, ""))
 		}
 		return ct, nil
 	}

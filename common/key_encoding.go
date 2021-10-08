@@ -43,7 +43,7 @@ func KeyEncodeString(buffer []byte, val string) []byte {
 func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
 	enc, err := val.ToPackedUint()
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	buffer = AppendUint64ToBufferBE(buffer, enc)
 	return buffer, nil

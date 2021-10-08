@@ -240,7 +240,7 @@ func (d *Dragon) Start() error {
 	pebbleOptions := &pebble.Options{}
 	pebble, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
-		return errors.MaybeAddStack(err)
+		return errors.WithStack(err)
 	}
 	d.pebble = pebble
 
@@ -326,7 +326,7 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
-	return errors.MaybeAddStack(err)
+	return errors.WithStack(err)
 }
 
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
@@ -432,7 +432,7 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 		}
 	}
 	if err := iter.Close(); err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	return pairs, nil
 }
@@ -499,7 +499,7 @@ func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	res := common.CopyByteSlice(v)
 	return res, nil
@@ -548,7 +548,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	}
 
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
-		ch <- errors.MaybeAddStack(err)
+		ch <- errors.WithStack(err)
 		return
 	}
 	ch <- nil
@@ -571,7 +571,7 @@ func (d *Dragon) joinSequenceGroup() error {
 		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
-		return errors.MaybeAddStack(err)
+		return errors.WithStack(err)
 	}
 	return nil
 }
@@ -593,7 +593,7 @@ func (d *Dragon) joinLockGroup() error {
 		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
-		return errors.MaybeAddStack(err)
+		return errors.WithStack(err)
 	}
 	return nil
 }
@@ -693,7 +693,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			return res, nil
 		}
 		if !errors.Is(err, dragonboat.ErrClusterNotReady) {
-			return nil, errors.MaybeAddStack(err)
+			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
 			return nil, err

@@ -83,7 +83,7 @@ func NewScalarFunctionExpression(colType ColumnType, funcName string, args ...*E
 	ctx := sessctx.NewDummySessionContext()
 	f, err := expression.NewFunction(ctx, funcName, tiDBType, tiDBArgs...)
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	return &Expression{expression: f}, nil
 }
@@ -110,17 +110,17 @@ func (e *Expression) GetColumnIndex() (int, bool) {
 
 func (e *Expression) EvalBoolean(row *Row) (bool, bool, error) {
 	val, null, err := e.expression.EvalInt(nil, row.tRow)
-	return val != 0, null, errors.MaybeAddStack(err)
+	return val != 0, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalInt64(row *Row) (val int64, null bool, err error) {
 	val, null, err = e.expression.EvalInt(nil, row.tRow)
-	return val, null, errors.MaybeAddStack(err)
+	return val, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalFloat64(row *Row) (val float64, null bool, err error) {
 	val, null, err = e.expression.EvalReal(nil, row.tRow)
-	return val, null, errors.MaybeAddStack(err)
+	return val, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
@@ -131,7 +131,7 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 	if null {
 		return Decimal{}, true, err
 	}
-	return *NewDecimal(dec), false, errors.MaybeAddStack(err)
+	return *NewDecimal(dec), false, errors.WithStack(err)
 }
 
 func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
@@ -142,7 +142,7 @@ func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
 	if null {
 		return Timestamp{}, true, err
 	}
-	return ts, false, errors.MaybeAddStack(err)
+	return ts, false, errors.WithStack(err)
 }
 
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {

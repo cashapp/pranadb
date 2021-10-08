@@ -48,5 +48,5 @@ func Parse(sql string) (*AST, error) {
 	}
 	ast := &AST{}
 	err := parser.ParseString("", sql, ast)
-	return ast, errors.MaybeAddStack(err)
+	return ast, errors.WithStack(err)
 }

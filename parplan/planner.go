@@ -74,7 +74,7 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.Physical
 		err = core.Preprocess(p.ctx, stmt.stmt)
 	}
 	if err != nil {
-		return nil, nil, errors.MaybeAddStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
 	logicalPlan, err := p.createLogicalPlan(context.TODO(), p.ctx, stmt.stmt, p.is)
 	if err != nil {
@@ -93,7 +93,7 @@ func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionc
 	builder, _ := core.NewPlanBuilder(sessionContext, is, hintProcessor)
 	plan, err := builder.Build(ctx, node)
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	logicalPlan, isLogicalPlan := plan.(core.LogicalPlan)
 	if !isLogicalPlan {
@@ -114,7 +114,7 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 		}
 		physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
 		if err != nil {
-			return nil, errors.MaybeAddStack(err)
+			return nil, errors.WithStack(err)
 		}
 		return physicalPlan, nil
 	}
@@ -122,7 +122,7 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 	flag := uint64(math.MaxUint64)
 	physicalPlan, _, err := core.DoOptimize(ctx, sessionContext, flag, logicalPlan)
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	return physicalPlan, nil
 }
