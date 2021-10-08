@@ -712,6 +712,7 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		return res, err
 	}, timeout)
 	if err != nil {
+		common.DumpStacks()
 		return statemachine.Result{}, err
 	}
 	smRes, ok := r.(statemachine.Result)
