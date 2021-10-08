@@ -2,8 +2,9 @@ package selector
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
+
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto"
 	"github.com/stretchr/testify/require"

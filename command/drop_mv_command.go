@@ -1,12 +1,13 @@
 package command
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push"
-	"sync"
 )
 
 type DropMVCommand struct {
@@ -70,7 +71,7 @@ func (c *DropMVCommand) BeforePrepare() error {
 
 	consuming := c.mv.GetConsumingMVs()
 	if len(consuming) != 0 {
-		return perrors.NewMaterializedViewHasChildrenError(mv.Info.SchemaName, mv.Info.Name, consuming)
+		return errors.NewMaterializedViewHasChildrenError(mv.Info.SchemaName, mv.Info.Name, consuming)
 	}
 
 	// Update row in tables table to mark it as pending delete
@@ -99,7 +100,7 @@ func (c *DropMVCommand) OnPrepare() error {
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)
 	if !ok {
-		return perrors.Errorf("no such schema %s", c.schemaName)
+		return errors.Errorf("no such schema %s", c.schemaName)
 	}
 	c.schema = schema
 	return c.mv.Disconnect()
@@ -133,14 +134,14 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 			return nil, err
 		}
 		if ast.Drop == nil && !ast.Drop.MaterializedView {
-			return nil, perrors.Errorf("not a drop materialized view command %s", c.sql)
+			return nil, errors.Errorf("not a drop materialized view command %s", c.sql)
 		}
 		c.mvName = ast.Drop.Name
 	}
 
 	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, c.mvName)
 	if !ok {
-		return nil, perrors.NewUnknownMaterializedViewError(c.schemaName, c.mvName)
+		return nil, errors.NewUnknownMaterializedViewError(c.schemaName, c.mvName)
 	}
 	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
 	return mv, err

@@ -3,6 +3,7 @@ package sessctx
 import (
 	"context"
 	"fmt"
+
 	"github.com/pingcap/kvproto/pkg/deadlock"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/tidb/domain"

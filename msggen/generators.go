@@ -3,9 +3,10 @@ package msggen
 import (
 	json2 "encoding/json"
 	"fmt"
-	"github.com/squareup/pranadb/kafka"
 	"math/rand"
 	"time"
+
+	"github.com/squareup/pranadb/kafka"
 )
 
 // Example message generators

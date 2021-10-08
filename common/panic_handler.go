@@ -1,9 +1,10 @@
 package common
 
 import (
-	log "github.com/sirupsen/logrus"
 	"os"
 	"runtime/debug"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func PanicHandler() {

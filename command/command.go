@@ -6,15 +6,13 @@ import (
 	"sync/atomic"
 
 	"github.com/alecthomas/participle/v2"
-	"github.com/pkg/errors"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/protolib"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/notifier"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
@@ -77,13 +75,13 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	if err != nil {
 		var perr participle.Error
 		if errors.As(err, &perr) {
-			return nil, perrors.NewInvalidStatementError(err.Error())
+			return nil, errors.NewInvalidStatementError(err.Error())
 		}
 		return nil, err
 	}
 
 	if session.Schema == nil && ast.Use == "" {
-		return nil, perrors.NewSchemaNotInUseError()
+		return nil, errors.NewSchemaNotInUseError()
 	}
 
 	if session.Schema != nil && session.Schema.IsDeleted() {
@@ -142,7 +140,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	case ast.Use != "":
 		return e.execUse(session, ast.Use)
 	}
-	return nil, perrors.Errorf("invalid statement %s", sql)
+	return nil, errors.Errorf("invalid statement %s", sql)
 }
 
 func (e *Executor) CreateSession() *sess.Session {
@@ -189,7 +187,7 @@ func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExec
 	// TODO we should really use the parser to do this
 	sql = strings.ToLower(sql)
 	if strings.Index(sql, "prepare ") != 0 {
-		return nil, perrors.Errorf("in valid prepare command %s", sql)
+		return nil, errors.Errorf("in valid prepare command %s", sql)
 	}
 	sql = sql[8:]
 	return e.pullEngine.PrepareSQLStatement(session, sql)

@@ -2,14 +2,14 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
 	"io"
 	"math"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
@@ -86,7 +86,7 @@ func (c *Client) CreateSession() (string, error) {
 		return "", errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return "", perrors.Errorf("statement currently executing: %s", c.currentStatement)
+		return "", errors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -104,7 +104,7 @@ func (c *Client) CloseSession(sessionID string) error {
 		return errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return perrors.Errorf("statement currently executing: %s", c.currentStatement)
+		return errors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
 	delete(c.sessionIDs, sessionID)
@@ -120,7 +120,7 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 		return nil, errors.New("not started")
 	}
 	if c.currentStatement != "" {
-		return nil, perrors.Errorf("statement currently executing: %s", c.currentStatement)
+		return nil, errors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	ch := make(chan string, maxBufferedLines)
 	c.currentStatement = statement
@@ -273,7 +273,7 @@ func stripgRPCPrefix(err error) error {
 		msg := err.Error()[ind:]
 		//Error string needs to be capitalized as this is what is displayed to the user in the CLI
 		//nolint:stylecheck
-		return perrors.Errorf("Failed to execute statement: %s", msg)
+		return errors.Errorf("Failed to execute statement: %s", msg)
 	}
 	return err
 }

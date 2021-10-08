@@ -1,13 +1,12 @@
 package kafka
 
 import (
-	"github.com/squareup/pranadb/perrors"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
 
@@ -50,7 +49,7 @@ func (f *FakeKafka) InjectFailure(topicName string, groupID string, failTime tim
 	defer f.topicLock.Unlock()
 	t, ok := f.getTopic(topicName)
 	if !ok {
-		return perrors.Errorf("no such topic %s", topicName)
+		return errors.Errorf("no such topic %s", topicName)
 	}
 	return t.injectFailure(groupID, failTime)
 }
@@ -59,7 +58,7 @@ func (f *FakeKafka) CreateTopic(name string, partitions int) (*Topic, error) {
 	f.topicLock.Lock()
 	defer f.topicLock.Unlock()
 	if _, ok := f.getTopic(name); ok {
-		return nil, perrors.Errorf("topic with name %s already exists", name)
+		return nil, errors.Errorf("topic with name %s already exists", name)
 	}
 	parts := make([]*Partition, partitions)
 	for i := 0; i < partitions; i++ {
@@ -84,7 +83,7 @@ func (f *FakeKafka) DeleteTopic(name string) error {
 	defer f.topicLock.Unlock()
 	topic, ok := f.getTopic(name)
 	if !ok {
-		return perrors.Errorf("no such topic %s", name)
+		return errors.Errorf("no such topic %s", name)
 	}
 	topic.close()
 	f.topics.Delete(name)
@@ -94,7 +93,7 @@ func (f *FakeKafka) DeleteTopic(name string) error {
 func (f *FakeKafka) IngestMessage(topicName string, message *Message) error {
 	topic, ok := f.getTopic(topicName)
 	if !ok {
-		return perrors.Errorf("no such topic %s", topicName)
+		return errors.Errorf("no such topic %s", topicName)
 	}
 	return topic.push(message)
 }
@@ -150,7 +149,7 @@ func (p *Partition) push(message *Message) {
 func (t *Topic) injectFailure(groupID string, failTime time.Duration) error {
 	group, ok := t.getGroup(groupID)
 	if !ok {
-		return perrors.Errorf("no such group %s", groupID)
+		return errors.Errorf("no such group %s", groupID)
 	}
 	return group.injectFailure(failTime)
 }
@@ -280,7 +279,7 @@ func (g *Group) commitOffsets(offsets map[int32]int64) error {
 				panic("not an int64")
 			}
 			if currOff >= offset {
-				return perrors.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
+				return errors.Errorf("offset committed out of order on group %s partId %d curr offset %d offset %d", g.id, partID, currOff, offset)
 			}
 		}
 		// We subtract one as when offsets are committed in Kafka they are 1 + last committed offset, so we subtract
@@ -524,7 +523,7 @@ func NewFakeMessageProviderFactory(topicName string, props map[string]string, gr
 	}
 	fk, ok := GetFakeKafka(fakeKafkaID)
 	if !ok {
-		return nil, perrors.Errorf("cannot find fake kafka with id %d", fakeKafkaID)
+		return nil, errors.Errorf("cannot find fake kafka with id %d", fakeKafkaID)
 	}
 	return &FakeMessageProviderFactory{
 		fk:        fk,
@@ -544,7 +543,7 @@ type FakeMessageProviderFactory struct {
 func (fmpf *FakeMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
 	topic, ok := fmpf.fk.GetTopic(fmpf.topicName)
 	if !ok {
-		return nil, perrors.Errorf("no such topic %s", fmpf.topicName)
+		return nil, errors.Errorf("no such topic %s", fmpf.topicName)
 	}
 	return &FakeMessageProvider{
 		topic:   topic,

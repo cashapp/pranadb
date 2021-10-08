@@ -4,11 +4,12 @@
 package kafka
 
 import (
-	"github.com/confluentinc/confluent-kafka-go/kafka"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/perrors"
 	"sync"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/errors"
 )
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
@@ -94,7 +95,7 @@ func (cmp *ConfluentMessageProvider) GetMessage(pollTimeout time.Duration) (*Mes
 	case kafka.Error:
 		return nil, e
 	default:
-		return nil, perrors.Errorf("unexpected result from poll %+v", e)
+		return nil, errors.Errorf("unexpected result from poll %+v", e)
 	}
 }
 

@@ -71,6 +71,9 @@ linters-settings:
     list-type: blacklist
     include-go-root: true
     packages-with-error-message:
+      - errors: "use pranadb/errors"
+      - github.com/pkg/errors: "use pranadb/errors"
+      - github.com/pingcap/errors: "use pranadb/errors"
       - github.com/gogo/protobuf: "use github.com/golang/protobuf"
   exhaustive:
     default-signifies-exhaustive: true

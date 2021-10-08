@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/types"
 )

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer/stateful"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/participle/v2"
 	pref "google.golang.org/protobuf/reflect/protoreflect"
@@ -160,7 +160,7 @@ func (s Selector) Select(v interface{}) (interface{}, error) {
 		switch vv := v.(type) {
 		case map[string]interface{}:
 			if token.NumberIndex != nil {
-				return nil, perrors.Errorf("cannot use string to index map with number key at %q", s[0:i+1])
+				return nil, errors.Errorf("cannot use string to index map with number key at %q", s[0:i+1])
 			}
 			v, ok = vv[*token.Field]
 			if !ok {
@@ -168,7 +168,7 @@ func (s Selector) Select(v interface{}) (interface{}, error) {
 			}
 		case []interface{}:
 			if token.Field != nil {
-				return nil, perrors.Errorf("cannot index array using %q at %q", *token.Field, s[0:i+1])
+				return nil, errors.Errorf("cannot index array using %q at %q", *token.Field, s[0:i+1])
 			}
 			if len(vv) <= *token.NumberIndex {
 				return nil, &ErrNotFound{s[0 : i+1], s}
@@ -200,11 +200,11 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 		case oneOf != nil:
 			msg = v.Message()
 			if token.NumberIndex != nil {
-				return nil, perrors.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
+				return nil, errors.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
 			}
 			f = oneOf.Fields().ByName(pref.Name(*token.Field))
 			if f == nil {
-				return nil, perrors.Errorf("unknown oneof field \"%s\"", *token.Field)
+				return nil, errors.Errorf("unknown oneof field \"%s\"", *token.Field)
 			}
 			populated := msg.WhichOneof(oneOf)
 			if populated.Number() != f.Number() {
@@ -223,7 +223,7 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 				var k pref.MapKey
 				k = newIntMapKey(f.MapKey(), idx)
 				if !k.IsValid() {
-					return nil, perrors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
+					return nil, errors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
 				}
 				if err != nil {
 					return nil, err
@@ -231,19 +231,19 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 				v = v.Map().Get(k)
 				f = f.MapValue()
 			default:
-				return nil, perrors.Errorf("cannot get index %d of %q", idx, f.Kind())
+				return nil, errors.Errorf("cannot get index %d of %q", idx, f.Kind())
 			}
 		case token.Field != nil:
 			fieldName := *token.Field
 			switch {
 			case f.IsMap():
 				if f.MapKey().Kind() != pref.StringKind {
-					return nil, perrors.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
+					return nil, errors.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
 				}
 				v = v.Map().Get(pref.ValueOfString(fieldName).MapKey())
 				f = f.MapValue()
 			case f.IsList():
-				return nil, perrors.Errorf("cannot index list at %q with string", s[0:tail])
+				return nil, errors.Errorf("cannot index list at %q with string", s[0:tail])
 			case f.Message() != nil:
 				var ok bool
 				v, f, oneOf, ok = getField(v.Message(), fieldName)
@@ -251,7 +251,7 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 					return nil, &ErrNotFound{missingPath: s[0:tail], targetPath: s}
 				}
 			default:
-				return nil, perrors.Errorf("cannot get field %q of %q", fieldName, f.Kind())
+				return nil, errors.Errorf("cannot get field %q of %q", fieldName, f.Kind())
 			}
 		default:
 			panic("invalid path token")

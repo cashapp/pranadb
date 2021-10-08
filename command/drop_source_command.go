@@ -1,11 +1,12 @@
 package command
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/perrors"
-	"sync"
 )
 
 type DropSourceCommand struct {
@@ -72,7 +73,7 @@ func (c *DropSourceCommand) BeforePrepare() error {
 	}
 	consuming := source.GetConsumingMVs()
 	if len(consuming) != 0 {
-		return perrors.NewSourceHasChildrenError(c.sourceInfo.SchemaName, c.sourceInfo.Name, consuming)
+		return errors.NewSourceHasChildrenError(c.sourceInfo.SchemaName, c.sourceInfo.Name, consuming)
 	}
 
 	// Update row in tables table to mark it as pending delete
@@ -134,13 +135,13 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 			return nil, err
 		}
 		if ast.Drop == nil && !ast.Drop.Source {
-			return nil, perrors.Errorf("not a drop source command %s", c.sql)
+			return nil, errors.Errorf("not a drop source command %s", c.sql)
 		}
 		c.sourceName = ast.Drop.Name
 	}
 	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {
-		return nil, perrors.NewUnknownSourceError(c.schemaName, c.sourceName)
+		return nil, errors.NewUnknownSourceError(c.schemaName, c.sourceName)
 	}
 	return sourceInfo, nil
 }

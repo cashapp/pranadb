@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/squareup/pranadb/common"
 	"time"
+
+	"github.com/squareup/pranadb/common"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"

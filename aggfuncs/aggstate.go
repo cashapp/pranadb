@@ -1,8 +1,9 @@
 package aggfuncs
 
 import (
-	"github.com/squareup/pranadb/common"
 	"unsafe"
+
+	"github.com/squareup/pranadb/common"
 )
 
 type AggState struct {

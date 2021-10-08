@@ -2,10 +2,11 @@ package common
 
 import (
 	"encoding/binary"
-	"github.com/pingcap/parser/mysql"
-	"github.com/squareup/pranadb/perrors"
 	"math"
 	"unsafe"
+
+	"github.com/pingcap/parser/mysql"
+	"github.com/squareup/pranadb/errors"
 )
 
 var littleEndian = binary.LittleEndian
@@ -61,7 +62,7 @@ func AppendDecimalToBuffer(buffer []byte, dec Decimal, precision, scale int) ([]
 func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
 	enc, err := ts.ToPackedUint()
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	buffer = AppendUint64ToBufferLE(buffer, enc)
 	return buffer, nil
@@ -147,7 +148,7 @@ func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp
 	ts := Timestamp{}
 	enc, off := ReadUint64FromBufferLE(buffer, offset)
 	if err := ts.FromPackedUint(enc); err != nil {
-		return Timestamp{}, 0, perrors.MaybeAddStack(err)
+		return Timestamp{}, 0, errors.MaybeAddStack(err)
 	}
 	ts.SetType(mysql.TypeTimestamp)
 	ts.SetFsp(fsp)

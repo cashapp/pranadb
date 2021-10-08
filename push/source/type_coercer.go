@@ -2,11 +2,12 @@ package source
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
 	"math"
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/squareup/pranadb/common"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -21,7 +22,7 @@ func CoerceInt64(val interface{}) (int64, error) {
 		return int64(v), nil
 	case uint64:
 		if v > math.MaxInt64 {
-			return 0, perrors.Errorf("value %d is too large to be coerced to int64", v)
+			return 0, errors.Errorf("value %d is too large to be coerced to int64", v)
 		}
 		return int64(v), nil
 	case uint32:
@@ -32,7 +33,7 @@ func CoerceInt64(val interface{}) (int64, error) {
 		return int64(v), nil
 	case int:
 		if v > math.MaxInt64 {
-			return 0, perrors.Errorf("value %d is too large to be coerced to int64", v)
+			return 0, errors.Errorf("value %d is too large to be coerced to int64", v)
 		}
 		return int64(v), nil
 	case float32:
@@ -47,7 +48,7 @@ func CoerceInt64(val interface{}) (int64, error) {
 	case string:
 		r, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			return 0, perrors.Errorf("string value %s cannot be coerced to int64 %v", v, err)
+			return 0, errors.Errorf("string value %s cannot be coerced to int64 %v", v, err)
 		}
 		return r, nil
 	case protoreflect.Enum:
@@ -85,7 +86,7 @@ func CoerceFloat64(val interface{}) (float64, error) {
 	case string:
 		r, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return 0, perrors.Errorf("string value %s cannot be coerced to float64 %v", v, err)
+			return 0, errors.Errorf("string value %s cannot be coerced to float64 %v", v, err)
 		}
 		return r, nil
 	default:
@@ -161,5 +162,5 @@ func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
 }
 
 func coerceFailedErr(v interface{}, t string) error {
-	return perrors.Errorf("cannot coerce value %v, type %s to %s", v, reflect.TypeOf(v), t)
+	return errors.Errorf("cannot coerce value %v, type %s to %s", v, reflect.TypeOf(v), t)
 }

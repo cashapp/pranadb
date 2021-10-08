@@ -4,7 +4,7 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 )
 
 // Config contains the configuration for the global logger.
@@ -37,7 +37,7 @@ func (cfg *Config) Configure() error {
 	case "json":
 		log.SetFormatter(&log.JSONFormatter{})
 	default:
-		return perrors.NewInvalidConfigurationError("log format must be either text or json")
+		return errors.NewInvalidConfigurationError("log format must be either text or json")
 	}
 	return nil
 }

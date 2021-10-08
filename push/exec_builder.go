@@ -1,14 +1,15 @@
 package push
 
 import (
-	"errors"
 	"fmt"
+
+	"github.com/squareup/pranadb/errors"
+
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/exec"
 )
 
@@ -96,7 +97,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
 			default:
-				return nil, nil, perrors.Errorf("unexpected aggregate function %s", aggFunc.Name)
+				return nil, nil, errors.Errorf("unexpected aggregate function %s", aggFunc.Name)
 			}
 			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
 			af := &exec.AggregateFunctionInfo{
@@ -201,7 +202,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		tableName := phsyIndexScan.Table.Name
 		table, ok := schema.GetTable(tableName.L)
 		if !ok {
-			return nil, nil, perrors.Errorf("cannot find table %s", tableName.L)
+			return nil, nil, errors.Errorf("cannot find table %s", tableName.L)
 		}
 		info := table.GetTableInfo()
 		executor, err = exec.NewScan(tableName.L, info.PrimaryKeyCols)
@@ -209,7 +210,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			return nil, nil, err
 		}
 	default:
-		return nil, nil, perrors.Errorf("unexpected plan type %T", plan)
+		return nil, nil, errors.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PushExecutor
@@ -243,7 +244,7 @@ func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *com
 		tableName := op.TableName
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
-			return perrors.Errorf("unknown source or materialized view %s", tableName)
+			return errors.Errorf("unknown source or materialized view %s", tableName)
 		}
 		tableInfo := tbl.GetTableInfo()
 		op.SetSchema(tableInfo)

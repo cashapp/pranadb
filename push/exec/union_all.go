@@ -1,8 +1,9 @@
 package exec
 
 import (
-	"github.com/squareup/pranadb/common"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/common"
 )
 
 type UnionAll struct {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pkg/errors"
 	"github.com/squareup/pranadb/command/parser/selector"
+	"github.com/squareup/pranadb/errors"
 )
 
 type Type int

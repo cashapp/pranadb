@@ -1,9 +1,10 @@
 package cluster
 
 import (
+	"sync"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/notifier"
-	"sync"
 )
 
 type TestNotificationListener struct {

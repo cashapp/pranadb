@@ -1,11 +1,11 @@
 package pull
 
 import (
-	"errors"
+	"github.com/squareup/pranadb/errors"
+
 	"github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/planner/util"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/sess"
 
 	"github.com/squareup/pranadb/common"
@@ -112,7 +112,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		tableName := op.Table.Name.L
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
-			return nil, perrors.Errorf("unknown source or materialized view %s", tableName)
+			return nil, errors.Errorf("unknown source or materialized view %s", tableName)
 		}
 		if len(op.Ranges) > 1 {
 			return nil, errors.New("only one range supported")
@@ -146,7 +146,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	default:
-		return nil, perrors.Errorf("unexpected plan type %T", plan)
+		return nil, errors.Errorf("unexpected plan type %T", plan)
 	}
 
 	var childExecutors []exec.PullExecutor

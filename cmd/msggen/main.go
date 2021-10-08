@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/alecthomas/kong"
-	"github.com/squareup/pranadb/msggen"
 	"log"
 	"os"
 	"time"
+
+	"github.com/alecthomas/kong"
+	"github.com/squareup/pranadb/msggen"
 )
 
 type arguments struct {

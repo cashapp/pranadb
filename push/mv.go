@@ -1,13 +1,14 @@
 package push
 
 import (
+	"reflect"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/perrors"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
-	"reflect"
 )
 
 type MaterializedView struct {
@@ -83,7 +84,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 		tableName := op.TableName
 		tbl, ok := schema.GetTable(tableName)
 		if !ok {
-			return perrors.Errorf("unknown source or materialized view %s", tableName)
+			return errors.Errorf("unknown source or materialized view %s", tableName)
 		}
 		switch tbl := tbl.(type) {
 		case *common.SourceInfo:
@@ -103,7 +104,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 				mv.removeConsumingExecutor(m.Info.Name)
 			}
 		default:
-			return perrors.Errorf("cannot disconnect %s: invalid table type", tbl)
+			return errors.Errorf("cannot disconnect %s: invalid table type", tbl)
 		}
 	case *exec.Aggregator:
 		if disconnect {
@@ -164,7 +165,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 			tableName := op.TableName
 			tbl, ok := m.schema.GetTable(tableName)
 			if !ok {
-				return perrors.Errorf("unknown source or materialized view %s", tableName)
+				return errors.Errorf("unknown source or materialized view %s", tableName)
 			}
 			switch tbl := tbl.(type) {
 			case *common.SourceInfo:
@@ -180,7 +181,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 				}
 				mv.addConsumingExecutor(m.Info.Name, executor)
 			default:
-				return perrors.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
+				return errors.Errorf("table scan on %s is not supported", reflect.TypeOf(tbl))
 			}
 		}
 	case *exec.Aggregator:
@@ -246,7 +247,7 @@ func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.Ta
 	if ok {
 		tbl, ok := m.schema.GetTable(ts.TableName)
 		if !ok {
-			return nil, nil, perrors.Errorf("unknown source or materialized view %s", ts.TableName)
+			return nil, nil, errors.Errorf("unknown source or materialized view %s", ts.TableName)
 		}
 		switch tbl := tbl.(type) {
 		case *common.SourceInfo:

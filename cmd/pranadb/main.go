@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/squareup/pranadb/common"
 	"os"
 
+	"github.com/squareup/pranadb/common"
+
 	"github.com/alecthomas/kong"
-	"github.com/alecthomas/kong-hcl/v2"
+	konghcl "github.com/alecthomas/kong-hcl/v2"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	plog "github.com/squareup/pranadb/log"

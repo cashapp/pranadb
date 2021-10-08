@@ -1,10 +1,11 @@
 package exec
 
 import (
+	"testing"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestProjectionOneCol(t *testing.T) {

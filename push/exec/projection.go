@@ -2,8 +2,9 @@ package exec
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 )
 
 type PushProjection struct {
@@ -155,7 +156,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 				result.AppendTimestampToColumn(j, val)
 			}
 		default:
-			return perrors.Errorf("unexpected column type %d", colType)
+			return errors.Errorf("unexpected column type %d", colType)
 		}
 	}
 
@@ -180,7 +181,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 			val := row.GetFloat64(colNumber)
 			result.AppendFloat64ToColumn(j, val)
 		default:
-			return perrors.Errorf("unexpected column type %d", colType)
+			return errors.Errorf("unexpected column type %d", colType)
 		}
 	}
 	return nil

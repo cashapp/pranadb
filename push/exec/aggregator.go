@@ -4,7 +4,7 @@ import (
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
 )
@@ -217,7 +217,7 @@ func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Ro
 				return err
 			}
 		default:
-			return perrors.Errorf("unexpected column type %d", aggFunc.ValueType())
+			return errors.Errorf("unexpected column type %d", aggFunc.ValueType())
 		}
 	}
 	return nil
@@ -287,7 +287,7 @@ func (a *Aggregator) storeAggregateResults(stateHolders map[string]*aggStateHold
 						}
 						resultRows.AppendTimestampToColumn(i, ts)
 					default:
-						return perrors.Errorf("unexpected column type %d", colType)
+						return errors.Errorf("unexpected column type %d", colType)
 					}
 					// TODO!! store extra data
 				}
@@ -330,7 +330,7 @@ func (a *Aggregator) initAggStateWithRow(currRow *common.Row, aggState *aggfuncs
 					return err
 				}
 			default:
-				return perrors.Errorf("unexpected column type %d", colType)
+				return errors.Errorf("unexpected column type %d", colType)
 			}
 		}
 	}
@@ -386,7 +386,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 				return err
 			}
 		default:
-			return perrors.Errorf("unexpected column type %d", aggFunc.ValueType())
+			return errors.Errorf("unexpected column type %d", aggFunc.ValueType())
 		}
 	}
 	return nil

@@ -1,12 +1,13 @@
 package exec
 
 import (
-	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/perrors"
 	"strings"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/errors"
+
+	"github.com/squareup/pranadb/meta"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -89,7 +90,7 @@ func (re *RemoteExecutor) Reset() {
 
 func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
-		return nil, perrors.Errorf("invalid limit %d", limit)
+		return nil, errors.Errorf("invalid limit %d", limit)
 	}
 
 	numGetters := len(re.clusterGetters)

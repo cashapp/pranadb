@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +8,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"

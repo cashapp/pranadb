@@ -1,12 +1,12 @@
 package push
 
 import (
-	"errors"
 	"fmt"
-	"github.com/squareup/pranadb/perrors"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
@@ -132,7 +132,7 @@ func (p *Engine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, er
 
 	src, ok := p.sources[sourceInfo.ID]
 	if !ok {
-		return nil, perrors.Errorf("no such source %d", sourceInfo.ID)
+		return nil, errors.Errorf("no such source %d", sourceInfo.ID)
 	}
 	if src.IsRunning() {
 		return nil, errors.New("source is running")
@@ -149,7 +149,7 @@ func (p *Engine) RegisterRemoteConsumer(id uint64, rc *RemoteConsumer) error {
 	defer p.lock.Unlock()
 
 	if _, ok := p.remoteConsumers.Load(id); ok {
-		return perrors.Errorf("remote consumer with id %d already registered", id)
+		return errors.Errorf("remote consumer with id %d already registered", id)
 	}
 	p.remoteConsumers.Store(id, rc)
 	return nil
@@ -161,7 +161,7 @@ func (p *Engine) UnregisterRemoteConsumer(id uint64) error {
 
 	_, ok := p.remoteConsumers.Load(id)
 	if !ok {
-		return perrors.Errorf("remote consumer with id %d not registered", id)
+		return errors.Errorf("remote consumer with id %d not registered", id)
 	}
 	p.remoteConsumers.Delete(id)
 	return nil
@@ -172,7 +172,7 @@ func (p *Engine) GetMaterializedView(mvID uint64) (*MaterializedView, error) {
 	defer p.lock.RUnlock()
 	mv, ok := p.materializedViews[mvID]
 	if !ok {
-		return nil, perrors.Errorf("no such materialized view %d", mvID)
+		return nil, errors.Errorf("no such materialized view %d", mvID)
 	}
 	return mv, nil
 }
@@ -182,7 +182,7 @@ func (p *Engine) RemoveMV(mvID uint64) error {
 	defer p.lock.Unlock()
 	_, ok := p.materializedViews[mvID]
 	if !ok {
-		return perrors.Errorf("cannot find materialized view with id %d", mvID)
+		return errors.Errorf("cannot find materialized view with id %d", mvID)
 	}
 	delete(p.materializedViews, mvID)
 	return nil
@@ -271,7 +271,7 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 				// The entity is in storage but not deployed - this might happen if a node joined when a create source/mv
 				// was in progress so did not get the notifications but did see it in storage - in this case
 				// we periodically scan sys.tables to check for any non registered entities TODO
-				return perrors.Errorf("entity with id %d not registered", entityID)
+				return errors.Errorf("entity with id %d not registered", entityID)
 			}
 			// The entity does not exist in storage - it must correspond to a dropped entity - we can ignore the row
 			// and it will get deleted from the receiver table
@@ -428,10 +428,10 @@ func (p *Engine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bo
 
 func (p *Engine) VerifyNoSourcesOrMVs() error {
 	if len(p.sources) > 0 {
-		return perrors.Errorf("there is %d source", len(p.sources))
+		return errors.Errorf("there is %d source", len(p.sources))
 	}
 	if len(p.materializedViews) > 0 {
-		return perrors.Errorf("there is %d materialized view", len(p.materializedViews))
+		return errors.Errorf("there is %d materialized view", len(p.materializedViews))
 	}
 	return nil
 }
@@ -495,7 +495,7 @@ func (p *Engine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, e
 	for _, lls := range p.localLeaderShards {
 		sched, ok := p.schedulers[lls]
 		if !ok {
-			return nil, perrors.Errorf("no scheduler for local leader shard %d", lls)
+			return nil, errors.Errorf("no scheduler for local leader shard %d", lls)
 		}
 		schedulers[lls] = sched
 	}

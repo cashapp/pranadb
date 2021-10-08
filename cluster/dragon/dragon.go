@@ -3,14 +3,15 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/lni/dragonboat/v3/client"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/perrors"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/lni/dragonboat/v3/client"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
@@ -18,8 +19,6 @@ import (
 	"github.com/lni/dragonboat/v3/logger"
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
-	"github.com/pkg/errors"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 )
@@ -116,7 +115,7 @@ func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
 		return 0, err
 	}
 	if proposeRes.Value != seqStateMachineUpdatedOK {
-		return 0, perrors.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
+		return 0, errors.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
 	}
 	seqBuff := proposeRes.Data
 	seqVal, _ := common.ReadUint64FromBufferLE(seqBuff, 0)
@@ -143,7 +142,7 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 		return false, err
 	}
 	if proposeRes.Value != locksStateMachineUpdatedOK {
-		return false, perrors.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
+		return false, errors.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
 	}
 	resBuff := proposeRes.Data
 	var bRes bool
@@ -152,7 +151,7 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	} else if res == LockSMResultFalse {
 		bRes = false
 	} else {
-		return false, perrors.Errorf("unexpected return value from lock request %d", res)
+		return false, errors.Errorf("unexpected return value from lock request %d", res)
 	}
 	return bRes, nil
 }
@@ -194,7 +193,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	}, timeout)
 
 	if err != nil {
-		err = errors.WithStack(perrors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
+		err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
 		return nil, err
 	}
 	bytes, ok := res.([]byte)
@@ -203,7 +202,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	}
 	if bytes[0] == 0 {
 		msg := string(bytes[1:])
-		return nil, perrors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
+		return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
 	}
 	rows := rowsFactory.NewRows(1)
 	rows.Deserialize(bytes[1:])
@@ -241,7 +240,7 @@ func (d *Dragon) Start() error {
 	pebbleOptions := &pebble.Options{}
 	pebble, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
-		return perrors.MaybeAddStack(err)
+		return errors.MaybeAddStack(err)
 	}
 	d.pebble = pebble
 
@@ -327,7 +326,7 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
-	return perrors.MaybeAddStack(err)
+	return errors.MaybeAddStack(err)
 }
 
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
@@ -373,7 +372,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
-		return perrors.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
+		return errors.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
 	}
 
 	return nil
@@ -433,7 +432,7 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 		}
 	}
 	if err := iter.Close(); err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	return pairs, nil
 }
@@ -463,7 +462,7 @@ func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
-		return perrors.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
+		return errors.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
 	}
 	return nil
 }
@@ -500,7 +499,7 @@ func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	res := common.CopyByteSlice(v)
 	return res, nil
@@ -519,7 +518,7 @@ func (d *Dragon) joinShardGroups() error {
 	for _, ch := range chans {
 		err, ok := <-ch
 		if !ok {
-			return perrors.Error("channel was closed")
+			return errors.Error("channel was closed")
 		}
 		if err != nil {
 			return err
@@ -549,7 +548,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	}
 
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
-		ch <- perrors.MaybeAddStack(err)
+		ch <- errors.MaybeAddStack(err)
 		return
 	}
 	ch <- nil
@@ -572,7 +571,7 @@ func (d *Dragon) joinSequenceGroup() error {
 		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
-		return perrors.MaybeAddStack(err)
+		return errors.MaybeAddStack(err)
 	}
 	return nil
 }
@@ -594,7 +593,7 @@ func (d *Dragon) joinLockGroup() error {
 		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
-		return perrors.MaybeAddStack(err)
+		return errors.MaybeAddStack(err)
 	}
 	return nil
 }
@@ -676,7 +675,7 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 		return err
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
-		return perrors.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
+		return errors.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
 	}
 
 	d.membershipListener.NodeLeft(nodeID)
@@ -694,7 +693,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			return res, nil
 		}
 		if err != dragonboat.ErrClusterNotReady {
-			return nil, perrors.MaybeAddStack(err)
+			return nil, errors.MaybeAddStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
 			return nil, err

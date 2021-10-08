@@ -2,7 +2,7 @@ package common
 
 import (
 	"github.com/pingcap/parser/mysql"
-	"github.com/squareup/pranadb/perrors"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/types"
@@ -28,7 +28,7 @@ func (e *Expression) ReturnType(colTypes []ColumnType) (ColumnType, error) {
 			colType := ConvertTiDBTypeToPranaType(op.RetType)
 			e.returnType = &colType
 		default:
-			return UnknownColumnType, perrors.Errorf("unexpected expr type %v", op)
+			return UnknownColumnType, errors.Errorf("unexpected expr type %v", op)
 		}
 	}
 	return *e.returnType, nil
@@ -83,7 +83,7 @@ func NewScalarFunctionExpression(colType ColumnType, funcName string, args ...*E
 	ctx := sessctx.NewDummySessionContext()
 	f, err := expression.NewFunction(ctx, funcName, tiDBType, tiDBArgs...)
 	if err != nil {
-		return nil, perrors.MaybeAddStack(err)
+		return nil, errors.MaybeAddStack(err)
 	}
 	return &Expression{expression: f}, nil
 }
@@ -110,17 +110,17 @@ func (e *Expression) GetColumnIndex() (int, bool) {
 
 func (e *Expression) EvalBoolean(row *Row) (bool, bool, error) {
 	val, null, err := e.expression.EvalInt(nil, row.tRow)
-	return val != 0, null, perrors.MaybeAddStack(err)
+	return val != 0, null, errors.MaybeAddStack(err)
 }
 
 func (e *Expression) EvalInt64(row *Row) (val int64, null bool, err error) {
 	val, null, err = e.expression.EvalInt(nil, row.tRow)
-	return val, null, perrors.MaybeAddStack(err)
+	return val, null, errors.MaybeAddStack(err)
 }
 
 func (e *Expression) EvalFloat64(row *Row) (val float64, null bool, err error) {
 	val, null, err = e.expression.EvalReal(nil, row.tRow)
-	return val, null, perrors.MaybeAddStack(err)
+	return val, null, errors.MaybeAddStack(err)
 }
 
 func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
@@ -131,7 +131,7 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 	if null {
 		return Decimal{}, true, err
 	}
-	return *NewDecimal(dec), false, perrors.MaybeAddStack(err)
+	return *NewDecimal(dec), false, errors.MaybeAddStack(err)
 }
 
 func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
@@ -142,7 +142,7 @@ func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
 	if null {
 		return Timestamp{}, true, err
 	}
-	return ts, false, perrors.MaybeAddStack(err)
+	return ts, false, errors.MaybeAddStack(err)
 }
 
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {

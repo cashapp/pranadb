@@ -2,10 +2,11 @@ package cluster
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/google/btree"
 
