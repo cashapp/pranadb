@@ -72,10 +72,10 @@ func (s *Sharder) setShardIDs(shardIds []uint64) {
 	s.shardIDs.Store(shardIds)
 }
 
-func (s *Sharder) loadAllShards() error {
+func (s *Sharder) loadAllShards() {
 	allShards := s.cluster.GetAllShardIDs()
 	s.setShardIDs(allShards)
-	return nil
+	return
 }
 
 func (s *Sharder) Start() error {
@@ -84,9 +84,7 @@ func (s *Sharder) Start() error {
 	if s.started {
 		return nil
 	}
-	if err := s.loadAllShards(); err != nil {
-		return errors.WithStack(err)
-	}
+	s.loadAllShards()
 	s.started = true
 	return nil
 }

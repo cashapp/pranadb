@@ -151,7 +151,8 @@ func (t *Topic) injectFailure(groupID string, failTime time.Duration) error {
 	if !ok {
 		return errors.Errorf("no such group %s", groupID)
 	}
-	return group.injectFailure(failTime)
+	group.injectFailure(failTime)
+	return nil
 }
 
 func (t *Topic) push(message *Message) error {
@@ -217,7 +218,7 @@ func newGroup(id string, topic *Topic) *Group {
 	}
 }
 
-func (g *Group) injectFailure(failTime time.Duration) error {
+func (g *Group) injectFailure(failTime time.Duration) {
 	g.subscribersLock.Lock()
 	defer g.subscribersLock.Unlock()
 	quiesced, respChans := g.quiesceConsumers(g.subscribers)
@@ -225,8 +226,8 @@ func (g *Group) injectFailure(failTime time.Duration) error {
 	g.feLock.Lock()
 	g.failureEnd = &tEnd
 	g.feLock.Unlock()
-	err := g.wakeConsumers(quiesced, respChans)
-	return errors.WithStack(err)
+	g.wakeConsumers(quiesced, respChans)
+	return
 }
 
 func (g *Group) checkInjectFailure() error {
@@ -263,9 +264,7 @@ func (g *Group) createSubscriber(t *Topic, group *Group, rebalanceCB RebalanceCa
 		return nil, errors.WithStack(err)
 	}
 
-	if err := g.wakeConsumers(quiesced, respChans); err != nil {
-		return nil, errors.WithStack(err)
-	}
+	g.wakeConsumers(quiesced, respChans)
 
 	return subscriber, nil
 }
@@ -346,16 +345,16 @@ type quiesceResponse struct {
 	sub           *Subscriber
 }
 
-func (g *Group) wakeConsumers(subscribers []*Subscriber, respChans []chan struct{}) error {
+func (g *Group) wakeConsumers(subscribers []*Subscriber, respChans []chan struct{}) {
 	if len(subscribers) == 0 {
-		return nil
+		return
 	}
 	g.setQuiesceChannel(nil)
 	for i, subscriber := range subscribers {
 		subscriber.quiescing.Set(false)
 		respChans[i] <- struct{}{}
 	}
-	return nil
+	return
 }
 
 func (g *Group) waitForQuiesce(sub *Subscriber) {
@@ -419,9 +418,9 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 		return errors.WithStack(err)
 	}
 
-	err := g.wakeConsumers(quiesced, respChans)
+	g.wakeConsumers(quiesced, respChans)
 
-	return errors.WithStack(err)
+	return nil
 }
 
 func (g *Group) getOffsets() map[int32]int64 {
