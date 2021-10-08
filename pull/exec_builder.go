@@ -15,7 +15,7 @@ import (
 func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
 	ast, err := session.PullPlanner().Parse(query)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return p.buildPullQueryExecutionFromAst(session, ast, prepare, remote)
 }
@@ -25,12 +25,12 @@ func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parpl
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
 	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, remote)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	logicalSort, ok := logicalPlan.(*core.LogicalSort)
 	if ok {
@@ -77,7 +77,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		}
 		executor, err = exec.NewPullProjection(colNames, colTypes, exprs)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	case *core.PhysicalSelection:
 		var exprs []*common.Expression
@@ -86,7 +86,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		}
 		executor = exec.NewPullSelect(colNames, colTypes, exprs)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	case *core.PhysicalHashAgg:
 		// TODO
@@ -101,7 +101,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 			remotePlan := op.GetTablePlan()
 			remoteDag, err = p.buildPullDAG(session, remotePlan, schema, remote)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 		executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
@@ -140,7 +140,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		}
 		executor, err = exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, session.QueryInfo.ShardID, scanRange)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	case *core.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
@@ -153,7 +153,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 	for _, child := range plan.Children() {
 		childExecutor, err := p.buildPullDAG(session, child, schema, remote)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if childExecutor != nil {
 			childExecutors = append(childExecutors, childExecutor)

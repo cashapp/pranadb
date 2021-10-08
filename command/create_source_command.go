@@ -71,10 +71,10 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	var err error
 	c.sourceInfo, err = c.getSourceInfo(c.ast)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err = c.validate(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Before prepare we just persist the source info in the tables table
@@ -89,7 +89,7 @@ func (c *CreateSourceCommand) validate() error {
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.sourceInfo.SchemaName, c.sourceInfo.Name, meta.TableKindSource))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if rows.RowCount() != 0 {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
@@ -131,20 +131,20 @@ func (c *CreateSourceCommand) OnPrepare() error {
 	if c.sourceInfo == nil {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if ast.Create == nil || ast.Create.Source == nil {
 			return errors.Errorf("not a create source %s", c.sql)
 		}
 		c.sourceInfo, err = c.getSourceInfo(ast.Create.Source)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	// Create source in push engine so it can receive forwarded rows, do not activate consumers yet
 	src, err := c.e.pushEngine.CreateSource(c.sourceInfo)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c.source = src
 	return nil
@@ -156,7 +156,7 @@ func (c *CreateSourceCommand) OnCommit() error {
 
 	// Activate the message consumers for the source
 	if err := c.source.Start(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Register the source in the in memory meta data

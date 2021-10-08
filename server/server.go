@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http" //nolint:stylecheck
+
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
 	_ "net/http/pprof" //nolint:stylecheck
@@ -11,6 +12,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/api"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/cluster"
@@ -27,7 +29,7 @@ import (
 
 func NewServer(config conf.Config) (*Server, error) {
 	if err := config.Validate(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	var clus cluster.Cluster
 	var notifClient notifier.Client
@@ -41,7 +43,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		var err error
 		clus, err = dragon.NewDragon(config)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
 		notifClient = notifier.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
@@ -139,11 +141,11 @@ func (s *Server) Start() error {
 	var err error
 	for _, s := range s.services {
 		if err = s.Start(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	if err := s.pushEngine.Ready(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	s.started = true
@@ -161,12 +163,12 @@ func (s *Server) Stop() error {
 	defer s.lock.Unlock()
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	for i := len(s.services) - 1; i >= 0; i-- {
 		if err := s.services[i].Stop(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	s.started = false

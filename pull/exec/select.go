@@ -52,7 +52,7 @@ func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 		for {
 			rows, err = p.GetChildren()[0].GetRows(batchSize)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			numRows := rows.RowCount()
 
@@ -62,7 +62,7 @@ func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 				for _, predicate := range p.predicates {
 					accept, isNull, err := predicate.EvalBoolean(&row)
 					if err != nil {
-						return nil, err
+						return nil, errors.WithStack(err)
 					}
 					if isNull || !accept {
 						ok = false

@@ -63,13 +63,13 @@ func (c *DropSourceCommand) BeforePrepare() error {
 
 	sourceInfo, err := c.getSourceInfo()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c.sourceInfo = sourceInfo
 
 	source, err := c.e.pushEngine.GetSource(sourceInfo.ID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	consuming := source.GetConsumingMVs()
 	if len(consuming) != 0 {
@@ -88,16 +88,16 @@ func (c *DropSourceCommand) OnPrepare() error {
 	if c.sourceInfo == nil {
 		sourceInfo, err := c.getSourceInfo()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		c.sourceInfo = sourceInfo
 	}
 	if err := c.e.metaController.UnregisterSource(c.schemaName, c.sourceInfo.Name); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	src, err := c.e.pushEngine.GetSource(c.sourceInfo.ID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	// src.Stop() stops the sources consumers, it does not remove it
 	return src.Stop()
@@ -111,7 +111,7 @@ func (c *DropSourceCommand) OnCommit() error {
 	// Deleting the data could take some time
 	src, err := c.e.pushEngine.RemoveSource(c.sourceInfo)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if c.originating {
 		// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
@@ -132,7 +132,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 	if c.sourceName == "" {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if ast.Drop == nil && !ast.Drop.Source {
 			return nil, errors.Errorf("not a drop source command %s", c.sql)

@@ -21,6 +21,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -492,7 +493,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
 			num, err := prana.GetPullEngine().NumCachedSessions()
 			if err != nil {
-				return false, err
+				return false, errors.WithStack(err)
 			}
 			return num == 0, nil
 		}, 5*time.Second, 10*time.Millisecond)
@@ -557,7 +558,7 @@ func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName s
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ch, err := st.cli.ExecuteStatement(st.sessionID, fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 		lineCount := -2 // There's a header and a footer
 		for range ch {
@@ -574,14 +575,14 @@ func (st *sqlTest) getAllRowsInTable(tableID uint64) (int, error) {
 	for _, prana := range st.testSuite.pranaCluster {
 		scheds, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
 		if err != nil {
-			return 0, err
+			return 0, errors.WithStack(err)
 		}
 		for shardID := range scheds {
 			keyStartPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
 			keyEndPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
 			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100000)
 			if err != nil {
-				return 0, err
+				return 0, errors.WithStack(err)
 			}
 			totRows += len(pairs)
 		}
@@ -1001,12 +1002,12 @@ func parseColumnTypes(str string) ([]common.ColumnType, error) {
 	for _, p := range parts {
 		t := common.Type(0)
 		if err := t.Capture([]string{p}); err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		def := parser.ColumnDef{Type: t}
 		ct, err := def.ToColumnType()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		cols = append(cols, ct)
 	}

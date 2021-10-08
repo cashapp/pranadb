@@ -92,7 +92,7 @@ func (t *Scan) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 			prevRow := rowsBatch.PreviousRow(i)
 			if prevRow != nil {
 				if err := t.appendResultRow(prevRow, newRows); err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				pi = rc
 				rc++
@@ -101,7 +101,7 @@ func (t *Scan) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 			currRow := rowsBatch.CurrentRow(i)
 			if currRow != nil {
 				if err := t.appendResultRow(currRow, newRows); err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				ci = rc
 				rc++

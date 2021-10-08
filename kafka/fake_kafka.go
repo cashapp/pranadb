@@ -157,7 +157,7 @@ func (t *Topic) injectFailure(groupID string, failTime time.Duration) error {
 func (t *Topic) push(message *Message) error {
 	part, err := t.calcPartition(message)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	t.partitions[part].push(message)
 	return nil
@@ -174,7 +174,7 @@ func (t *Topic) getGroup(groupID string) (*Group, bool) {
 func (t *Topic) calcPartition(message *Message) (int, error) {
 	h, err := hash(message.Key)
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	partID := int(h % uint32(len(t.partitions)))
 	return partID, nil
@@ -226,7 +226,7 @@ func (g *Group) injectFailure(failTime time.Duration) error {
 	g.failureEnd = &tEnd
 	g.feLock.Unlock()
 	err := g.wakeConsumers(quiesced, respChans)
-	return err
+	return errors.WithStack(err)
 }
 
 func (g *Group) checkInjectFailure() error {
@@ -260,11 +260,11 @@ func (g *Group) createSubscriber(t *Topic, group *Group, rebalanceCB RebalanceCa
 	}
 	g.subscribers = append(g.subscribers, subscriber)
 	if err := g.rebalance(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if err := g.wakeConsumers(quiesced, respChans); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return subscriber, nil
@@ -416,12 +416,12 @@ func (g *Group) unsubscribe(subscriber *Subscriber) error {
 	quiesced, respChans := g.quiesceConsumers(newSubscribers)
 	g.subscribers = newSubscribers
 	if err := g.rebalance(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	err := g.wakeConsumers(quiesced, respChans)
 
-	return err
+	return errors.WithStack(err)
 }
 
 func (g *Group) getOffsets() map[int32]int64 {
@@ -454,7 +454,7 @@ func (c *Subscriber) commitOffsets(offsets map[int32]int64) error {
 		panic("subscriber is stopped")
 	}
 	if err := c.group.checkInjectFailure(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return c.group.commitOffsets(offsets)
 }
@@ -468,14 +468,14 @@ func (c *Subscriber) GetMessage(pollTimeout time.Duration) (*Message, error) {
 		// the message loop goroutine when poll is called
 		if c.rebalanceCB != nil {
 			if err := c.rebalanceCB(); err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 		c.group.waitForQuiesce(c)
 	}
 
 	if err := c.group.checkInjectFailure(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	start := time.Now()
@@ -519,7 +519,7 @@ func NewFakeMessageProviderFactory(topicName string, props map[string]string, gr
 	}
 	fakeKafkaID, err := strconv.ParseInt(sFakeKafkaID, 10, 64)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	fk, ok := GetFakeKafka(fakeKafkaID)
 	if !ok {
@@ -586,7 +586,7 @@ func (f *FakeMessageProvider) Start() error {
 	defer f.lock.Unlock()
 	subscriber, err := f.topic.CreateSubscriber(f.groupID, f.rebalanceCB)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	f.subscriber = subscriber
 	return nil

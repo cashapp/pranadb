@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 const (
@@ -99,18 +100,18 @@ func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType)
 		case common.Decimal:
 			buff, err = common.AppendDecimalToBuffer(buff, arg, argType.DecPrecision, argType.DecScale)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		case common.Timestamp:
 			buff, err = common.AppendTimestampToBuffer(buff, arg)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		default:
 			panic(fmt.Sprintf("unexpected arg type %v", arg))
 		}
 	}
-	return buff, err
+	return buff, errors.WithStack(err)
 }
 
 func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
@@ -146,12 +147,12 @@ func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
 		case common.TypeDecimal:
 			args[i], offset, err = common.ReadDecimalFromBuffer(buff, offset, argType.DecPrecision, argType.DecScale)
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, errors.WithStack(err)
 			}
 		case common.TypeTimestamp:
 			args[i], offset, err = common.ReadTimestampFromBuffer(buff, offset, argType.FSP)
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, errors.WithStack(err)
 			}
 		default:
 			panic(fmt.Sprintf("unsupported col type %d", argType.Type))
@@ -167,7 +168,7 @@ func (q *QueryExecutionInfo) Serialize(buff []byte) ([]byte, error) {
 	buff = common.AppendUint64ToBufferLE(buff, uint64(q.PsID))
 	buff, err := encodePsArgs(buff, q.PsArgs, q.PsArgTypes)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	buff = common.AppendUint32ToBufferLE(buff, q.Limit)
 	buff = common.AppendUint64ToBufferLE(buff, q.ShardID)
@@ -190,7 +191,7 @@ func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	var err error
 	q.PsArgs, offset, err = decodePsArgs(offset, buff)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	q.Limit, offset = common.ReadUint32FromBufferLE(buff, offset)
 	q.ShardID, offset = common.ReadUint64FromBufferLE(buff, offset)

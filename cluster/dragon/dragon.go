@@ -112,7 +112,7 @@ func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	if proposeRes.Value != seqStateMachineUpdatedOK {
 		return 0, errors.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
@@ -139,7 +139,7 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
-		return false, err
+		return false, errors.WithStack(err)
 	}
 	if proposeRes.Value != locksStateMachineUpdatedOK {
 		return false, errors.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
@@ -181,7 +181,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	buff = append(buff, shardStateMachineLookupQuery)
 	queryRequest, err := queryInfo.Serialize(buff)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	timeout := d.getTimeout(queryInfo.ShardID)
@@ -189,12 +189,12 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 		cancel()
-		return res, err
+		return res, errors.WithStack(err)
 	}, timeout)
 
 	if err != nil {
 		err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	bytes, ok := res.([]byte)
 	if !ok {
@@ -233,7 +233,7 @@ func (d *Dragon) Start() error {
 	pebbleDir := filepath.Join(datadir, "pebble")
 	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
 	if err := os.MkdirAll(d.ingestDir, 0o750); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
@@ -261,23 +261,23 @@ func (d *Dragon) Start() error {
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	d.nh = nh
 
 	err = d.joinSequenceGroup()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	err = d.joinLockGroup()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	err = d.joinShardGroups()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Now we make sure all groups are ready by executing lookups against them.
@@ -287,14 +287,14 @@ func (d *Dragon) Start() error {
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	if err := d.ExecutePingLookup(locksClusterID, nil); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	d.started = true
@@ -309,9 +309,9 @@ func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
 		ctx, cancel := context.WithTimeout(context.Background(), initialShardTimeout)
 		res, err := d.nh.SyncRead(ctx, shardID, request)
 		cancel()
-		return res, err
+		return res, errors.WithStack(err)
 	}, initialShardTimeout)
-	return err
+	return errors.WithStack(err)
 }
 
 func (d *Dragon) Stop() error {
@@ -369,7 +369,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
 		return errors.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
@@ -399,7 +399,7 @@ func (d *Dragon) LocalScanWithSnapshot(sn cluster.Snapshot, startKeyPrefix []byt
 	iter := snap.pebbleSnapshot.NewIter(iterOptions)
 	pairs, err := d.scanWithIter(iter, startKeyPrefix, limit)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return pairs, nil
 }
@@ -459,7 +459,7 @@ func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
 		return errors.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
@@ -486,7 +486,7 @@ func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix 
 			panic("channel closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -521,7 +521,7 @@ func (d *Dragon) joinShardGroups() error {
 			return errors.Error("channel was closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -672,7 +672,7 @@ func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if proposeRes.Value != shardStateMachineResponseOK {
 		return errors.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
@@ -696,7 +696,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		time.Sleep(retryDelay)
 	}
@@ -708,17 +708,17 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
 		cancel()
-		return res, err
+		return res, errors.WithStack(err)
 	}, timeout)
 	if err != nil {
 		common.DumpStacks()
-		return statemachine.Result{}, err
+		return statemachine.Result{}, errors.WithStack(err)
 	}
 	smRes, ok := r.(statemachine.Result)
 	if !ok {
 		panic(fmt.Sprintf("not a sm result %v", smRes))
 	}
-	return smRes, err
+	return smRes, errors.WithStack(err)
 }
 
 func (d *Dragon) getTimeout(shardID uint64) time.Duration {

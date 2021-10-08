@@ -32,7 +32,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 	}
 	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	tableInfo := common.TableInfo{
 		ID:             tableID,
@@ -69,7 +69,7 @@ func (m *MaterializedView) Drop(deleteData bool) error {
 	// Will already have been disconnected
 	err := m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, false, deleteData)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if deleteData {
 		return m.deleteTableData(m.Info.ID)
@@ -91,7 +91,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 			if disconnect {
 				source, err := m.pe.GetSource(tbl.ID)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				source.RemoveConsumingExecutor(m.Info.Name)
 			}
@@ -99,7 +99,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 			if disconnect {
 				mv, err := m.pe.GetMaterializedView(tbl.ID)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				mv.removeConsumingExecutor(m.Info.Name)
 			}
@@ -110,17 +110,17 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 		if disconnect {
 			err := m.pe.UnregisterRemoteConsumer(op.FullAggTableInfo.ID)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 		if deleteData {
 			err := m.deleteTableData(op.PartialAggTableInfo.ID)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			err = m.deleteTableData(op.FullAggTableInfo.ID)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 	}
@@ -128,7 +128,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 	for _, child := range node.GetChildren() {
 		err := m.disconnectOrDeleteDataForMV(schema, child, disconnect, deleteData)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -156,7 +156,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 	for _, child := range executor.GetChildren() {
 		err := m.connect(child, addConsuming, registerRemote)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	switch op := executor.(type) {
@@ -171,13 +171,13 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 			case *common.SourceInfo:
 				source, err := m.pe.GetSource(tbl.ID)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				source.AddConsumingExecutor(m.Info.Name, executor)
 			case *common.MaterializedViewInfo:
 				mv, err := m.pe.GetMaterializedView(tbl.ID)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				mv.addConsumingExecutor(m.Info.Name, executor)
 			default:
@@ -195,7 +195,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 			}
 			err := m.pe.RegisterRemoteConsumer(op.FullAggTableInfo.ID, rc)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 		}
 	}
@@ -205,13 +205,13 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 func (m *MaterializedView) Fill() error {
 	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// TODO if cluster membership changes while fill is in process we need to abort process and start again
 	schedulers, err := m.pe.GetLocalLeaderSchedulers()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	chans := make([]chan error, len(tes))
@@ -234,7 +234,7 @@ func (m *MaterializedView) Fill() error {
 			panic("channel was closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -253,13 +253,13 @@ func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.Ta
 		case *common.SourceInfo:
 			source, err := m.pe.GetSource(tbl.ID)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, errors.WithStack(err)
 			}
 			tes = append(tes, source.TableExecutor())
 		case *common.MaterializedViewInfo:
 			mv, err := m.pe.GetMaterializedView(tbl.ID)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, errors.WithStack(err)
 			}
 			tes = append(tes, mv.tableExecutor)
 		}
@@ -268,7 +268,7 @@ func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.Ta
 	for _, child := range ex.GetChildren() {
 		te, ts, err := m.getFeedingExecutors(child)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 		tes = append(tes, te...)
 		tss = append(tss, ts...)

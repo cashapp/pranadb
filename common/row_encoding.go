@@ -12,7 +12,7 @@ func EncodeRow(row *Row, colTypes []ColumnType, buffer []byte) ([]byte, error) {
 		var err error
 		buffer, err = encodeRowCol(row, colIndex, colType, buffer)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 	return buffer, nil
@@ -33,7 +33,7 @@ func encodeRowCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 			var err error
 			buffer, err = valDec.Encode(buffer, colType.DecPrecision, colType.DecScale)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		case TypeDouble:
 			valFloat64 := row.GetFloat64(colIndex)
@@ -46,7 +46,7 @@ func encodeRowCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 			var err error
 			buffer, err = AppendTimestampToBuffer(buffer, valTimestamp)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		default:
 			return nil, errors.Errorf("unexpected column type %d", colType)
@@ -83,7 +83,7 @@ func DecodeRowWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCol [
 				var err error
 				val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				if include {
 					rows.AppendDecimalToColumn(colIndex, val)
@@ -107,7 +107,7 @@ func DecodeRowWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCol [
 				)
 				val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				if include {
 					rows.AppendTimestampToColumn(colIndex, val)

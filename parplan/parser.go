@@ -24,7 +24,7 @@ type parser struct {
 func (p *parser) Parse(sql string) (stmt AstHandle, err error) {
 	stmtNodes, warns, err := p.parser.Parse(sql, charset.CharsetUTF8, "")
 	if err != nil {
-		return AstHandle{}, err
+		return AstHandle{}, errors.WithStack(err)
 	}
 	if warns != nil {
 		for _, warn := range warns {

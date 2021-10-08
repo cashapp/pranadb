@@ -48,7 +48,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 			// We call getRows on the child until there are no more rows to get
 			batch, err := p.GetChildren()[0].GetRows(queryBatchSize)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			rc := batch.RowCount()
 			if rc == 0 {
@@ -70,7 +70,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 
 		rows, err := p.sortRows(unsorted)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		p.rows = rows
 	}
@@ -248,7 +248,7 @@ func (p *PullSort) sortRows(unsorted *common.Rows) (*common.Rows, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	rows := p.rowsFactory.NewRows(numRows)

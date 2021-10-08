@@ -139,7 +139,7 @@ func ReadDecimalFromBuffer(buffer []byte, offset int, precision int, scale int) 
 	dec := Decimal{}
 	offset, err = dec.Decode(buffer, offset, precision, scale)
 	if err != nil {
-		return Decimal{}, 0, err
+		return Decimal{}, 0, errors.WithStack(err)
 	}
 	return dec, offset, nil
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/server"
 	"github.com/stretchr/testify/require"
 )
@@ -54,6 +55,6 @@ func TestSessionTimeout(t *testing.T) {
 				return true, nil
 			}
 		}
-		return false, err
+		return false, errors.WithStack(err)
 	})
 }

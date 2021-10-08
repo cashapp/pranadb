@@ -33,7 +33,7 @@ func (s *JSONKeyJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []comm
 		colType := colTypes[keyCol]
 		colVal, err := getColVal(keyCol, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		keyMap[fmt.Sprintf("k%d", i)] = colVal
 	}
@@ -41,17 +41,17 @@ func (s *JSONKeyJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []comm
 	for i, colType := range colTypes {
 		colVal, err := getColVal(i, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyBytes, err := json.Marshal(keyMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	valBytes, err := json.Marshal(valMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	message := &Message{
 		TimeStamp: timestamp,
@@ -82,7 +82,7 @@ func (s *StringKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -112,7 +112,7 @@ func (s *Int64BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes [
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -142,7 +142,7 @@ func (s *Int32BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes [
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -172,7 +172,7 @@ func (s *Int16BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes [
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -202,7 +202,7 @@ func (s *Float64BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -232,7 +232,7 @@ func (s *Float32BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes
 
 	valBytes, err := encodeTLJSONValue(colTypes, row, keyColIndex)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -249,7 +249,7 @@ func encodeTLJSONValue(colTypes []common.ColumnType, row *common.Row, keyColInde
 		}
 		colVal, err := getColVal(i, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
@@ -271,7 +271,7 @@ func (s *NestedJSONKeyNestedJSONValueEncoder) EncodeMessage(row *common.Row, col
 		colType := colTypes[keyCol]
 		colVal, err := getColVal(keyCol, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		nested := map[string]interface{}{}
 		keyMap[fmt.Sprintf("n%d", i)] = nested
@@ -281,7 +281,7 @@ func (s *NestedJSONKeyNestedJSONValueEncoder) EncodeMessage(row *common.Row, col
 	for i, colType := range colTypes {
 		colVal, err := getColVal(i, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		nested := map[string]interface{}{}
 		valMap[fmt.Sprintf("n%d", i)] = nested
@@ -289,11 +289,11 @@ func (s *NestedJSONKeyNestedJSONValueEncoder) EncodeMessage(row *common.Row, col
 	}
 	keyBytes, err := json.Marshal(keyMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	valBytes, err := json.Marshal(valMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	message := &Message{
 		Key:   keyBytes,
@@ -317,7 +317,7 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 		colType := colTypes[keyCol]
 		colVal, err := getColVal(keyCol, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		keyHeaderMap[fmt.Sprintf("k%d", i)] = colVal
 	}
@@ -325,26 +325,26 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 	for i, colType := range colTypes {
 		colVal, err := getColVal(i, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		valHeaderMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyHeaderBytes, err := json.Marshal(keyHeaderMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	valHeaderBytes, err := json.Marshal(valHeaderMap)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	keyBytes, err := json.Marshal(map[string]interface{}{})
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	valBytes, err := json.Marshal(map[string]interface{}{})
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	message := &Message{
 		Headers: []MessageHeader{{
@@ -370,7 +370,7 @@ func NewStringKeyProtobufValueEncoder(protoRegistry protolib.Resolver, options s
 	name := pref.FullName(options)
 	desc, err := protoRegistry.FindDescriptorByName(name)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	mdesc, ok := desc.(pref.MessageDescriptor)
 	if !ok {
@@ -402,7 +402,7 @@ func (e *StringKeyProtobufValueEncoder) EncodeMessage(row *common.Row, colTypes 
 
 	valBytes, err := e.encodeProtobufValue(colTypes, row)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return &Message{
@@ -417,7 +417,7 @@ func (e *StringKeyProtobufValueEncoder) encodeProtobufValue(colTypes []common.Co
 	for i, colType := range colTypes {
 		colVal, err := getColVal(i, colType, row)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		protoSet(msg, fields.ByNumber(pref.FieldNumber(i+1)), colVal)
 	}

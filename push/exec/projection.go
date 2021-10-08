@@ -25,7 +25,7 @@ func (p *PushProjection) calculateSchema(childColTypes []common.ColumnType, chil
 	for i, projColumn := range p.projColumns {
 		colType, err := projColumn.ReturnType(childColTypes)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		p.colTypes[i] = colType
 		p.colsVisible = append(p.colsVisible, true)
@@ -82,7 +82,7 @@ func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) 
 		prevRow := rowsBatch.PreviousRow(i)
 		if prevRow != nil {
 			if err := p.calcProjection(prevRow, result); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			pi = rc
 			rc++
@@ -91,7 +91,7 @@ func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) 
 		currRow := rowsBatch.CurrentRow(i)
 		if currRow != nil {
 			if err := p.calcProjection(currRow, result); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			ci = rc
 			rc++
@@ -108,7 +108,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			val, null, err := projColumn.EvalInt64(row)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if null {
 				result.AppendNullToColumn(j)
@@ -118,7 +118,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 		case common.TypeDecimal:
 			val, null, err := projColumn.EvalDecimal(row)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if null {
 				result.AppendNullToColumn(j)
@@ -128,7 +128,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 		case common.TypeVarchar:
 			val, null, err := projColumn.EvalString(row)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if null {
 				result.AppendNullToColumn(j)
@@ -138,7 +138,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 		case common.TypeDouble:
 			val, null, err := projColumn.EvalFloat64(row)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if null {
 				result.AppendNullToColumn(j)
@@ -148,7 +148,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 		case common.TypeTimestamp:
 			val, null, err := projColumn.EvalTimestamp(row)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if null {
 				result.AppendNullToColumn(j)

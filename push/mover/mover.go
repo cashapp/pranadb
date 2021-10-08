@@ -5,6 +5,7 @@ import (
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -28,7 +29,7 @@ func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row,
 		var err error
 		prevValueBuff, err = common.EncodeRow(prevRow, colTypes, prevValueBuff)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	var currValueBuff []byte
@@ -37,7 +38,7 @@ func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row,
 		var err error
 		currValueBuff, err = common.EncodeRow(currRow, colTypes, currValueBuff)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return m.QueueForRemoteSend(remoteShardID, prevValueBuff, currValueBuff, localShardID, remoteConsumerID, batch)
@@ -46,7 +47,7 @@ func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row,
 func (m *Mover) QueueForRemoteSend(remoteShardID uint64, prevValueBuff []byte, currValueBuff []byte, localShardID uint64, remoteConsumerID uint64, batch *cluster.WriteBatch) error {
 	sequence, err := m.nextForwardSequence(localShardID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	queueKeyBytes := table.EncodeTableKeyPrefix(common.ForwarderTableID, localShardID, 40)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
@@ -73,7 +74,7 @@ func (m *Mover) TransferData(localShardID uint64, del bool) error {
 
 	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	var batches []*forwardBatch
@@ -118,7 +119,7 @@ func (m *Mover) TransferData(localShardID uint64, del bool) error {
 			panic("channel closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -158,7 +159,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 
 	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
-		return false, err
+		return false, errors.WithStack(err)
 	}
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
@@ -168,7 +169,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 		if !ok {
 			lastReceivedSeq, err = m.lastReceivingSequence(receivingShardID, sendingShardID)
 			if err != nil {
-				return false, err
+				return false, errors.WithStack(err)
 			}
 		}
 
@@ -192,7 +193,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	if len(remoteConsumerRows) > 0 {
 		err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 	}
 	for sendingShardID, lastReceivedSequence := range receivingSequences {
@@ -200,7 +201,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	}
 	err = m.cluster.WriteBatch(batch)
 	if err != nil {
-		return false, err
+		return false, errors.WithStack(err)
 	}
 	return batch.HasForwards, nil
 }
@@ -214,7 +215,7 @@ func (m *Mover) nextForwardSequence(localShardID uint64) (uint64, error) {
 		seqKey := m.genForwardSequenceKey(localShardID)
 		seqBytes, err := m.cluster.LocalGet(seqKey)
 		if err != nil {
-			return 0, err
+			return 0, errors.WithStack(err)
 		}
 		if seqBytes == nil {
 			return 1, nil
@@ -240,7 +241,7 @@ func (m *Mover) lastReceivingSequence(receivingShardID uint64, sendingShardID ui
 	seqKey := m.genReceivingSequenceKey(receivingShardID, sendingShardID)
 	seqBytes, err := m.cluster.LocalGet(seqKey)
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	if seqBytes == nil {
 		return 0, nil

@@ -77,7 +77,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		if errors.As(err, &perr) {
 			return nil, errors.NewInvalidStatementError(err.Error())
 		}
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if session.Schema == nil && ast.Use == "" {
@@ -93,48 +93,48 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	case ast.Select != "":
 		session.PullPlanner().RefreshInfoSchema()
 		dag, err := e.pullEngine.BuildPullQuery(session, sql)
-		return dag, err
+		return dag, errors.WithStack(err)
 	case ast.Prepare != "":
 		session.PullPlanner().RefreshInfoSchema()
 		ex, err := e.execPrepare(session, ast.Prepare)
-		return ex, err
+		return ex, errors.WithStack(err)
 	case ast.Execute != nil:
 		ex, err := e.execExecute(session, ast.Execute)
-		return ex, err
+		return ex, errors.WithStack(err)
 	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateTableIDSequences(1)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		command := NewOriginatingCreateSourceCommand(e, session.Schema.Name, sql, sequences, ast.Create.Source)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
 		sequences, err := e.generateTableIDSequences(3)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		command := NewOriginatingCreateMVCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Source:
 		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.MaterializedView:
 		command := NewOriginatingDropMVCommand(e, session.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Use != "":
@@ -156,7 +156,7 @@ func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
 		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
 		err := s.notifClient.BroadcastOneway(sessCloseMsg)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -176,7 +176,7 @@ func (e *Executor) generateTableIDSequences(numValues int) ([]uint64, error) {
 	for i := 0; i < numValues; i++ {
 		v, err := e.cluster.GenerateClusterSequence("table")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		tableIDSequences[i] = v + common.UserTableIDBase
 	}

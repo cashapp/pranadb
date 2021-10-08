@@ -20,7 +20,7 @@ func NewDecimal(dec *types.MyDecimal) *Decimal {
 func NewDecFromString(s string) (*Decimal, error) {
 	dec := new(types.MyDecimal)
 	if err := dec.FromString([]byte(s)); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return &Decimal{
 		decimal: dec,
@@ -30,7 +30,7 @@ func NewDecFromString(s string) (*Decimal, error) {
 func NewDecFromFloat64(f float64) (*Decimal, error) {
 	dec := new(types.MyDecimal)
 	if err := dec.FromFloat64(f); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return &Decimal{
 		decimal: dec,

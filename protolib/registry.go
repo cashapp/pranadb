@@ -91,7 +91,7 @@ func (s *ProtoRegistry) Start() error {
 	if s.loadDir != "" {
 		r, err := NewDirBackedRegistry(s.loadDir)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		s.dirResolver = r.(*diskBackedRegistry) // nolint: forcetypeassert
 	}
@@ -102,11 +102,11 @@ func (s *ProtoRegistry) Start() error {
 func (s *ProtoRegistry) reloadProtobufsFromTable() error {
 	descByPath, err := s.loadFromTable()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	r, err := buildRegistry(descByPath)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	s.mu.Lock()
@@ -131,7 +131,7 @@ func (s *ProtoRegistry) FindDescriptorByName(name protoreflect.FullName) (protor
 	if err == protoregistry.NotFound && s.dirResolver != nil {
 		return s.dirResolver.FindDescriptorByName(name)
 	}
-	return fd, err
+	return fd, errors.WithStack(err)
 }
 
 func (s *ProtoRegistry) FindFileByPath(path string) (protoreflect.FileDescriptor, error) {
@@ -141,20 +141,20 @@ func (s *ProtoRegistry) FindFileByPath(path string) (protoreflect.FileDescriptor
 	if err == protoregistry.NotFound {
 		return s.dirResolver.FindFileByPath(path)
 	}
-	return fd, err
+	return fd, errors.WithStack(err)
 }
 
 func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSet) error {
 	// Ensure the descriptor set is valid and contains all transitive dependencies.
 	_, err := protodesc.NewFiles(descriptors)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	for _, fd := range descriptors.File {
 		if err := table.Upsert(ProtobufTableInfo.TableInfo, encodeDescriptorToRow(fd), wb); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	if err := s.cluster.WriteBatch(wb); err != nil {
@@ -192,7 +192,7 @@ func (s *ProtoRegistry) loadFromTable() (map[string]*descriptorpb.FileDescriptor
 	rows, err := s.queryExec.ExecuteQuery(meta.SystemSchemaName,
 		"select path, fd from "+ProtobufTableName)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	protos := make(map[string]*descriptorpb.FileDescriptorProto, rows.RowCount())
@@ -201,7 +201,7 @@ func (s *ProtoRegistry) loadFromTable() (map[string]*descriptorpb.FileDescriptor
 		rawFd := row.GetString(1)
 		fd := &descriptorpb.FileDescriptorProto{}
 		if err := proto.Unmarshal([]byte(rawFd), fd); err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		protos[fd.GetName()] = fd
 	}
@@ -229,23 +229,23 @@ func NewDirBackedRegistry(dir string) (Resolver, error) {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		fds := &descriptorpb.FileDescriptorSet{}
 		if err := proto.Unmarshal(data, fds); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		for _, fd := range fds.File {
 			descByPath[fd.GetName()] = fd
 		}
-		return err
+		return errors.WithStack(err)
 	})
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	r, err := buildRegistry(descByPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return &diskBackedRegistry{Files: r}, nil
 }

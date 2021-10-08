@@ -58,7 +58,7 @@ func (s *Server) Start() error {
 	}
 	list, err := net.Listen("tcp", s.serverAddress)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	s.gsrv = grpc.NewServer()
 	reflection.Register(s.gsrv)
@@ -111,7 +111,7 @@ func (s *Server) CreateSession(ctx context.Context, _ *emptypb.Empty) (*service.
 func (s *Server) CloseSession(ctx context.Context, request *service.CloseSessionRequest) (*emptypb.Empty, error) {
 	sessEntry, err := s.lookupSession(request.GetSessionId())
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	s.sessions.Delete(request.GetSessionId())
 	if err := sessEntry.session.Close(); err != nil {
@@ -137,7 +137,7 @@ func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatReques
 	if err == nil && entry != nil {
 		entry.refreshLastAccessedTime()
 	}
-	return &emptypb.Empty{}, err
+	return &emptypb.Empty{}, errors.WithStack(err)
 }
 
 func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error {
@@ -146,7 +146,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 
 	entry, err := s.lookupSession(in.GetSessionId())
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	session := entry.session
 

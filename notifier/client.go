@@ -82,7 +82,7 @@ func (c *client) BroadcastSync(notif Notification) error {
 	ri := &responseInfo{respChan: respChan, conns: make(map[*clientConnection]struct{})}
 	c.responseChannels.Store(nf.sequence, ri)
 	if err := c.broadcast(nf, ri); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	ok, k := <-respChan
 	if !k {
@@ -154,7 +154,7 @@ func (c *client) broadcast(nf *NotificationMessage, ri *responseInfo) error {
 		bytes, err := nf.serialize(nil)
 		if err != nil {
 			maybeRemoveFromConnCount(ri)
-			return err
+			return errors.WithStack(err)
 		}
 		if err := writeMessage(notificationMessageType, bytes, clientConn.conn); err != nil {
 			clientConn.Stop()

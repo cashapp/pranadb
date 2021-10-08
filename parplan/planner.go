@@ -60,7 +60,7 @@ func (p *Planner) Parse(query string) (AstHandle, error) {
 func (p *Planner) QueryToPlan(query string, prepare bool) (core.PhysicalPlan, core.LogicalPlan, error) {
 	ast, err := p.Parse(query)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 	return p.BuildPhysicalPlan(ast, prepare)
 }
@@ -78,12 +78,12 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (core.Physical
 	}
 	logicalPlan, err := p.createLogicalPlan(context.TODO(), p.ctx, stmt.stmt, p.is)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 
 	phys, err := p.createPhysicalPlan(context.TODO(), p.ctx, logicalPlan, true, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 	return phys, logicalPlan, nil
 }
@@ -108,7 +108,7 @@ func (p *Planner) createPhysicalPlan(ctx context.Context, sessionContext session
 		if isPushQuery {
 			physicalPlan, _, err := p.pushQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			return physicalPlan, nil
 		}

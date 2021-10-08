@@ -7,6 +7,7 @@ import (
 
 	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/stretchr/testify/require"
@@ -393,7 +394,7 @@ func compileSelectors(raw []string) ([]selector.ColumnSelector, error) {
 	for i := range raw {
 		col, err := selector.ParseColumnSelector(raw[i])
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		cs[i] = col
 	}

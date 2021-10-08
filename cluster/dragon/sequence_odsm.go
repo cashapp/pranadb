@@ -7,6 +7,7 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -41,7 +42,7 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 			var err error
 			v, err = localGet(s.dragon.pebble, keyBuff)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 		var seqVal uint64
@@ -55,17 +56,17 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 		}
 		vBuff := common.AppendUint64ToBufferLE(nil, seqVal+1)
 		if err := batch.Set(keyBuff, vBuff, nosyncWriteOptions); err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		latestSeqVals[string(keyBuff)] = vBuff
 		entries[i].Result.Value = seqStateMachineUpdatedOK
 		entries[i].Result.Data = seqBuff
 	}
 	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, tableSequenceClusterID); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return entries, nil
 }

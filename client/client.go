@@ -51,7 +51,7 @@ func (c *Client) Start() error {
 	c.sessionIDs = make(map[string]struct{})
 	conn, err := grpc.Dial(c.serverAddress, grpc.WithInsecure())
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c.conn = conn
 	c.client = service.NewPranaDBServiceClient(conn)
@@ -90,7 +90,7 @@ func (c *Client) CreateSession() (string, error) {
 	}
 	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 	sessID := resp.GetSessionId()
 	c.sessionIDs[sessID] = struct{}{}
@@ -108,7 +108,7 @@ func (c *Client) CloseSession(sessionID string) error {
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
 	delete(c.sessionIDs, sessionID)
-	return err
+	return errors.WithStack(err)
 }
 
 // ExecuteStatement executes a Prana statement. Lines of output will be received on the channel that is returned.
@@ -152,7 +152,7 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 		PageSize:  int32(c.pageSize),
 	})
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 
 	// Receive column metadata and page data until the result of the query is fully returned.
@@ -242,7 +242,7 @@ func toColumnTypes(result *service.Columns) (names []string, types []common.Colu
 
 func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProtobufsRequest, option ...grpc.CallOption) error {
 	_, err := c.client.RegisterProtobufs(ctx, in, option...)
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *Client) sendHeartbeats() {
@@ -275,7 +275,7 @@ func stripgRPCPrefix(err error) error {
 		//nolint:stylecheck
 		return errors.Errorf("Failed to execute statement: %s", msg)
 	}
-	return err
+	return errors.WithStack(err)
 }
 
 // used in testing

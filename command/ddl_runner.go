@@ -104,7 +104,7 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 			d.commands[skey] = com
 		}
 		if err := com.OnPrepare(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	} else {
 		com, ok := d.commands[skey]
@@ -112,7 +112,7 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 			return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		}
 		if err := com.OnCommit(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		delete(d.commands, skey)
 	}
@@ -138,12 +138,12 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		TableSequences:    command.TableSequences(),
 	}
 	if err := d.getLock(lockName); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	err := d.RunWithLock(command, ddlInfo)
 	// We release the lock even if we got an error
 	d.releaseLock(lockName)
-	return err
+	return errors.WithStack(err)
 }
 
 func (d *DDLCommandRunner) releaseLock(lockName string) {
@@ -158,13 +158,13 @@ func (d *DDLCommandRunner) releaseLock(lockName string) {
 
 func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
 	if err := command.BeforePrepare(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := d.broadcastDDL(true, ddlInfo); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := d.broadcastDDL(false, ddlInfo); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return command.AfterCommit()
 }
@@ -184,7 +184,7 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 	for {
 		ok, err := d.ce.cluster.GetLock(lockName)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if ok {
 			return nil

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/msggen"
 )
 
@@ -29,15 +30,15 @@ func run(args []string) error {
 	cfg := arguments{KafkaProperties: make(map[string]string)}
 	parser, err := kong.New(&cfg)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	_, err = parser.Parse(args)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	gm, err := msggen.NewGenManager()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return gm.ProduceMessages(cfg.GeneratorName, cfg.TopicName, cfg.Partitions, cfg.Delay, cfg.NumMessages, cfg.IndexStart, cfg.KafkaProperties)
 }

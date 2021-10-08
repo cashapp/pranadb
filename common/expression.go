@@ -126,10 +126,10 @@ func (e *Expression) EvalFloat64(row *Row) (val float64, null bool, err error) {
 func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 	dec, null, err := e.expression.EvalDecimal(nil, row.tRow)
 	if err != nil {
-		return Decimal{}, false, err
+		return Decimal{}, false, errors.WithStack(err)
 	}
 	if null {
-		return Decimal{}, true, err
+		return Decimal{}, true, errors.WithStack(err)
 	}
 	return *NewDecimal(dec), false, errors.WithStack(err)
 }
@@ -137,10 +137,10 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
 	ts, null, err := e.expression.EvalTime(nil, row.tRow)
 	if err != nil {
-		return Timestamp{}, false, err
+		return Timestamp{}, false, errors.WithStack(err)
 	}
 	if null {
-		return Timestamp{}, true, err
+		return Timestamp{}, true, errors.WithStack(err)
 	}
 	return ts, false, errors.WithStack(err)
 }

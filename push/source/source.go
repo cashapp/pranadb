@@ -87,7 +87,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		var err error
 		msgProvFact, err = kafka.NewFakeMessageProviderFactory(ti.TopicName, props, groupID)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
@@ -96,15 +96,15 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	}
 	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.TopicInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.TopicInfo.Properties, defaultPollTimeoutMs)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.TopicInfo.Properties, defaultMaxPollMessages)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	source := &Source{
 		sourceInfo:              sourceInfo,
@@ -135,7 +135,7 @@ func (s *Source) Start() error {
 	}
 
 	if err := s.loadStartupCommittedOffsets(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	if len(s.msgConsumers) != 0 {
@@ -145,7 +145,7 @@ func (s *Source) Start() error {
 	for i := 0; i < s.numConsumersPerSource; i++ {
 		msgProvider, err := s.msgProvFact.NewMessageProvider()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		// We choose a local scheduler based on the name of the schema, name of source and ordinal of the message consumer
 		// The shard of that scheduler is where ingested rows will be staged, ready to be forwarded to their
@@ -159,13 +159,13 @@ func (s *Source) Start() error {
 		sKey := fmt.Sprintf("%s-%s-%d", s.sourceInfo.SchemaName, s.sourceInfo.Name, i)
 		scheduler, err := s.schedSelector.ChooseLocalScheduler([]byte(sKey))
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
 			s.maxPollMessages, s, scheduler, s.startupCommittedOffsets)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		s.msgConsumers = append(s.msgConsumers, consumer)
 	}
@@ -194,7 +194,7 @@ func (s *Source) Drop() error {
 	offsetsEndPrefix := common.IncrementBytesBigEndian(offsetsStartPrefix)
 
 	if err := s.cluster.DeleteAllDataInRangeForAllShards(offsetsStartPrefix, offsetsEndPrefix); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
@@ -223,7 +223,7 @@ func (s *Source) loadStartupCommittedOffsets() error {
 		fmt.Sprintf("select partition_id, offset from %s where schema_name='%s' and source_name='%s'",
 			meta.SourceOffsetsTableName, s.sourceInfo.SchemaName, s.sourceInfo.Name))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
@@ -277,12 +277,12 @@ func (s *Source) stop() error {
 	}
 	for _, consumer := range s.msgConsumers {
 		if err := consumer.Stop(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	for _, consumer := range s.msgConsumers {
 		if err := consumer.Close(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	s.msgConsumers = nil
@@ -305,7 +305,7 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {
 	rows, err := mp.ParseMessages(messages)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// TODO where Source has no key - need to create one
@@ -322,23 +322,23 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		destShardID, err := s.sharder.CalculateShard(sharder.ShardTypeHash, key)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		// TODO we can consider an optimisation where execute on any local shards directly
 		err = s.mover.QueueRowForRemoteSend(destShardID, nil, &row, shardID, tableID, colTypes, batch)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 
 	s.commitOffsetsToPrana(offsetsToCommit, batch)
 
 	if err := s.cluster.WriteBatch(batch); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return s.mover.TransferData(shardID, true)
 }
@@ -403,7 +403,7 @@ func getOrDefaultIntValue(propName string, props map[string]string, def int) (in
 	if ok {
 		nc, err := strconv.ParseInt(ncs, 10, 32)
 		if err != nil {
-			return 0, err
+			return 0, errors.WithStack(err)
 		}
 		res = int(nc)
 	} else {

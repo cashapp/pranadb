@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/errors"
 )
 
 type ShardType int
@@ -44,7 +45,7 @@ func (s *Sharder) CalculateShardWithShardIDs(shardType ShardType, key []byte, sh
 func (s *Sharder) computeHashShard(key []byte, shardIDs []uint64) (uint64, error) {
 	hash, err := Hash(key)
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	index := hash % uint32(len(shardIDs))
 	return shardIDs[index], nil
@@ -58,7 +59,7 @@ func Hash(key []byte) (uint32, error) {
 	res := hasher.Sum(nil)
 	h2 := fnv.New32()
 	if _, err := h2.Write(res); err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	return h2.Sum32(), nil
 }
@@ -84,7 +85,7 @@ func (s *Sharder) Start() error {
 		return nil
 	}
 	if err := s.loadAllShards(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	s.started = true
 	return nil

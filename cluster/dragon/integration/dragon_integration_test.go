@@ -301,7 +301,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		cnf.TestServer = true
 		clus, err := dragon.NewDragon(*cnf)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		clusterNodes[i] = clus
 		clus.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
@@ -316,7 +316,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 			return nil, errors.New("channel was closed")
 		}
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 

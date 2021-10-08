@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 )
 
@@ -35,7 +36,7 @@ func (p *PaymentGenerator) GenerateMessage(index int64, rnd *rand.Rand) (*kafka.
 	m["currency"] = currencies[int(index)%len(currencies)]
 	json, err := json2.Marshal(&m)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	var headers []kafka.MessageHeader
 	fs := rnd.Float64()
