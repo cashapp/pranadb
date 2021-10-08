@@ -18,6 +18,61 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
+type ColumnSelectorAST struct {
+	MetaKey *string      `( "meta" "(" @String ")" |`
+	Field   *string      `  @Ident )`
+	Index   []*Index     `( "[" @@ "]" )*`
+	Next    *SelectorAST `("." @@)?`
+}
+
+func (s *ColumnSelectorAST) ToSelector() ColumnSelector {
+	if s.MetaKey != nil {
+		return ColumnSelector{
+			MetaKey:  s.MetaKey,
+			Selector: s.Next.ToSelector(),
+		}
+	}
+	f := ""
+	if s.Field != nil {
+		f = *s.Field
+	}
+	return ColumnSelector{
+		MetaKey: s.MetaKey,
+		Selector: (&SelectorAST{
+			Field: f,
+			Index: s.Index,
+			Next:  s.Next,
+		}).ToSelector(),
+	}
+}
+
+type ColumnSelector struct {
+	MetaKey  *string
+	Selector Selector
+}
+
+func (s *ColumnSelector) Select(meta map[string]interface{}, body interface{}) (interface{}, error) {
+	if s.MetaKey != nil {
+		v, ok := meta[*s.MetaKey]
+		if !ok {
+			return nil, fmt.Errorf("metadata did not contain key %q", *s.MetaKey)
+		}
+		return s.Selector.Select(v)
+	}
+	return s.Selector.Select(body)
+}
+
+func (s ColumnSelector) String() string {
+	var v string
+	if s.MetaKey != nil {
+		v += fmt.Sprintf(`meta("%s")`, *s.MetaKey)
+	}
+	if len(s.Selector) > 0 {
+		v += "." + s.Selector.String()
+	}
+	return v
+}
+
 type SelectorAST struct {
 	Field string       `@Ident`
 	Index []*Index     `( "[" @@ "]" )*`
@@ -76,6 +131,17 @@ var selectorParser = participle.MustBuild(&SelectorAST{},
 	participle.Lexer(lex),
 	participle.Unquote("String"),
 )
+var columnSelectorParser = participle.MustBuild(&ColumnSelectorAST{},
+	participle.Lexer(lex),
+	participle.Unquote("String"),
+)
+
+// ParseColumnSelector parses a selector expression into an executable ColumnSelector.
+func ParseColumnSelector(str string) (ColumnSelector, error) {
+	s := &ColumnSelectorAST{}
+	err := columnSelectorParser.ParseString("", str, s)
+	return s.ToSelector(), err
+}
 
 // ParseSelector parses a selector expression into an executable Selector.
 func ParseSelector(str string) (Selector, error) {

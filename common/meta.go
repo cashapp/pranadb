@@ -266,7 +266,7 @@ type TopicInfo struct {
 	KeyEncoding    KafkaEncoding
 	ValueEncoding  KafkaEncoding
 	HeaderEncoding KafkaEncoding
-	ColSelectors   []selector.Selector
+	ColSelectors   []selector.ColumnSelector
 	Properties     map[string]string
 }
 

@@ -13,6 +13,55 @@ import (
 
 var fd = testproto.File_squareup_cash_pranadb_testproto_v1_testproto_proto
 
+func TestParseColumnSelector(t *testing.T) {
+	stringRef := func(v string) *string {
+		return &v
+	}
+	tests := []struct {
+		name     string
+		selector string
+		want     ColumnSelector
+		wantErr  bool
+	}{
+		{
+			name:     "dot select",
+			selector: "hello.great.world",
+			want:     ColumnSelector{Selector: newSelector("hello", "great", "world")},
+		},
+		{
+			name:     "array index",
+			selector: `hello[3]`,
+			want:     ColumnSelector{Selector: newSelector("hello", 3)},
+		},
+		{
+			name:     "deep indexing",
+			selector: `hello.great["5"].world`,
+			want:     ColumnSelector{Selector: newSelector("hello", "great", "5", "world")},
+		},
+		{
+			name:     "complicated",
+			selector: `hello[0][1]["2"]["world"].foo[3]`,
+			want:     ColumnSelector{Selector: newSelector("hello", 0, 1, "2", "world", "foo", 3)},
+		},
+		{
+			name:     "meta",
+			selector: `meta("key").hello.world`,
+			want:     ColumnSelector{MetaKey: stringRef("key"), Selector: newSelector("hello", "world")},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sel, err := ParseColumnSelector(test.selector)
+			if test.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.want, sel)
+			}
+		})
+	}
+}
+
 func TestParseSelector(t *testing.T) {
 	tests := []struct {
 		name     string

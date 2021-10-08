@@ -51,10 +51,10 @@ func TestParse(t *testing.T) {
 			keyencoding = "json",
 			valueencoding = "json",
 			columnselectors = (
-				k.k0,
-				v.v1,
-				v.v2,
-				v[0][1].foo["test"]
+				meta("key").k0,
+				v1,
+				v2,
+				foo[0][1].bar["test"]
 			),
 			properties = (
 			"prop1" = "val1",
@@ -75,12 +75,12 @@ func TestParse(t *testing.T) {
 					{HeaderEncoding: "json"},
 					{KeyEncoding: "json"},
 					{ValueEncoding: "json"},
-					{ColSelectors: []*selector.SelectorAST{
-						{Field: "k", Next: &selector.SelectorAST{Field: "k0"}},
-						{Field: "v", Next: &selector.SelectorAST{Field: "v1"}},
-						{Field: "v", Next: &selector.SelectorAST{Field: "v2"}},
-						{Field: "v", Index: []*selector.Index{{Number: intRef(0)}, {Number: intRef(1)}},
-							Next: &selector.SelectorAST{Field: "foo", Index: []*selector.Index{{String: stringRef("test")}}},
+					{ColSelectors: []*selector.ColumnSelectorAST{
+						{MetaKey: stringRef("key"), Next: &selector.SelectorAST{Field: "k0"}},
+						{Field: stringRef("v1")},
+						{Field: stringRef("v2")},
+						{Field: stringRef("foo"), Index: []*selector.Index{{Number: intRef(0)}, {Number: intRef(1)}},
+							Next: &selector.SelectorAST{Field: "bar", Index: []*selector.Index{{String: stringRef("test")}}},
 						},
 					},
 					},

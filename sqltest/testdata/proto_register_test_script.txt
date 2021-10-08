@@ -20,8 +20,8 @@ create source test_source_1(
     keyencoding = "stringbytes",
     valueencoding = "protobuf:squareup.cash.pranadb.testproto.v1.Simple",
     columnselectors = (
-        v.key,
-        v.val1
+        key,
+        val1
     )
 );
 
@@ -54,9 +54,9 @@ create source test_source_1(
     keyencoding = "stringbytes",
     valueencoding = "protobuf:squareup.cash.pranadb.testproto.v1.Simple",
     columnselectors = (
-        v.key,
-        v.val1,
-        v.val2
+        key,
+        val1,
+        val2
     )
 );
 
@@ -89,9 +89,9 @@ create source test_source_1(
     keyencoding = "stringbytes",
     valueencoding = "protobuf:squareup.cash.pranadb.testproto.v1.Simple",
     columnselectors = (
-        v.key,
-        v.val1,
-        v.val2
+        key,
+        val1,
+        val2
     )
 );
 
