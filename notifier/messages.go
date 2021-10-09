@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 type messageType byte
@@ -39,7 +40,7 @@ func (n *NotificationMessage) serialize(buff []byte) ([]byte, error) {
 	buff = common.AppendUint64ToBufferLE(buff, uint64(n.sequence))
 	nBytes, err := serializeNotification(n.notif)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	buff = append(buff, nBytes...)
 	return buff, nil
@@ -60,7 +61,7 @@ func (n *NotificationMessage) deserialize(buff []byte) error {
 	n.sequence = int64(seq)
 	var err error
 	n.notif, err = DeserializeNotification(buff[offset:])
-	return err
+	return errors.WithStack(err)
 }
 
 func (n *NotificationResponse) serialize(buff []byte) []byte {
@@ -95,7 +96,7 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 	bytes = common.AppendUint32ToBufferLE(bytes, uint32(len(msg)))
 	bytes = append(bytes, msg...)
 	_, err := conn.Write(bytes)
-	return err
+	return errors.WithStack(err)
 }
 
 func readMessage(handler messageHandler, ch chan error, conn net.Conn) {

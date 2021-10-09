@@ -183,12 +183,12 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if err := c.checkTableID(sourceInfo.ID); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema := c.getOrCreateSchema(sourceInfo.SchemaName)
 	err := c.existsTable(schema, sourceInfo.Name)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema.PutTable(sourceInfo.Name, sourceInfo)
 	return nil
@@ -199,7 +199,7 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState P
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepareState), wb); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return c.cluster.WriteBatch(wb)
 }
@@ -209,11 +209,11 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, prepareState), wb); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for _, info := range internalTables {
 		if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info, prepareState), wb); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return c.cluster.WriteBatch(wb)
@@ -230,17 +230,17 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if err := c.checkTableID(mvInfo.ID); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema := c.getOrCreateSchema(mvInfo.SchemaName)
 	err := c.existsTable(schema, mvInfo.Name)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema.PutTable(mvInfo.Name, mvInfo)
 	for _, internalTable := range internalTables {
 		if err := c.registerInternalTable(internalTable); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -248,12 +248,12 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 
 func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
 	if err := c.checkTableID(info.ID); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema := c.getOrCreateSchema(info.SchemaName)
 	err := c.existsTable(schema, info.Name)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema.PutTable(info.Name, info)
 	return nil
@@ -286,11 +286,11 @@ func (c *Controller) DeleteSource(sourceID uint64) error {
 
 func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
 	if err := c.deleteEntityWithID(mvInfo.ID); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for _, it := range internalTableIDs {
 		if err := c.deleteEntityWithID(it.ID); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil

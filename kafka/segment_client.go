@@ -69,10 +69,10 @@ func (smp *SegmentKafkaMessageProvider) GetMessage(pollTimeout time.Duration) (*
 
 	msg, err := smp.reader.FetchMessage(ctx)
 	if err != nil {
-		if err == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	headers := make([]MessageHeader, len(msg.Headers))
@@ -123,7 +123,7 @@ func (smp *SegmentKafkaMessageProvider) Close() error {
 	defer smp.lock.Unlock()
 	err := smp.reader.Close()
 	smp.reader = nil
-	return err
+	return errors.WithStack(err)
 }
 
 func (smp *SegmentKafkaMessageProvider) Start() error {
@@ -137,7 +137,7 @@ func (smp *SegmentKafkaMessageProvider) Start() error {
 	}
 	for k, v := range smp.krpf.props {
 		if err := setProperty(cfg, k, v); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	reader := kafka.NewReader(*cfg)

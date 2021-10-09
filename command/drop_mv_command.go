@@ -65,7 +65,7 @@ func (c *DropMVCommand) BeforePrepare() error {
 
 	mv, err := c.getMV()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c.mv = mv
 
@@ -87,7 +87,7 @@ func (c *DropMVCommand) OnPrepare() error {
 	if c.mv == nil {
 		mv, err := c.getMV()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		c.mv = mv
 	}
@@ -96,7 +96,7 @@ func (c *DropMVCommand) OnPrepare() error {
 		itNames = append(itNames, it.Name)
 	}
 	if err := c.e.metaController.UnregisterMaterializedView(c.schemaName, c.mv.Info.Name, itNames); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	schema, ok := c.e.metaController.GetSchema(c.schemaName)
 	if !ok {
@@ -112,7 +112,7 @@ func (c *DropMVCommand) OnCommit() error {
 	// Remove the mv from the push engine and delete all it's data
 	// Deleting the data could take some time
 	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
 	return c.mv.Drop(c.originating)
@@ -131,7 +131,7 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 	if c.mvName == "" {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if ast.Drop == nil && !ast.Drop.MaterializedView {
 			return nil, errors.Errorf("not a drop materialized view command %s", c.sql)
@@ -144,5 +144,5 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 		return nil, errors.NewUnknownMaterializedViewError(c.schemaName, c.mvName)
 	}
 	mv, err := c.e.pushEngine.GetMaterializedView(mvInfo.ID)
-	return mv, err
+	return mv, errors.WithStack(err)
 }

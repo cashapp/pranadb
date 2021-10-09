@@ -50,11 +50,11 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 			panic("value too long")
 		}
 		if err := tbl.Add(sstable.InternalKey{UserKey: k, Trailer: sstable.InternalKeyKindSet}, v); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	if err := tbl.Close(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return snapshot.Close()
 }
@@ -64,7 +64,7 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 	f, err := ioutil.TempFile(ingestDir, "")
 	if err != nil {
 		log.Errorf("Failed to create temp snapshot recover file %+v", err)
-		return err
+		return errors.WithStack(err)
 	}
 	path := f.Name()
 	log.Infof("Created temp snapshot recover file %s", path)
@@ -80,27 +80,27 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 
 	log.Info("Copying reader to temp file")
 	if _, err := io.Copy(f, reader); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := f.Sync(); err != nil {
 		log.Errorf("Failed to sync temp snapshot recover file %+v", err)
-		return err
+		return errors.WithStack(err)
 	}
 	if err := f.Close(); err != nil {
 		log.Errorf("Failed to close temp snapshot recover file %+v", err)
-		return err
+		return errors.WithStack(err)
 	}
 	log.Info("Copied reader to temp file")
 
 	batch := peb.NewBatch()
 	// Delete the data for the state machine - we're going to replace it
 	if err := batch.DeleteRange(startPrefix, endPrefix, &pebble.WriteOptions{}); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	log.Info("deleted data for shard, now applying snapshot to pebble")
 	if err := peb.Apply(batch, syncWriteOptions); err != nil {
 		log.Errorf("Failed to apply delete range %+v", err)
-		return err
+		return errors.WithStack(err)
 	}
 	log.Info("Applied delete range to pebble, now applying snapshot to pebble")
 
@@ -112,7 +112,7 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 		log.Errorf("failed to apply snapshot to pebble %+v", err)
 	}
 
-	return err
+	return errors.WithStack(err)
 }
 
 func syncPebble(peb *pebble.DB) error {
@@ -130,7 +130,7 @@ func loadLastProcessedRaftIndex(peb *pebble.DB, shardID uint64) (uint64, error) 
 		return 0, nil
 	}
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	lastIndex, _ := common.ReadUint64FromBufferLE(vb, 0)
 	return lastIndex, nil

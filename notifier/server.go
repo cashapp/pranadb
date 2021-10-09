@@ -216,7 +216,7 @@ func (c *connection) sendResponse(nf *NotificationMessage, ok bool) error {
 	}
 	buff := resp.serialize(nil)
 	err := writeMessage(notificationResponseMessageType, buff, c.conn)
-	return err
+	return errors.WithStack(err)
 }
 
 func (c *connection) stop() error {
@@ -229,5 +229,5 @@ func (c *connection) stop() error {
 	}
 	c.msgsInProgress.Wait() // Wait for all messages to be processed
 	close(c.handleMsgCh)
-	return err
+	return errors.WithStack(err)
 }

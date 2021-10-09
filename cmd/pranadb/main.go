@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/kong"
 	konghcl "github.com/alecthomas/kong-hcl/v2"
@@ -36,24 +37,24 @@ func (r *runner) run(args []string, start bool) error {
 	cfg := arguments{}
 	parser, err := kong.New(&cfg, kong.Configuration(konghcl.Loader))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	_, err = parser.Parse(args)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := cfg.Log.Configure(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	s, err := server.NewServer(cfg.Server)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	r.server = s
 	if start {
 		if err := s.Start(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil

@@ -73,7 +73,7 @@ func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.Pu
 	}
 	tiAst, err := session.PullPlanner().Parse(sql)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	psID := session.GeneratePSId()
 	ps := session.CreatePreparedStatement(psID, sql, tiAst)
@@ -108,7 +108,7 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 		qi.IsPs = true
 		dag, err := p.buildPullQueryExecutionFromAst(session, ps.Ast, true, false)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		ps.Dag = dag
 	} else {
@@ -163,7 +163,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 				// Not already prepared
 				dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, true, true)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				remExecutor := p.findRemoteExecutor(dag)
 				if remExecutor == nil {
@@ -182,7 +182,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		} else {
 			dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, false, true)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			remExecutor := p.findRemoteExecutor(dag)
 			if remExecutor == nil {
@@ -198,7 +198,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 	if err != nil {
 		// Make sure we remove current query in case of error
 		s.CurrentQuery = nil
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if newSession {
 		// We only need to store the session for later if there is an outstanding query or there are prepared statements
@@ -211,13 +211,13 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 			p.sessionCache().Delete(queryInfo.SessionID)
 		}
 	}
-	return rows, err
+	return rows, errors.WithStack(err)
 }
 
 func (p *Engine) getRowsFromCurrentQuery(session *sess.Session, limit int) (*common.Rows, error) {
 	rows, err := CurrentQuery(session).GetRows(limit)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if rows.RowCount() < limit {
 		// Query is complete - we can remove it
@@ -321,13 +321,13 @@ func (p *Engine) ExecuteQuery(schemaName string, query string) (rows *common.Row
 	sess.UseSchema(schema)
 	exec, err := p.BuildPullQuery(sess, query)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	limit := 1000
 	for {
 		r, err := exec.GetRows(limit)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if rows == nil {
 			rows = r

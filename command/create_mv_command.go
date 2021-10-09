@@ -74,7 +74,7 @@ func (c *CreateMVCommand) BeforePrepare() error {
 	// Before prepare we just persist the source info in the tables table
 	mv, err := c.createMVFromAST(c.ast)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	c.mv = mv
 
@@ -85,7 +85,7 @@ func (c *CreateMVCommand) BeforePrepare() error {
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if rows.RowCount() != 0 {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
@@ -102,7 +102,7 @@ func (c *CreateMVCommand) OnPrepare() error {
 	if c.mv == nil {
 		mv, err := c.createMV()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		c.mv = mv
 	}
@@ -120,10 +120,10 @@ func (c *CreateMVCommand) OnCommit() error {
 	// Fill the MV from it's feeding sources and MVs
 	// Before the fill completes the MV will be connected to it's feeding sources or MVs
 	if err := c.mv.Fill(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables)
 }
@@ -140,13 +140,13 @@ func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()
 	mv, err := push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
-	return mv, err
+	return mv, errors.WithStack(err)
 }
 
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 	ast, err := parser.Parse(c.createMVSQL)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if ast.Create == nil || ast.Create.MaterializedView == nil {
 		return nil, errors.Errorf("not a create materialized view %s", c.createMVSQL)

@@ -105,7 +105,7 @@ func (p *Engine) Stop() error {
 	p.readyToReceive.Set(false)
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	for _, sh := range p.schedulers {
@@ -226,7 +226,7 @@ func (p *Engine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
 	scheduler.ScheduleActionFireAndForget(func() error {
 		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if hasForwards {
 			return p.mover.TransferData(scheduler.ShardID(), true)
@@ -265,7 +265,7 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 			// Does the entity exist in storage?
 			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id, prepare_state from tables where id=%d", entityID))
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if rows.RowCount() == 1 {
 				// The entity is in storage but not deployed - this might happen if a node joined when a create source/mv
@@ -289,7 +289,7 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 			if lpvb != 0 {
 				prevBytes := row[4 : 4+lpvb]
 				if err := common.DecodeRow(prevBytes, remoteConsumer.ColTypes, rows); err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				pi = rc
 				rc++
@@ -299,7 +299,7 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 			if lcvb != 0 {
 				currBytes := row[8+lpvb:]
 				if err := common.DecodeRow(currBytes, remoteConsumer.ColTypes, rows); err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				ci = rc
 				rc++
@@ -313,7 +313,7 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 		rowsBatch := exec.NewRowsBatch(rows, entries)
 		err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, execContext)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -328,7 +328,7 @@ func (p *Engine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error)
 	}
 	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return p.schedulers[shardID], nil
 }
@@ -346,7 +346,7 @@ func (p *Engine) checkForPendingData() error {
 			return errors.New("channel was closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		p.maybeHandleRemoteBatch(scheduler)
 	}
@@ -358,19 +358,19 @@ func (p *Engine) WaitForProcessingToComplete() error {
 
 	err := p.waitForSchedulers()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Wait for no rows in the forwarder table
 	err = p.waitForNoRowsInTable(common.ForwarderTableID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -403,12 +403,12 @@ func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
 	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
-		return !exist, err
+		return !exist, errors.WithStack(err)
 	}, 30*time.Second, 100*time.Millisecond)
 	if !ok {
 		return errors.New("timed out waiting for condition")
 	}
-	return err
+	return errors.WithStack(err)
 }
 
 func (p *Engine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
@@ -417,7 +417,7 @@ func (p *Engine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bo
 		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
 		kvPairs, err := p.cluster.LocalScan(startPrefix, endPrefix, 1)
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 		if kvPairs != nil {
 			return true, nil
@@ -462,7 +462,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		p.protoRegistry,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	colTypes := sourceInfo.TableInfo.ColumnTypes

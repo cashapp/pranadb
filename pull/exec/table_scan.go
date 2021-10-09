@@ -61,14 +61,14 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 	if scanRange != nil {
 		rangeStart, err = common.EncodeKey([]interface{}{scanRange.LowVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if scanRange.LowExcl {
 			rangeStart = common.IncrementBytesBigEndian(rangeStart)
 		}
 		rangeEnd, err = common.EncodeKey([]interface{}{scanRange.HighVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		if !scanRange.HighExcl {
 			if !allBitsSet(rangeEnd) {
@@ -122,7 +122,7 @@ func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
 
 	kvPairs, err := p.storage.LocalScan(startPrefix, p.rangeEnd, limitToUse)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	numRows := len(kvPairs)
 	rows = p.rowsFactory.NewRows(numRows)

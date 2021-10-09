@@ -36,7 +36,7 @@ func (l *Loader) Start() error {
 	rows, err := l.queryExec.ExecuteQuery("sys",
 		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare_state from tables order by id")
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	type tableKey struct {
@@ -56,11 +56,11 @@ func (l *Loader) Start() error {
 			info := meta.DecodeSourceInfoRow(&row)
 			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			src, err := l.pushEngine.CreateSource(info)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
@@ -101,16 +101,16 @@ func (l *Loader) Start() error {
 			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvID,
 			seqGen)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if err := mv.Connect(true, true); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if err := l.pushEngine.RegisterMV(mv); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if err := l.meta.RegisterMaterializedView(mvt.mvInfo, mvt.internalTables); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 

@@ -54,7 +54,7 @@ func (cmp *ConfluentMessageProvider) RebalanceOccurred(cons *kafka.Consumer, eve
 	_, ok := event.(kafka.RevokedPartitions)
 	if ok {
 		if err := cmp.rebalanceCB(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -116,7 +116,7 @@ func (cmp *ConfluentMessageProvider) CommitOffsets(offsetsMap map[int32]int64) e
 		i++
 	}
 	_, err := cmp.consumer.CommitOffsets(offsets)
-	return err
+	return errors.WithStack(err)
 }
 
 func (cmp *ConfluentMessageProvider) Stop() error {
@@ -128,7 +128,7 @@ func (cmp *ConfluentMessageProvider) Close() error {
 	defer cmp.lock.Unlock()
 	err := cmp.consumer.Close()
 	cmp.consumer = nil
-	return err
+	return errors.WithStack(err)
 }
 
 func (cmp *ConfluentMessageProvider) Start() error {
@@ -142,15 +142,15 @@ func (cmp *ConfluentMessageProvider) Start() error {
 	}
 	for k, v := range cmp.krpf.props {
 		if err := cm.SetKey(k, v); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	consumer, err := kafka.NewConsumer(cm)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if err := consumer.Subscribe(cmp.krpf.topicName, cmp.RebalanceOccurred); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	cmp.consumer = consumer
 	return nil

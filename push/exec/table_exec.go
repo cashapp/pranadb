@@ -80,18 +80,18 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
 			keyBuff, err := common.EncodeKeyCols(currentRow, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			v, err := t.store.LocalGet(keyBuff)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			pi := -1
 			if v != nil {
 				// Row already exists in storage - this is the case where a new rows comes into a source for the same key
 				// we won't have previousRow provided for us in this case as Kafka does not provide this
 				if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				pi = rc
 				rc++
@@ -104,7 +104,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			var valueBuff []byte
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
 		} else {
@@ -112,7 +112,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
 			keyBuff, err := common.EncodeKeyCols(prevRow, t.TableInfo.PrimaryKeyCols, t.colTypes, keyBuff)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			outRows.AppendRow(*prevRow)
 			entries[i].prevIndex = rc
@@ -123,16 +123,16 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 	}
 	err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
 	t.lock.RUnlock()
-	return err
+	return errors.WithStack(err)
 }
 
 func (t *TableExecutor) handleForwardAndCapture(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	if err := t.ForwardToConsumingNodes(rowsBatch, ctx); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if t.filling && rowsBatch.Len() != 0 {
 		if err := t.captureChanges(t.fillTableID, rowsBatch, ctx); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -141,7 +141,7 @@ func (t *TableExecutor) handleForwardAndCapture(rowsBatch RowsBatch, ctx *Execut
 func (t *TableExecutor) ForwardToConsumingNodes(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	for _, consumingNode := range t.consumingNodes {
 		if err := consumingNode.HandleRows(rowsBatch, ctx); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -168,7 +168,7 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 		key = common.KeyEncodeInt64(key, nextSeq)
 		value, err := common.EncodeRow(row, t.colTypes, nil)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		wb.AddPut(key, value)
 		nextSeq++
@@ -181,7 +181,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	fillTableID += common.UserTableIDBase
 
@@ -204,7 +204,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 	ch, err := t.startFillFromSnapshot(pe, schedulers, mover)
 	if err != nil {
 		t.lock.Unlock()
-		return err
+		return errors.WithStack(err)
 	}
 
 	// We can now unlock the source and it can continue processing rows while we are filling
@@ -220,7 +220,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 		return errors.New("channel was closed")
 	}
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Now we need to feed in the rows that were added to while we were processing the snapshot
@@ -276,7 +276,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 				if lockAndLoad {
 					t.lock.Unlock()
 				}
-				return err
+				return errors.WithStack(err)
 			}
 		}
 		// Update the start sequences
@@ -295,7 +295,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, fillTableID+1)
 	for shardID := range schedulers {
 		if err := t.store.DeleteAllDataInRangeForShard(shardID, tableStartPrefix, tableEndPrefix); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 
@@ -313,7 +313,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 func (t *TableExecutor) startFillFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) (chan error, error) {
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	ch := make(chan error, 1)
 	go func() {
@@ -371,7 +371,7 @@ func (t *TableExecutor) performFillFromSnapshot(snapshot cluster.Snapshot, pe Pu
 			return errors.New("channel was closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -381,7 +381,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	rows := t.RowsFactory().NewRows(len(kvp))
 	for _, kv := range kvp {
 		if err := common.DecodeRow(kv.Value, t.colTypes, rows); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	wb := cluster.NewWriteBatch(shardID, false)
@@ -390,7 +390,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 		Mover:      mover,
 	}
 	if err := pe.HandleRows(NewCurrentRowsBatch(rows), ctx); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return t.store.WriteBatch(wb)
 }
@@ -447,7 +447,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 			return errors.New("channel was closed")
 		}
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil

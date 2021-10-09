@@ -23,7 +23,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.C
 		row := rows.GetRow(i)
 		// We give each
 		if err := IngestRow(topic, &row, colTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		timestamp = timestamp.Add(1 * time.Second)
 	}
@@ -34,10 +34,10 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.C
 func IngestRow(topic *Topic, row *common.Row, colTypes []common.ColumnType, keyCols []int, encoder MessageEncoder, timestamp time.Time) error {
 	message, err := encoder.EncodeMessage(row, colTypes, keyCols, timestamp)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	err = topic.push(message)
-	return err
+	return errors.WithStack(err)
 }
 
 func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interface{}, error) {
@@ -59,7 +59,7 @@ func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interf
 		ts := row.GetTimestamp(colIndex)
 		gotime, err := ts.GoTime(time.UTC)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		// convert to unix millis past epoch
 		colVal = gotime.UnixNano() / 1000000

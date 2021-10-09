@@ -66,7 +66,7 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 				panic(fmt.Sprintf("invalid selector %q", selector))
 			}
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
 	}
@@ -127,7 +127,7 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 			for _, hdr := range message.Headers {
 				hm, err := m.decodeBytes(m.headerDecoder, hdr.Value)
 				if err != nil {
-					return err
+					return errors.WithStack(err)
 				}
 				hdrs[hdr.Key] = hm
 			}
@@ -139,7 +139,7 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 		var err error
 		km, err = m.decodeBytes(m.keyDecoder, message.Key)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	// Decode value
@@ -148,7 +148,7 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 		var err error
 		vm, err = m.decodeBytes(m.valueDecoder, message.Value)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 		colType := m.sourceInfo.ColumnTypes[i]
 		val, err := eval(m.evalContext.meta, m.evalContext.value)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if val == nil {
 			rows.AppendNullToColumn(i)
@@ -175,31 +175,31 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 			ival, err := CoerceInt64(val)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			rows.AppendInt64ToColumn(i, ival)
 		case common.TypeDouble:
 			fval, err := CoerceFloat64(val)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			rows.AppendFloat64ToColumn(i, fval)
 		case common.TypeVarchar:
 			sval, err := CoerceString(val)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			rows.AppendStringToColumn(i, sval)
 		case common.TypeDecimal:
 			dval, err := CoerceDecimal(val)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			rows.AppendDecimalToColumn(i, *dval)
 		case common.TypeTimestamp:
 			tsVal, err := CoerceTimestamp(val)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			rows.AppendTimestampToColumn(i, tsVal)
 		default:
@@ -260,7 +260,7 @@ type JSONDecoder struct {
 func (j *JSONDecoder) Decode(bytes []byte) (interface{}, error) {
 	m := make(map[string]interface{})
 	if err := json.Unmarshal(bytes, &m); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return m, nil
 }
@@ -308,7 +308,7 @@ type ProtobufDecoder struct {
 func (p *ProtobufDecoder) Decode(bytes []byte) (interface{}, error) {
 	msg := dynamicpb.NewMessage(p.desc)
 	err := proto.Unmarshal(bytes, msg)
-	return msg, err
+	return msg, errors.WithStack(err)
 }
 
 type evaluable func(meta map[string]interface{}, v interface{}) (interface{}, error)

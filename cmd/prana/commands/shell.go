@@ -10,6 +10,7 @@ import (
 	"github.com/chzyer/readline"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"
+	"github.com/squareup/pranadb/errors"
 )
 
 type ShellCommand struct {
@@ -19,7 +20,7 @@ type ShellCommand struct {
 func (c *ShellCommand) Run(cl *client.Client) error {
 	sessionID, err := cl.CreateSession()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	defer func() {
 		if err := cl.CloseSession(sessionID); err != nil {
@@ -29,7 +30,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	rl, err := readline.NewEx(&readline.Config{
@@ -38,7 +39,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 		VimMode:                c.VI,
 	})
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for {
 		// Gather multi-line statement terminated by a ;
@@ -50,7 +51,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 				return nil
 			}
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -66,7 +67,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 		_ = rl.SaveHistory(statement)
 
 		if err := c.sendStatement(sessionID, statement, cl); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 }
@@ -74,7 +75,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 func (c *ShellCommand) sendStatement(sessionID string, statement string, cli *client.Client) error {
 	ch, err := cli.ExecuteStatement(sessionID, statement)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for line := range ch {
 		fmt.Println(line)

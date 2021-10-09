@@ -3,17 +3,18 @@ package table
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 func Upsert(tableInfo *common.TableInfo, row *common.Row, writeBatch *cluster.WriteBatch) error {
 	keyBuff, err := encodeKeyFromRow(tableInfo, row, writeBatch.ShardID)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	var valueBuff []byte
 	valueBuff, err = common.EncodeRow(row, tableInfo.ColumnTypes, valueBuff)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	writeBatch.AddPut(keyBuff, valueBuff)
 	return nil

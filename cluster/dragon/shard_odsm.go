@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
 )
 
@@ -64,7 +65,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		switch command {
 		case shardStateMachineCommandWrite, shardStateMachineCommandForwardWrite:
 			if err := s.handleWrite(batch, cmdBytes); err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			if command == shardStateMachineCommandForwardWrite {
 				hasForward = true
@@ -74,7 +75,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		case shardStateMachineCommandDeleteRangePrefix:
 			err := s.handleDeleteRange(batch, cmdBytes)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		default:
 			panic(fmt.Sprintf("unexpected command %d", command))
@@ -88,14 +89,14 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	vb := make([]byte, 0, 8)
 	common.AppendUint64ToBufferLE(vb, lastLogIndex)
 	if err := batch.Set(key, vb, nil); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if err := writeLastIndexValue(batch, lastLogIndex, s.shardID); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	// A forward write is a write which forwards a batch of rows from one shard to another
@@ -120,14 +121,14 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte)
 		s.checkKey(kvPair.Key)
 		err := batch.Set(kvPair.Key, kvPair.Value, nil)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	for _, k := range deletes {
 		s.checkKey(k)
 		err := batch.Delete(k, nil)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -206,7 +207,7 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 		queryInfo := &cluster.QueryExecutionInfo{}
 		err := queryInfo.Deserialize(buff[1:])
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 		if err != nil {
@@ -253,7 +254,7 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 	log.Infof("Restoring data snapshot on node %d shardid %d", s.dragon.cnf.NodeID, s.shardID)
 	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	s.maybeTriggerRemoteWriteOccurred()
 	return nil

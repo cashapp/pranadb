@@ -34,7 +34,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 
 	rows, err = p.GetChildren()[0].GetRows(limit)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	result := p.rowsFactory.NewRows(rows.RowCount())
@@ -48,7 +48,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
 				val, null, err := projColumn.EvalInt64(&row)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				if null {
 					result.AppendNullToColumn(j)
@@ -58,7 +58,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 			case common.TypeDecimal:
 				val, null, err := projColumn.EvalDecimal(&row)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				if null {
 					result.AppendNullToColumn(j)
@@ -68,7 +68,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 			case common.TypeVarchar:
 				val, null, err := projColumn.EvalString(&row)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				if null {
 					result.AppendNullToColumn(j)
@@ -78,7 +78,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 			case common.TypeDouble:
 				val, null, err := projColumn.EvalFloat64(&row)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				if null {
 					result.AppendNullToColumn(j)
@@ -88,7 +88,7 @@ func (p *PullProjection) GetRows(limit int) (rows *common.Rows, err error) { // 
 			case common.TypeTimestamp:
 				val, null, err := projColumn.EvalTimestamp(&row)
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				if null {
 					result.AppendNullToColumn(j)

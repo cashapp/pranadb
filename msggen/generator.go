@@ -31,7 +31,7 @@ type GenManager struct {
 func NewGenManager() (*GenManager, error) {
 	gm := &GenManager{generators: make(map[string]MessageGenerator)}
 	if err := gm.RegisterGenerators(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return gm, nil
 }
@@ -90,18 +90,18 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	}()
 	for k, v := range kafkaProps {
 		if err := setProperty(producer, k, v); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	for i := indexStart; i < indexStart+numMessages; i++ {
 		msg, err := gen.GenerateMessage(i, rnd)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		hash, err := sharder.Hash(msg.Key)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		part := hash % uint32(partitions)
 		kheaders := make([]kafkaclient.Header, len(msg.Headers))
@@ -120,14 +120,14 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			Headers:   kheaders,
 		}
 		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if delay != 0 {
 			time.Sleep(delay)
 		}
 	}
 	if err := producer.Close(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	failed := false
 	for err := range errChan {

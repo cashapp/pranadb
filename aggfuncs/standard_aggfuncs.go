@@ -3,6 +3,7 @@ package aggfuncs
 import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 // SUM
@@ -29,7 +30,7 @@ func (s *SumAggregateFunction) MergeDecimal(prevMergeState *AggState, currMergeS
 	}
 	res, err := curr.Subtract(prev)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return s.EvalDecimal(*res, false, aggState, index)
 }
@@ -60,7 +61,7 @@ func (s *SumAggregateFunction) EvalDecimal(currValue common.Decimal, null bool, 
 	curr := aggState.GetDecimal(index)
 	res, err := curr.Add(&currValue)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return aggState.SetDecimal(index, *res)
 }
@@ -150,7 +151,7 @@ func (m *MaxAggregateFunction) MergeTimestamp(prevMergeState *AggState, currMerg
 		// The latest value is always correct
 		currTS, err := currMergeState.GetTimestamp(index)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		return m.EvalTimestamp(currTS, false, aggState, index)
 	}
@@ -195,11 +196,11 @@ func (m *MaxAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bo
 	}
 	other, err := aggState.GetTimestamp(index)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if !aggState.IsSet(index) || (currValue.Compare(other) > 0) {
 		if err := aggState.SetTimestamp(index, currValue); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -212,7 +213,7 @@ func (m *MaxAggregateFunction) EvalDecimal(currValue common.Decimal, null bool, 
 	other := aggState.GetDecimal(index)
 	if !aggState.IsSet(index) || (currValue.CompareTo(&other) > 0) {
 		if err := aggState.SetDecimal(index, currValue); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -255,7 +256,7 @@ func (m *MinAggregateFunction) MergeTimestamp(prevMergeState *AggState, currMerg
 		// The latest value is always correct
 		currTS, err := currMergeState.GetTimestamp(index)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		return m.EvalTimestamp(currTS, false, aggState, index)
 	}
@@ -299,11 +300,11 @@ func (m *MinAggregateFunction) EvalTimestamp(currValue common.Timestamp, null bo
 	}
 	other, err := aggState.GetTimestamp(index)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	if !aggState.IsSet(index) || (currValue.Compare(other) < 0) {
 		if err := aggState.SetTimestamp(index, currValue); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -316,7 +317,7 @@ func (m *MinAggregateFunction) EvalDecimal(currValue common.Decimal, null bool, 
 	other := aggState.GetDecimal(index)
 	if !aggState.IsSet(index) || (currValue.CompareTo(&other) < 0) {
 		if err := aggState.SetDecimal(index, currValue); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -374,10 +375,10 @@ func (f *FirstRowAggregateFunction) MergeTimestamp(prevMergeState *AggState, cur
 	} else {
 		currTS, err := currMergeState.GetTimestamp(index)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if err := aggState.SetTimestamp(index, currTS); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -390,7 +391,7 @@ func (f *FirstRowAggregateFunction) MergeDecimal(prevMergeState *AggState, currM
 	if currMergeState.IsNull(index) {
 		aggState.SetNull(index)
 	} else if err := aggState.SetDecimal(index, currMergeState.GetDecimal(index)); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }
@@ -438,7 +439,7 @@ func (f *FirstRowAggregateFunction) EvalTimestamp(currValue common.Timestamp, nu
 	if null {
 		aggState.SetNull(index)
 	} else if err := aggState.SetTimestamp(index, currValue); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }
@@ -450,7 +451,7 @@ func (f *FirstRowAggregateFunction) EvalDecimal(currValue common.Decimal, null b
 	if null {
 		aggState.SetNull(index)
 	} else if err := aggState.SetDecimal(index, currValue); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }

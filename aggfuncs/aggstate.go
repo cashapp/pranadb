@@ -4,6 +4,7 @@ import (
 	"unsafe"
 
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 type AggState struct {
@@ -126,7 +127,7 @@ func (as *AggState) SetTimestamp(index int, val common.Timestamp) error {
 	as.changed = true
 	packed, err := val.ToPackedUint()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	as.SetInt64(index, int64(packed))
 	return nil
@@ -136,7 +137,7 @@ func (as *AggState) GetTimestamp(index int) (common.Timestamp, error) {
 	packed := as.GetInt64(index)
 	ts := common.Timestamp{}
 	if err := ts.FromPackedUint(uint64(packed)); err != nil {
-		return common.Timestamp{}, err
+		return common.Timestamp{}, errors.WithStack(err)
 	}
 	return ts, nil
 }

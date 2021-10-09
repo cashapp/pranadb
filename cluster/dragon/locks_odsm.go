@@ -41,7 +41,7 @@ func (s *locksODStateMachine) loadLocks() error {
 	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
 	kvp, err := s.dragon.LocalScan(startPrefix, endPrefix, math.MaxInt32)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for _, kv := range kvp {
 		sKey, _ := common.ReadStringFromBufferBE(kv.Key, 16)
@@ -55,10 +55,10 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	defer s.locksLock.Unlock()
 	lp, err := loadLastProcessedRaftIndex(s.dragon.pebble, locksClusterID)
 	if err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	if err := s.loadLocks(); err != nil {
-		return 0, err
+		return 0, errors.WithStack(err)
 	}
 	return lp, nil
 }
@@ -85,7 +85,7 @@ outer:
 			s.locks[prefix] = struct{}{}
 			keyBuff := s.encodeLocksKey(prefix)
 			if err := batch.Set(keyBuff, nil, &pebble.WriteOptions{Sync: false}); err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			s.setResult(true, entries, i)
 		} else if command == ReleaseLockCommand {
@@ -97,7 +97,7 @@ outer:
 			delete(s.locks, prefix)
 			keyBuff := s.encodeLocksKey(prefix)
 			if err := batch.Delete(keyBuff, &pebble.WriteOptions{Sync: false}); err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 			s.setResult(true, entries, i)
 		} else {
@@ -105,10 +105,10 @@ outer:
 		}
 	}
 	if err := writeLastIndexValue(batch, entries[len(entries)-1].Index, locksClusterID); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return entries, nil
 }
@@ -157,7 +157,7 @@ func (s *locksODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan str
 	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
 	log.Infof("Restoring locks snapshot on node %d", s.dragon.cnf.NodeID)
 	if err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return s.loadLocks()
 }

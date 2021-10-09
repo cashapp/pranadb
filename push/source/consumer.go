@@ -5,6 +5,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/push/sched"
 )
@@ -30,7 +31,7 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	}
 	messageParser, err := NewMessageParser(source.sourceInfo, source.protoRegistry)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	mc := &MessageConsumer{
 		msgProvider:             msgProvider,
@@ -47,7 +48,7 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	msgProvider.SetRebalanceCallback(mc.rebalanceOccurring)
 
 	if err := msgProvider.Start(); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	mc.start()
@@ -135,7 +136,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 	for len(m.msgBatch) <= maxRecords {
 		msg, err := m.msgProvider.GetMessage(remaining)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 		if msg == nil {
 			break

@@ -45,7 +45,7 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			// A new row
 			ok, err := p.evalPredicates(currRow)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if ok {
 				resultBatch.AppendEntry(nil, currRow)
@@ -54,11 +54,11 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			// A modified row
 			okCurr, err := p.evalPredicates(currRow)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			okPrev, err := p.evalPredicates(prevRow)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if okCurr && okPrev {
 				// Both the current and previous version pass the condition so this remains a modify
@@ -74,7 +74,7 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			// A deleted row - pass it through if it previously was passed
 			ok, err := p.evalPredicates(prevRow)
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			if ok {
 				resultBatch.AppendEntry(prevRow, nil)
@@ -88,7 +88,7 @@ func (p *PushSelect) evalPredicates(row *common.Row) (bool, error) {
 	for _, predicate := range p.predicates {
 		accept, isNull, err := predicate.EvalBoolean(row)
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 		if isNull {
 			return false, errors.New("null returned from evaluating select predicate")

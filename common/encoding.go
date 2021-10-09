@@ -62,7 +62,7 @@ func AppendDecimalToBuffer(buffer []byte, dec Decimal, precision, scale int) ([]
 func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
 	enc, err := ts.ToPackedUint()
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	buffer = AppendUint64ToBufferLE(buffer, enc)
 	return buffer, nil
@@ -139,7 +139,7 @@ func ReadDecimalFromBuffer(buffer []byte, offset int, precision int, scale int) 
 	dec := Decimal{}
 	offset, err = dec.Decode(buffer, offset, precision, scale)
 	if err != nil {
-		return Decimal{}, 0, err
+		return Decimal{}, 0, errors.WithStack(err)
 	}
 	return dec, offset, nil
 }
@@ -148,7 +148,7 @@ func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp
 	ts := Timestamp{}
 	enc, off := ReadUint64FromBufferLE(buffer, offset)
 	if err := ts.FromPackedUint(enc); err != nil {
-		return Timestamp{}, 0, errors.MaybeAddStack(err)
+		return Timestamp{}, 0, errors.WithStack(err)
 	}
 	ts.SetType(mysql.TypeTimestamp)
 	ts.SetFsp(fsp)

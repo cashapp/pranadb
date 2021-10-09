@@ -19,14 +19,14 @@ func (cfg *Config) Configure() error {
 	if cfg.File != "" && cfg.File != "-" {
 		f, err := os.Create(cfg.File)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		log.SetOutput(f)
 	}
 	if cfg.Level != "" {
 		level, err := log.ParseLevel(cfg.Level)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		log.SetLevel(level)
 	}

@@ -43,7 +43,7 @@ func KeyEncodeString(buffer []byte, val string) []byte {
 func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
 	enc, err := val.ToPackedUint()
 	if err != nil {
-		return nil, errors.MaybeAddStack(err)
+		return nil, errors.WithStack(err)
 	}
 	buffer = AppendUint64ToBufferBE(buffer, enc)
 	return buffer, nil
@@ -67,7 +67,7 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 			var err error
 			buffer, err = KeyEncodeDecimal(buffer, valDec, colType.DecPrecision, colType.DecScale)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		case TypeDouble:
 			valFloat64, ok := value.(float64)
@@ -89,7 +89,7 @@ func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byt
 			var err error
 			buffer, err = KeyEncodeTimestamp(buffer, valTime)
 			if err != nil {
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		default:
 			return nil, errors.Errorf("unexpected column type %d", colType)
@@ -104,7 +104,7 @@ func EncodeKeyCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []b
 		var err error
 		buffer, err = EncodeKeyCol(row, colIndex, colType, buffer)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 	return buffer, nil
@@ -122,7 +122,7 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 		var err error
 		buffer, err = KeyEncodeDecimal(buffer, valDec, colType.DecPrecision, colType.DecScale)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	case TypeDouble:
 		valFloat64 := row.GetFloat64(colIndex)
@@ -135,7 +135,7 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 		var err error
 		buffer, err = AppendTimestampToBuffer(buffer, valTime)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	default:
 		return nil, errors.Errorf("unexpected column type %d", colType)

@@ -111,11 +111,3 @@ type PranaError struct {
 func (u PranaError) Error() string {
 	return u.Msg
 }
-
-func MaybeAddStack(err error) error {
-	_, ok := err.(PranaError)
-	if !ok {
-		return WithStack(err)
-	}
-	return err
-}

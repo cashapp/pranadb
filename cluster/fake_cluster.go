@@ -184,7 +184,7 @@ func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 			key: kBytes,
 		})
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	if batch.NotifyRemote {
@@ -217,14 +217,14 @@ func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix [
 
 	pairs, err := f.localScanWithBtree(f.btree, startPref, endPref, -1)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	for _, pair := range pairs {
 		err := f.deleteInternal(&kvWrapper{
 			key: pair.Key,
 		})
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil
@@ -235,7 +235,7 @@ func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPr
 	defer f.mu.Unlock()
 	for _, shardID := range f.allShardIds {
 		if err := f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	return nil

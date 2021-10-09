@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
 
 	"github.com/squareup/pranadb/meta"
@@ -470,7 +471,7 @@ func waitUntilRowsInReceiverTable(t *testing.T, stor cluster.Cluster, numRows in
 	commontest.WaitUntil(t, func() (bool, error) {
 		nr, err := numRowsInTable(stor, common.ReceiverTableID, shardIDs)
 		if err != nil {
-			return false, err
+			return false, errors.WithStack(err)
 		}
 		return nr == numRows, nil
 	})
@@ -483,7 +484,7 @@ func numRowsInTable(stor cluster.Cluster, tableID uint64, shardIDs []uint64) (in
 		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
 		kvPairs, err := stor.LocalScan(startPrefix, endPrefix, -1)
 		if err != nil {
-			return 0, err
+			return 0, errors.WithStack(err)
 		}
 		numRows += len(kvPairs)
 	}

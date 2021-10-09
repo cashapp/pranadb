@@ -19,17 +19,17 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
 	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 	// Update schemas to the form we need
 	err = m.updateSchemas(dag, schema)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.WithStack(err)
 	}
 	// We get the final column names from the logical plan - they're not always present on th physical plan, e.g.
 	// in the case of union all
@@ -56,7 +56,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		}
 		executor = exec.NewPushProjection(exprs)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalSelection:
 		var exprs []*common.Expression
@@ -65,7 +65,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		}
 		executor = exec.NewPushSelect(exprs)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalHashAgg:
 		var aggFuncs []*exec.AggregateFunctionInfo
@@ -160,7 +160,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		internalTables = append(internalTables, fullAggInfo)
 		executor, err = exec.NewAggregator(pkCols, aggFuncs, partialTableInfo, fullTableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalTableReader:
 		if len(op.TablePlans) != 1 {
@@ -178,16 +178,16 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		}
 		executor, err = exec.NewScan(tableName.L, scanCols)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalUnionAll:
 		idBase, err := m.cluster.GenerateClusterSequence("unionall")
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 		executor, err = exec.NewUnionAll(int64(idBase))
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalIndexReader:
 		// If we create an MV that only selects on index fields the TiDB planner will give us an index reader.
@@ -207,7 +207,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		info := table.GetTableInfo()
 		executor, err = exec.NewScan(tableName.L, info.PrimaryKeyCols)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 	default:
 		return nil, nil, errors.Errorf("unexpected plan type %T", plan)
@@ -217,7 +217,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 	for _, child := range plan.Children() {
 		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.WithStack(err)
 		}
 		internalTables = append(internalTables, it...)
 		if childExecutor != nil {
@@ -236,7 +236,7 @@ func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *com
 	for _, child := range executor.GetChildren() {
 		err := m.updateSchemas(child, schema)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
 	switch op := executor.(type) {

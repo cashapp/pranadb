@@ -140,14 +140,14 @@ var columnSelectorParser = participle.MustBuild(&ColumnSelectorAST{},
 func ParseColumnSelector(str string) (ColumnSelector, error) {
 	s := &ColumnSelectorAST{}
 	err := columnSelectorParser.ParseString("", str, s)
-	return s.ToSelector(), err
+	return s.ToSelector(), errors.WithStack(err)
 }
 
 // ParseSelector parses a selector expression into an executable Selector.
 func ParseSelector(str string) (Selector, error) {
 	s := &SelectorAST{}
 	err := selectorParser.ParseString("", str, s)
-	return s.ToSelector(), err
+	return s.ToSelector(), errors.WithStack(err)
 }
 
 // Select evaluates the selector expression against the given value. The only supported types are
@@ -226,7 +226,7 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 					return nil, errors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
 				}
 				if err != nil {
-					return nil, err
+					return nil, errors.WithStack(err)
 				}
 				v = v.Map().Get(k)
 				f = f.MapValue()
