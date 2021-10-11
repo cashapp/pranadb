@@ -14,10 +14,10 @@ create source latest_sensor_readings1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3"
+        meta("key").k0,
+        v1,
+        v2,
+        v3
     )
 );
 
@@ -34,10 +34,10 @@ create source latest_sensor_readings2(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        "k.k0",
-        "v.v1",
-        "v.v2",
-        "v.v3"
+        meta("key").k0,
+        v1,
+        v2,
+        v3
     )
 );
 
