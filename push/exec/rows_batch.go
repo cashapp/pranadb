@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"strings"
 )
 
 type RowsBatch struct {
@@ -74,4 +75,29 @@ func (r *RowsBatch) CurrentRow(index int) *common.Row {
 
 func (r *RowsBatch) Rows() *common.Rows {
 	return r.rows
+}
+
+func (r *RowsBatch) String() string {
+	sb := strings.Builder{}
+	l := r.Len()
+	for i := 0; i < l; i++ {
+		prev := r.PreviousRow(i)
+		sb.WriteString("prev:")
+		if prev == nil {
+			sb.WriteString("nil")
+		} else {
+			sb.WriteString(prev.String())
+		}
+		curr := r.CurrentRow(i)
+		sb.WriteString(" curr:")
+		if curr == nil {
+			sb.WriteString("nil")
+		} else {
+			sb.WriteString(curr.String())
+		}
+		if i != l-1 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }

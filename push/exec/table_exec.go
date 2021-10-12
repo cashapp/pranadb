@@ -1,14 +1,13 @@
 package exec
 
 import (
-	"sync"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
+	"sync"
 )
 
 const lockAndLoadMaxRows = 10

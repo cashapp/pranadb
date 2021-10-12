@@ -2,15 +2,14 @@ package exec
 
 import (
 	"fmt"
-
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 )
 
 type PushProjection struct {
 	pushExecutorBase
-	projColumns         []*common.Expression
-	invisibleKeyColumns []int
+	projColumns             []*common.Expression
+	invisibleKeyColsInChild []int
 }
 
 func NewPushProjection(projColumns []*common.Expression) *PushProjection {
@@ -52,7 +51,7 @@ func (p *PushProjection) calculateSchema(childColTypes []common.ColumnType, chil
 			// The projection doesn't include the key column so we need to include it from
 			// the child - we will append this on the end of the row when we handle data
 			p.keyCols = append(p.keyCols, invisibleKeyColIndex)
-			p.invisibleKeyColumns = append(p.invisibleKeyColumns, childKeyCol)
+			p.invisibleKeyColsInChild = append(p.invisibleKeyColsInChild, childKeyCol)
 			invisibleKeyColIndex++
 			p.colNames = append(p.colNames, fmt.Sprintf("__gen_hid_id%d", hiddenIDIndex))
 			hiddenIDIndex++
@@ -73,6 +72,7 @@ func (p *PushProjection) ReCalcSchemaFromChildren() error {
 }
 
 func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+
 	numEntries := rowsBatch.Len()
 	result := p.rowsFactory.NewRows(numEntries)
 	rc := 0
@@ -164,7 +164,7 @@ func (p *PushProjection) calcProjection(row *common.Row, result *common.Rows) er
 	// need to be used when persisting the row, and when looking it up to process
 	// any changes, so we append any invisible key column values to the end of the row
 	appendStart := len(p.projColumns)
-	for index, colNumber := range p.invisibleKeyColumns {
+	for index, colNumber := range p.invisibleKeyColsInChild {
 		j := appendStart + index
 		colType := p.colTypes[j]
 		switch colType.Type {

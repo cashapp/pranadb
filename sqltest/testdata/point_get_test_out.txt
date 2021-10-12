@@ -27,18 +27,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_1;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|cust_0006|1|65343.000000000000000000000000000000|65343|65343|
-|cust_0007|2|5556.000000000000000000000000000000|123|5433|
-|cust_0010|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|cust_0006|1|65343.000000000000000000000000000000|
+|cust_0007|2|5556.000000000000000000000000000000|
+|cust_0010|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token='cust_0007';
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|cust_0007|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|cust_0007|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned
@@ -73,18 +73,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_2;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|6|1|65343.000000000000000000000000000000|65343|65343|
-|7|2|5556.000000000000000000000000000000|123|5433|
-|10|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|6|1|65343.000000000000000000000000000000|
+|7|2|5556.000000000000000000000000000000|
+|10|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|7|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|7|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned
@@ -119,18 +119,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_2;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|6|1|65343.000000000000000000000000000000|65343|65343|
-|7|2|5556.000000000000000000000000000000|123|5433|
-|10|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|6|1|65343.000000000000000000000000000000|
+|7|2|5556.000000000000000000000000000000|
+|10|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|7|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|7|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned
@@ -165,18 +165,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_2;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|6|1|65343.000000000000000000000000000000|65343|65343|
-|7|2|5556.000000000000000000000000000000|123|5433|
-|10|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|6|1|65343.000000000000000000000000000000|
+|7|2|5556.000000000000000000000000000000|
+|10|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|7|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|7|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned
@@ -211,18 +211,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_3;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|6|1|65343.000000000000000000000000000000|65343|65343|
-|7|2|5556.000000000000000000000000000000|123|5433|
-|10|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|6|1|65343.000000000000000000000000000000|
+|7|2|5556.000000000000000000000000000000|
+|10|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7.0;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|7|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|7|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned
@@ -257,18 +257,18 @@ create source raw_ledger_events(
 );
 0 rows returned
 --load data dataset_4;
-create materialized view customer_balances as select customer_token, count(*), sum(amount), min(amount), max(amount) from raw_ledger_events group by customer_token;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|6000.000000000000000000000000000000|1|65343.000000000000000000000000000000|65343|65343|
-|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|123|5433|
-|10000.000000000000000000000000000000|1|123.000000000000000000000000000000|123|123|
+|customer_token|count(*)|sum(amount)|
+|6000.000000000000000000000000000000|1|65343.000000000000000000000000000000|
+|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|
+|10000.000000000000000000000000000000|1|123.000000000000000000000000000000|
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7000.00;
-|customer_token|count(*)|sum(amount)|min(amount)|max(amount)|
-|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|123|5433|
+|customer_token|count(*)|sum(amount)|
+|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned

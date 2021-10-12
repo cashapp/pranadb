@@ -1,87 +1,136 @@
 package exec
 
 import (
-	"sync/atomic"
-
 	"github.com/squareup/pranadb/common"
 )
 
 type UnionAll struct {
 	pushExecutorBase
-	idSequence    int64
-	keyBase       []byte
 	genIDColIndex int
 }
 
-func NewUnionAll(idSequenceBase int64) (*UnionAll, error) {
-	keyBase := make([]byte, 0, 8)
-	keyBase = common.AppendUint64ToBufferBE(keyBase, uint64(idSequenceBase))
+func NewUnionAll() (*UnionAll, error) {
 	return &UnionAll{
 		pushExecutorBase: pushExecutorBase{},
-		keyBase:          keyBase,
 	}, nil
 }
 
-func (t *UnionAll) ReCalcSchemaFromChildren() error {
-	child0 := t.children[0]
+func (u *UnionAll) ReCalcSchemaFromChildren() error {
 
-	// For a UNION ALL we take rows from all inputs even if keys are same, so we can't use key of children as one row might overwrite the other
-	// We therefore generate an internal id from a sequence and add this at the end
-	t.colTypes = child0.ColTypes()
-	t.colsVisible = child0.ColsVisible()
+	child0 := u.children[0]
 
-	t.genIDColIndex = len(child0.ColTypes())
+	u.colTypes = child0.ColTypes()
+	u.colsVisible = child0.ColsVisible()
 
-	t.colTypes = append(t.colTypes, common.VarcharColumnType)
-	t.colsVisible = append(t.colsVisible, false)
+	u.genIDColIndex = len(child0.ColTypes())
 
-	t.keyCols = []int{t.genIDColIndex}
-	t.rowsFactory = common.NewRowsFactory(t.colTypes)
+	u.colTypes = append(u.colTypes, common.VarcharColumnType)
+	u.colsVisible = append(u.colsVisible, false)
+
+	u.keyCols = []int{u.genIDColIndex}
+	u.rowsFactory = common.NewRowsFactory(u.colTypes)
+
+	// When a row is incoming we need to know which source it came from as we generate the new key from this, in order to
+	// do this we create an intermediate object for each input which calls HandleRowsWithIndex passing in the index
+	var newChildren []PushExecutor
+	for i, exec := range u.children {
+		forwarder := &RowWithIndexForwarder{
+			pushExecutorBase: pushExecutorBase{},
+			index:            i,
+			unionAll:         u,
+		}
+		newChildren = append(newChildren, forwarder)
+		exec.SetParent(forwarder)
+		forwarder.SetParent(u)
+		forwarder.AddChild(exec)
+	}
+	u.children = newChildren
 
 	return nil
 }
 
-func (t *UnionAll) generateID(shardID uint64) string {
-	// It doesn't matter that generated IDs for shards are contiguous but its best they are monotonically increasing
-	// so the natural select order roughly reflects insertion time
-	// We grab a cluster wide id sequence when we create the executor and use that as the first 8 bytes of the key
-	// then for the next 8 bytes and then we have an in-memory counter.
-	// We prepend the key with shardID so it's unique across all shards
-	key := make([]byte, 0, 24)
-	key = common.AppendUint64ToBufferBE(key, shardID)
-	key = append(key, t.keyBase...)
-	id := atomic.AddInt64(&t.idSequence, 1)
-	key = common.AppendUint64ToBufferBE(key, uint64(id))
-	return string(key)
+func (u *UnionAll) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	panic("should not be called")
 }
 
-func (t *UnionAll) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+func (u *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *ExecutionContext) error {
+
 	numRows := rowsBatch.Len()
-	out := t.rowsFactory.NewRows(numRows)
+
 	// TODO this could be optimised by just taking the columns from the incoming chunk and adding them to the new rows
+
+	out := u.rowsFactory.NewRows(numRows)
+	entries := make([]RowsEntry, numRows)
+	rc := 0
 	for i := 0; i < numRows; i++ {
-		inRow := rowsBatch.CurrentRow(i)
-		for i := 0; i < len(t.colTypes)-1; i++ {
-			colType := t.colTypes[i]
-			switch colType.Type {
-			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-				out.AppendInt64ToColumn(i, inRow.GetInt64(i))
-			case common.TypeDouble:
-				out.AppendFloat64ToColumn(i, inRow.GetFloat64(i))
-			case common.TypeVarchar:
-				out.AppendStringToColumn(i, inRow.GetString(i))
-			case common.TypeTimestamp:
-				out.AppendTimestampToColumn(i, inRow.GetTimestamp(i))
-			case common.TypeDecimal:
-				out.AppendDecimalToColumn(i, inRow.GetDecimal(i))
-			default:
-				panic("unexpected column type")
+		prevRow := rowsBatch.PreviousRow(i)
+		pi := -1
+		if prevRow != nil {
+			if err := u.appendRow(index, prevRow, out); err != nil {
+				return err
 			}
+			pi = rc
+			rc++
 		}
-		// TODO if the child is an aggregation and can output modifies and deletes then generating an id won't work
-		// as won't identify the previous row
-		id := t.generateID(ctx.WriteBatch.ShardID)
-		out.AppendStringToColumn(t.genIDColIndex, id)
+		currRow := rowsBatch.CurrentRow(i)
+		ci := -1
+		if currRow != nil {
+			if err := u.appendRow(index, currRow, out); err != nil {
+				return err
+			}
+			ci = rc
+			rc++
+		}
+		entries[i] = NewRowsEntry(pi, ci)
 	}
-	return t.parent.HandleRows(NewCurrentRowsBatch(out), ctx)
+
+	return u.parent.HandleRows(NewRowsBatch(out, entries), ctx)
+}
+
+func (u *UnionAll) appendRow(index int, inRow *common.Row, out *common.Rows) error {
+	for i := 0; i < len(u.colTypes)-1; i++ {
+		colType := u.colTypes[i]
+		switch colType.Type {
+		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+			out.AppendInt64ToColumn(i, inRow.GetInt64(i))
+		case common.TypeDouble:
+			out.AppendFloat64ToColumn(i, inRow.GetFloat64(i))
+		case common.TypeVarchar:
+			out.AppendStringToColumn(i, inRow.GetString(i))
+		case common.TypeTimestamp:
+			out.AppendTimestampToColumn(i, inRow.GetTimestamp(i))
+		case common.TypeDecimal:
+			out.AppendDecimalToColumn(i, inRow.GetDecimal(i))
+		default:
+			panic("unexpected column type")
+		}
+	}
+	id, err := u.generateID(inRow, index)
+	if err != nil {
+		return err
+	}
+	out.AppendStringToColumn(u.genIDColIndex, id)
+	return nil
+}
+
+func (u *UnionAll) generateID(row *common.Row, index int) (string, error) {
+	actualChild := u.children[index].GetChildren()[0]
+	// We create the key by prefixing with the index, then appending the key from the actual child
+	var key []byte
+	key = common.AppendUint32ToBufferLE(key, uint32(index))
+	key, err := common.EncodeKeyCols(row, actualChild.KeyCols(), actualChild.ColTypes(), key)
+	if err != nil {
+		return "", err
+	}
+	return string(key), nil
+}
+
+type RowWithIndexForwarder struct {
+	pushExecutorBase
+	index    int
+	unionAll *UnionAll
+}
+
+func (r *RowWithIndexForwarder) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+	return r.unionAll.HandleRowsWithIndex(r.index, rowsBatch, ctx)
 }

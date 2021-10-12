@@ -33,6 +33,7 @@ func (p *PushSelect) ReCalcSchemaFromChildren() error {
 }
 
 func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+
 	numRows := rowsBatch.Len()
 	resultRows := p.rowsFactory.NewRows(numRows)
 	resultBatch := NewCurrentRowsBatch(resultRows)

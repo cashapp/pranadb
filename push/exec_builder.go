@@ -16,6 +16,7 @@ import (
 // Builds the push DAG but does not register anything in memory
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
 	if err != nil {
@@ -55,18 +56,12 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor = exec.NewPushProjection(exprs)
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
 	case *core.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor = exec.NewPushSelect(exprs)
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
 	case *core.PhysicalHashAgg:
 		var aggFuncs []*exec.AggregateFunctionInfo
 
@@ -85,14 +80,8 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			switch aggFunc.Name {
 			case "sum":
 				funcType = aggfuncs.SumAggregateFunctionType
-			case "avg":
-				funcType = aggfuncs.AverageAggregateFunctionType
 			case "count":
 				funcType = aggfuncs.CountAggregateFunctionType
-			case "max":
-				funcType = aggfuncs.MaxAggregateFunctionType
-			case "min":
-				funcType = aggfuncs.MinAggregateFunctionType
 			case "firstrow":
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
@@ -181,11 +170,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 			return nil, nil, errors.WithStack(err)
 		}
 	case *core.PhysicalUnionAll:
-		idBase, err := m.cluster.GenerateClusterSequence("unionall")
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
-		executor, err = exec.NewUnionAll(int64(idBase))
+		executor, err = exec.NewUnionAll()
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}

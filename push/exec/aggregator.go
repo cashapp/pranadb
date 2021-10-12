@@ -72,9 +72,10 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 	numRows := rowsBatch.Len()
 	readRows := a.rowsFactory.NewRows(numRows)
 	for i := 0; i < numRows; i++ {
-		row := rowsBatch.CurrentRow(i)
-		if err := a.calcPartialAggregations(row, readRows, stateHolders, ctx.WriteBatch.ShardID); err != nil {
-			return errors.WithStack(err)
+		prevRow := rowsBatch.PreviousRow(i)
+		currentRow := rowsBatch.CurrentRow(i)
+		if err := a.calcPartialAggregations(prevRow, currentRow, readRows, stateHolders, ctx.WriteBatch.ShardID); err != nil {
+			return err
 		}
 	}
 
@@ -148,10 +149,10 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	return a.parent.HandleRows(NewRowsBatch(resultRows, entries), ctx)
 }
 
-func (a *Aggregator) calcPartialAggregations(row *common.Row, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder, shardID uint64) error {
+func (a *Aggregator) calcPartialAggregations(prevRow *common.Row, currRow *common.Row, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder, shardID uint64) error {
 
 	// Create the key
-	keyBytes, err := a.createKey(row, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.PartialAggTableInfo.ID)
+	keyBytes, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.PartialAggTableInfo.ID)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -163,13 +164,23 @@ func (a *Aggregator) calcPartialAggregations(row *common.Row, readRows *common.R
 	}
 
 	// Evaluate the agg functions on the state
-	return a.evaluateAggFunctions(stateHolder.aggState, row)
+	if prevRow != nil {
+		if err := a.evaluateAggFunctions(stateHolder.aggState, prevRow, true); err != nil {
+			return err
+		}
+	}
+	if currRow != nil {
+		if err := a.evaluateAggFunctions(stateHolder.aggState, currRow, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
 	stateHolders map[string]*aggStateHolder, shardID uint64, numCols int) error {
 
-	key, err := a.createKey(currRow, shardID, a.colTypes, a.keyCols, a.FullAggTableInfo.ID)
+	key, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.colTypes, a.keyCols, a.FullAggTableInfo.ID)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -177,12 +188,16 @@ func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Ro
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	currAggState := stateHolder.aggState
 
 	var prevMergeState *aggfuncs.AggState
 	if prevRow != nil {
 		prevMergeState = aggfuncs.NewAggState(numCols)
 		if err := a.initAggStateWithRow(prevRow, prevMergeState, numCols); err != nil {
 			return errors.WithStack(err)
+		}
+		if err := a.mergeState(prevMergeState, currAggState, true); err != nil {
+			return err
 		}
 	}
 	var currMergeState *aggfuncs.AggState
@@ -191,30 +206,35 @@ func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Ro
 		if err := a.initAggStateWithRow(currRow, currMergeState, numCols); err != nil {
 			return errors.WithStack(err)
 		}
+		if err := a.mergeState(currMergeState, currAggState, false); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	currAggState := stateHolder.aggState
+func (a *Aggregator) mergeState(toMerge *aggfuncs.AggState, currState *aggfuncs.AggState, reverse bool) error {
 	for index, aggFunc := range a.aggFuncs {
 		switch aggFunc.ValueType().Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			if err := aggFunc.MergeInt64(prevMergeState, currMergeState, currAggState, index); err != nil {
-				return errors.WithStack(err)
+			if err := aggFunc.MergeInt64(toMerge, currState, index, reverse); err != nil {
+				return err
 			}
 		case common.TypeDecimal:
-			if err := aggFunc.MergeDecimal(prevMergeState, currMergeState, currAggState, index); err != nil {
-				return errors.WithStack(err)
+			if err := aggFunc.MergeDecimal(toMerge, currState, index, reverse); err != nil {
+				return err
 			}
 		case common.TypeDouble:
-			if err := aggFunc.MergeFloat64(prevMergeState, currMergeState, currAggState, index); err != nil {
-				return errors.WithStack(err)
+			if err := aggFunc.MergeFloat64(toMerge, currState, index, reverse); err != nil {
+				return err
 			}
 		case common.TypeVarchar:
-			if err := aggFunc.MergeString(prevMergeState, currMergeState, currAggState, index); err != nil {
-				return errors.WithStack(err)
+			if err := aggFunc.MergeString(toMerge, currState, index, reverse); err != nil {
+				return err
 			}
 		case common.TypeTimestamp:
-			if err := aggFunc.MergeTimestamp(prevMergeState, currMergeState, currAggState, index); err != nil {
-				return errors.WithStack(err)
+			if err := aggFunc.MergeTimestamp(toMerge, currState, index, reverse); err != nil {
+				return err
 			}
 		default:
 			return errors.Errorf("unexpected column type %d", aggFunc.ValueType())
@@ -337,7 +357,7 @@ func (a *Aggregator) initAggStateWithRow(currRow *common.Row, aggState *aggfuncs
 	return nil
 }
 
-func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *common.Row) error {
+func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *common.Row, reverse bool) error {
 	for index, aggFunc := range a.aggFuncs {
 		switch aggFunc.ValueType().Type {
 		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
@@ -345,7 +365,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = aggFunc.EvalInt64(arg, null, aggState, index)
+			err = aggFunc.EvalInt64(arg, null, aggState, index, reverse)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -354,7 +374,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = aggFunc.EvalDecimal(arg, null, aggState, index)
+			err = aggFunc.EvalDecimal(arg, null, aggState, index, reverse)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -363,7 +383,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = aggFunc.EvalFloat64(arg, null, aggState, index)
+			err = aggFunc.EvalFloat64(arg, null, aggState, index, reverse)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -372,7 +392,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = aggFunc.EvalString(arg, null, aggState, index)
+			err = aggFunc.EvalString(arg, null, aggState, index, reverse)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -381,7 +401,7 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = aggFunc.EvalTimestamp(arg, null, aggState, index)
+			err = aggFunc.EvalTimestamp(arg, null, aggState, index, reverse)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -390,6 +410,17 @@ func (a *Aggregator) evaluateAggFunctions(aggState *aggfuncs.AggState, row *comm
 		}
 	}
 	return nil
+}
+
+func (a *Aggregator) createKeyFromPrevOrCurrRow(prevRow *common.Row, currRow *common.Row, shardID uint64, colTypes []common.ColumnType, keyCols []int, tableID uint64) ([]byte, error) {
+	keyBytes := table.EncodeTableKeyPrefix(tableID, shardID, 25)
+	var row *common.Row
+	if currRow != nil {
+		row = currRow
+	} else {
+		row = prevRow
+	}
+	return common.EncodeKeyCols(row, keyCols, colTypes, keyBytes)
 }
 
 func (a *Aggregator) createKey(row *common.Row, shardID uint64, colTypes []common.ColumnType, keyCols []int, tableID uint64) ([]byte, error) {
