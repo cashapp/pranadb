@@ -1,7 +1,9 @@
 package kafkatest
 
 import (
+	"context"
 	"flag"
+	"os"
 	"testing"
 	"time"
 
@@ -133,6 +135,19 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 	})
 	require.NoError(t, err)
 
+	err = pool.Client.Logs(dc.LogsOptions{
+		Context:      context.Background(),
+		Container:    container.Container.ID,
+		OutputStream: os.Stdout,
+		ErrorStream:  os.Stdout,
+		Follow:       true,
+		Stdout:       true,
+		Stderr:       true,
+		Timestamps:   true,
+		RawTerminal:  true,
+	})
+	require.NoError(t, err)
+
 	t.Cleanup(func() {
 		if err := container.Close(); err != nil {
 			t.Logf("failed to stop redpanda kafka: %v", err)
@@ -234,6 +249,20 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 		NetworkID: network.ID,
 	})
 	require.NoError(t, err)
+
+	err = pool.Client.Logs(dc.LogsOptions{
+		Context:      context.Background(),
+		Container:    kafka.Container.ID,
+		OutputStream: os.Stdout,
+		ErrorStream:  os.Stdout,
+		Follow:       true,
+		Stdout:       true,
+		Stderr:       true,
+		Timestamps:   true,
+		RawTerminal:  true,
+	})
+	require.NoError(t, err)
+
 	t.Cleanup(func() {
 		if err := kafka.Close(); err != nil {
 			t.Logf("failed to stop kafka: %v", err)
