@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -140,7 +141,7 @@ func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatReques
 	return &emptypb.Empty{}, errors.WithStack(err)
 }
 
-func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error {
+func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error { //nolint:gocyclo
 
 	defer common.PanicHandler()
 
@@ -193,6 +194,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 	}
 
 	// Then start sending pages until complete.
+	numCols := len(executor.ColTypes())
 	limit := int(in.PageSize)
 	for {
 		// Transcode rows.
@@ -200,10 +202,50 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		prows := make([]*service.Row, rows.RowCount())
+		for i := 0; i < rows.RowCount(); i++ {
+			row := rows.GetRow(i)
+			colVals := make([]*service.ColValue, numCols)
+			for colNum, colType := range executor.ColTypes() {
+				colVal := &service.ColValue{}
+				colVals[colNum] = colVal
+				if row.IsNull(colNum) {
+					colVal.Value = &service.ColValue_IsNull{IsNull: true}
+				} else {
+					switch colType.Type {
+					case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+						colVal.Value = &service.ColValue_IntValue{IntValue: row.GetInt64(colNum)}
+					case common.TypeDouble:
+						colVal.Value = &service.ColValue_FloatValue{FloatValue: row.GetFloat64(colNum)}
+					case common.TypeVarchar:
+						colVal.Value = &service.ColValue_StringValue{StringValue: row.GetString(colNum)}
+					case common.TypeDecimal:
+						dec := row.GetDecimal(colNum)
+						// We encode the decimal as a string
+						colVal.Value = &service.ColValue_StringValue{StringValue: dec.String()}
+					case common.TypeTimestamp:
+						ts := row.GetTimestamp(colNum)
+						log.Printf("Sending back ts on api, it is %s", ts.String())
+						gt, err := ts.GoTime(time.UTC)
+						if err != nil {
+							return err
+						}
+						log.Printf("Go time is %s", gt.String())
+						// We encode a datetime as *microseconds* past epoch
+						unixTime := gt.UnixNano() / 1000
+						colVal.Value = &service.ColValue_IntValue{IntValue: unixTime}
+					default:
+						panic(fmt.Sprintf("unexpected column type %d", colType.Type))
+					}
+				}
+			}
+			pRow := &service.Row{Values: colVals}
+			prows[i] = pRow
+		}
 		numRows := rows.RowCount()
 		results := &service.Page{
 			Count: uint64(numRows),
-			Rows:  rows.Serialize(),
+			Rows:  prows,
 		}
 		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
 			return errors.WithStack(err)
