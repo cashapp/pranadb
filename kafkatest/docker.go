@@ -1,7 +1,9 @@
 package kafkatest
 
 import (
+	"context"
 	"flag"
+	"os"
 	"testing"
 	"time"
 
@@ -133,6 +135,8 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 	})
 	require.NoError(t, err)
 
+	sendLogsToStdout(t, pool, container)
+
 	t.Cleanup(func() {
 		if err := container.Close(); err != nil {
 			t.Logf("failed to stop redpanda kafka: %v", err)
@@ -234,6 +238,9 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 		NetworkID: network.ID,
 	})
 	require.NoError(t, err)
+
+	sendLogsToStdout(t, pool, kafka)
+
 	t.Cleanup(func() {
 		if err := kafka.Close(); err != nil {
 			t.Logf("failed to stop kafka: %v", err)
@@ -250,6 +257,24 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 	require.NoError(t, err)
 
 	return zk, kafka
+}
+
+func sendLogsToStdout(t *testing.T, pool *dockertest.Pool, resource *dockertest.Resource) {
+	t.Helper()
+	go func() {
+		err := pool.Client.Logs(dc.LogsOptions{
+			Context:      context.Background(),
+			Container:    resource.Container.ID,
+			OutputStream: os.Stdout,
+			ErrorStream:  os.Stdout,
+			Follow:       true,
+			Stdout:       true,
+			Stderr:       true,
+			Timestamps:   true,
+			RawTerminal:  true,
+		})
+		require.NoError(t, err)
+	}()
 }
 
 func checkKafkaHealth(port string) error { // nolint: unparam
