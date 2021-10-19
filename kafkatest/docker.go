@@ -260,6 +260,7 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 }
 
 func sendLogsToStdout(t *testing.T, pool *dockertest.Pool, resource *dockertest.Resource) {
+	t.Helper()
 	go func() {
 		err := pool.Client.Logs(dc.LogsOptions{
 			Context:      context.Background(),
