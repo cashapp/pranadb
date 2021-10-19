@@ -135,18 +135,7 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 	})
 	require.NoError(t, err)
 
-	err = pool.Client.Logs(dc.LogsOptions{
-		Context:      context.Background(),
-		Container:    container.Container.ID,
-		OutputStream: os.Stdout,
-		ErrorStream:  os.Stdout,
-		Follow:       true,
-		Stdout:       true,
-		Stderr:       true,
-		Timestamps:   true,
-		RawTerminal:  true,
-	})
-	require.NoError(t, err)
+	sendLogsToStdout(t, pool, container)
 
 	t.Cleanup(func() {
 		if err := container.Close(); err != nil {
@@ -250,18 +239,7 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 	})
 	require.NoError(t, err)
 
-	err = pool.Client.Logs(dc.LogsOptions{
-		Context:      context.Background(),
-		Container:    kafka.Container.ID,
-		OutputStream: os.Stdout,
-		ErrorStream:  os.Stdout,
-		Follow:       true,
-		Stdout:       true,
-		Stderr:       true,
-		Timestamps:   true,
-		RawTerminal:  true,
-	})
-	require.NoError(t, err)
+	sendLogsToStdout(t, pool, kafka)
 
 	t.Cleanup(func() {
 		if err := kafka.Close(); err != nil {
@@ -279,6 +257,23 @@ func runKafka(t *testing.T) (zk, kafka *dockertest.Resource) {
 	require.NoError(t, err)
 
 	return zk, kafka
+}
+
+func sendLogsToStdout(t *testing.T, pool *dockertest.Pool, resource *dockertest.Resource) {
+	go func() {
+		err := pool.Client.Logs(dc.LogsOptions{
+			Context:      context.Background(),
+			Container:    resource.Container.ID,
+			OutputStream: os.Stdout,
+			ErrorStream:  os.Stdout,
+			Follow:       true,
+			Stdout:       true,
+			Stderr:       true,
+			Timestamps:   true,
+			RawTerminal:  true,
+		})
+		require.NoError(t, err)
+	}()
 }
 
 func checkKafkaHealth(port string) error { // nolint: unparam
