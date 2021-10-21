@@ -3,6 +3,7 @@ package sessctx
 import (
 	"context"
 	"fmt"
+	"github.com/pingcap/tidb/util/trxevents"
 
 	"github.com/pingcap/kvproto/pkg/deadlock"
 	"github.com/pingcap/parser/model"
@@ -222,7 +223,7 @@ type fakeKVClient struct {
 	pullQuery bool
 }
 
-func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{}, sessionMemTracker *memory.Tracker, enabledRateLimitAction bool) kv.Response {
+func (f fakeKVClient) Send(ctx context.Context, req *kv.Request, vars interface{}, sessionMemTracker *memory.Tracker, enabledRateLimitAction bool, eventCb trxevents.EventCallback) kv.Response {
 	panic("should not be called")
 }
 
