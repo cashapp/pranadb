@@ -22,7 +22,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	telemetry "github.com/pingcap/tidb/zzz_telemetry"
 	"net"
 	"runtime/trace"
 	"strconv"
@@ -1537,16 +1536,6 @@ func (s *session) ExecuteStmt(ctx context.Context, stmtNode ast.StmtNode) (sqlex
 		}
 		return nil, err
 	}
-	if !s.isInternal() && config.GetGlobalConfig().EnableTelemetry {
-		telemetry.CurrentExecuteCount.Inc()
-		tiFlashPushDown, tiFlashExchangePushDown := plannercore.IsTiFlashContained(stmt.Plan)
-		if tiFlashPushDown {
-			telemetry.CurrentTiFlashPushDownCount.Inc()
-		}
-		if tiFlashExchangePushDown {
-			telemetry.CurrentTiFlashExchangePushDownCount.Inc()
-		}
-	}
 	return recordSet, nil
 }
 
@@ -1754,18 +1743,9 @@ func (s *session) PrepareStmt(sql string) (stmtID uint32, paramCount int, fields
 func (s *session) preparedStmtExec(ctx context.Context,
 	is infoschema.InfoSchema, snapshotTS uint64,
 	stmtID uint32, prepareStmt *plannercore.CachedPrepareStmt, args []types.Datum) (sqlexec.RecordSet, error) {
-	st, tiFlashPushDown, tiFlashExchangePushDown, err := executor.CompileExecutePreparedStmt(ctx, s, stmtID, is, snapshotTS, args)
+	st, _, _, err := executor.CompileExecutePreparedStmt(ctx, s, stmtID, is, snapshotTS, args)
 	if err != nil {
 		return nil, err
-	}
-	if !s.isInternal() && config.GetGlobalConfig().EnableTelemetry {
-		telemetry.CurrentExecuteCount.Inc()
-		if tiFlashPushDown {
-			telemetry.CurrentTiFlashPushDownCount.Inc()
-		}
-		if tiFlashExchangePushDown {
-			telemetry.CurrentTiFlashExchangePushDownCount.Inc()
-		}
 	}
 	sessionExecuteCompileDurationGeneral.Observe(time.Since(s.sessionVars.StartTime).Seconds())
 	logQuery(st.OriginText(), s)
@@ -2892,8 +2872,6 @@ func (s *session) SetPort(port string) {
 func (s *session) GetTxnWriteThroughputSLI() *sli.TxnWriteThroughputSLI {
 	return &s.txn.writeSLI
 }
-
-var _ telemetry.TemporaryTableFeatureChecker = &session{}
 
 // TemporaryTableExists is used by the telemetry package to avoid circle dependency.
 func (s *session) TemporaryTableExists() bool {
