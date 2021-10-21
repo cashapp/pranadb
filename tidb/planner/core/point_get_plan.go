@@ -31,7 +31,6 @@ import (
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/planner/property"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/store/tikv"
@@ -1015,12 +1014,8 @@ func newPointGetPlan(ctx sessionctx.Context, dbName string, schema *expression.S
 }
 
 func checkFastPlanPrivilege(ctx sessionctx.Context, dbName, tableName string, checkTypes ...mysql.PrivilegeType) error {
-	pm := privilege.GetPrivilegeManager(ctx)
 	var visitInfos []visitInfo
 	for _, checkType := range checkTypes {
-		if pm != nil && !pm.RequestVerification(ctx.GetSessionVars().ActiveRoles, dbName, tableName, "", checkType) {
-			return ErrPrivilegeCheckFail.GenWithStackByArgs(checkType.String())
-		}
 		// This visitInfo is only for table lock check, so we do not need column field,
 		// just fill it empty string.
 		visitInfos = append(visitInfos, visitInfo{

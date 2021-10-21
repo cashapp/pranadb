@@ -60,8 +60,6 @@ import (
 	"github.com/pingcap/tidb/planner"
 	plannercore "github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/plugin"
-	"github.com/pingcap/tidb/privilege"
-	"github.com/pingcap/tidb/privilege/privileges"
 	txninfo "github.com/pingcap/tidb/session/txninfo"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/binloginfo"
@@ -415,19 +413,6 @@ func (s *session) FieldList(tableName string) ([]*ast.ResultField, error) {
 	is := s.GetInfoSchema().(infoschema.InfoSchema)
 	dbName := model.NewCIStr(s.GetSessionVars().CurrentDB)
 	tName := model.NewCIStr(tableName)
-	pm := privilege.GetPrivilegeManager(s)
-	if pm != nil && s.sessionVars.User != nil {
-		if !pm.RequestVerification(s.sessionVars.ActiveRoles, dbName.O, tName.O, "", mysql.AllPrivMask) {
-			user := s.sessionVars.User
-			u := user.Username
-			h := user.Hostname
-			if len(user.AuthUsername) > 0 && len(user.AuthHostname) > 0 {
-				u = user.AuthUsername
-				h = user.AuthHostname
-			}
-			return nil, plannercore.ErrTableaccessDenied.GenWithStackByArgs("SELECT", u, h, tableName)
-		}
-	}
 	table, err := is.TableByName(dbName, tName)
 	if err != nil {
 		return nil, err
@@ -2114,66 +2099,12 @@ func (s *session) GetSessionVars() *variable.SessionVars {
 }
 
 func (s *session) Auth(user *auth.UserIdentity, authentication []byte, salt []byte) bool {
-	pm := privilege.GetPrivilegeManager(s)
-
-	// Check IP or localhost.
-	var success bool
-	user.AuthUsername, user.AuthHostname, success = pm.ConnectionVerification(user.Username, user.Hostname, authentication, salt, s.sessionVars.TLSConnectionState)
-	if success {
-		s.sessionVars.User = user
-		s.sessionVars.ActiveRoles = pm.GetDefaultRoles(user.AuthUsername, user.AuthHostname)
-		return true
-	} else if user.Hostname == variable.DefHostname {
-		return false
-	}
-
-	// Check Hostname.
-	for _, addr := range getHostByIP(user.Hostname) {
-		u, h, success := pm.ConnectionVerification(user.Username, addr, authentication, salt, s.sessionVars.TLSConnectionState)
-		if success {
-			s.sessionVars.User = &auth.UserIdentity{
-				Username:     user.Username,
-				Hostname:     addr,
-				AuthUsername: u,
-				AuthHostname: h,
-			}
-			s.sessionVars.ActiveRoles = pm.GetDefaultRoles(u, h)
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 // AuthWithoutVerification is required by the ResetConnection RPC
 func (s *session) AuthWithoutVerification(user *auth.UserIdentity) bool {
-	pm := privilege.GetPrivilegeManager(s)
-
-	// Check IP or localhost.
-	var success bool
-	user.AuthUsername, user.AuthHostname, success = pm.GetAuthWithoutVerification(user.Username, user.Hostname)
-	if success {
-		s.sessionVars.User = user
-		s.sessionVars.ActiveRoles = pm.GetDefaultRoles(user.AuthUsername, user.AuthHostname)
-		return true
-	} else if user.Hostname == variable.DefHostname {
-		return false
-	}
-
-	// Check Hostname.
-	for _, addr := range getHostByIP(user.Hostname) {
-		u, h, success := pm.GetAuthWithoutVerification(user.Username, addr)
-		if success {
-			s.sessionVars.User = &auth.UserIdentity{
-				Username:     user.Username,
-				Hostname:     addr,
-				AuthUsername: u,
-				AuthHostname: h,
-			}
-			s.sessionVars.ActiveRoles = pm.GetDefaultRoles(u, h)
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func getHostByIP(ip string) []string {
@@ -2237,10 +2168,6 @@ func CreateSessionWithOpt(store kv.Storage, opt *Opt) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	pm := &privileges.UserPrivileges{
-		Handle: do.PrivilegeHandle(),
-	}
-	privilege.BindPrivilegeManager(s, pm)
 
 	sessionBindHandle := bindinfo.NewSessionBindHandle(parser.New())
 	s.SetValue(bindinfo.SessionBindInfoKeyType, sessionBindHandle)

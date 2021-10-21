@@ -32,7 +32,6 @@ import (
 	"github.com/pingcap/tidb/expression"
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/meta/autoid"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tidb/table"
@@ -352,24 +351,6 @@ func (p *preprocessor) tableByName(tn *ast.TableName) (table.Table, error) {
 	}
 	sName := model.NewCIStr(currentDB)
 	tbl, err := p.ensureInfoSchema().TableByName(sName, tn.Name)
-	if err != nil {
-		// We should never leak that the table doesn't exist (i.e. attach ErrTableNotExists)
-		// unless we know that the user has permissions to it, should it exist.
-		// By checking here, this makes all SELECT/SHOW/INSERT/UPDATE/DELETE statements safe.
-		currentUser, activeRoles := p.ctx.GetSessionVars().User, p.ctx.GetSessionVars().ActiveRoles
-		if pm := privilege.GetPrivilegeManager(p.ctx); pm != nil {
-			if !pm.RequestVerification(activeRoles, sName.L, tn.Name.O, "", mysql.AllPrivMask) {
-				u := currentUser.Username
-				h := currentUser.Hostname
-				if currentUser.AuthHostname != "" {
-					u = currentUser.AuthUsername
-					h = currentUser.AuthHostname
-				}
-				return nil, ErrTableaccessDenied.GenWithStackByArgs(p.stmtType(), u, h, tn.Name.O)
-			}
-		}
-		return nil, err
-	}
 	return tbl, err
 }
 

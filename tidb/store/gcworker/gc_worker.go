@@ -40,7 +40,6 @@ import (
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta"
 	"github.com/pingcap/tidb/metrics"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/store/tikv"
@@ -233,8 +232,6 @@ func createSession(store kv.Storage) session.Session {
 			logutil.BgLogger().Warn("[gc worker] create session", zap.Error(err))
 			continue
 		}
-		// Disable privilege check for gc worker session.
-		privilege.BindPrivilegeManager(se, nil)
 		se.GetSessionVars().CommonGlobalLoaded = true
 		se.GetSessionVars().InRestrictedSQL = true
 		return se

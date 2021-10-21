@@ -42,7 +42,6 @@ import (
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta/autoid"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/statistics"
@@ -57,7 +56,6 @@ import (
 	"github.com/pingcap/tidb/util/logutil"
 	"github.com/pingcap/tidb/util/pdapi"
 	"github.com/pingcap/tidb/util/resourcegrouptag"
-	"github.com/pingcap/tidb/util/sem"
 	"github.com/pingcap/tidb/util/set"
 	"github.com/pingcap/tidb/util/sqlexec"
 	"github.com/pingcap/tidb/util/stmtsummary"
@@ -324,7 +322,6 @@ func getAutoIncrementID(ctx sessionctx.Context, schema *model.DBInfo, tblInfo *m
 }
 
 func (e *memtableRetriever) setDataFromSchemata(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	rows := make([][]types.Datum, 0, len(schemas))
 
 	for _, schema := range schemas {
@@ -340,9 +337,6 @@ func (e *memtableRetriever) setDataFromSchemata(ctx sessionctx.Context, schemas 
 			collation = schema.Collate // Overwrite default
 		}
 
-		if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, "", "", mysql.AllPrivMask) {
-			continue
-		}
 		record := types.MakeDatums(
 			infoschema.CatalogVal, // CATALOG_NAME
 			schema.Name.O,         // SCHEMA_NAME
@@ -356,12 +350,8 @@ func (e *memtableRetriever) setDataFromSchemata(ctx sessionctx.Context, schemas 
 }
 
 func (e *memtableRetriever) setDataForStatistics(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	for _, schema := range schemas {
 		for _, table := range schema.Tables {
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
 			e.setDataForStatisticsInTable(schema, table)
 		}
 	}
@@ -458,8 +448,6 @@ func (e *memtableRetriever) setDataFromTables(ctx sessionctx.Context, schemas []
 		return err
 	}
 
-	checker := privilege.GetPrivilegeManager(ctx)
-
 	var rows [][]types.Datum
 	createTimeTp := mysql.TypeDatetime
 	for _, schema := range schemas {
@@ -476,9 +464,6 @@ func (e *memtableRetriever) setDataFromTables(ctx sessionctx.Context, schemas []
 				continue
 			}
 
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
 			pkType := "NONCLUSTERED"
 			if !table.IsView() {
 				if table.GetPartitionInfo() != nil {
@@ -580,7 +565,6 @@ func (e *memtableRetriever) setDataFromTables(ctx sessionctx.Context, schemas []
 }
 
 func (e *hugeMemTableRetriever) setDataForColumns(ctx context.Context, sctx sessionctx.Context) error {
-	checker := privilege.GetPrivilegeManager(sctx)
 	e.rows = e.rows[:0]
 	batch := 1024
 	for ; e.dbsIdx < len(e.dbs); e.dbsIdx++ {
@@ -588,10 +572,6 @@ func (e *hugeMemTableRetriever) setDataForColumns(ctx context.Context, sctx sess
 		for e.tblIdx < len(schema.Tables) {
 			table := schema.Tables[e.tblIdx]
 			e.tblIdx++
-			if checker != nil && !checker.RequestVerification(sctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
-
 			e.dataForColumnsInTable(ctx, sctx, schema, table)
 			if len(e.rows) >= batch {
 				return nil
@@ -696,14 +676,10 @@ func (e *memtableRetriever) setDataFromPartitions(ctx sessionctx.Context, schema
 	if err != nil {
 		return err
 	}
-	checker := privilege.GetPrivilegeManager(ctx)
 	var rows [][]types.Datum
 	createTimeTp := mysql.TypeDatetime
 	for _, schema := range schemas {
 		for _, table := range schema.Tables {
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.SelectPriv) {
-				continue
-			}
 			createTime := types.NewTime(types.FromGoTime(table.GetUpdateTime()), createTimeTp, types.DefaultFsp)
 
 			var rowCount, dataLength, indexLength uint64
@@ -835,14 +811,9 @@ func (e *memtableRetriever) setDataFromPartitions(ctx sessionctx.Context, schema
 }
 
 func (e *memtableRetriever) setDataFromIndexes(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	var rows [][]types.Datum
 	for _, schema := range schemas {
 		for _, tb := range schema.Tables {
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, tb.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
-
 			if tb.PKIsHandle {
 				var pkCol *model.ColumnInfo
 				for _, col := range tb.Cols() {
@@ -919,7 +890,6 @@ func (e *memtableRetriever) setDataFromIndexes(ctx sessionctx.Context, schemas [
 }
 
 func (e *memtableRetriever) setDataFromViews(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	var rows [][]types.Datum
 	for _, schema := range schemas {
 		for _, table := range schema.Tables {
@@ -933,9 +903,6 @@ func (e *memtableRetriever) setDataFromViews(ctx sessionctx.Context, schemas []*
 			}
 			if charset == "" {
 				charset = mysql.DefaultCharset
-			}
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-				continue
 			}
 			record := types.MakeDatums(
 				infoschema.CatalogVal,           // TABLE_CATALOG
@@ -999,39 +966,13 @@ func (e *memtableRetriever) dataForTiKVStoreStatus(ctx sessionctx.Context) (err 
 		lastHeartbeatTs := types.NewTime(types.FromGoTime(storeStat.Status.LastHeartbeatTs), mysql.TypeDatetime, types.DefaultFsp)
 		row[17].SetMysqlTime(lastHeartbeatTs)
 		row[18].SetString(storeStat.Status.Uptime, mysql.DefaultCollationName)
-		if sem.IsEnabled() {
-			// Patch out IP addresses etc if the user does not have the RESTRICTED_TABLES_ADMIN privilege
-			checker := privilege.GetPrivilegeManager(ctx)
-			if checker == nil || !checker.RequestDynamicVerification(ctx.GetSessionVars().ActiveRoles, "RESTRICTED_TABLES_ADMIN", false) {
-				row[1].SetString(strconv.FormatInt(storeStat.Store.ID, 10), mysql.DefaultCollationName)
-				row[1].SetNull()
-				row[6].SetNull()
-				row[7].SetNull()
-				row[16].SetNull()
-				row[18].SetNull()
-			}
-		}
 		e.rows = append(e.rows, row)
 	}
 	return nil
 }
 
 func hasPriv(ctx sessionctx.Context, priv mysql.PrivilegeType) bool {
-	pm := privilege.GetPrivilegeManager(ctx)
-	if pm == nil {
-		// internal session created with createSession doesn't has the PrivilegeManager. For most experienced cases before,
-		// we use it like this:
-		// ```
-		// checker := privilege.GetPrivilegeManager(ctx)
-		// if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-		//	  continue
-		// }
-		// do something.
-		// ```
-		// So once the privilege manager is nil, it's a signature of internal sql, so just passing the checker through.
-		return true
-	}
-	return pm.RequestVerification(ctx.GetSessionVars().ActiveRoles, "", "", "", priv)
+	return true
 }
 
 func (e *memtableRetriever) setDataForTableDataLockWaits(ctx sessionctx.Context) error {
@@ -1091,14 +1032,13 @@ func (e *DDLJobsReaderExec) Open(ctx context.Context) error {
 // Next implements the Executor Next interface.
 func (e *DDLJobsReaderExec) Next(ctx context.Context, req *chunk.Chunk) error {
 	req.GrowAndReset(e.maxChunkSize)
-	checker := privilege.GetPrivilegeManager(e.ctx)
 	count := 0
 
 	// Append running DDL jobs.
 	if e.cursor < len(e.runningJobs) {
 		num := mathutil.Min(req.Capacity(), len(e.runningJobs)-e.cursor)
 		for i := e.cursor; i < e.cursor+num; i++ {
-			e.appendJobToChunk(req, e.runningJobs[i], checker)
+			e.appendJobToChunk(req, e.runningJobs[i])
 			req.AppendString(11, e.runningJobs[i].Query)
 		}
 		e.cursor += num
@@ -1113,7 +1053,7 @@ func (e *DDLJobsReaderExec) Next(ctx context.Context, req *chunk.Chunk) error {
 			return err
 		}
 		for _, job := range e.cacheJobs {
-			e.appendJobToChunk(req, job, checker)
+			e.appendJobToChunk(req, job)
 			req.AppendString(11, job.Query)
 		}
 		e.cursor += len(e.cacheJobs)
@@ -1125,12 +1065,12 @@ func (e *memtableRetriever) setDataFromEngines() {
 	var rows [][]types.Datum
 	rows = append(rows,
 		types.MakeDatums(
-			"InnoDB",  // Engine
-			"DEFAULT", // Support
+			"InnoDB",                                                     // Engine
+			"DEFAULT",                                                    // Support
 			"Supports transactions, row-level locking, and foreign keys", // Comment
-			"YES", // Transactions
-			"YES", // XA
-			"YES", // Savepoints
+			"YES",                                                        // Transactions
+			"YES",                                                        // XA
+			"YES",                                                        // Savepoints
 		),
 	)
 	e.rows = rows
@@ -1198,15 +1138,6 @@ func (e *memtableRetriever) dataForTiDBClusterInfo(ctx sessionctx.Context) error
 			upTimeStr,
 			server.ServerID,
 		)
-		if sem.IsEnabled() {
-			checker := privilege.GetPrivilegeManager(ctx)
-			if checker == nil || !checker.RequestDynamicVerification(ctx.GetSessionVars().ActiveRoles, "RESTRICTED_TABLES_ADMIN", false) {
-				row[1].SetString(strconv.FormatUint(server.ServerID, 10), mysql.DefaultCollationName)
-				row[2].SetNull()
-				row[5].SetNull()
-				row[6].SetNull()
-			}
-		}
 		rows = append(rows, row)
 	}
 	e.rows = rows
@@ -1214,13 +1145,9 @@ func (e *memtableRetriever) dataForTiDBClusterInfo(ctx sessionctx.Context) error
 }
 
 func (e *memtableRetriever) setDataFromKeyColumnUsage(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	rows := make([][]types.Datum, 0, len(schemas)) // The capacity is not accurate, but it is not a big problem.
 	for _, schema := range schemas {
 		for _, table := range schema.Tables {
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
 			rs := keyColumnUsageInTable(schema, table)
 			rows = append(rows, rs...)
 		}
@@ -1264,9 +1191,6 @@ func (e *memtableRetriever) setDataForProcessList(ctx sessionctx.Context) {
 }
 
 func (e *memtableRetriever) setDataFromUserPrivileges(ctx sessionctx.Context) {
-	pm := privilege.GetPrivilegeManager(ctx)
-	// The results depend on the user querying the information.
-	e.rows = pm.UserPrivilegesTable(ctx.GetSessionVars().ActiveRoles, ctx.GetSessionVars().User.Username, ctx.GetSessionVars().User.Hostname)
 }
 
 func (e *memtableRetriever) setDataForMetricTables(ctx sessionctx.Context) {
@@ -1551,14 +1475,9 @@ func (e *memtableRetriever) setDataForHotRegionByMetrics(metrics []helper.HotTab
 
 // setDataFromTableConstraints constructs data for table information_schema.constraints.See https://dev.mysql.com/doc/refman/5.7/en/table-constraints-table.html
 func (e *memtableRetriever) setDataFromTableConstraints(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	var rows [][]types.Datum
 	for _, schema := range schemas {
 		for _, tbl := range schema.Tables {
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, tbl.Name.L, "", mysql.AllPrivMask) {
-				continue
-			}
-
 			if tbl.PKIsHandle {
 				record := types.MakeDatums(
 					infoschema.CatalogVal,     // CONSTRAINT_CATALOG
@@ -1668,14 +1587,6 @@ func (e *tableStorageStatsRetriever) initialize(sctx sessionctx.Context) error {
 		}
 	}
 
-	// Privilege checker.
-	checker := func(db, table string) bool {
-		if pm := privilege.GetPrivilegeManager(sctx); pm != nil {
-			return pm.RequestVerification(sctx.GetSessionVars().ActiveRoles, db, table, "", mysql.AllPrivMask)
-		}
-		return true
-	}
-
 	// Extract the tables to the initialTable.
 	for _, DB := range databases {
 		// The user didn't specified the table, extract all tables of this db to initialTable.
@@ -1683,18 +1594,14 @@ func (e *tableStorageStatsRetriever) initialize(sctx sessionctx.Context) error {
 			tbs := is.SchemaTables(model.NewCIStr(DB))
 			for _, tb := range tbs {
 				// For every db.table, check it's privileges.
-				if checker(DB, tb.Meta().Name.L) {
-					e.initialTables = append(e.initialTables, &initialTable{DB, tb.Meta()})
-				}
+				e.initialTables = append(e.initialTables, &initialTable{DB, tb.Meta()})
 			}
 		} else {
 			// The user specified the table, extract the specified tables of this db to initialTable.
 			for tb := range tables {
 				if tb, err := is.TableByName(model.NewCIStr(DB), model.NewCIStr(tb)); err == nil {
 					// For every db.table, check it's privileges.
-					if checker(DB, tb.Meta().Name.L) {
-						e.initialTables = append(e.initialTables, &initialTable{DB, tb.Meta()})
-					}
+					e.initialTables = append(e.initialTables, &initialTable{DB, tb.Meta()})
 				}
 			}
 		}
@@ -1762,7 +1669,6 @@ func (e *memtableRetriever) setDataFromSessionVar(ctx sessionctx.Context) error 
 
 // dataForAnalyzeStatusHelper is a helper function which can be used in show_stats.go
 func dataForAnalyzeStatusHelper(sctx sessionctx.Context) (rows [][]types.Datum) {
-	checker := privilege.GetPrivilegeManager(sctx)
 	for _, job := range statistics.GetAllAnalyzeJobs() {
 		job.Lock()
 		var startTime, endTime interface{}
@@ -1776,18 +1682,16 @@ func dataForAnalyzeStatusHelper(sctx sessionctx.Context) (rows [][]types.Datum) 
 		} else {
 			endTime = types.NewTime(types.FromGoTime(job.EndTime), mysql.TypeDatetime, 0)
 		}
-		if checker == nil || checker.RequestVerification(sctx.GetSessionVars().ActiveRoles, job.DBName, job.TableName, "", mysql.AllPrivMask) {
-			rows = append(rows, types.MakeDatums(
-				job.DBName,        // TABLE_SCHEMA
-				job.TableName,     // TABLE_NAME
-				job.PartitionName, // PARTITION_NAME
-				job.JobInfo,       // JOB_INFO
-				job.RowCount,      // ROW_COUNT
-				startTime,         // START_TIME
-				endTime,           // END_TIME
-				job.State,         // STATE
-			))
-		}
+		rows = append(rows, types.MakeDatums(
+			job.DBName,        // TABLE_SCHEMA
+			job.TableName,     // TABLE_NAME
+			job.PartitionName, // PARTITION_NAME
+			job.JobInfo,       // JOB_INFO
+			job.RowCount,      // ROW_COUNT
+			startTime,         // START_TIME
+			endTime,           // END_TIME
+			job.State,         // STATE
+		))
 		job.Unlock()
 	}
 	return
@@ -1833,22 +1737,16 @@ func (e *memtableRetriever) setDataForServersInfo(ctx sessionctx.Context) error 
 	rows := make([][]types.Datum, 0, len(serversInfo))
 	for _, info := range serversInfo {
 		row := types.MakeDatums(
-			info.ID,              // DDL_ID
-			info.IP,              // IP
-			int(info.Port),       // PORT
-			int(info.StatusPort), // STATUS_PORT
-			info.Lease,           // LEASE
-			info.Version,         // VERSION
-			info.GitHash,         // GIT_HASH
-			info.BinlogStatus,    // BINLOG_STATUS
+			info.ID,                                       // DDL_ID
+			info.IP,                                       // IP
+			int(info.Port),                                // PORT
+			int(info.StatusPort),                          // STATUS_PORT
+			info.Lease,                                    // LEASE
+			info.Version,                                  // VERSION
+			info.GitHash,                                  // GIT_HASH
+			info.BinlogStatus,                             // BINLOG_STATUS
 			stringutil.BuildStringFromLabels(info.Labels), // LABELS
 		)
-		if sem.IsEnabled() {
-			checker := privilege.GetPrivilegeManager(ctx)
-			if checker == nil || !checker.RequestDynamicVerification(ctx.GetSessionVars().ActiveRoles, "RESTRICTED_TABLES_ADMIN", false) {
-				row[1].SetNull() // clear IP
-			}
-		}
 		rows = append(rows, row)
 	}
 	e.rows = rows
@@ -1856,14 +1754,10 @@ func (e *memtableRetriever) setDataForServersInfo(ctx sessionctx.Context) error 
 }
 
 func (e *memtableRetriever) setDataFromSequences(ctx sessionctx.Context, schemas []*model.DBInfo) {
-	checker := privilege.GetPrivilegeManager(ctx)
 	var rows [][]types.Datum
 	for _, schema := range schemas {
 		for _, table := range schema.Tables {
 			if !table.IsSequence() {
-				continue
-			}
-			if checker != nil && !checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, schema.Name.L, table.Name.L, "", mysql.AllPrivMask) {
 				continue
 			}
 			record := types.MakeDatums(
@@ -1914,10 +1808,10 @@ func (e *memtableRetriever) dataForTableTiFlashReplica(ctx sessionctx.Context, s
 				}
 			}
 			record := types.MakeDatums(
-				schema.Name.O,                   // TABLE_SCHEMA
-				tbl.Name.O,                      // TABLE_NAME
-				tbl.ID,                          // TABLE_ID
-				int64(tbl.TiFlashReplica.Count), // REPLICA_COUNT
+				schema.Name.O,                                        // TABLE_SCHEMA
+				tbl.Name.O,                                           // TABLE_NAME
+				tbl.ID,                                               // TABLE_ID
+				int64(tbl.TiFlashReplica.Count),                      // REPLICA_COUNT
 				strings.Join(tbl.TiFlashReplica.LocationLabels, ","), // LOCATION_LABELS
 				tbl.TiFlashReplica.Available,                         // AVAILABLE
 				progress,                                             // PROGRESS
@@ -1931,9 +1825,6 @@ func (e *memtableRetriever) dataForTableTiFlashReplica(ctx sessionctx.Context, s
 func (e *memtableRetriever) setDataForStatementsSummary(ctx sessionctx.Context, tableName string) error {
 	user := ctx.GetSessionVars().User
 	isSuper := false
-	if pm := privilege.GetPrivilegeManager(ctx); pm != nil {
-		isSuper = pm.RequestVerificationWithUser("", "", "", mysql.SuperPriv, user)
-	}
 	switch tableName {
 	case infoschema.TableStatementsSummary,
 		infoschema.ClusterTableStatementsSummary:
@@ -1959,7 +1850,6 @@ func (e *memtableRetriever) setDataForStatementsSummary(ctx sessionctx.Context, 
 }
 
 func (e *memtableRetriever) setDataForPlacementPolicy(ctx sessionctx.Context) error {
-	checker := privilege.GetPrivilegeManager(ctx)
 	is := ctx.GetInfoSchema().(infoschema.InfoSchema)
 	var rows [][]types.Datum
 	for _, bundle := range is.RuleBundles() {
@@ -1974,7 +1864,7 @@ func (e *memtableRetriever) setDataForPlacementPolicy(ctx sessionctx.Context) er
 		var tbName, dbName, ptName string
 		skip := true
 		tb, db, part := is.FindTableByPartitionID(id)
-		if tb != nil && (checker == nil || checker.RequestVerification(ctx.GetSessionVars().ActiveRoles, db.Name.L, tb.Meta().Name.L, "", mysql.SelectPriv)) {
+		if tb != nil {
 			dbName = db.Name.L
 			tbName = tb.Meta().Name.L
 			ptName = part.Name.L

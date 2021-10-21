@@ -19,11 +19,9 @@ import (
 
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/domain/infosync"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util"
-	"github.com/pingcap/tidb/util/sem"
 )
 
 // Cluster table list, attention:
@@ -96,12 +94,6 @@ func AppendHostInfoToRows(ctx sessionctx.Context, rows [][]types.Datum) ([][]typ
 		return nil, err
 	}
 	addr := serverInfo.IP + ":" + strconv.FormatUint(uint64(serverInfo.StatusPort), 10)
-	if sem.IsEnabled() {
-		checker := privilege.GetPrivilegeManager(ctx)
-		if checker == nil || !checker.RequestDynamicVerification(ctx.GetSessionVars().ActiveRoles, "RESTRICTED_TABLES_ADMIN", false) {
-			addr = serverInfo.ID
-		}
-	}
 	for i := range rows {
 		row := make([]types.Datum, 0, len(rows[i])+1)
 		row = append(row, types.NewStringDatum(addr))

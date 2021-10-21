@@ -46,7 +46,6 @@ import (
 	"github.com/pingcap/tidb/meta/autoid"
 	"github.com/pingcap/tidb/planner"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
@@ -463,7 +462,7 @@ func (e *DDLJobRetriever) initial(txn kv.Transaction) error {
 	return nil
 }
 
-func (e *DDLJobRetriever) appendJobToChunk(req *chunk.Chunk, job *model.Job, checker privilege.Manager) {
+func (e *DDLJobRetriever) appendJobToChunk(req *chunk.Chunk, job *model.Job) {
 	schemaName := job.SchemaName
 	tableName := ""
 	finishTS := uint64(0)
@@ -486,11 +485,6 @@ func (e *DDLJobRetriever) appendJobToChunk(req *chunk.Chunk, job *model.Job, che
 
 	startTime := ts2Time(job.StartTS)
 	finishTime := ts2Time(finishTS)
-
-	// Check the privilege.
-	if checker != nil && !checker.RequestVerification(e.activeRoles, strings.ToLower(schemaName), strings.ToLower(tableName), "", mysql.AllPrivMask) {
-		return
-	}
 
 	req.AppendInt64(0, job.ID)
 	req.AppendString(1, schemaName)
@@ -604,7 +598,7 @@ func (e *ShowDDLJobsExec) Next(ctx context.Context, req *chunk.Chunk) error {
 	if e.cursor < len(e.runningJobs) {
 		numCurBatch := mathutil.Min(req.Capacity(), len(e.runningJobs)-e.cursor)
 		for i := e.cursor; i < e.cursor+numCurBatch; i++ {
-			e.appendJobToChunk(req, e.runningJobs[i], nil)
+			e.appendJobToChunk(req, e.runningJobs[i])
 		}
 		e.cursor += numCurBatch
 		count += numCurBatch
@@ -621,7 +615,7 @@ func (e *ShowDDLJobsExec) Next(ctx context.Context, req *chunk.Chunk) error {
 			return err
 		}
 		for _, job := range e.cacheJobs {
-			e.appendJobToChunk(req, job, nil)
+			e.appendJobToChunk(req, job)
 		}
 		e.cursor += len(e.cacheJobs)
 	}

@@ -16,7 +16,6 @@ package executor
 import (
 	"bytes"
 	"context"
-	gjson "encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -45,8 +44,6 @@ import (
 	"github.com/pingcap/tidb/meta/autoid"
 	plannercore "github.com/pingcap/tidb/planner/core"
 	"github.com/pingcap/tidb/plugin"
-	"github.com/pingcap/tidb/privilege"
-	"github.com/pingcap/tidb/privilege/privileges"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
@@ -59,7 +56,6 @@ import (
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/collate"
 	"github.com/pingcap/tidb/util/format"
-	"github.com/pingcap/tidb/util/hack"
 	"github.com/pingcap/tidb/util/hint"
 	"github.com/pingcap/tidb/util/sem"
 	"github.com/pingcap/tidb/util/set"
@@ -221,7 +217,6 @@ type visibleChecker struct {
 	defaultDB string
 	ctx       sessionctx.Context
 	is        infoschema.InfoSchema
-	manager   privilege.Manager
 	ok        bool
 }
 
@@ -234,10 +229,6 @@ func (v *visibleChecker) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
 		}
 		if !v.is.TableExists(model.NewCIStr(schema), x.Name) {
 			return in, true
-		}
-		activeRoles := v.ctx.GetSessionVars().ActiveRoles
-		if v.manager != nil && !v.manager.RequestVerification(activeRoles, schema, x.Name.L, "", mysql.SelectPriv) {
-			v.ok = false
 		}
 		return in, true
 	}
@@ -267,7 +258,6 @@ func (e *ShowExec) fetchShowBind() error {
 				defaultDB: bindData.Db,
 				ctx:       e.ctx,
 				is:        e.is,
-				manager:   privilege.GetPrivilegeManager(e.ctx),
 				ok:        true,
 			}
 			stmt.Accept(&checker)
@@ -321,14 +311,10 @@ func moveInfoSchemaToFront(dbs []string) {
 
 func (e *ShowExec) fetchShowDatabases() error {
 	dbs := e.is.AllSchemaNames()
-	checker := privilege.GetPrivilegeManager(e.ctx)
 	sort.Strings(dbs)
 	// let information_schema be the first database
 	moveInfoSchemaToFront(dbs)
 	for _, d := range dbs {
-		if checker != nil && !checker.DBIsVisible(e.ctx.GetSessionVars().ActiveRoles, d) {
-			continue
-		}
 		e.appendRow([]interface{}{
 			d,
 		})
@@ -342,13 +328,8 @@ func (e *ShowExec) fetchShowProcessList() error {
 		return nil
 	}
 
-	loginUser, activeRoles := e.ctx.GetSessionVars().User, e.ctx.GetSessionVars().ActiveRoles
+	loginUser, _ := e.ctx.GetSessionVars().User, e.ctx.GetSessionVars().ActiveRoles
 	var hasProcessPriv bool
-	if pm := privilege.GetPrivilegeManager(e.ctx); pm != nil {
-		if pm.RequestVerification(activeRoles, "", "", "", mysql.ProcessPriv) {
-			hasProcessPriv = true
-		}
-	}
 
 	pl := sm.ShowProcessList()
 	for _, pi := range pl {
@@ -370,25 +351,15 @@ func (e *ShowExec) fetchShowOpenTables() error {
 }
 
 func (e *ShowExec) fetchShowTables() error {
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker != nil && e.ctx.GetSessionVars().User != nil {
-		if !checker.DBIsVisible(e.ctx.GetSessionVars().ActiveRoles, e.DBName.O) {
-			return e.dbAccessDenied()
-		}
-	}
 	if !e.is.SchemaExists(e.DBName) {
 		return ErrBadDB.GenWithStackByArgs(e.DBName)
 	}
 	// sort for tables
 	tableNames := make([]string, 0, len(e.is.SchemaTables(e.DBName)))
-	activeRoles := e.ctx.GetSessionVars().ActiveRoles
 	var tableTypes = make(map[string]string)
 	for _, v := range e.is.SchemaTables(e.DBName) {
 		// Test with mysql.AllPrivMask means any privilege would be OK.
 		// TODO: Should consider column privileges, which also make a table visible.
-		if checker != nil && !checker.RequestVerification(activeRoles, e.DBName.O, v.Meta().Name.O, "", mysql.AllPrivMask) {
-			continue
-		}
 		tableNames = append(tableNames, v.Meta().Name.O)
 		if v.Meta().IsView() {
 			tableTypes[v.Meta().Name.O] = "VIEW"
@@ -412,12 +383,6 @@ func (e *ShowExec) fetchShowTables() error {
 }
 
 func (e *ShowExec) fetchShowTableStatus() error {
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker != nil && e.ctx.GetSessionVars().User != nil {
-		if !checker.DBIsVisible(e.ctx.GetSessionVars().ActiveRoles, e.DBName.O) {
-			return e.dbAccessDenied()
-		}
-	}
 	if !e.is.SchemaExists(e.DBName) {
 		return ErrBadDB.GenWithStackByArgs(e.DBName)
 	}
@@ -452,13 +417,8 @@ func (e *ShowExec) fetchShowTableStatus() error {
 		return errors.Trace(err)
 	}
 
-	activeRoles := e.ctx.GetSessionVars().ActiveRoles
 	for _, row := range rows {
-		if checker != nil && !checker.RequestVerification(activeRoles, e.DBName.O, row.GetString(0), "", mysql.AllPrivMask) {
-			continue
-		}
 		e.result.AppendRow(row)
-
 	}
 	return nil
 }
@@ -468,11 +428,6 @@ func (e *ShowExec) fetchShowColumns(ctx context.Context) error {
 
 	if err != nil {
 		return errors.Trace(err)
-	}
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	activeRoles := e.ctx.GetSessionVars().ActiveRoles
-	if checker != nil && e.ctx.GetSessionVars().User != nil && !checker.RequestVerification(activeRoles, e.DBName.O, tb.Meta().Name.O, "", mysql.AllPrivMask) {
-		return e.tableAccessDenied("SELECT", tb.Meta().Name.O)
 	}
 
 	var cols []*table.Column
@@ -544,12 +499,6 @@ func (e *ShowExec) fetchShowIndex() error {
 	tb, err := e.getTable()
 	if err != nil {
 		return errors.Trace(err)
-	}
-
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	activeRoles := e.ctx.GetSessionVars().ActiveRoles
-	if checker != nil && e.ctx.GetSessionVars().User != nil && !checker.RequestVerification(activeRoles, e.DBName.O, tb.Meta().Name.O, "", mysql.AllPrivMask) {
-		return e.tableAccessDenied("SELECT", tb.Meta().Name.O)
 	}
 
 	if tb.Meta().PKIsHandle {
@@ -665,10 +614,6 @@ func (e *ShowExec) sysVarHiddenForSem(sysVarNameInLower string) bool {
 	if !sem.IsEnabled() || !sem.IsInvisibleSysVar(sysVarNameInLower) {
 		return false
 	}
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker == nil || checker.RequestDynamicVerification(e.ctx.GetSessionVars().ActiveRoles, "RESTRICTED_VARIABLES_ADMIN", false) {
-		return false
-	}
 	return true
 }
 
@@ -719,17 +664,11 @@ func (e *ShowExec) fetchShowStatus() error {
 	if err != nil {
 		return errors.Trace(err)
 	}
-	checker := privilege.GetPrivilegeManager(e.ctx)
 	for status, v := range statusVars {
 		if e.GlobalScope && v.Scope == variable.ScopeSession {
 			continue
 		}
 		// Skip invisible status vars if permission fails.
-		if sem.IsEnabled() && sem.IsInvisibleStatusVar(status) {
-			if checker == nil || !checker.RequestDynamicVerification(sessionVars.ActiveRoles, "RESTRICTED_STATUS_ADMIN", false) {
-				continue
-			}
-		}
 		switch v.Value.(type) {
 		case []interface{}, nil:
 			v.Value = fmt.Sprintf("%v", v.Value)
@@ -1269,12 +1208,6 @@ func ConstructResultOfShowCreateDatabase(ctx sessionctx.Context, dbInfo *model.D
 
 // fetchShowCreateDatabase composes show create database result.
 func (e *ShowExec) fetchShowCreateDatabase() error {
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker != nil && e.ctx.GetSessionVars().User != nil {
-		if !checker.DBIsVisible(e.ctx.GetSessionVars().ActiveRoles, e.DBName.String()) {
-			return e.dbAccessDenied()
-		}
-	}
 	dbInfo, ok := e.is.SchemaByName(e.DBName)
 	if !ok {
 		return infoschema.ErrDatabaseNotExists.GenWithStackByArgs(e.DBName.O)
@@ -1310,23 +1243,11 @@ func (e *ShowExec) fetchShowCollation() error {
 
 // fetchShowCreateUser composes show create create user result.
 func (e *ShowExec) fetchShowCreateUser() error {
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker == nil {
-		return errors.New("miss privilege checker")
-	}
-
 	userName, hostName := e.User.Username, e.User.Hostname
 	sessVars := e.ctx.GetSessionVars()
 	if e.User.CurrentUser {
 		userName = sessVars.User.AuthUsername
 		hostName = sessVars.User.AuthHostname
-	} else {
-		// Show create user requires the SELECT privilege on mysql.user.
-		// Ref https://dev.mysql.com/doc/refman/5.7/en/show-create-user.html
-		activeRoles := sessVars.ActiveRoles
-		if !checker.RequestVerification(activeRoles, mysql.SystemDB, mysql.UserTable, "", mysql.SelectPriv) {
-			return e.tableAccessDenied("SELECT", mysql.UserTable)
-		}
 	}
 
 	exec := e.ctx.(sqlexec.RestrictedSQLExecutor)
@@ -1346,11 +1267,6 @@ func (e *ShowExec) fetchShowCreateUser() error {
 			fmt.Sprintf("'%s'@'%s'", e.User.Username, e.User.Hostname))
 	}
 
-	authplugin := mysql.AuthNativePassword
-	if len(rows) == 1 && rows[0].GetString(0) != "" {
-		authplugin = rows[0].GetString(0)
-	}
-
 	stmt, err = exec.ParseWithParams(context.TODO(), `SELECT Priv FROM %n.%n WHERE User=%? AND Host=%?`, mysql.SystemDB, mysql.GlobalPrivTable, userName, hostName)
 	if err != nil {
 		return errors.Trace(err)
@@ -1360,57 +1276,11 @@ func (e *ShowExec) fetchShowCreateUser() error {
 		return errors.Trace(err)
 	}
 
-	require := "NONE"
-	if len(rows) == 1 {
-		privData := rows[0].GetString(0)
-		var privValue privileges.GlobalPrivValue
-		err = gjson.Unmarshal(hack.Slice(privData), &privValue)
-		if err != nil {
-			return errors.Trace(err)
-		}
-		require = privValue.RequireStr()
-	}
 	// FIXME: the returned string is not escaped safely
-	showStr := fmt.Sprintf("CREATE USER '%s'@'%s' IDENTIFIED WITH '%s' AS '%s' REQUIRE %s PASSWORD EXPIRE DEFAULT ACCOUNT UNLOCK",
-		e.User.Username, e.User.Hostname, authplugin, checker.GetEncodedPassword(e.User.Username, e.User.Hostname), require)
-	e.appendRow([]interface{}{showStr})
 	return nil
 }
 
 func (e *ShowExec) fetchShowGrants() error {
-	// Get checker
-	checker := privilege.GetPrivilegeManager(e.ctx)
-	if checker == nil {
-		return errors.New("miss privilege checker")
-	}
-	sessVars := e.ctx.GetSessionVars()
-	if !e.User.CurrentUser {
-		userName := sessVars.User.AuthUsername
-		hostName := sessVars.User.AuthHostname
-		// Show grant user requires the SELECT privilege on mysql schema.
-		// Ref https://dev.mysql.com/doc/refman/8.0/en/show-grants.html
-		if userName != e.User.Username || hostName != e.User.Hostname {
-			activeRoles := sessVars.ActiveRoles
-			if !checker.RequestVerification(activeRoles, mysql.SystemDB, "", "", mysql.SelectPriv) {
-				return ErrDBaccessDenied.GenWithStackByArgs(userName, hostName, mysql.SystemDB)
-			}
-		}
-	}
-	for _, r := range e.Roles {
-		if r.Hostname == "" {
-			r.Hostname = "%"
-		}
-		if !checker.FindEdge(e.ctx, r, e.User) {
-			return ErrRoleNotGranted.GenWithStackByArgs(r.String(), e.User.String())
-		}
-	}
-	gs, err := checker.ShowGrants(e.ctx, e.User, e.Roles)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	for _, g := range gs {
-		e.appendRow([]interface{}{g})
-	}
 	return nil
 }
 
@@ -1447,9 +1317,6 @@ func (e *ShowExec) fetchShowPrivileges() error {
 	e.appendRow([]interface{}{"Update", "Tables", "To update existing rows"})
 	e.appendRow([]interface{}{"Usage", "Server Admin", "No privileges - allow connect only"})
 
-	for _, priv := range privileges.GetDynamicPrivileges() {
-		e.appendRow([]interface{}{priv, "Server Admin", ""})
-	}
 	return nil
 }
 

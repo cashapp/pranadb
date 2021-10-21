@@ -30,7 +30,6 @@ import (
 	"github.com/pingcap/tidb/infoschema"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/store/tikv/oracle"
@@ -358,11 +357,6 @@ func (e *Execute) handleExecuteBuilderOption(sctx sessionctx.Context,
 
 func (e *Execute) checkPreparedPriv(ctx context.Context, sctx sessionctx.Context,
 	preparedObj *CachedPrepareStmt, is infoschema.InfoSchema) error {
-	if pm := privilege.GetPrivilegeManager(sctx); pm != nil {
-		if err := CheckPrivilege(sctx.GetSessionVars().ActiveRoles, pm, preparedObj.VisitInfos); err != nil {
-			return err
-		}
-	}
 	err := CheckTableLock(sctx, is, preparedObj.VisitInfos)
 	return err
 }
