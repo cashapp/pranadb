@@ -16,8 +16,6 @@ package executor
 import (
 	"context"
 
-	"github.com/pingcap/tidb/domain"
-	"github.com/pingcap/tidb/telemetry"
 	"github.com/pingcap/tidb/util/chunk"
 )
 
@@ -29,27 +27,7 @@ type AdminShowTelemetryExec struct {
 
 // Next implements the Executor Next interface.
 func (e *AdminShowTelemetryExec) Next(ctx context.Context, req *chunk.Chunk) error {
-	req.Reset()
-	if e.done {
-		return nil
-	}
-	e.done = true
-	dom := domain.GetDomain(e.ctx)
-	id, err := telemetry.GetTrackingID(dom.GetEtcdClient())
-	if err != nil {
-		return err
-	}
-	status, err := telemetry.GetTelemetryStatus(dom.GetEtcdClient())
-	if err != nil {
-		return err
-	}
-	previewData, err := telemetry.PreviewUsageData(e.ctx, dom.GetEtcdClient())
-	if err != nil {
-		return err
-	}
-	req.AppendString(0, id)
-	req.AppendString(1, status)
-	req.AppendString(2, previewData)
+
 	return nil
 }
 
@@ -61,11 +39,5 @@ type AdminResetTelemetryIDExec struct {
 
 // Next implements the Executor Next interface.
 func (e *AdminResetTelemetryIDExec) Next(ctx context.Context, _ *chunk.Chunk) error {
-	if e.done {
-		return nil
-	}
-	e.done = true
-	dom := domain.GetDomain(e.ctx)
-	_, err := telemetry.ResetTrackingID(dom.GetEtcdClient())
-	return err
+	return nil
 }
