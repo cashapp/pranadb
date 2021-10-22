@@ -35,7 +35,6 @@ import (
 	"github.com/pingcap/parser/terror"
 	"github.com/pingcap/tidb/infoschema"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/types"
@@ -97,9 +96,6 @@ func (e *slowQueryRetriever) retrieve(ctx context.Context, sctx sessionctx.Conte
 func (e *slowQueryRetriever) initialize(ctx context.Context, sctx sessionctx.Context) error {
 	var err error
 	var hasProcessPriv bool
-	if pm := privilege.GetPrivilegeManager(sctx); pm != nil {
-		hasProcessPriv = pm.RequestVerification(sctx.GetSessionVars().ActiveRoles, "", "", "", mysql.ProcessPriv)
-	}
 	e.checker = &slowLogChecker{
 		hasProcessPriv: hasProcessPriv,
 		user:           sctx.GetSessionVars().User,

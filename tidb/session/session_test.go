@@ -42,7 +42,6 @@ import (
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/meta/autoid"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/privilege/privileges"
 	"github.com/pingcap/tidb/session"
 	"github.com/pingcap/tidb/session/txninfo"
 	"github.com/pingcap/tidb/sessionctx"
@@ -1004,24 +1003,6 @@ func (s *testSessionSuite) TestSession(c *C) {
 func (s *testSessionSuite) TestSessionAuth(c *C) {
 	tk := testkit.NewTestKitWithInit(c, s.store)
 	c.Assert(tk.Se.Auth(&auth.UserIdentity{Username: "Any not exist username with zero password!", Hostname: "anyhost"}, []byte(""), []byte("")), IsFalse)
-}
-
-func (s *testSessionSerialSuite) TestSkipWithGrant(c *C) {
-	tk := testkit.NewTestKitWithInit(c, s.store)
-	save2 := privileges.SkipWithGrant
-
-	privileges.SkipWithGrant = false
-	c.Assert(tk.Se.Auth(&auth.UserIdentity{Username: "user_not_exist"}, []byte("yyy"), []byte("zzz")), IsFalse)
-
-	privileges.SkipWithGrant = true
-	c.Assert(tk.Se.Auth(&auth.UserIdentity{Username: "xxx", Hostname: `%`}, []byte("yyy"), []byte("zzz")), IsTrue)
-	c.Assert(tk.Se.Auth(&auth.UserIdentity{Username: "root", Hostname: `%`}, []byte(""), []byte("")), IsTrue)
-	tk.MustExec("create table t (id int)")
-	tk.MustExec("create role r_1")
-	tk.MustExec("grant r_1 to root")
-	tk.MustExec("set role all")
-	tk.MustExec("show grants for root")
-	privileges.SkipWithGrant = save2
 }
 
 func (s *testSessionSuite) TestLastInsertID(c *C) {

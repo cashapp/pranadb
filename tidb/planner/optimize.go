@@ -32,7 +32,6 @@ import (
 	"github.com/pingcap/tidb/planner/cascades"
 	"github.com/pingcap/tidb/planner/core"
 	plannercore "github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
@@ -250,15 +249,6 @@ func optimize(ctx context.Context, sctx sessionctx.Context, node ast.Node, is in
 	}
 
 	sctx.GetSessionVars().StmtCtx.Tables = builder.GetDBTableInfo()
-	activeRoles := sctx.GetSessionVars().ActiveRoles
-	// Check privilege. Maybe it's better to move this to the Preprocess, but
-	// we need the table information to check privilege, which is collected
-	// into the visitInfo in the logical plan builder.
-	if pm := privilege.GetPrivilegeManager(sctx); pm != nil {
-		if err := plannercore.CheckPrivilege(activeRoles, pm, builder.GetVisitInfo()); err != nil {
-			return nil, nil, 0, err
-		}
-	}
 
 	if err := plannercore.CheckTableLock(sctx, is, builder.GetVisitInfo()); err != nil {
 		return nil, nil, 0, err
