@@ -225,12 +225,10 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 						colVal.Value = &service.ColValue_StringValue{StringValue: dec.String()}
 					case common.TypeTimestamp:
 						ts := row.GetTimestamp(colNum)
-						log.Printf("Sending back ts on api, it is %s", ts.String())
 						gt, err := ts.GoTime(time.UTC)
 						if err != nil {
 							return err
 						}
-						log.Printf("Go time is %s", gt.String())
 						// We encode a datetime as *microseconds* past epoch
 						unixTime := gt.UnixNano() / 1000
 						colVal.Value = &service.ColValue_IntValue{IntValue: unixTime}
