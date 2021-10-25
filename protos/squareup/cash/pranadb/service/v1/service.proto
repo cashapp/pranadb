@@ -42,10 +42,23 @@ message Columns {
   repeated Column columns = 1;
 }
 
+message Row {
+  repeated ColValue values = 1;
+}
+
+message ColValue {
+  oneof value {
+    bool is_null = 1;
+    int64 int_value = 2;
+    double float_value = 3;
+    string string_value = 4;
+  }
+}
+
 // Each query may return an arbitrary number of pages.
 message Page {
   uint64 count = 1;
-  bytes rows = 2; // Serialized rows.
+  repeated Row rows = 2;
 }
 
 message ExecuteSQLStatementResponse {
