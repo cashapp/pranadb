@@ -2,7 +2,6 @@ package source
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"reflect"
 	"strconv"
@@ -152,9 +151,6 @@ func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
 	case uint64:
 		// Incoming value is assumed to be Unix milliseconds past epoch
 		ts := common.NewTimestampFromUnixEpochMillis(int64(v))
-
-		log.Printf("Coercing incoming ts it is %s", ts.String())
-
 		return ts, nil
 	case *timestamppb.Timestamp:
 		return common.NewTimestampFromGoTime(v.AsTime()), nil
