@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/metrics"
 	"math/rand"
 	"sync"
 	"time"
@@ -44,6 +45,7 @@ type Engine struct {
 	queryExec         common.SimpleQueryExec
 	protoRegistry     protolib.Resolver
 	readyToReceive    common.AtomicBool
+	metrics           metrics.Factory
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -64,7 +66,7 @@ type remoteRowsHandler interface {
 	HandleRemoteRows(rowsBatch exec.RowsBatch, ctx *exec.ExecutionContext) error
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) *Engine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, factory metrics.Factory) *Engine {
 	engine := Engine{
 		mover:         mover.NewMover(cluster),
 		cluster:       cluster,
@@ -460,6 +462,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
+		p.metrics,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)

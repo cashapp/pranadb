@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/metrics"
+	"github.com/squareup/pranadb/metrics/prometheus"
 	"net/http" //nolint:stylecheck
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
@@ -54,7 +56,8 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry)
+	metrics := prometheus.NewFactory(config)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, metrics)
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, protoRegistry)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
@@ -75,6 +78,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		protoRegistry,
 		schemaLoader,
 		apiServer,
+		metrics,
 	}
 
 	server := Server{
@@ -108,6 +112,7 @@ type Server struct {
 	notifServer     notifier.Server
 	notifClient     notifier.Client
 	apiServer       *api.Server
+	metrics         metrics.Factory
 	services        []service
 	started         bool
 	conf            conf.Config
@@ -130,7 +135,7 @@ func (s *Server) Start() error {
 		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
 		s.debugServer = &http.Server{Addr: addr}
 		go func(srv *http.Server) {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := http.ListenAndServe(addr, nil); err != nil && err != http.ErrServerClosed {
 				log.Errorf("debug server failed to listen %v", err)
 			} else {
 				log.Debugf("Started debug server on address %s", addr)
@@ -213,4 +218,8 @@ func (s *Server) GetAPIServer() *api.Server {
 
 func (s *Server) GetConfig() conf.Config {
 	return s.conf
+}
+
+func (s *Server) GetMetrics() metrics.Factory {
+	return s.metrics
 }

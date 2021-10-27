@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/metrics"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -65,7 +66,9 @@ type Source struct {
 	commitOffsets           common.AtomicBool
 }
 
-func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder, cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) (*Source, error) {
+func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
+	cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config,
+	queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics metrics.Factory) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.TopicInfo
