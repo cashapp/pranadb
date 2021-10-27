@@ -43,8 +43,8 @@ func (f *Factory) Start() error {
 		return errors.New("already started")
 	}
 	metricsListenAddr := "localhost:2112"
-	if f.config.MetricsHttpListenAddr != "" {
-		metricsListenAddr = f.config.MetricsHttpListenAddr
+	if f.config.MetricsHTTPListenAddr != "" {
+		metricsListenAddr = f.config.MetricsHTTPListenAddr
 	}
 	f.httpServer = &http.Server{Addr: metricsListenAddr, Handler: promhttp.Handler()}
 	f.started = true

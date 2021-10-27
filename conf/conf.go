@@ -43,7 +43,7 @@ type Config struct {
 	APIServerSessionCheckInterval time.Duration
 	EnableSourceStats             bool
 	ProtobufDescriptorDir         string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
-	MetricsHttpListenAddr         string
+	MetricsHTTPListenAddr         string
 	EnableMetrics                 bool
 	MetricsType                   string
 }

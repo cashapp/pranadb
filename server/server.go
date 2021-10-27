@@ -135,7 +135,7 @@ func (s *Server) Start() error {
 		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
 		s.debugServer = &http.Server{Addr: addr}
 		go func(srv *http.Server) {
-			if err := http.ListenAndServe(addr, nil); err != nil && err != http.ErrServerClosed {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Errorf("debug server failed to listen %v", err)
 			} else {
 				log.Debugf("Started debug server on address %s", addr)
