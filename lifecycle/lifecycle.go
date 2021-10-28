@@ -33,6 +33,9 @@ func (e *Endpoints) SetActive(active bool) {
 }
 
 func (e *Endpoints) Start() error {
+	if !e.conf.EnableLifecycleEndpoint {
+		return nil
+	}
 
 	sm := http.NewServeMux()
 	sm.Handle(e.conf.StartupEndpointPath, &handler{state: &e.started})
@@ -46,7 +49,6 @@ func (e *Endpoints) Start() error {
 		return err
 	}
 
-	// Uggghhhhh go has such a weird http server API
 	go func() {
 		err := e.server.Serve(ln)
 		if err != nil && err != http.ErrServerClosed {
@@ -57,6 +59,9 @@ func (e *Endpoints) Start() error {
 }
 
 func (e *Endpoints) Stop() error {
+	if !e.conf.EnableLifecycleEndpoint {
+		return nil
+	}
 	return e.server.Close()
 }
 
