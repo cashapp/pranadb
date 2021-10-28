@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/lifecycle"
 	"net/http" //nolint:stylecheck
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
@@ -31,6 +32,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	if err := config.Validate(); err != nil {
 		return nil, errors.WithStack(err)
 	}
+	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
 	var notifClient notifier.Client
 	var notifServer notifier.Server
@@ -65,6 +67,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	apiServer := api.NewAPIServer(commandExecutor, protoRegistry, config)
 
 	services := []service{
+		lifeCycleMgr,
 		notifServer,
 		metaController,
 		clus,
@@ -80,6 +83,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	server := Server{
 		conf:            config,
 		nodeID:          config.NodeID,
+		lifeCycleMgr:    lifeCycleMgr,
 		cluster:         clus,
 		shardr:          shardr,
 		metaController:  metaController,
@@ -98,6 +102,7 @@ func NewServer(config conf.Config) (*Server, error) {
 type Server struct {
 	lock            sync.RWMutex
 	nodeID          int
+	lifeCycleMgr    *lifecycle.Endpoints
 	cluster         cluster.Cluster
 	shardr          *sharder.Sharder
 	metaController  *meta.Controller
@@ -130,10 +135,9 @@ func (s *Server) Start() error {
 		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
 		s.debugServer = &http.Server{Addr: addr}
 		go func(srv *http.Server) {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			err := srv.ListenAndServe()
+			if err != nil && err != http.ErrServerClosed {
 				log.Errorf("debug server failed to listen %v", err)
-			} else {
-				log.Debugf("Started debug server on address %s", addr)
 			}
 		}(s.debugServer)
 	}
@@ -148,6 +152,8 @@ func (s *Server) Start() error {
 		return errors.WithStack(err)
 	}
 
+	s.lifeCycleMgr.SetActive(true)
+
 	s.started = true
 
 	log.Infof("Prana server %d started", s.nodeID)
@@ -161,6 +167,7 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
 			return errors.WithStack(err)
