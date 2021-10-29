@@ -171,6 +171,53 @@ func NodeIDOutOfRangeConf() Config {
 	return cnf
 }
 
+const (
+	lifeCycleListenAddress = "localhost:8765"
+	startupEndpointPath    = "/started"
+	liveEndpointPath       = "/liveness"
+	readyEndpointPath      = "/readiness"
+)
+
+func invalidLifecycleListenAddress() Config {
+	cnf := confAllFields
+	cnf.EnableLifecycleEndpoint = true
+	cnf.LifeCycleListenAddress = ""
+	cnf.StartupEndpointPath = startupEndpointPath
+	cnf.LiveEndpointPath = liveEndpointPath
+	cnf.ReadyEndpointPath = readyEndpointPath
+	return cnf
+}
+
+func invalidStartupEndpointPath() Config {
+	cnf := confAllFields
+	cnf.EnableLifecycleEndpoint = true
+	cnf.LifeCycleListenAddress = lifeCycleListenAddress
+	cnf.StartupEndpointPath = ""
+	cnf.LiveEndpointPath = liveEndpointPath
+	cnf.ReadyEndpointPath = readyEndpointPath
+	return cnf
+}
+
+func invalidLiveEndpointPath() Config {
+	cnf := confAllFields
+	cnf.EnableLifecycleEndpoint = true
+	cnf.LifeCycleListenAddress = lifeCycleListenAddress
+	cnf.StartupEndpointPath = startupEndpointPath
+	cnf.LiveEndpointPath = ""
+	cnf.ReadyEndpointPath = readyEndpointPath
+	return cnf
+}
+
+func invalidReadyEndpointPath() Config {
+	cnf := confAllFields
+	cnf.EnableLifecycleEndpoint = true
+	cnf.LifeCycleListenAddress = lifeCycleListenAddress
+	cnf.StartupEndpointPath = startupEndpointPath
+	cnf.LiveEndpointPath = liveEndpointPath
+	cnf.ReadyEndpointPath = ""
+	return cnf
+}
+
 var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
 	{"PDB0004 - Invalid configuration: ClusterID must be >= 0", invalidClusterIDConf()},
@@ -196,6 +243,10 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: DataSnapshotEntries must be >= DataCompactionOverhead", dataCompactionGreaterThanDataSnapshotEntries()},
 	{"PDB0004 - Invalid configuration: SequenceSnapshotEntries must be >= SequenceCompactionOverhead", sequenceCompactionGreaterThanDataSnapshotEntries()},
 	{"PDB0004 - Invalid configuration: LocksSnapshotEntries must be >= LocksCompactionOverhead", locksCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB0004 - Invalid configuration: LifeCycleListenAddress must be specified", invalidLifecycleListenAddress()},
+	{"PDB0004 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
+	{"PDB0004 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
+	{"PDB0004 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
 }
 
 func TestValidate(t *testing.T) {

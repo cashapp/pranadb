@@ -43,6 +43,11 @@ type Config struct {
 	APIServerSessionCheckInterval time.Duration
 	EnableSourceStats             bool
 	ProtobufDescriptorDir         string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
+	EnableLifecycleEndpoint       bool
+	LifeCycleListenAddress        string
+	StartupEndpointPath           string
+	ReadyEndpointPath             string
+	LiveEndpointPath              string
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -123,6 +128,20 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		}
 		if c.LocksCompactionOverhead > c.LocksSnapshotEntries {
 			return errors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= LocksCompactionOverhead")
+		}
+	}
+	if c.EnableLifecycleEndpoint {
+		if c.LifeCycleListenAddress == "" {
+			return errors.NewInvalidConfigurationError("LifeCycleListenAddress must be specified")
+		}
+		if c.StartupEndpointPath == "" {
+			return errors.NewInvalidConfigurationError("StartupEndpointPath must be specified")
+		}
+		if c.LiveEndpointPath == "" {
+			return errors.NewInvalidConfigurationError("LiveEndpointPath must be specified")
+		}
+		if c.ReadyEndpointPath == "" {
+			return errors.NewInvalidConfigurationError("ReadyEndpointPath must be specified")
 		}
 	}
 	return nil
