@@ -123,6 +123,13 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
+	case ast.Create != nil && ast.Create.Index != nil:
+		command := NewOriginatingCreateIndexCommand(e, session.PushPlanner(), session.Schema, sql)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Source:
 		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)

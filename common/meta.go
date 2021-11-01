@@ -124,34 +124,6 @@ type TableInfo struct {
 	Internal       bool
 }
 
-func ColTypesToString(colTypes []ColumnType) string {
-	sb := strings.Builder{}
-	for i, colType := range colTypes {
-		switch colType.Type {
-		case TypeTinyInt:
-			sb.WriteString("TINYINT")
-		case TypeInt:
-			sb.WriteString("INT")
-		case TypeBigInt:
-			sb.WriteString("BIGINT")
-		case TypeDouble:
-			sb.WriteString("DOUBLE")
-		case TypeVarchar:
-			sb.WriteString("VARCHAR")
-		case TypeDecimal:
-			sb.WriteString(fmt.Sprintf("DECIMAL(%d,%d)", colType.DecPrecision, colType.DecScale))
-		case TypeTimestamp:
-			sb.WriteString("TIMESTAMP")
-		default:
-			panic(fmt.Sprintf("unexpected column type %d", colType.Type))
-		}
-		if i != len(colTypes)-1 {
-			sb.WriteString(", ")
-		}
-	}
-	return sb.String()
-}
-
 func (i *TableInfo) GetTableInfo() *TableInfo { return i }
 
 func (i *TableInfo) String() string {
