@@ -32,8 +32,8 @@ type MVTables struct {
 	sequences      []uint64
 }
 
-func (l *Loader) Start() error {
-	rows, err := l.queryExec.ExecuteQuery("sys",
+func (l *Loader) Start() error { //nolint:gocyclo
+	tableRows, err := l.queryExec.ExecuteQuery("sys",
 		"select id, kind, schema_name, name, table_info, topic_info, query, mv_name, prepare_state from tables order by id")
 	if err != nil {
 		return errors.WithStack(err)
@@ -48,12 +48,12 @@ func (l *Loader) Start() error {
 	var mvsToStart []tableKey
 	var srcsToStart []*source.Source
 
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		kind := row.GetString(1)
+	for i := 0; i < tableRows.RowCount(); i++ {
+		tableRow := tableRows.GetRow(i)
+		kind := tableRow.GetString(1)
 		switch kind {
 		case meta.TableKindSource:
-			info := meta.DecodeSourceInfoRow(&row)
+			info := meta.DecodeSourceInfoRow(&tableRow)
 			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {
 				return errors.WithStack(err)
@@ -64,7 +64,7 @@ func (l *Loader) Start() error {
 			}
 			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
-			info := meta.DecodeMaterializedViewInfoRow(&row)
+			info := meta.DecodeMaterializedViewInfoRow(&tableRow)
 			tk := tableKey{info.SchemaName, info.Name}
 			_, ok := mvTables[tk]
 			if ok {
@@ -74,7 +74,7 @@ func (l *Loader) Start() error {
 			mvTables[tk] = mvt
 			mvsToStart = append(mvsToStart, tk)
 		case meta.TableKindInternal:
-			info := meta.DecodeInternalTableInfoRow(&row)
+			info := meta.DecodeInternalTableInfoRow(&tableRow)
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
 			mvt, ok := mvTables[tk]
 			if !ok {
@@ -86,6 +86,12 @@ func (l *Loader) Start() error {
 		default:
 			return errors.Errorf("unknown table kind %s", kind)
 		}
+	}
+
+	indexRows, err := l.queryExec.ExecuteQuery("sys",
+		"select id, schema_name, name, index_info, table_name, prepare_state from indexes order by id")
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	for _, tk := range mvsToStart {
@@ -111,6 +117,17 @@ func (l *Loader) Start() error {
 		}
 		if err := l.meta.RegisterMaterializedView(mvt.mvInfo, mvt.internalTables); err != nil {
 			return errors.WithStack(err)
+		}
+	}
+
+	for i := 0; i < indexRows.RowCount(); i++ {
+		indexRow := indexRows.GetRow(i)
+		info := meta.DecodeIndexInfoRow(&indexRow)
+		if err := l.pushEngine.CreateIndex(info, false); err != nil {
+			return err
+		}
+		if err := l.meta.RegisterIndex(info); err != nil {
+			return err
 		}
 	}
 

@@ -7,12 +7,33 @@ import (
 )
 
 var tableInfoRowsFactory = common.NewRowsFactory(TableDefTableInfo.ColumnTypes)
+var indexInfoRowsFactory = common.NewRowsFactory(IndexDefTableInfo.ColumnTypes)
 
 const (
 	TableKindSource           = "source"
 	TableKindMaterializedView = "materialized_view"
 	TableKindInternal         = "internal"
 )
+
+// EncodeIndexInfoToRow encodes a common.IndexInfo into a database row.
+func EncodeIndexInfoToRow(info *common.IndexInfo, prepareState PrepareState) *common.Row {
+	rows := indexInfoRowsFactory.NewRows(1)
+	rows.AppendInt64ToColumn(0, int64(info.ID))
+	rows.AppendStringToColumn(1, info.SchemaName)
+	rows.AppendStringToColumn(2, info.Name)
+	rows.AppendStringToColumn(3, jsonEncode(info))
+	rows.AppendStringToColumn(4, info.TableName)
+	rows.AppendInt64ToColumn(5, int64(prepareState))
+	row := rows.GetRow(0)
+	return &row
+}
+
+// DecodeIndexInfoRow decodes a database row into a common.IndexInfo.
+func DecodeIndexInfoRow(row *common.Row) *common.IndexInfo {
+	info := common.IndexInfo{}
+	jsonDecode(row.GetString(3), &info)
+	return &info
+}
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
 func EncodeSourceInfoToRow(info *common.SourceInfo, prepareState PrepareState) *common.Row {

@@ -109,7 +109,7 @@ func (c *CreateMVCommand) OnPrepare() error {
 
 	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
 	// during the MV fill process. This must be done on all nodes before we start the fill
-	// We we do not join the MV up to it's feeding sources or MVs at this point
+	// We do not join the MV up to it's feeding sources or MVs at this point
 	return c.mv.Connect(false, true)
 }
 

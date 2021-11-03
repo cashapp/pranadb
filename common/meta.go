@@ -119,7 +119,7 @@ type TableInfo struct {
 	PrimaryKeyCols []int
 	ColumnNames    []string
 	ColumnTypes    []ColumnType
-	IndexInfos     []*IndexInfo
+	IndexInfos     map[string]*IndexInfo
 	ColsVisible    []bool
 	Internal       bool
 }
@@ -131,8 +131,11 @@ func (i *TableInfo) String() string {
 }
 
 type IndexInfo struct {
-	Name      string
-	IndexCols []int
+	SchemaName string
+	ID         uint64
+	TableName  string
+	Name       string
+	IndexCols  []int
 }
 
 type Schema struct {
@@ -157,6 +160,40 @@ func (s *Schema) GetTable(name string) (Table, bool) {
 	defer s.lock.RUnlock()
 	t, ok := s.tables[name]
 	return t, ok
+}
+
+func (s *Schema) PutIndex(indexInfo *IndexInfo) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	table, ok := s.tables[indexInfo.TableName]
+	if !ok {
+		return errors.Errorf("table with Name %s does not exist in Schema %s", indexInfo.TableName, s.Name)
+	}
+	indexInfos := table.GetTableInfo().IndexInfos
+	if indexInfos == nil {
+		indexInfos = map[string]*IndexInfo{}
+	} else {
+		_, ok := indexInfos[indexInfo.Name]
+		if ok {
+			return errors.Errorf("index with Name %s already exists in table %s.%s", indexInfo.Name, s.Name, indexInfo.TableName)
+		}
+	}
+	indexInfos[indexInfo.Name] = indexInfo
+	return nil
+}
+
+func (s *Schema) DeleteIndex(tableName string, indexName string) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	table, ok := s.tables[tableName]
+	if !ok {
+		return errors.Errorf("table with Name %s does not exist in Schema %s", tableName, s.Name)
+	}
+	indexInfos := table.GetTableInfo().IndexInfos
+	if indexInfos != nil {
+		delete(indexInfos, indexName)
+	}
+	return nil
 }
 
 func (s *Schema) PutTable(name string, table Table) {

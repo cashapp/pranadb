@@ -28,6 +28,9 @@ const (
 	UnknownTopicEncoding
 	WrongNumberColumnSelectors
 	InvalidSelector
+	UnknownSourceOrMaterializedView
+	UnknownIndexColumn
+	IndexAlreadyExists
 )
 
 func NewInternalError(seq int64) PranaError {
@@ -58,12 +61,24 @@ func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaErro
 	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
 }
 
+func NewUnknownSourceOrMaterializedViewError(schemaName string, tableName string) PranaError {
+	return NewPranaErrorf(UnknownSourceOrMaterializedView, "Unknown source or materialized view: %s.%s", schemaName, tableName)
+}
+
+func NewUnknownIndexColumn(schemaName string, tableName string, columnName string) PranaError {
+	return NewPranaErrorf(UnknownIndexColumn, "Table %s.%s does not have a column %s", schemaName, tableName, columnName)
+}
+
 func NewUnknownPreparedStatementError(psID int64) PranaError {
 	return NewPranaErrorf(UnknownPreparedStatement, "Unknown prepared statement, id: %d", psID)
 }
 
 func NewSourceAlreadyExistsError(schemaName string, sourceName string) PranaError {
 	return NewPranaErrorf(SourceAlreadyExists, "Source already exists: %s.%s", schemaName, sourceName)
+}
+
+func NewIndexAlreadyExistsError(schemaName string, tableName string, indexName string) PranaError {
+	return NewPranaErrorf(IndexAlreadyExists, "Index %s already exists on %s.%s", indexName, schemaName, tableName)
 }
 
 func NewMaterializedViewAlreadyExistsError(schemaName string, materializedViewName string) PranaError {

@@ -16,6 +16,7 @@ const (
 	// TableDefTableName is the name of the table that holds all table definitions.
 	TableDefTableName      = "tables"
 	SourceOffsetsTableName = "offsets"
+	IndexDefTableName      = "indexes"
 )
 
 type PrepareState int
@@ -46,6 +47,22 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	},
 }}
 
+var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
+	ID:             common.IndexTableID,
+	SchemaName:     SystemSchemaName,
+	Name:           IndexDefTableName,
+	PrimaryKeyCols: []int{0},
+	ColumnNames:    []string{"id", "schema_name", "name", "index_info", "table_name", "prepare_state"},
+	ColumnTypes: []common.ColumnType{
+		common.BigIntColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.TinyIntColumnType,
+	},
+}}
+
 var SourceOffsetsTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	ID:             common.OffsetsTableID,
 	SchemaName:     SystemSchemaName,
@@ -67,13 +84,16 @@ type Controller struct {
 	started  bool
 	cluster  cluster.Cluster
 	tableIDs map[uint64]struct{}
+	indexIDs map[uint64]struct{}
 }
 
 func NewController(store cluster.Cluster) *Controller {
 	return &Controller{
-		lock:    sync.RWMutex{},
-		schemas: make(map[string]*common.Schema),
-		cluster: store,
+		lock:     sync.RWMutex{},
+		schemas:  make(map[string]*common.Schema),
+		cluster:  store,
+		tableIDs: make(map[uint64]struct{}),
+		indexIDs: make(map[uint64]struct{}),
 	}
 }
 
@@ -95,6 +115,8 @@ func (c *Controller) Stop() error {
 		return nil
 	}
 	c.schemas = make(map[string]*common.Schema)
+	c.tableIDs = make(map[uint64]struct{})
+	c.indexIDs = make(map[uint64]struct{})
 	c.started = false
 	return nil
 }
@@ -178,6 +200,49 @@ func (c *Controller) existsTable(schema *common.Schema, name string) error {
 	return nil
 }
 
+// RegisterIndex adds an index to the metadata controller, making it active. It does not persist it
+func (c *Controller) RegisterIndex(indexInfo *common.IndexInfo) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if err := c.checkIndexID(indexInfo.ID); err != nil {
+		return errors.WithStack(err)
+	}
+	schema := c.getOrCreateSchema(indexInfo.SchemaName)
+	return schema.PutIndex(indexInfo)
+}
+
+func (c *Controller) PersistIndex(indexInfo *common.IndexInfo, prepareState PrepareState) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo, prepareState), wb); err != nil {
+		return errors.WithStack(err)
+	}
+	return c.cluster.WriteBatch(wb)
+}
+
+// UnregisterIndex removes the index from memory but does not delete it from storage
+func (c *Controller) UnregisterIndex(schemaName string, tableName string, indexName string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return errors.Errorf("no such schema %s", schemaName)
+	}
+	err := schema.DeleteIndex(tableName, indexName)
+	if err != nil {
+		return err
+	}
+	tbl, _ := schema.GetTable(tableName)
+	index := tbl.GetTableInfo().IndexInfos[indexName]
+	delete(c.indexIDs, index.ID)
+	return nil
+}
+
+func (c *Controller) DeleteIndex(indexID uint64) error {
+	return c.deleteIndexWithID(indexID)
+}
+
 // RegisterSource adds a Source to the metadata controller, making it active. It does not persist it
 func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
@@ -191,6 +256,7 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 		return errors.WithStack(err)
 	}
 	schema.PutTable(sourceInfo.Name, sourceInfo)
+	c.tableIDs[sourceInfo.ID] = struct{}{}
 	return nil
 }
 
@@ -226,6 +292,13 @@ func (c *Controller) checkTableID(tableID uint64) error {
 	return nil
 }
 
+func (c *Controller) checkIndexID(indexID uint64) error {
+	if _, ok := c.indexIDs[indexID]; ok {
+		return errors.Errorf("cannot register. index with id %d already exists", indexID)
+	}
+	return nil
+}
+
 func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -238,10 +311,12 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 		return errors.WithStack(err)
 	}
 	schema.PutTable(mvInfo.Name, mvInfo)
+	c.tableIDs[mvInfo.ID] = struct{}{}
 	for _, internalTable := range internalTables {
 		if err := c.registerInternalTable(internalTable); err != nil {
 			return errors.WithStack(err)
 		}
+		c.tableIDs[internalTable.ID] = struct{}{}
 	}
 	return nil
 }
@@ -281,15 +356,15 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 }
 
 func (c *Controller) DeleteSource(sourceID uint64) error {
-	return c.deleteEntityWithID(sourceID)
+	return c.deleteTableWithID(sourceID)
 }
 
 func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
-	if err := c.deleteEntityWithID(mvInfo.ID); err != nil {
+	if err := c.deleteTableWithID(mvInfo.ID); err != nil {
 		return errors.WithStack(err)
 	}
 	for _, it := range internalTableIDs {
-		if err := c.deleteEntityWithID(it.ID); err != nil {
+		if err := c.deleteTableWithID(it.ID); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -330,10 +405,10 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 func (c *Controller) DeleteEntityWithID(tableID uint64) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.deleteEntityWithID(tableID)
+	return c.deleteTableWithID(tableID)
 }
 
-func (c *Controller) deleteEntityWithID(tableID uint64) error {
+func (c *Controller) deleteTableWithID(tableID uint64) error {
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
@@ -342,10 +417,20 @@ func (c *Controller) deleteEntityWithID(tableID uint64) error {
 	return c.cluster.WriteBatch(wb)
 }
 
+func (c *Controller) deleteIndexWithID(indexID uint64) error {
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+	var key []byte
+	key = table.EncodeTableKeyPrefix(common.IndexTableID, cluster.SystemSchemaShardID, 24)
+	key = common.KeyEncodeInt64(key, int64(indexID))
+	wb.AddDelete(key)
+	return c.cluster.WriteBatch(wb)
+}
+
 func (c *Controller) registerSystemSchema() {
 	schema := c.getOrCreateSchema("sys")
 	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
 	schema.PutTable(SourceOffsetsTableInfo.Name, SourceOffsetsTableInfo)
+	schema.PutTable(IndexDefTableInfo.Name, IndexDefTableInfo)
 }
 
 // Schema are removed once they have no more tables

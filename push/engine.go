@@ -195,6 +195,50 @@ func (p *Engine) RegisterMV(mv *MaterializedView) error {
 	return nil
 }
 
+func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
+
+	schedulers, err := p.GetLocalLeaderSchedulers()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	// Find the table executor for the source / mv that we are creating the index on
+	var te *exec.TableExecutor
+	srcInfo, ok := p.meta.GetSource(indexInfo.SchemaName, indexInfo.TableName)
+	if !ok {
+		mvInfo, ok := p.meta.GetMaterializedView(indexInfo.SchemaName, indexInfo.TableName)
+		if !ok {
+			return errors.NewUnknownSourceOrMaterializedViewError(indexInfo.SchemaName, indexInfo.TableName)
+		}
+		mv, err := p.GetMaterializedView(mvInfo.ID)
+		if err != nil {
+			return err
+		}
+		te = mv.TableExecutor()
+	} else {
+		src, err := p.GetSource(srcInfo.ID)
+		if err != nil {
+			return err
+		}
+		te = src.TableExecutor()
+	}
+
+	// Create an index executor
+	indexExec := exec.NewIndexExecutor(te.TableInfo, indexInfo, p.cluster)
+
+	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
+	if fill {
+		// And fill it with the data from the table - this creates the index
+		if err := te.FillTo(indexExec, consumerName, schedulers, p.mover); err != nil {
+			return err
+		}
+	} else {
+		// Just attach it directly
+		te.AddConsumingNode(consumerName, indexExec)
+	}
+	return nil
+}
+
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()

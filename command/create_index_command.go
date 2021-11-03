@@ -1,7 +1,6 @@
 package command
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -9,7 +8,6 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/push"
 )
 
 type CreateIndexCommand struct {
@@ -19,6 +17,8 @@ type CreateIndexCommand struct {
 	schema         *common.Schema
 	createIndexSQL string
 	tableSequences []uint64
+	indexInfo      *common.IndexInfo
+	ast            *parser.CreateIndex
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -41,13 +41,14 @@ func (c *CreateIndexCommand) LockName() string {
 	return c.schema.Name + "/"
 }
 
-func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string) *CreateIndexCommand {
+func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, ast *parser.CreateIndex) *CreateIndexCommand {
 	pl.RefreshInfoSchema()
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
 		pl:             pl,
-		createIndexSQL: sql,
+		createIndexSQL: createIndexSQL,
+		ast:            ast,
 	}
 }
 
@@ -66,85 +67,75 @@ func (c *CreateIndexCommand) BeforePrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Before prepare we just persist the source info in the tables table
-	mv, err := c.createMVFromAST(c.ast)
+	var err error
+	c.indexInfo, err = c.getIndexInfo(c.ast)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	c.mv = mv
-
-	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
-	if ok {
-		return errors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
-	}
-	rows, err := c.e.pullEngine.ExecuteQuery("sys",
-		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if rows.RowCount() != 0 {
-		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
-	}
-	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
+	// Before prepare we just persist the index info in the indexes table
+	return c.e.metaController.PersistIndex(c.indexInfo, meta.PrepareStateAdd)
 }
 
 func (c *CreateIndexCommand) OnPrepare() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// If receiving on prepare from broadcast on the originating node, mv will already be set
-	// this means we do not have to parse the ast twice!
-	if c.mv == nil {
-		mv, err := c.createMV()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		c.mv = mv
-	}
-
-	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
-	// during the MV fill process. This must be done on all nodes before we start the fill
-	// We we do not join the MV up to it's feeding sources or MVs at this point
-	return c.mv.Connect(false, true)
+	return nil
 }
 
 func (c *CreateIndexCommand) OnCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Fill the MV from it's feeding sources and MVs
-	// Before the fill completes the MV will be connected to it's feeding sources or MVs
-	if err := c.mv.Fill(); err != nil {
-		return errors.WithStack(err)
+	if err := c.e.pushEngine.CreateIndex(c.indexInfo, true); err != nil {
+		return err
 	}
-	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
-		return errors.WithStack(err)
-	}
-	return c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables)
+	return c.e.metaController.RegisterIndex(c.indexInfo)
 }
 
 func (c *CreateIndexCommand) AfterCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables, meta.PrepareStateAdd)
+	return c.e.metaController.PersistIndex(c.indexInfo, meta.PrepareStateCommitted)
 }
 
-func (c *CreateIndexCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {
-	mvName := ast.Name.String()
-	querySQL := ast.Query.String()
-	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
-	tableID := seqGenerator.GenerateSequence()
-	mv, err := push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
-	return mv, errors.WithStack(err)
-}
+func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {
+	var tab common.Table
+	tab, ok := c.e.metaController.GetSource(c.SchemaName(), ast.TableName)
+	if !ok {
+		tab, ok = c.e.metaController.GetMaterializedView(c.SchemaName(), ast.TableName)
+		if !ok {
+			return nil, errors.NewUnknownSourceOrMaterializedViewError(c.SchemaName(), ast.TableName)
+		}
+	}
+	tabInfo := tab.GetTableInfo()
 
-func (c *CreateIndexCommand) createMV() (*push.MaterializedView, error) {
-	ast, err := parser.Parse(c.createMVSQL)
+	if tabInfo.IndexInfos != nil {
+		_, ok := tabInfo.IndexInfos[ast.Name]
+		if ok {
+			return nil, errors.NewIndexAlreadyExistsError(c.SchemaName(), ast.TableName, ast.Name)
+		}
+	}
+
+	colMap := make(map[string]int, len(tabInfo.ColumnNames))
+	for colIndex, colName := range tabInfo.ColumnNames {
+		colMap[colName] = colIndex
+	}
+	indexCols := make([]int, len(ast.ColumnNames))
+	for i, colName := range ast.ColumnNames {
+		colIndex, ok := colMap[colName.Name]
+		if !ok {
+			return nil, errors.NewUnknownIndexColumn(c.SchemaName(), ast.TableName, colName.Name)
+		}
+		indexCols[i] = colIndex
+	}
+	id, err := c.e.cluster.GenerateClusterSequence("table")
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
-	if ast.Create == nil || ast.Create.MaterializedView == nil {
-		return nil, errors.Errorf("not a create materialized view %s", c.createMVSQL)
+	info := &common.IndexInfo{
+		SchemaName: c.SchemaName(),
+		ID:         id,
+		TableName:  ast.TableName,
+		Name:       ast.Name,
+		IndexCols:  indexCols,
 	}
-	return c.createMVFromAST(ast.Create.MaterializedView)
+	return info, nil
 }

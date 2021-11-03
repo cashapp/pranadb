@@ -124,7 +124,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.Index != nil:
-		command := NewOriginatingCreateIndexCommand(e, session.PushPlanner(), session.Schema, sql)
+		command := NewOriginatingCreateIndexCommand(e, session.PushPlanner(), session.Schema, sql, ast.Create.Index)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
