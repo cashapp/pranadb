@@ -30,14 +30,52 @@ create source test_source_1(
     )
 );
 
+--load data dataset_1;
+
 create materialized view test_mv_1 as select * from test_source_1;
 
+-- create index on source;
 create index index1 on test_source_1 (col1);
 
+-- create index with same name but on different table - this is ok, index names are scoped to the table;
+create index index1 on test_mv_1 (col1);
+
+-- try and create index with same name on same tables - this should fail;
+create index index1 on test_source_1 (col1);
+create index index1 on test_mv_1 (col1);
+
+-- create a couple more indexes;
+create index index2 on test_source_1 (col1);
+create index index2 on test_mv_1 (col1);
+
+-- drop the indexes;
 drop index index1 on test_source_1;
+drop index index1 on test_mv_1;
+drop index index2 on test_source_1;
+drop index index2 on test_mv_1;
+
+-- try and drop some non existent indexes - should fail;
+drop index indexx on test_source_1;
+drop index indexx on test_mv_1;
+
+-- recreate indexes with same name;
+create index index1 on test_source_1 (col1);
+create index index1 on test_mv_1 (col1);
+create index index2 on test_source_1 (col1);
+create index index2 on test_mv_1 (col1);
+
+--drop index1;
+drop index index1 on test_source_1;
+drop index index1 on test_mv_1;
+
+-- drop the source and mv - should fail as index2 needs to be explicitly deleted;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+drop index index2 on test_source_1;
+drop index index2 on test_mv_1;
 
 drop materialized view test_mv_1;
-
 drop source test_source_1;
 
 --delete topic testtopic;

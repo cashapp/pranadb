@@ -509,15 +509,25 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		require.Equal(0, len(topicNames), "Topics left at end of test run")
 
-		rows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from tables ")
+		tableRows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from tables")
 		require.NoError(err)
-		if rows.RowCount() != 0 {
-			for i := 0; i < rows.RowCount(); i++ {
-				row := rows.GetRow(i)
+		if tableRows.RowCount() != 0 {
+			for i := 0; i < tableRows.RowCount(); i++ {
+				row := tableRows.GetRow(i)
 				log.Println(row.String())
 			}
 		}
-		require.Equal(0, rows.RowCount(), "Rows in sys.tables at end of test run")
+		require.Equal(0, tableRows.RowCount(), "Rows in sys.tables at end of test run")
+
+		indexRows, err := prana.GetPullEngine().ExecuteQuery("sys", "select * from indexes")
+		require.NoError(err)
+		if indexRows.RowCount() != 0 {
+			for i := 0; i < indexRows.RowCount(); i++ {
+				row := indexRows.GetRow(i)
+				log.Println(row.String())
+			}
+		}
+		require.Equal(0, indexRows.RowCount(), "Rows in sys.indexes at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
 
