@@ -151,6 +151,25 @@ func (c *Controller) GetSource(schemaName string, name string) (*common.SourceIn
 	return source, ok
 }
 
+func (c *Controller) GetIndex(schemaName string, tableName string, indexName string) (*common.IndexInfo, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return nil, false
+	}
+	tb, ok := schema.GetTable(tableName)
+	if !ok {
+		return nil, false
+	}
+	indexInfos := tb.GetTableInfo().IndexInfos
+	if indexInfos == nil {
+		return nil, false
+	}
+	index, ok := indexInfos[indexName]
+	return index, ok
+}
+
 func (c *Controller) GetSchemaNames() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -229,12 +248,12 @@ func (c *Controller) UnregisterIndex(schemaName string, tableName string, indexN
 	if !ok {
 		return errors.Errorf("no such schema %s", schemaName)
 	}
+	tbl, _ := schema.GetTable(tableName)
+	index := tbl.GetTableInfo().IndexInfos[indexName]
 	err := schema.DeleteIndex(tableName, indexName)
 	if err != nil {
 		return err
 	}
-	tbl, _ := schema.GetTable(tableName)
-	index := tbl.GetTableInfo().IndexInfos[indexName]
 	delete(c.indexIDs, index.ID)
 	return nil
 }

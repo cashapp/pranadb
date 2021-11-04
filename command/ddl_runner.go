@@ -72,6 +72,8 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 		return NewDropMVCommand(e, schemaName, sql)
 	case DDLCommandTypeCreateIndex:
 		return NewCreateIndexCommand(e, schemaName, sql)
+	case DDLCommandTypeDropIndex:
+		return NewDropIndexCommand(e, schemaName, sql)
 	default:
 		panic("invalid ddl command")
 	}

@@ -172,6 +172,7 @@ func (s *Schema) PutIndex(indexInfo *IndexInfo) error {
 	indexInfos := table.GetTableInfo().IndexInfos
 	if indexInfos == nil {
 		indexInfos = map[string]*IndexInfo{}
+		table.GetTableInfo().IndexInfos = indexInfos
 	} else {
 		_, ok := indexInfos[indexInfo.Name]
 		if ok {

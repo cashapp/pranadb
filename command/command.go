@@ -144,6 +144,13 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.Index:
+		command := NewOriginatingDropIndexCommand(e, session.Schema.Name, sql, ast.Drop.TableName, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	case ast.Use != "":
 		return e.execUse(session, ast.Use)
 	}

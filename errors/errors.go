@@ -57,6 +57,10 @@ func NewUnknownSourceError(schemaName string, sourceName string) PranaError {
 	return NewPranaErrorf(UnknownSource, "Unknown source: %s.%s", schemaName, sourceName)
 }
 
+func NewUnknownIndexError(schemaName string, tableName string, indexName string) PranaError {
+	return NewPranaErrorf(UnknownSource, "Unknown index: %s.%s.%s", schemaName, tableName, indexName)
+}
+
 func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaError {
 	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
 }

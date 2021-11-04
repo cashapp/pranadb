@@ -202,25 +202,9 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 		return errors.WithStack(err)
 	}
 
-	// Find the table executor for the source / mv that we are creating the index on
-	var te *exec.TableExecutor
-	srcInfo, ok := p.meta.GetSource(indexInfo.SchemaName, indexInfo.TableName)
-	if !ok {
-		mvInfo, ok := p.meta.GetMaterializedView(indexInfo.SchemaName, indexInfo.TableName)
-		if !ok {
-			return errors.NewUnknownSourceOrMaterializedViewError(indexInfo.SchemaName, indexInfo.TableName)
-		}
-		mv, err := p.GetMaterializedView(mvInfo.ID)
-		if err != nil {
-			return err
-		}
-		te = mv.TableExecutor()
-	} else {
-		src, err := p.GetSource(srcInfo.ID)
-		if err != nil {
-			return err
-		}
-		te = src.TableExecutor()
+	te, err := p.getTableExecutorForIndex(indexInfo)
+	if err != nil {
+		return err
 	}
 
 	// Create an index executor
@@ -237,6 +221,47 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 		te.AddConsumingNode(consumerName, indexExec)
 	}
 	return nil
+}
+
+func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo, deleteData bool) error {
+	te, err := p.getTableExecutorForIndex(indexInfo)
+	if err != nil {
+		return err
+	}
+	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
+	te.RemoveConsumingNode(consumerName)
+
+	if deleteData {
+		// Delete the table data
+		tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
+		tableEndPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID+1)
+		return p.cluster.DeleteAllDataInRangeForAllShards(tableStartPrefix, tableEndPrefix)
+	}
+	return nil
+}
+
+func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.TableExecutor, error) {
+	// Find the table executor for the source / mv that we are creating the index on
+	var te *exec.TableExecutor
+	srcInfo, ok := p.meta.GetSource(indexInfo.SchemaName, indexInfo.TableName)
+	if !ok {
+		mvInfo, ok := p.meta.GetMaterializedView(indexInfo.SchemaName, indexInfo.TableName)
+		if !ok {
+			return nil, errors.NewUnknownSourceOrMaterializedViewError(indexInfo.SchemaName, indexInfo.TableName)
+		}
+		mv, err := p.GetMaterializedView(mvInfo.ID)
+		if err != nil {
+			return nil, err
+		}
+		te = mv.TableExecutor()
+	} else {
+		src, err := p.GetSource(srcInfo.ID)
+		if err != nil {
+			return nil, err
+		}
+		te = src.TableExecutor()
+	}
+	return te, nil
 }
 
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {

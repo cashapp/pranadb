@@ -119,13 +119,13 @@ type TopicInfoProperty struct {
 }
 
 type CreateIndex struct {
-	Name        string        `@Ident`
-	TableName   string        `"ON" @String`
+	Name        string        `@Ident "ON"`
+	TableName   string        `@Ident`
 	ColumnNames []*ColumnName `"(" @@ ("," @@)* ")"`
 }
 
 type ColumnName struct {
-	Name string `@String`
+	Name string `@Ident`
 }
 
 // Create statement.
@@ -138,8 +138,10 @@ type Create struct {
 // Drop statement
 type Drop struct {
 	MaterializedView bool   `(   @"MATERIALIZED" "VIEW"`
-	Source           bool   `  | @"SOURCE" )`
+	Source           bool   `  | @"SOURCE"`
+	Index            bool   `  | @"INDEX" )`
 	Name             string `@Ident `
+	TableName        string `("ON" @Ident)?`
 }
 
 // Execute statement.
