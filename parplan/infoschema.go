@@ -102,6 +102,35 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 
 		indexes = append(indexes, pkIndex)
 
+		if tableInfo.IndexInfos != nil {
+			for _, indexInfo := range tableInfo.IndexInfos {
+				var indexCols []*model.IndexColumn
+				for columnIndex := range indexInfo.IndexCols {
+					col := &model.IndexColumn{
+						Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+						Offset: columnIndex,
+						Length: 0,
+					}
+
+					indexCols = append(indexCols, col)
+				}
+				index := &model.IndexInfo{
+					ID:        int64(indexInfo.ID),
+					Name:      model.NewCIStr(fmt.Sprintf("%s_%s", tableInfo.Name, indexInfo.Name)),
+					Table:     tableName,
+					Columns:   indexCols,
+					State:     model.StatePublic,
+					Comment:   "",
+					Tp:        model.IndexTypeBtree,
+					Unique:    false,
+					Primary:   false,
+					Invisible: false,
+					Global:    false,
+				}
+				indexes = append(indexes, index)
+			}
+		}
+
 		tab := &model.TableInfo{
 			ID:         int64(tableInfo.ID),
 			Columns:    columns,
