@@ -41,18 +41,19 @@ func (c *CreateIndexCommand) LockName() string {
 	return c.schema.Name + "/"
 }
 
-func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, ast *parser.CreateIndex) *CreateIndexCommand {
+func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
 	pl.RefreshInfoSchema()
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
 		pl:             pl,
 		createIndexSQL: createIndexSQL,
+		tableSequences: tableSequences,
 		ast:            ast,
 	}
 }
 
-func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string) *CreateIndexCommand {
+func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string, tableSequences []uint64) *CreateIndexCommand {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	pl := parplan.NewPlanner(schema, false)
 	return &CreateIndexCommand{
@@ -60,6 +61,7 @@ func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string
 		schema:         schema,
 		pl:             pl,
 		createIndexSQL: createIndexSQL,
+		tableSequences: tableSequences,
 	}
 }
 
@@ -83,6 +85,21 @@ func (c *CreateIndexCommand) OnPrepare() error {
 func (c *CreateIndexCommand) OnCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	if c.indexInfo == nil {
+		ast, err := parser.Parse(c.createIndexSQL)
+		if err != nil {
+			return err
+		}
+		if ast.Create != nil && ast.Create.Index != nil {
+			c.indexInfo, err = c.getIndexInfo(ast.Create.Index)
+			if err != nil {
+				return err
+			}
+		} else {
+			return errors.Errorf("invalid create index statement %s", c.createIndexSQL)
+		}
+	}
 
 	if err := c.e.pushEngine.CreateIndex(c.indexInfo, true); err != nil {
 		return err
@@ -126,13 +143,9 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 		}
 		indexCols[i] = colIndex
 	}
-	id, err := c.e.cluster.GenerateClusterSequence("table")
-	if err != nil {
-		return nil, err
-	}
 	info := &common.IndexInfo{
 		SchemaName: c.SchemaName(),
-		ID:         id,
+		ID:         c.tableSequences[0],
 		TableName:  ast.TableName,
 		Name:       ast.Name,
 		IndexCols:  indexCols,

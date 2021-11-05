@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -98,6 +99,7 @@ func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName
 }
 
 func getChildString(schemaName string, childMVs []string) string {
+	sort.Strings(childMVs) // Need to sort to give deterministic results
 	sb := strings.Builder{}
 	for i, childName := range childMVs {
 		sb.WriteString(fmt.Sprintf("%s.%s", schemaName, childName))

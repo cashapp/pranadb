@@ -71,7 +71,7 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 	case DDLCommandTypeDropMV:
 		return NewDropMVCommand(e, schemaName, sql)
 	case DDLCommandTypeCreateIndex:
-		return NewCreateIndexCommand(e, schemaName, sql)
+		return NewCreateIndexCommand(e, schemaName, sql, tableSequences)
 	case DDLCommandTypeDropIndex:
 		return NewDropIndexCommand(e, schemaName, sql)
 	default:
