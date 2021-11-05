@@ -14,6 +14,7 @@ const (
 	SchemaTableID   = 9
 	OffsetsTableID  = 10
 	ProtobufTableID = 11
+	IndexTableID    = 12
 
 	UserTableIDBase = 1000
 )

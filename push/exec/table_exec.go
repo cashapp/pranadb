@@ -45,20 +45,20 @@ func (t *TableExecutor) ReCalcSchemaFromChildren() error {
 	return nil
 }
 
-func (t *TableExecutor) AddConsumingNode(mvName string, node PushExecutor) {
+func (t *TableExecutor) AddConsumingNode(consumerName string, node PushExecutor) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	t.addConsumingNode(mvName, node)
+	t.addConsumingNode(consumerName, node)
 }
 
-func (t *TableExecutor) addConsumingNode(mvName string, node PushExecutor) {
-	t.consumingNodes[mvName] = node
+func (t *TableExecutor) addConsumingNode(consumerName string, node PushExecutor) {
+	t.consumingNodes[consumerName] = node
 }
 
-func (t *TableExecutor) RemoveConsumingNode(mvName string) {
+func (t *TableExecutor) RemoveConsumingNode(consumerName string) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	delete(t.consumingNodes, mvName)
+	delete(t.consumingNodes, consumerName)
 }
 
 func (t *TableExecutor) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
@@ -176,7 +176,10 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	return t.store.WriteBatch(wb)
 }
 
-func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error { //nolint:gocyclo
+// FillTo - fills the specified PushExecutor with all the rows in the table and also captures any new changes that
+// might arrive while the fill is in progress. Once the fill is complete and the table executor and the push executor
+// are in sync then the operation completes
+func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error { //nolint:gocyclo
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
@@ -285,7 +288,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, mvName string, schedulers map[ui
 	}
 	t.filling = false
 
-	t.addConsumingNode(mvName, pe)
+	t.addConsumingNode(consumerName, pe)
 
 	t.lock.Unlock()
 

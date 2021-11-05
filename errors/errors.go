@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -28,6 +29,9 @@ const (
 	UnknownTopicEncoding
 	WrongNumberColumnSelectors
 	InvalidSelector
+	UnknownSourceOrMaterializedView
+	UnknownIndexColumn
+	IndexAlreadyExists
 )
 
 func NewInternalError(seq int64) PranaError {
@@ -54,8 +58,20 @@ func NewUnknownSourceError(schemaName string, sourceName string) PranaError {
 	return NewPranaErrorf(UnknownSource, "Unknown source: %s.%s", schemaName, sourceName)
 }
 
+func NewUnknownIndexError(schemaName string, tableName string, indexName string) PranaError {
+	return NewPranaErrorf(UnknownSource, "Unknown index: %s.%s.%s", schemaName, tableName, indexName)
+}
+
 func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaError {
 	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
+}
+
+func NewUnknownSourceOrMaterializedViewError(schemaName string, tableName string) PranaError {
+	return NewPranaErrorf(UnknownSourceOrMaterializedView, "Unknown source or materialized view: %s.%s", schemaName, tableName)
+}
+
+func NewUnknownIndexColumn(schemaName string, tableName string, columnName string) PranaError {
+	return NewPranaErrorf(UnknownIndexColumn, "Table %s.%s does not have a column %s", schemaName, tableName, columnName)
 }
 
 func NewUnknownPreparedStatementError(psID int64) PranaError {
@@ -64,6 +80,10 @@ func NewUnknownPreparedStatementError(psID int64) PranaError {
 
 func NewSourceAlreadyExistsError(schemaName string, sourceName string) PranaError {
 	return NewPranaErrorf(SourceAlreadyExists, "Source already exists: %s.%s", schemaName, sourceName)
+}
+
+func NewIndexAlreadyExistsError(schemaName string, tableName string, indexName string) PranaError {
+	return NewPranaErrorf(IndexAlreadyExists, "Index %s already exists on %s.%s", indexName, schemaName, tableName)
 }
 
 func NewMaterializedViewAlreadyExistsError(schemaName string, materializedViewName string) PranaError {
@@ -79,6 +99,7 @@ func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName
 }
 
 func getChildString(schemaName string, childMVs []string) string {
+	sort.Strings(childMVs) // Need to sort to give deterministic results
 	sb := strings.Builder{}
 	for i, childName := range childMVs {
 		sb.WriteString(fmt.Sprintf("%s.%s", schemaName, childName))

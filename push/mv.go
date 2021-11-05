@@ -275,3 +275,7 @@ func (m *MaterializedView) getFeedingExecutors(ex exec.PushExecutor) ([]*exec.Ta
 	}
 	return tes, tss, nil
 }
+
+func (m *MaterializedView) TableExecutor() *exec.TableExecutor {
+	return m.tableExecutor
+}

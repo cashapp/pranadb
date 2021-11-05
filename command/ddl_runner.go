@@ -48,6 +48,8 @@ const (
 	DDLCommandTypeDropSource
 	DDLCommandTypeCreateMV
 	DDLCommandTypeDropMV
+	DDLCommandTypeCreateIndex
+	DDLCommandTypeDropIndex
 )
 
 func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
@@ -68,6 +70,10 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 		return NewDropSourceCommand(e, schemaName, sql)
 	case DDLCommandTypeDropMV:
 		return NewDropMVCommand(e, schemaName, sql)
+	case DDLCommandTypeCreateIndex:
+		return NewCreateIndexCommand(e, schemaName, sql, tableSequences)
+	case DDLCommandTypeDropIndex:
+		return NewDropIndexCommand(e, schemaName, sql)
 	default:
 		panic("invalid ddl command")
 	}

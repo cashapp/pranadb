@@ -153,8 +153,10 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 func (re *RemoteExecutor) createGetters() {
 	shardIDs := re.ShardIDs
 	if re.schemaName == meta.SystemSchemaName {
-		// It's only the tables sys table that doesn't require fanout, others do, e.g. offsets
-		if strings.Index(strings.ToLower(re.queryInfo.Query), fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1 {
+		// It's only the index/tables sys tables that don't require fanout, others do, e.g. offsets
+		lq := strings.ToLower(re.queryInfo.Query)
+		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
+			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {
 			shardIDs = []uint64{cluster.SystemSchemaShardID}
 		}
 	}

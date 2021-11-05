@@ -123,6 +123,17 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
+	case ast.Create != nil && ast.Create.Index != nil:
+		sequences, err := e.generateTableIDSequences(1)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		command := NewOriginatingCreateIndexCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.Index)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Source:
 		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
@@ -132,6 +143,13 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.MaterializedView:
 		command := NewOriginatingDropMVCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.Index:
+		command := NewOriginatingDropIndexCommand(e, session.Schema.Name, sql, ast.Drop.TableName, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
