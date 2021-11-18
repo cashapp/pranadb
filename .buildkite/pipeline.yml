@@ -1,0 +1,18 @@
+steps:
+  - label: "Lint Go 🤔"
+    id: "lint-go"
+    command: "golangci-lint run"
+
+  - label: "Lint Protos 🤔"
+    id: "lint-protos"
+    command: "make -C protos lint"
+
+  - label: "Test :golang:"
+    id: "test"
+    command: "go test -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./..."
+
+# notify:
+#   - slack:
+#       channels:
+#         - "#cash-dx-tools-alerts"
+#     if: 'build.state == "failed" && build.branch == pipeline.default_branch'
