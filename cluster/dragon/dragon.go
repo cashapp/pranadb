@@ -29,9 +29,6 @@ const (
 
 	locksClusterID uint64 = 2
 
-	// Timeout on dragon calls
-	dragonCallTimeout = time.Second * 10
-
 	// timeout for initial shard call - allows nodes to startup
 	initialShardTimeout = 15 * time.Minute
 
@@ -729,7 +726,7 @@ func (d *Dragon) getTimeout(shardID uint64) time.Duration {
 		// so we use a much longer timeout to give other nodes time to start, otherwise we use a shorter timeout
 		res = initialShardTimeout
 	} else {
-		res = dragonCallTimeout
+		res = d.cnf.RaftCallTimeout
 	}
 	d.firstShardAccessed.Store(shardID, struct{}{})
 	return res

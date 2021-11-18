@@ -25,7 +25,7 @@ func (cmd *UploadProtoCommand) Run(cl *client.Client) error {
 	if err := proto.Unmarshal(data, fd); err != nil {
 		return errors.WithStack(err)
 	}
-	fmt.Println("Registering the following protoufs:")
+	fmt.Println("Registering the following protobufs:")
 	for _, f := range fd.File {
 		fmt.Printf("\t%s\n", f.GetName())
 	}

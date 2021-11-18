@@ -32,6 +32,8 @@ const (
 	UnknownSourceOrMaterializedView
 	UnknownIndexColumn
 	IndexAlreadyExists
+
+	UnknownPerfCommand
 )
 
 func NewInternalError(seq int64) PranaError {
@@ -96,6 +98,10 @@ func NewSourceHasChildrenError(schemaName string, sourceName string, childMVs []
 
 func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName string, childMVs []string) PranaError {
 	return NewPranaErrorf(MaterializedViewHasChildren, "Cannot drop materialized view %s.%s it has the following children %s", schemaName, materializedViewName, getChildString(schemaName, childMVs))
+}
+
+func NewUnknownLoadRunnerfCommandError(commandName string) PranaError {
+	return NewPranaErrorf(UnknownPerfCommand, "Unknown perf runner command %s", commandName)
 }
 
 func getChildString(schemaName string, childMVs []string) string {
