@@ -9,12 +9,22 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/squareup/pranadb/errors"
 
 	kafkaclient "github.com/segmentio/kafka-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/sharder"
+)
+
+var (
+	producedCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "msg_gen",
+		Help: "Total number of kafka messages written",
+	})
 )
 
 // MessageGenerator - quick and dirty Kafka message generator for demos, tests etc
@@ -121,6 +131,8 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 		}
 		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
 			return errors.WithStack(err)
+		} else {
+			producedCounter.Inc()
 		}
 		if delay != 0 {
 			time.Sleep(delay)

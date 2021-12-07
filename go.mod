@@ -31,6 +31,7 @@ require (
 	github.com/pingcap/tidb v1.1.0-beta.0.20210917131642-dc079337ef0c
 	github.com/pingcap/tipb v0.0.0-20210628060001-1793e022b962
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.5.1
 	github.com/segmentio/kafka-go v0.4.17
 	github.com/sergi/go-diff v1.1.0
 	github.com/sirupsen/logrus v1.8.1

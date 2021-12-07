@@ -203,7 +203,8 @@ func (c *Client) doExecuteStatementWithError(sessionID string, statement string,
 							sc = fmt.Sprintf("%g", value.GetFloatValue())
 						case common.TypeTimestamp:
 							unixTime := value.GetIntValue()
-							gt := time.UnixMicro(unixTime).In(utc)
+							gt := time.UnixMicro(unixTime)
+							gt = gt.In(utc)
 							sc = fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d.%06d",
 								gt.Year(), gt.Month(), gt.Day(), gt.Hour(), gt.Minute(), gt.Second(), gt.Nanosecond()/1000)
 						case common.TypeUnknown:

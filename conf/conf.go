@@ -48,6 +48,8 @@ type Config struct {
 	StartupEndpointPath           string
 	ReadyEndpointPath             string
 	LiveEndpointPath              string
+	MetricsBind                   string `help:"Bind address for Prometheus metrics." default:"localhost:2112" env:"METRICS_BIND"`
+	EnableMetrics                 bool
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
