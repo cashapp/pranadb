@@ -24,7 +24,6 @@ func main() {
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
-	select {}
 }
 
 func run(args []string) error {
