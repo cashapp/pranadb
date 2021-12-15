@@ -25,11 +25,11 @@ import (
 
 var (
 	producedCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "msg_gen_produced",
+		Name: "msg_gen_produced_total",
 		Help: "Total number of kafka messages written",
 	})
 	producedErrorsCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "msg_gen_errors",
+		Name: "msg_gen_errors_total",
 		Help: "Total number of errors",
 	})
 	producedDurationMicroObserver = promauto.NewSummary(prometheus.SummaryOpts{
@@ -142,26 +142,26 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 		}
 		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
 			return errors.WithStack(err)
-		} else {
-			var err error
-			start := time.Now()
-
-			// setup function cleanup and reporting
-			defer func() {
-				durationMicro := time.Since(start).Microseconds()
-
-				producedCounter.Inc()
-				producedDurationMicroObserver.Observe(float64(durationMicro))
-
-				if r := recover(); r != nil || err != nil {
-					producedErrorsCounter.Inc()
-				}
-			}()
-
-			if err = producer.WriteMessages(context.Background(), kmsg); err != nil {
-				return errors.WithStack(err)
-			}
 		}
+		var e error
+		start := time.Now()
+
+		// setup function cleanup and reporting
+		defer func() {
+			durationMicro := time.Since(start).Microseconds()
+
+			producedCounter.Inc()
+			producedDurationMicroObserver.Observe(float64(durationMicro))
+
+			if r := recover(); r != nil || e != nil {
+				producedErrorsCounter.Inc()
+			}
+		}()
+
+		if err = producer.WriteMessages(context.Background(), kmsg); e != nil {
+			return errors.WithStack(e)
+		}
+
 		if delay != 0 {
 			time.Sleep(delay)
 		}
