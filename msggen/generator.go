@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -22,8 +25,16 @@ import (
 
 var (
 	producedCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "msg_gen",
+		Name: "msg_gen_produced",
 		Help: "Total number of kafka messages written",
+	})
+	producedErrorsCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "msg_gen_errors",
+		Help: "Total number of errors",
+	})
+	producedDurationMicroObserver = promauto.NewSummary(prometheus.SummaryOpts{
+		Name: "msg_gen_duration",
+		Help: "Duration of message processing",
 	})
 )
 
@@ -132,7 +143,25 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
 			return errors.WithStack(err)
 		} else {
-			producedCounter.Inc()
+			var err error
+			start := time.Now()
+
+			// setup function cleanup and reporting
+			defer func() {
+				durationMicro := time.Since(start).Microseconds()
+
+				producedCounter.Inc()
+				producedDurationMicroObserver.Observe(float64(durationMicro))
+
+				if r := recover(); r != nil || err != nil {
+					// this case is extremely simplistic, in practice you'd likely add a lot more information
+					producedErrorsCounter.Inc()
+				}
+			}()
+
+			if err = producer.WriteMessages(context.Background(), kmsg); err != nil {
+				return errors.WithStack(err)
+			}
 		}
 		if delay != 0 {
 			time.Sleep(delay)
@@ -159,6 +188,14 @@ func setProperty(cfg *kafkaclient.Writer, k, v string) error {
 		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
 	default:
 		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
+	}
+	return nil
+}
+
+func MetricsServer() error {
+	http.Handle("/metrics", promhttp.Handler())
+	if err := http.ListenAndServe(":2113", nil); err != nil {
+		return errors.WithStack(err)
 	}
 	return nil
 }

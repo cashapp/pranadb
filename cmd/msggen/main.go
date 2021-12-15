@@ -24,6 +24,7 @@ func main() {
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
+	select {}
 }
 
 func run(args []string) error {
@@ -37,6 +38,10 @@ func run(args []string) error {
 		return errors.WithStack(err)
 	}
 	gm, err := msggen.NewGenManager()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	err = msggen.MetricsServer()
 	if err != nil {
 		return errors.WithStack(err)
 	}
