@@ -140,9 +140,6 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			Time:      msg.TimeStamp,
 			Headers:   kheaders,
 		}
-		if err := producer.WriteMessages(context.Background(), kmsg); err != nil {
-			return errors.WithStack(err)
-		}
 		var e error
 		start := time.Now()
 
@@ -158,7 +155,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			}
 		}()
 
-		if err = producer.WriteMessages(context.Background(), kmsg); e != nil {
+		if e := producer.WriteMessages(context.Background(), kmsg); e != nil {
 			return errors.WithStack(e)
 		}
 
