@@ -154,7 +154,6 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 				producedDurationMicroObserver.Observe(float64(durationMicro))
 
 				if r := recover(); r != nil || err != nil {
-					// this case is extremely simplistic, in practice you'd likely add a lot more information
 					producedErrorsCounter.Inc()
 				}
 			}()
