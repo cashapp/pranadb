@@ -41,13 +41,13 @@ func NewServer(config conf.Config) *Server {
 }
 
 func (s *Server) Start() error {
-	go func(srv *http.Server) {
+	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("prometheus http export server failed to listen %v", err)
 		} else {
 			log.Debugf("Started prometheus http server on address localhost:2112")
 		}
-	}(s.httpServer)
+	}()
 	return nil
 }
 
