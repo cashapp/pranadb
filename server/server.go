@@ -2,8 +2,10 @@ package server
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/lifecycle"
 	"net/http" //nolint:stylecheck
+
+	"github.com/squareup/pranadb/lifecycle"
+	"github.com/squareup/pranadb/metrics"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -56,7 +58,8 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry)
+	metrics := metrics.NewServer(config)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, metrics)
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, protoRegistry)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
@@ -78,6 +81,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		protoRegistry,
 		schemaLoader,
 		apiServer,
+		metrics,
 	}
 
 	server := Server{
@@ -95,6 +99,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		notifClient:     notifClient,
 		apiServer:       apiServer,
 		services:        services,
+		metrics:         metrics,
 	}
 	return &server, nil
 }
@@ -117,6 +122,7 @@ type Server struct {
 	started         bool
 	conf            conf.Config
 	debugServer     *http.Server
+	metrics         *metrics.Server
 }
 
 type service interface {

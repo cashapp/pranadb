@@ -40,5 +40,9 @@ func run(args []string) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	err = msggen.MetricsServer()
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	return gm.ProduceMessages(cfg.GeneratorName, cfg.TopicName, cfg.Partitions, cfg.Delay, cfg.NumMessages, cfg.IndexStart, cfg.KafkaProperties)
 }
