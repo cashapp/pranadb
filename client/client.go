@@ -83,7 +83,7 @@ func (c *Client) CreateSession() (string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
-		return "", errors.New("not started")
+		return "", errors.Error("not started")
 	}
 	if c.currentStatement != "" {
 		return "", errors.Errorf("statement currently executing: %s", c.currentStatement)
@@ -101,7 +101,7 @@ func (c *Client) CloseSession(sessionID string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
-		return errors.New("not started")
+		return errors.Error("not started")
 	}
 	if c.currentStatement != "" {
 		return errors.Errorf("statement currently executing: %s", c.currentStatement)
@@ -117,7 +117,7 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
-		return nil, errors.New("not started")
+		return nil, errors.Error("not started")
 	}
 	if c.currentStatement != "" {
 		return nil, errors.Errorf("statement currently executing: %s", c.currentStatement)

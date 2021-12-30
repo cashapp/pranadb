@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pingcap/tidb/types"
-	"github.com/pingcap/tidb/util/chunk"
+	"github.com/squareup/pranadb/tidb/types"
+	"github.com/squareup/pranadb/tidb/util/chunk"
 )
 
 type Row struct {

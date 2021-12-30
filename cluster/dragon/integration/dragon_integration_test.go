@@ -313,7 +313,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	for i := 0; i < len(chans); i++ {
 		err, ok := <-chans[i]
 		if !ok {
-			return nil, errors.New("channel was closed")
+			return nil, errors.Error("channel was closed")
 		}
 		if err != nil {
 			return nil, errors.WithStack(err)

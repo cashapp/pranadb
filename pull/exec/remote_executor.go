@@ -126,7 +126,7 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 			res, ok := <-ch
 			if !ok {
-				return nil, errors.New("channel was closed")
+				return nil, errors.Error("channel was closed")
 			}
 			if res.Err != nil {
 				return nil, res.Err

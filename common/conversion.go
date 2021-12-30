@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/tidb/types"
+	"github.com/squareup/pranadb/tidb/types"
 )
 
 func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {

@@ -92,7 +92,7 @@ func (p *PushSelect) evalPredicates(row *common.Row) (bool, error) {
 			return false, errors.WithStack(err)
 		}
 		if isNull {
-			return false, errors.New("null returned from evaluating select predicate")
+			return false, errors.Error("null returned from evaluating select predicate")
 		}
 		if !accept {
 			return false, nil

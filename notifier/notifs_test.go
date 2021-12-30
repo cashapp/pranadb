@@ -457,7 +457,7 @@ func (n *notifListener) HandleNotification(notification Notification) error {
 	defer n.lock.Unlock()
 	n.notifs = append(n.notifs, notification)
 	if n.returnFail.Get() {
-		return errors.New("notification failure")
+		return errors.Error("notification failure")
 	}
 	return nil
 }

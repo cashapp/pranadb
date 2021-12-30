@@ -318,7 +318,7 @@ func (f *FakeCluster) putInternal(item *kvWrapper) {
 func (f *FakeCluster) deleteInternal(item *kvWrapper) error {
 	prevItem := f.btree.Delete(item)
 	if prevItem == nil {
-		return errors.New("didn't find item to delete")
+		return errors.Error("didn't find item to delete")
 	}
 	return nil
 }

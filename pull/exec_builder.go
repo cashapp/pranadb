@@ -1,26 +1,28 @@
 package pull
 
 import (
+	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/tidb/planner"
+	"github.com/squareup/pranadb/tidb/util/ranger"
 
-	"github.com/pingcap/tidb/planner/core"
-	"github.com/pingcap/tidb/planner/util"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
+	"github.com/squareup/pranadb/tidb/planner/util"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
+func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool) (queryDAG exec.PullExecutor, err error) {
 	ast, err := session.PullPlanner().Parse(query)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return p.buildPullQueryExecutionFromAst(session, ast, prepare, remote)
+	return p.buildPullQueryExecutionFromAst(session, ast, prepare)
 }
 
-func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool, remote bool) (queryDAG exec.PullExecutor, err error) {
+func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
@@ -28,11 +30,11 @@ func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parpl
 		return nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, remote)
+	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, false)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	logicalSort, ok := logicalPlan.(*core.LogicalSort)
+	logicalSort, ok := logicalPlan.(*planner.LogicalSort)
 	if ok {
 		_, hasPhysicalSort := dag.(*exec.PullSort)
 		if !hasPhysicalSort {
@@ -57,7 +59,7 @@ func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parpl
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
+func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -70,7 +72,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 	var executor exec.PullExecutor
 	var err error
 	switch op := plan.(type) {
-	case *core.PhysicalProjection:
+	case *planner.PhysicalProjection:
 		var exprs []*common.Expression
 		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
@@ -79,7 +81,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-	case *core.PhysicalSelection:
+	case *planner.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
@@ -88,61 +90,38 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-	case *core.PhysicalHashAgg:
-		// TODO
-		println("%v", op)
-	case *core.PhysicalTableReader:
-		// The Physical tab reader may have a a list of plans which can be sent to remote nodes
-		// So we need to take each one of those and assemble into a dag, then add the dag to
-		// RemoteExecutor pull executor
-		// We only do this when executing a remote query
-		var remoteDag exec.PullExecutor
+
+	case *planner.PhysicalTableScan:
 		if remote {
-			remotePlan := op.GetTablePlan()
-			remoteDag, err = p.buildPullDAG(session, remotePlan, schema, remote)
+			tableName := op.Table.Name.L
+			executor, err = p.createPullTableScan(schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-		}
-		executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
-	case *core.PhysicalTableScan:
-		if !remote {
-			panic("table scans only used on remote queries")
-		}
-		tableName := op.Table.Name.L
-		tbl, ok := schema.GetTable(tableName)
-		if !ok {
-			return nil, errors.Errorf("unknown source or materialized view %s", tableName)
-		}
-		if len(op.Ranges) > 1 {
-			return nil, errors.New("only one range supported")
-		}
-		var scanRange *exec.ScanRange
-		if len(op.Ranges) == 1 {
-			rng := op.Ranges[0]
-			if !rng.IsFullRange() {
-				if len(rng.LowVal) != 1 {
-					return nil, errors.New("composite ranges not supported")
-				}
-				lowD := rng.LowVal[0]
-				highD := rng.HighVal[0]
-				scanRange = &exec.ScanRange{
-					LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
-					HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
-					LowExcl:  rng.LowExclude,
-					HighExcl: rng.HighExclude,
-				}
+		} else {
+			remoteDag, err := p.buildPullDAG(session, op, schema, true)
+			if err != nil {
+				return nil, errors.WithStack(err)
 			}
+			// TODO should be done in transformation rule, not here!
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
 		}
-		var colIndexes []int
-		for _, col := range op.Columns {
-			colIndexes = append(colIndexes, col.Offset)
+	case *planner.PhysicalIndexScan:
+		if remote {
+			tableName := op.Table.Name.L
+			executor, err = p.createPullTableScan(schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+		} else {
+			remoteDag, err := p.buildPullDAG(session, op, schema, true)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			// TODO should be done in transformation rule, not here!
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
 		}
-		executor, err = exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, session.QueryInfo.ShardID, scanRange)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-	case *core.PhysicalSort:
+	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	default:
@@ -162,6 +141,38 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan core.PhysicalPlan, sch
 	exec.ConnectPullExecutors(childExecutors, executor)
 
 	return executor, nil
+}
+
+func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ranges []*ranger.Range, columns []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {
+	tbl, ok := schema.GetTable(tableName)
+	if !ok {
+		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
+	}
+	if len(ranges) > 1 {
+		return nil, errors.Error("only one range supported")
+	}
+	var scanRange *exec.ScanRange
+	if len(ranges) == 1 {
+		rng := ranges[0]
+		if !rng.IsFullRange() {
+			if len(rng.LowVal) != 1 {
+				return nil, errors.Error("composite ranges not supported")
+			}
+			lowD := rng.LowVal[0]
+			highD := rng.HighVal[0]
+			scanRange = &exec.ScanRange{
+				LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
+				HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
+				LowExcl:  rng.LowExclude,
+				HighExcl: rng.HighExclude,
+			}
+		}
+	}
+	var colIndexes []int
+	for _, col := range columns {
+		colIndexes = append(colIndexes, col.Offset)
+	}
+	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRange)
 }
 
 func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {

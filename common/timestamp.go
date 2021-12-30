@@ -5,8 +5,8 @@ import (
 
 	"github.com/pingcap/parser/mysql"
 
-	"github.com/pingcap/tidb/sessionctx/stmtctx"
-	"github.com/pingcap/tidb/types"
+	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
+	"github.com/squareup/pranadb/tidb/types"
 )
 
 type Timestamp = types.Time

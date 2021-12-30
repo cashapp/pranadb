@@ -22,8 +22,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	pingerrors "github.com/pingcap/errors" //nolint: depguard
 )
 
 // Server over gRPC.
@@ -158,13 +156,8 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		if errors.As(err, &perr) {
 			return perr
 		}
-		// pingcap errors use the legacy Causer interface
-		if pingcapErr, ok := errors.Cause(err).(*pingerrors.Error); ok {
-			msg := pingcapErr.GetMsg()
-			return errors.NewInvalidStatementError(msg)
-		}
 		// For internal errors we don't return internal error messages to the CLI as this would leak
-		// server implementation details. Instead we generate a sequence number and add that to the message
+		// server implementation details. Instead, we generate a sequence number and add that to the message
 		// and log the internal error in the server logs with the sequence number so it can be looked up
 		seq := atomic.AddInt64(&s.errorSequence, 1)
 		perr = errors.NewInternalError(seq)

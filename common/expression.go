@@ -4,8 +4,8 @@ import (
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/errors"
 
-	"github.com/pingcap/tidb/expression"
-	"github.com/pingcap/tidb/types"
+	"github.com/squareup/pranadb/tidb/expression"
+	"github.com/squareup/pranadb/tidb/types"
 
 	"github.com/squareup/pranadb/sessctx"
 )

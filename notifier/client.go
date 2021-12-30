@@ -86,12 +86,12 @@ func (c *client) BroadcastSync(notif Notification) error {
 	}
 	ok, k := <-respChan
 	if !k {
-		return errors.New("channel was closed")
+		return errors.Error("channel was closed")
 	}
 	c.responseChannels.Delete(nf.sequence)
 	if !ok {
 		// An error was signalled from the other end
-		return errors.New("failure in processing notification")
+		return errors.Error("failure in processing notification")
 	}
 	return nil
 }

@@ -6,8 +6,8 @@ import (
 	pc_parser "github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/charset"
-	driver "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/squareup/pranadb/errors"
+	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
 )
 
 func newParser() *parser {
