@@ -106,7 +106,7 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 		qi.Query = ps.Query
 		qi.PsID = ps.ID
 		qi.IsPs = true
-		dag, err := p.buildPullQueryExecutionFromAst(session, ps.Ast, true, false)
+		dag, err := p.buildPullQueryExecutionFromAst(session, ps.Ast, true)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -124,7 +124,7 @@ func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullE
 	qi.SchemaName = session.Schema.Name
 	qi.Query = query
 	qi.IsPs = false
-	return p.buildPullQueryExecutionFromQuery(session, query, false, false)
+	return p.buildPullQueryExecutionFromQuery(session, query, false)
 }
 
 func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
@@ -161,13 +161,13 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 			ps, ok := s.PsCache[queryInfo.PsID]
 			if !ok {
 				// Not already prepared
-				dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, true, true)
+				dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, true)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
 				remExecutor := p.findRemoteExecutor(dag)
 				if remExecutor == nil {
-					return nil, errors.New("cannot find remote executor")
+					return nil, errors.Error("cannot find remote executor")
 				}
 				s.CurrentQuery = remExecutor.RemoteDag
 				ps = s.CreateRemotePreparedStatement(queryInfo.PsID, queryInfo.Query)
@@ -180,13 +180,13 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 				CurrentQuery(s).Reset()
 			}
 		} else {
-			dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, false, true)
+			dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, false)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 			remExecutor := p.findRemoteExecutor(dag)
 			if remExecutor == nil {
-				return nil, errors.New("cannot find remote executor")
+				return nil, errors.Error("cannot find remote executor")
 			}
 			s.CurrentQuery = remExecutor.RemoteDag
 		}

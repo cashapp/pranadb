@@ -219,7 +219,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 	// We wait until the snapshot has been fully processed
 	err, ok := <-ch
 	if !ok {
-		return errors.New("channel was closed")
+		return errors.Error("channel was closed")
 	}
 	if err != nil {
 		return errors.WithStack(err)
@@ -370,7 +370,7 @@ func (t *TableExecutor) performFillFromSnapshot(snapshot cluster.Snapshot, pe Pu
 	for _, ch := range chans {
 		err, ok := <-ch
 		if !ok {
-			return errors.New("channel was closed")
+			return errors.Error("channel was closed")
 		}
 		if err != nil {
 			return errors.WithStack(err)
@@ -446,7 +446,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 	for _, ch := range chans {
 		err, ok := <-ch
 		if !ok {
-			return errors.New("channel was closed")
+			return errors.Error("channel was closed")
 		}
 		if err != nil {
 			return errors.WithStack(err)

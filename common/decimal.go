@@ -1,8 +1,8 @@
 package common
 
 import (
-	"github.com/pingcap/tidb/types"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/tidb/types"
 )
 
 type Decimal struct {

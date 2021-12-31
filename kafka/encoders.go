@@ -71,12 +71,12 @@ func (s *StringKeyTLJSONValueEncoder) Name() string {
 
 func (s *StringKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.VarcharColumnType {
-		return nil, errors.New("Key is not a varchar column")
+		return nil, errors.Error("Key is not a varchar column")
 	}
 	keyBytes := []byte(row.GetString(keyColIndex))
 
@@ -101,12 +101,12 @@ func (s *Int64BEKeyTLJSONValueEncoder) Name() string {
 
 func (s *Int64BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.BigIntColumnType {
-		return nil, errors.New("Key is not a BIGINT column")
+		return nil, errors.Error("Key is not a BIGINT column")
 	}
 	keyBytes := common.AppendUint64ToBufferBE(nil, uint64(row.GetInt64(keyColIndex)))
 
@@ -131,12 +131,12 @@ func (s *Int32BEKeyTLJSONValueEncoder) Name() string {
 
 func (s *Int32BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.IntColumnType {
-		return nil, errors.New("Key is not a INTEGER column")
+		return nil, errors.Error("Key is not a INTEGER column")
 	}
 	keyBytes := common.AppendUint32ToBufferBE(nil, uint32(row.GetInt64(keyColIndex)))
 
@@ -161,12 +161,12 @@ func (s *Int16BEKeyTLJSONValueEncoder) Name() string {
 
 func (s *Int16BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.IntColumnType {
-		return nil, errors.New("Key is not a INTEGER column")
+		return nil, errors.Error("Key is not a INTEGER column")
 	}
 	keyBytes := common.AppendUint16ToBufferBE(nil, uint16(row.GetInt64(keyColIndex)))
 
@@ -191,12 +191,12 @@ func (s *Float64BEKeyTLJSONValueEncoder) Name() string {
 
 func (s *Float64BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.DoubleColumnType {
-		return nil, errors.New("Key is not a DOUBLE column")
+		return nil, errors.Error("Key is not a DOUBLE column")
 	}
 	keyBytes := common.AppendFloat64ToBufferBE(nil, row.GetFloat64(keyColIndex))
 
@@ -221,12 +221,12 @@ func (s *Float32BEKeyTLJSONValueEncoder) Name() string {
 
 func (s *Float32BEKeyTLJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.DoubleColumnType {
-		return nil, errors.New("Key is not a DOUBLE column")
+		return nil, errors.Error("Key is not a DOUBLE column")
 	}
 	keyBytes := common.AppendFloat32ToBufferBE(nil, float32(row.GetFloat64(keyColIndex)))
 
@@ -391,12 +391,12 @@ func (e *StringKeyProtobufValueEncoder) Name() string {
 
 func (e *StringKeyProtobufValueEncoder) EncodeMessage(row *common.Row, colTypes []common.ColumnType, keyCols []int, timestamp time.Time) (*Message, error) {
 	if len(keyCols) != 1 {
-		return nil, errors.New("must be only one pk col for binary key encoding")
+		return nil, errors.Error("must be only one pk col for binary key encoding")
 	}
 	keyColIndex := keyCols[0]
 	keyColType := colTypes[keyColIndex]
 	if keyColType != common.VarcharColumnType {
-		return nil, errors.New("Key is not a varchar column")
+		return nil, errors.Error("Key is not a varchar column")
 	}
 	keyBytes := []byte(row.GetString(keyColIndex))
 

@@ -242,7 +242,7 @@ func (g *Group) checkInjectFailure() error {
 			g.failureEnd = nil
 			return nil
 		}
-		return errors.New("Injected failure")
+		return errors.Error("Injected failure")
 	}
 	return nil
 }
@@ -376,7 +376,7 @@ func (g *Group) rebalance() error {
 		return nil
 	}
 	if len(g.subscribers) > len(g.topic.partitions) {
-		return errors.New("too many subscribers")
+		return errors.Error("too many subscribers")
 	}
 	for _, subscriber := range g.subscribers {
 		subscriber.partitions = []*Partition{}
@@ -514,7 +514,7 @@ func (c *Subscriber) Unsubscribe() error {
 func NewFakeMessageProviderFactory(topicName string, props map[string]string, groupName string) (MessageProviderFactory, error) {
 	sFakeKafkaID, ok := props[FakeKafkaIDPropName]
 	if !ok {
-		return nil, errors.New("no fakeKafkaID property in broker configuration")
+		return nil, errors.Error("no fakeKafkaID property in broker configuration")
 	}
 	fakeKafkaID, err := strconv.ParseInt(sFakeKafkaID, 10, 64)
 	if err != nil {
@@ -575,7 +575,7 @@ func (f *FakeMessageProvider) GetMessage(pollTimeout time.Duration) (*Message, e
 
 func (f *FakeMessageProvider) CommitOffsets(offsets map[int32]int64) error {
 	if f.subscriber == nil {
-		return errors.New("not started")
+		return errors.Error("not started")
 	}
 	return f.subscriber.commitOffsets(offsets)
 }

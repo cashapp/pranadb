@@ -172,7 +172,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 		failed = true
 	}
 	if failed {
-		return errors.New("failed to send all messages")
+		return errors.Error("failed to send all messages")
 	}
 	log.Println("Messages sent ok")
 	return nil

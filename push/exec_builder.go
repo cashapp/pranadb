@@ -2,15 +2,15 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/tidb/planner"
 
 	"github.com/squareup/pranadb/errors"
 
-	"github.com/pingcap/tidb/expression"
-	"github.com/pingcap/tidb/planner/core"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
+	"github.com/squareup/pranadb/tidb/expression"
 )
 
 // Builds the push DAG but does not register anything in memory
@@ -44,32 +44,32 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
+func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	var executor exec.PushExecutor
 	var err error
 	switch op := plan.(type) {
-	case *core.PhysicalProjection:
+	case *planner.PhysicalProjection:
 		var exprs []*common.Expression
 		for _, expr := range op.Exprs {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor = exec.NewPushProjection(exprs)
-	case *core.PhysicalSelection:
+	case *planner.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor = exec.NewPushSelect(exprs)
-	case *core.PhysicalHashAgg:
+	case *planner.PhysicalHashAgg:
 		var aggFuncs []*exec.AggregateFunctionInfo
 
 		firstRowFuncs := 0
 		for _, aggFunc := range op.AggFuncs {
 			argExprs := aggFunc.Args
 			if len(argExprs) > 1 {
-				return nil, nil, errors.New("more than one aggregate function arg")
+				return nil, nil, errors.Error("more than one aggregate function arg")
 			}
 			var argExpr *common.Expression
 			if len(argExprs) == 1 {
@@ -109,7 +109,7 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		for i, expr := range op.GroupByItems {
 			col, ok := expr.(*expression.Column)
 			if !ok {
-				return nil, nil, errors.New("group by expression not a column")
+				return nil, nil, errors.Error("group by expression not a column")
 			}
 			groupByCols[i] = col.Index
 			pkCols[i] = i + nonFirstRowFuncs
@@ -151,40 +151,25 @@ func (m *MaterializedView) buildPushDAG(plan core.PhysicalPlan, aggSequence int,
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
-	case *core.PhysicalTableReader:
-		if len(op.TablePlans) != 1 {
-			panic("expected one table plan")
+	case *planner.PhysicalUnionAll:
+		executor, err = exec.NewUnionAll()
+		if err != nil {
+			return nil, nil, errors.WithStack(err)
 		}
-		tabPlan := op.TablePlans[0]
-		physTableScan, ok := tabPlan.(*core.PhysicalTableScan)
-		if !ok {
-			return nil, nil, errors.New("expected PhysicalTableScan")
-		}
-		tableName := physTableScan.Table.Name
+	case *planner.PhysicalTableScan:
+		tableName := op.Table.Name
 		var scanCols []int
-		for _, col := range physTableScan.Columns {
+		for _, col := range op.Columns {
 			scanCols = append(scanCols, col.Offset)
 		}
 		executor, err = exec.NewScan(tableName.L, scanCols)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
-	case *core.PhysicalUnionAll:
-		executor, err = exec.NewUnionAll()
-		if err != nil {
-			return nil, nil, errors.WithStack(err)
-		}
-	case *core.PhysicalIndexReader:
+	case *planner.PhysicalIndexScan:
 		// If we create an MV that only selects on index fields the TiDB planner will give us an index reader.
 		// As this is a push query we won't use an index but we'll use a push Scan specifying which columns we want
-		indePlan := op.IndexPlans[0]
-		phsyIndexScan, ok := indePlan.(*core.PhysicalIndexScan)
-		if !ok {
-			return nil, nil, errors.New("expected PhysicalIndexScan")
-		}
-		// Assume PK - TODO check name of index
-
-		tableName := phsyIndexScan.Table.Name
+		tableName := op.Table.Name
 		table, ok := schema.GetTable(tableName.L)
 		if !ok {
 			return nil, nil, errors.Errorf("cannot find table %s", tableName.L)

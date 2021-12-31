@@ -225,7 +225,7 @@ func (c *connection) stop() error {
 	}
 	err, ok := <-c.readLoopExitCh
 	if !ok {
-		return errors.WithStack(errors.New("connection channel was closed"))
+		return errors.WithStack(errors.Error("connection channel was closed"))
 	}
 	c.msgsInProgress.Wait() // Wait for all messages to be processed
 	close(c.handleMsgCh)

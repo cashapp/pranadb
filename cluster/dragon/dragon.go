@@ -44,7 +44,7 @@ const (
 
 func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
 	if len(cnf.RaftAddresses) < 3 {
-		return nil, errors.New("minimum cluster size is 3 nodes")
+		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
 	return &Dragon{cnf: cnf}, nil
 }

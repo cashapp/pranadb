@@ -124,7 +124,7 @@ func (p *Engine) GetSource(sourceID uint64) (*source.Source, error) {
 	defer p.lock.RUnlock()
 	source, ok := p.sources[sourceID]
 	if !ok {
-		return nil, errors.New("no such source")
+		return nil, errors.Error("no such source")
 	}
 	return source, nil
 }
@@ -138,7 +138,7 @@ func (p *Engine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		return nil, errors.Errorf("no such source %d", sourceInfo.ID)
 	}
 	if src.IsRunning() {
-		return nil, errors.New("source is running")
+		return nil, errors.Error("source is running")
 	}
 
 	delete(p.sources, sourceInfo.ID)
@@ -396,7 +396,7 @@ func (p *Engine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error)
 	p.localShardsLock.RLock()
 	defer p.localShardsLock.RUnlock()
 	if len(p.localLeaderShards) == 0 {
-		return nil, errors.New("no local leader shards")
+		return nil, errors.Error("no local leader shards")
 	}
 	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
 	if err != nil {
@@ -415,7 +415,7 @@ func (p *Engine) checkForPendingData() error {
 		})
 		err, ok := <-ch
 		if !ok {
-			return errors.New("channel was closed")
+			return errors.Error("channel was closed")
 		}
 		if err != nil {
 			return errors.WithStack(err)
@@ -465,7 +465,7 @@ func (p *Engine) waitForSchedulers() error {
 	for _, ch := range chans {
 		_, ok := <-ch
 		if !ok {
-			return errors.New("chan was closed")
+			return errors.Error("chan was closed")
 		}
 	}
 	return nil
@@ -478,7 +478,7 @@ func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
 		return !exist, errors.WithStack(err)
 	}, 30*time.Second, 100*time.Millisecond)
 	if !ok {
-		return errors.New("timed out waiting for condition")
+		return errors.Error("timed out waiting for condition")
 	}
 	return errors.WithStack(err)
 }

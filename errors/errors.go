@@ -132,3 +132,21 @@ type PranaError struct {
 func (u PranaError) Error() string {
 	return u.Msg
 }
+
+// FIXME - fix all these - quick fixed here after port from TiDB
+
+func Trace(err error) error {
+	return err
+}
+
+func HasStack(err error) bool {
+	return true
+}
+
+func AddStack(err error) error {
+	return err
+}
+
+func ErrorEqual(err1 error, err2 error) bool {
+	return err1 == err2
+}
