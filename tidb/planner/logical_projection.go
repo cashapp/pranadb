@@ -21,7 +21,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"sort"
 )
 
@@ -47,7 +46,7 @@ type LogicalProjection struct {
 
 // Init initializes LogicalProjection.
 func (p LogicalProjection) Init(ctx sessionctx.Context, offset int) *LogicalProjection {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeProj, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeProj, &p, offset)
 	return &p
 }
 
@@ -262,7 +261,7 @@ func (p *LogicalProjection) HashCode() []byte {
 	// Expressions are commonly `Column`s, whose hashcode has the length 9, so
 	// we pre-alloc 10 bytes for each expr's hashcode.
 	result := make([]byte, 0, 12+len(p.Exprs)*10)
-	result = encodeIntAsUint32(result, plancodec.TypeStringToPhysicalID(p.tp))
+	result = encodeIntAsUint32(result, TypeStringToPhysicalID(p.tp))
 	result = encodeIntAsUint32(result, p.SelectBlockOffset())
 	result = encodeIntAsUint32(result, len(p.Exprs))
 	for _, expr := range p.Exprs {

@@ -282,47 +282,6 @@ Loop:
 	return s[:validLen]
 }
 
-// SubstituteCorCol2Constant will substitute correlated column to constant value which it contains.
-// If the args of one scalar function are all constant, we will substitute it to constant.
-func SubstituteCorCol2Constant(expr Expression) (Expression, error) {
-	switch x := expr.(type) {
-	case *ScalarFunction:
-		allConstant := true
-		newArgs := make([]Expression, 0, len(x.GetArgs()))
-		for _, arg := range x.GetArgs() {
-			newArg, err := SubstituteCorCol2Constant(arg)
-			if err != nil {
-				return nil, err
-			}
-			_, ok := newArg.(*Constant)
-			newArgs = append(newArgs, newArg)
-			allConstant = allConstant && ok
-		}
-		if allConstant {
-			val, err := x.Eval(chunk.Row{})
-			if err != nil {
-				return nil, err
-			}
-			return &Constant{Value: val, RetType: x.GetType()}, nil
-		}
-		var newSf Expression
-		if x.FuncName.L == ast.Cast {
-			newSf = BuildCastFunction(x.GetCtx(), newArgs[0], x.RetType)
-		} else {
-			newSf = NewFunctionInternal(x.GetCtx(), x.FuncName.L, x.GetType(), newArgs...)
-		}
-		return newSf, nil
-	case *CorrelatedColumn:
-		return &Constant{Value: *x.Data, RetType: x.GetType()}, nil
-	case *Constant:
-		if x.DeferredExpr != nil {
-			newExpr := FoldConstant(x)
-			return &Constant{Value: newExpr.(*Constant).Value, RetType: x.GetType()}, nil
-		}
-	}
-	return expr, nil
-}
-
 // timeZone2Duration converts timezone whose format should satisfy the regular condition
 // `(^(+|-)(0?[0-9]|1[0-2]):[0-5]?\d$)|(^+13:00$)` to time.Duration.
 func timeZone2Duration(tz string) time.Duration {

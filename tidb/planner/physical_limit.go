@@ -21,7 +21,6 @@ package planner
 import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &PhysicalLimit{}
@@ -36,7 +35,7 @@ type PhysicalLimit struct {
 
 // Init initializes PhysicalLimit.
 func (p PhysicalLimit) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalLimit {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeLimit, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeLimit, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p

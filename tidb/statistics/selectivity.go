@@ -77,11 +77,6 @@ func compareType(l, r int) int {
 	return -1
 }
 
-// MockStatsNode is only used for test.
-func MockStatsNode(id int64, m int64, num int) *StatsNode {
-	return &StatsNode{ID: id, mask: m, numCols: num}
-}
-
 const unknownColumnID = math.MinInt64
 
 // getConstantColumnID receives two expressions and if one of them is column and another is constant, it returns the

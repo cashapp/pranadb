@@ -170,11 +170,6 @@ func FullNotNullRange() []*Range {
 	return []*Range{{LowVal: []types.Datum{types.MinNotNullDatum()}, HighVal: []types.Datum{types.MaxValueDatum()}}}
 }
 
-// NullRange is [null, null] for Range.
-func NullRange() []*Range {
-	return []*Range{{LowVal: []types.Datum{{}}, HighVal: []types.Datum{{}}}}
-}
-
 // builder is the range builder struct.
 type builder struct {
 	err error

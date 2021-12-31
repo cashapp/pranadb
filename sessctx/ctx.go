@@ -59,10 +59,6 @@ func (s SessCtx) Value(key fmt.Stringer) interface{} {
 	return value
 }
 
-func (s SessCtx) ClearValue(key fmt.Stringer) {
-	delete(s.values, key)
-}
-
 func (s SessCtx) GetInfoSchema() sessionctx.InfoschemaMetaVersion {
 	return s.is
 }

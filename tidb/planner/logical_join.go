@@ -24,7 +24,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"math"
 )
 
@@ -110,7 +109,7 @@ func (tp JoinType) String() string {
 
 // Init initializes LogicalJoin.
 func (p LogicalJoin) Init(ctx sessionctx.Context, offset int) *LogicalJoin {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeJoin, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeJoin, &p, offset)
 	return &p
 }
 

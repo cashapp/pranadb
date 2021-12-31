@@ -24,7 +24,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression/aggregation"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"math"
 )
 
@@ -64,7 +63,7 @@ func NewPhysicalHashAgg(la *LogicalAggregation, newStats *property.StatsInfo, pr
 
 func (base basePhysicalAgg) initForHash(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalHashAgg {
 	p := &PhysicalHashAgg{base}
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeHashAgg, p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeHashAgg, p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return p

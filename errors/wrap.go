@@ -16,8 +16,6 @@ import (
 	"runtime"
 
 	"github.com/pkg/errors" //nolint: depguard
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // github.com/pkg/errors api
@@ -33,16 +31,6 @@ func New(message string) error {
 // Errorf also records the stack trace at the point it was called.
 func Errorf(format string, args ...interface{}) error {
 	return newStackErr(nil, fmt.Sprintf(format, args...))
-}
-
-// Wrapf returns an error annotating err with a stack trace
-// at the point Wrapf is called, and the format specifier.
-// If err is nil, Wrapf returns nil.
-func Wrapf(err error, format string, args ...interface{}) error {
-	if err == nil {
-		return nil
-	}
-	return newStackErr(err, fmt.Sprintf(format, args...))
 }
 
 // Wrap returns an error annotating err with a stack trace
@@ -62,24 +50,6 @@ func WithStack(err error) error {
 		return nil
 	}
 	return newStackErr(err, "")
-}
-
-// WithMessage annotates err with a new message.
-// If err is nil, WithMessage returns nil.
-func WithMessage(err error, message string) error {
-	if err == nil {
-		return nil
-	}
-	return newStackErr(err, message)
-}
-
-// WithMessagef annotates err with the format specifier.
-// If err is nil, WithMessagef returns nil.
-func WithMessagef(err error, format string, args ...interface{}) error {
-	if err == nil {
-		return nil
-	}
-	return newStackErr(err, fmt.Sprintf(format, args...))
 }
 
 // Cause returns the underlying cause of the error, if possible.
@@ -108,24 +78,6 @@ func Cause(err error) error {
 	return err
 }
 
-// gRPC status errors api
-
-// StatusError returns an error representing c and msg.  If c is OK, returns nil.
-func StatusError(code codes.Code, message string) error {
-	if code == codes.OK {
-		return nil
-	}
-	return newStackErr(status.Error(code, message), "")
-}
-
-// StatusErrorf returns Error(c, fmt.Sprintf(format, a...)).
-func StatusErrorf(code codes.Code, format string, args ...interface{}) error {
-	if code == codes.OK {
-		return nil
-	}
-	return newStackErr(status.Errorf(code, format, args...), "")
-}
-
 // standard go errors api
 
 // Is reports whether any error in err's chain matches target.
@@ -151,13 +103,6 @@ func Is(err, target error) bool { return stderrors.Is(err, target) }
 // As will panic if target is not a non-nil pointer to either a type that implements
 // error, or to any interface type. As returns false if err is nil.
 func As(err error, target interface{}) bool { return stderrors.As(err, target) }
-
-// Unwrap returns the result of calling the Unwrap method on err, if err's
-// type contains an Unwrap method returning error.
-// Otherwise, Unwrap returns nil.
-func Unwrap(err error) error {
-	return stderrors.Unwrap(err)
-}
 
 type stackErr struct {
 	cause error

@@ -18,9 +18,6 @@
 package driver
 
 import (
-	"fmt"
-	"regexp"
-
 	"github.com/pingcap/parser"
 )
 
@@ -41,19 +38,6 @@ func init() {
 	parser.SpecialCommentsController.Register(string(FeatureClusteredIndex))
 }
 
-// SpecialCommentVersionPrefix is the prefix of TiDB executable comments.
-const SpecialCommentVersionPrefix = `/*T!`
-
-// BuildSpecialCommentPrefix returns the prefix of `featureID` special comment.
-// For some special feature in TiDB, we will refine ddl query with special comment,
-// which may be useful when
-// A: the downstream is directly MySQL instance (treat it as comment for compatibility).
-// B: the downstream is lower version TiDB (ignore the unknown feature comment).
-// C: the downstream is same/higher version TiDB (parse the feature syntax out).
-func BuildSpecialCommentPrefix(featureID featureID) string {
-	return fmt.Sprintf("%s[%s]", SpecialCommentVersionPrefix, featureID)
-}
-
 type featureID string
 
 const (
@@ -66,11 +50,3 @@ const (
 	// FeatureClusteredIndex is the `clustered_index` feature.
 	FeatureClusteredIndex featureID = "clustered_index"
 )
-
-// FeatureIDPatterns is used to record special comments patterns.
-var FeatureIDPatterns = map[featureID]*regexp.Regexp{
-	FeatureIDAutoRandom:     regexp.MustCompile(`(?P<REPLACE>(?i)AUTO_RANDOM\b\s*(\s*\(\s*\d+\s*\)\s*)?)`),
-	FeatureIDAutoIDCache:    regexp.MustCompile(`(?P<REPLACE>(?i)AUTO_ID_CACHE\s*=?\s*\d+\s*)`),
-	FeatureIDAutoRandomBase: regexp.MustCompile(`(?P<REPLACE>(?i)AUTO_RANDOM_BASE\s*=?\s*\d+\s*)`),
-	FeatureClusteredIndex:   regexp.MustCompile(`(?i)(PRIMARY)?\s+KEY(\s*\(.*\))?\s+(?P<REPLACE>(NON)?CLUSTERED\b)`),
-}

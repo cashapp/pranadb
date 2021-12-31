@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/tidb/kv"
 	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/codec"
@@ -164,14 +163,14 @@ func (ran *Range) Encode(sc *stmtctx.StatementContext, lowBuffer, highBuffer []b
 		return nil, nil, err
 	}
 	if ran.LowExclude {
-		lowBuffer = kv.Key(lowBuffer).PrefixNext()
+		lowBuffer = Key(lowBuffer).PrefixNext()
 	}
 	highBuffer, err = codec.EncodeKey(sc, highBuffer[:0], ran.HighVal...)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !ran.HighExclude {
-		highBuffer = kv.Key(highBuffer).PrefixNext()
+		highBuffer = Key(highBuffer).PrefixNext()
 	}
 	return lowBuffer, highBuffer, nil
 }

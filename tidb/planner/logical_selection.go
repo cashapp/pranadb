@@ -23,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"sort"
 )
 
@@ -42,7 +41,7 @@ type LogicalSelection struct {
 
 // Init initializes LogicalSelection.
 func (p LogicalSelection) Init(ctx sessionctx.Context, offset int) *LogicalSelection {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeSel, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeSel, &p, offset)
 	return &p
 }
 
@@ -102,7 +101,7 @@ func (p *LogicalSelection) HashCode() []byte {
 	// Conditions are commonly `ScalarFunction`s, whose hashcode usually has a
 	// length larger than 20, so we pre-alloc 25 bytes for each expr's hashcode.
 	result := make([]byte, 0, 12+len(p.Conditions)*25)
-	result = encodeIntAsUint32(result, plancodec.TypeStringToPhysicalID(p.tp))
+	result = encodeIntAsUint32(result, TypeStringToPhysicalID(p.tp))
 	result = encodeIntAsUint32(result, p.SelectBlockOffset())
 	result = encodeIntAsUint32(result, len(p.Conditions))
 

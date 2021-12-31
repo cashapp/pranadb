@@ -21,7 +21,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalTableDual represents a dual table plan.
@@ -33,7 +32,7 @@ type LogicalTableDual struct {
 
 // Init initializes LogicalTableDual.
 func (p LogicalTableDual) Init(ctx sessionctx.Context, offset int) *LogicalTableDual {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeDual, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeDual, &p, offset)
 	return &p
 }
 
@@ -77,7 +76,7 @@ func (p *LogicalTableDual) DeriveStats(childStats []*property.StatsInfo, selfSch
 func (p *LogicalTableDual) HashCode() []byte {
 	// PlanType + SelectOffset + RowCount
 	result := make([]byte, 0, 12)
-	result = encodeIntAsUint32(result, plancodec.TypeStringToPhysicalID(p.tp))
+	result = encodeIntAsUint32(result, TypeStringToPhysicalID(p.tp))
 	result = encodeIntAsUint32(result, p.SelectBlockOffset())
 	result = encodeIntAsUint32(result, p.RowCount)
 	return result

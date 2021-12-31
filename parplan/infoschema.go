@@ -8,7 +8,6 @@ import (
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/tidb/infoschema"
-	tidbTable "github.com/squareup/pranadb/tidb/table"
 )
 
 // Implementation of TiDB InfoSchema so we can plug our schema into the TiDB planner
@@ -20,7 +19,7 @@ type pranaInfoSchema struct {
 
 type schemaTables struct {
 	dbInfo *model.DBInfo
-	tables map[string]tidbTable.Table
+	tables map[string]*model.TableInfo
 }
 
 type iSSchemaInfo struct {
@@ -40,7 +39,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 	result.schemaMap = make(map[string]*schemaTables)
 
 	var tabInfos []*model.TableInfo
-	tablesMap := make(map[string]tidbTable.Table)
+	tablesMap := make(map[string]*model.TableInfo)
 	for _, tableInfo := range schemaInfo.TablesInfos {
 		if tableInfo.Internal {
 			continue
@@ -134,7 +133,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 			State:      model.StatePublic,
 		}
 
-		tablesMap[tableInfo.Name] = newTiDBTable(tab)
+		tablesMap[tableInfo.Name] = tab
 
 		tabInfos = append(tabInfos, tab)
 	}
@@ -150,15 +149,6 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 	return result
 }
 
-/*
-type InfoSchema interface {
-	SchemaByName(schema model.CIStr) (*model.DBInfo, bool)
-	TableByName(schema, table model.CIStr) (table.Table, error)
-	TableByID(id int64) (table.Table, bool)
-	SchemaMetaVersion() int64
-}
-*/
-
 func (pis *pranaInfoSchema) SchemaByName(schema model.CIStr) (val *model.DBInfo, ok bool) {
 	tableNames, ok := pis.schemaMap[schema.L]
 	if !ok {
@@ -167,7 +157,7 @@ func (pis *pranaInfoSchema) SchemaByName(schema model.CIStr) (val *model.DBInfo,
 	return tableNames.dbInfo, true
 }
 
-func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t tidbTable.Table, err error) {
+func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t *model.TableInfo, err error) {
 	if tbNames, ok := pis.schemaMap[schema.L]; ok {
 		if t, ok = tbNames.tables[table.L]; ok {
 			return
@@ -176,66 +166,10 @@ func (pis *pranaInfoSchema) TableByName(schema, table model.CIStr) (t tidbTable.
 	return nil, tidb.ErrTableNotExists.GenWithStackByArgs(schema, table)
 }
 
-func (pis pranaInfoSchema) TableByID(id int64) (tidbTable.Table, bool) {
+func (pis *pranaInfoSchema) TableByID(id int64) (*model.TableInfo, bool) {
 	panic("should not be called")
 }
 
 func (pis *pranaInfoSchema) SchemaMetaVersion() int64 {
 	return 0
-}
-
-type tiDBTable struct {
-	tableInfo *model.TableInfo
-	columns   []*tidbTable.Column
-	indexes   []tidbTable.Index
-}
-
-func newTiDBTable(tableInfo *model.TableInfo) *tiDBTable {
-	var cols []*tidbTable.Column
-	for _, colInfo := range tableInfo.Columns {
-		cols = append(cols, &tidbTable.Column{
-			ColumnInfo: colInfo,
-		})
-	}
-	var indexes []tidbTable.Index
-	for _, indexInfo := range tableInfo.Indices {
-		indexes = append(indexes, newTiDBIndex(indexInfo))
-	}
-	tab := tiDBTable{
-		tableInfo: tableInfo,
-		columns:   cols,
-		indexes:   indexes,
-	}
-	return &tab
-}
-
-func (t *tiDBTable) Cols() []*tidbTable.Column {
-	return t.columns
-}
-
-func (t *tiDBTable) WritableCols() []*tidbTable.Column {
-	return t.columns
-}
-
-func (t *tiDBTable) FullHiddenColsAndVisibleCols() []*tidbTable.Column {
-	return t.columns
-}
-
-func (t *tiDBTable) Meta() *model.TableInfo {
-	return t.tableInfo
-}
-
-type tiDBIndex struct {
-	indexInfo *model.IndexInfo
-}
-
-func (t *tiDBIndex) Meta() *model.IndexInfo {
-	return t.indexInfo
-}
-
-func newTiDBIndex(indexInfo *model.IndexInfo) *tiDBIndex {
-	index := tiDBIndex{
-		indexInfo: indexInfo,
-	}
-	return &index
 }

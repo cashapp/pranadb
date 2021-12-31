@@ -21,7 +21,6 @@ import (
 	"context"
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/charset"
-	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/opcode"
 	"github.com/squareup/pranadb/errors"
@@ -29,14 +28,12 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/infoschema"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/table"
 	"github.com/squareup/pranadb/tidb/types"
 	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
 	"github.com/squareup/pranadb/tidb/util/chunk"
 	"github.com/squareup/pranadb/tidb/util/collate"
 	"github.com/squareup/pranadb/tidb/util/stringutil"
 	"strconv"
-	"strings"
 )
 
 func init() {
@@ -496,8 +493,6 @@ func (er *expressionRewriter) Leave(originInNode ast.Node) (retNode ast.Node, ok
 		er.isNullToExpression(v)
 	case *ast.IsTruthExpr:
 		er.isTrueToScalarFunc(v)
-	case *ast.DefaultExpr:
-		er.evalDefaultExpr(v)
 	// TODO: Perhaps we don't need to transcode these back to generic integers/strings
 	case *ast.TrimDirectionExpr:
 		er.ctxStackAppend(&expression.Constant{
@@ -1134,96 +1129,4 @@ func findFieldNameFromNaturalUsingJoin(p LogicalPlan, v *ast.ColumnName) (col *e
 		}
 	}
 	return nil, nil, nil
-}
-
-func (er *expressionRewriter) evalDefaultExpr(v *ast.DefaultExpr) {
-	var name *types.FieldName
-	// Here we will find the corresponding column for default function. At the same time, we need to consider the issue
-	// of subquery and name space.
-	// For example, we have two tables t1(a int default 1, b int) and t2(a int default -1, c int). Consider the following SQL:
-	// 		select a from t1 where a > (select default(a) from t2)
-	// Refer to the behavior of MySQL, we need to find column a in table t2. If table t2 does not have column a, then find it
-	// in table t1. If there are none, return an error message.
-	// Based on the above description, we need to look in er.b.allNames from back to front.
-	for i := len(er.b.allNames) - 1; i >= 0; i-- {
-		idx, err := expression.FindFieldName(er.b.allNames[i], v.Name)
-		if err != nil {
-			er.err = err
-			return
-		}
-		if idx >= 0 {
-			name = er.b.allNames[i][idx]
-			break
-		}
-	}
-	if name == nil {
-		idx, err := expression.FindFieldName(er.names, v.Name)
-		if err != nil {
-			er.err = err
-			return
-		}
-		if idx < 0 {
-			er.err = tidb.ErrUnknownColumn.GenWithStackByArgs(v.Name.OrigColName(), "field list")
-			return
-		}
-		name = er.names[idx]
-	}
-
-	dbName := name.DBName
-	if dbName.O == "" {
-		// if database name is not specified, use current database name
-		dbName = model.NewCIStr(er.sctx.GetSessionVars().CurrentDB)
-	}
-	if name.OrigTblName.O == "" {
-		// column is evaluated by some expressions, for example:
-		// `select default(c) from (select (a+1) as c from t) as t0`
-		// in such case, a 'no default' error is returned
-		er.err = tidb.ErrNoDefaultValue.GenWithStackByArgs(name.ColName)
-		return
-	}
-	var tbl table.Table
-	tbl, er.err = er.b.is.TableByName(dbName, name.OrigTblName)
-	if er.err != nil {
-		return
-	}
-	colName := name.OrigColName.O
-	if colName == "" {
-		// in some cases, OrigColName is empty, use ColName instead
-		colName = name.ColName.O
-	}
-	col := table.FindCol(tbl.Cols(), colName)
-	if col == nil {
-		er.err = tidb.ErrUnknownColumn.GenWithStackByArgs(v.Name, "field_list")
-		return
-	}
-	isCurrentTimestamp := hasCurrentDatetimeDefault(col)
-	var val *expression.Constant
-	switch {
-	case isCurrentTimestamp && col.Tp == mysql.TypeDatetime:
-		// for DATETIME column with current_timestamp, use NULL to be compatible with MySQL 5.7
-		val = expression.NewNull()
-	case isCurrentTimestamp && col.Tp == mysql.TypeTimestamp:
-		// for TIMESTAMP column with current_timestamp, use 0 to be compatible with MySQL 5.7
-		zero := types.NewTime(types.ZeroCoreTime, mysql.TypeTimestamp, int8(col.Decimal))
-		val = &expression.Constant{
-			Value:   types.NewDatum(zero),
-			RetType: types.NewFieldType(mysql.TypeTimestamp),
-		}
-	default:
-		// for other columns, just use what it is
-		val, er.err = er.b.getDefaultValue(col)
-	}
-	if er.err != nil {
-		return
-	}
-	er.ctxStackAppend(val, types.EmptyName)
-}
-
-// hasCurrentDatetimeDefault checks if column has current_timestamp default value
-func hasCurrentDatetimeDefault(col *table.Column) bool {
-	x, ok := col.DefaultValue.(string)
-	if !ok {
-		return false
-	}
-	return strings.ToLower(x) == ast.CurrentTimestamp
 }

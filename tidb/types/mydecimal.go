@@ -22,11 +22,9 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/pingcap/log"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/terror"
 	"github.com/squareup/pranadb/errors"
-	"go.uber.org/zap"
 )
 
 // RoundMode is the type for round mode.
@@ -2318,26 +2316,6 @@ func NewDecFromInt(i int64) *MyDecimal {
 // NewDecFromUint creates a MyDecimal from uint.
 func NewDecFromUint(i uint64) *MyDecimal {
 	return new(MyDecimal).FromUint(i)
-}
-
-// NewDecFromFloatForTest creates a MyDecimal from float, as it returns no error, it should only be used in test.
-func NewDecFromFloatForTest(f float64) *MyDecimal {
-	dec := new(MyDecimal)
-	err := dec.FromFloat64(f)
-	if err != nil {
-		log.Panic("encountered error", zap.Error(err), zap.String("DecimalStr", strconv.FormatFloat(f, 'g', -1, 64)))
-	}
-	return dec
-}
-
-// NewDecFromStringForTest creates a MyDecimal from string, as it returns no error, it should only be used in test.
-func NewDecFromStringForTest(s string) *MyDecimal {
-	dec := new(MyDecimal)
-	err := dec.FromString([]byte(s))
-	if err != nil {
-		log.Panic("encountered error", zap.Error(err), zap.String("DecimalStr", s))
-	}
-	return dec
 }
 
 // NewMaxOrMinDec returns the max or min value decimal for given precision and fraction.

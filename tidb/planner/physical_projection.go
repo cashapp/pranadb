@@ -22,8 +22,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/disjointset"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &PhysicalProjection{}
@@ -39,7 +37,7 @@ type PhysicalProjection struct {
 
 // Init initializes PhysicalProjection.
 func (p PhysicalProjection) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalProjection {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeProj, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeProj, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p
@@ -79,7 +77,7 @@ func refine4NeighbourProj(p, childProj *PhysicalProjection) {
 		}
 		inputIdx2OutputIdxes[col.Index] = append(inputIdx2OutputIdxes[col.Index], i)
 	}
-	childSchemaUnionSet := disjointset.NewIntSet(childProj.schema.Len())
+	childSchemaUnionSet := expression.NewIntSet(childProj.schema.Len())
 	for _, outputIdxes := range inputIdx2OutputIdxes {
 		if len(outputIdxes) <= 1 {
 			continue

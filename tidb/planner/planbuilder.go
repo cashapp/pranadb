@@ -30,8 +30,6 @@ import (
 	"github.com/squareup/pranadb/tidb/infoschema"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
-	"github.com/squareup/pranadb/tidb/table"
 	"github.com/squareup/pranadb/tidb/types"
 )
 
@@ -57,11 +55,8 @@ const (
 	orderByClause
 	whereClause
 	groupByClause
-	showStatement
 	globalOrderByClause
 	expressionClause
-	windowOrderByClause
-	partitionByClause
 )
 
 var clauseMsg = map[clauseCode]string{
@@ -72,11 +67,8 @@ var clauseMsg = map[clauseCode]string{
 	orderByClause:       "order clause",
 	whereClause:         "where clause",
 	groupByClause:       "group statement",
-	showStatement:       "show statement",
 	globalOrderByClause: "global ORDER clause",
 	expressionClause:    "expression",
-	windowOrderByClause: "window order by",
-	partitionByClause:   "window partition by",
 }
 
 // PlanBuilder builds Plan from an ast.Node.
@@ -161,31 +153,6 @@ func (hch *handleColHelper) mergeAndPush(m1, m2 map[int64][]HandleCols) {
 
 func (hch *handleColHelper) tailMap() map[int64][]HandleCols {
 	return hch.id2HandleMapStack[hch.stackTail-1]
-}
-
-// GetVisitInfo gets the visitInfo of the PlanBuilder.
-func (b *PlanBuilder) GetVisitInfo() []visitInfo {
-	return b.visitInfo
-}
-
-// GetDBTableInfo gets the accessed dbs and tables info.
-func (b *PlanBuilder) GetDBTableInfo() []stmtctx.TableEntry {
-	var tables []stmtctx.TableEntry
-	existsFunc := func(tbls []stmtctx.TableEntry, tbl *stmtctx.TableEntry) bool {
-		for _, t := range tbls {
-			if t == *tbl {
-				return true
-			}
-		}
-		return false
-	}
-	for _, v := range b.visitInfo {
-		tbl := &stmtctx.TableEntry{DB: v.db, Table: v.table}
-		if !existsFunc(tables, tbl) {
-			tables = append(tables, *tbl)
-		}
-	}
-	return tables
 }
 
 // GetOptFlag gets the optFlag of the PlanBuilder.
@@ -304,16 +271,14 @@ func getLatestIndexInfo(ctx sessionctx.Context, id int64, startVer int64) (map[i
 	latestIndexes := make(map[int64]*model.IndexInfo)
 	latestTbl, exist := is.TableByID(id)
 	if exist {
-		latestTblInfo := latestTbl.Meta()
-		for _, index := range latestTblInfo.Indices {
+		for _, index := range latestTbl.Indices {
 			latestIndexes[index.ID] = index
 		}
 	}
 	return latestIndexes, true, nil
 }
 
-func getPossibleAccessPaths(ctx sessionctx.Context, tbl table.Table, dbName, tblName model.CIStr, check bool, startVer int64) ([]*util.AccessPath, error) {
-	tblInfo := tbl.Meta()
+func getPossibleAccessPaths(ctx sessionctx.Context, tblInfo *model.TableInfo, dbName, tblName model.CIStr, check bool, startVer int64) ([]*util.AccessPath, error) {
 	publicPaths := make([]*util.AccessPath, 0, len(tblInfo.Indices)+2)
 
 	tablePath := &util.AccessPath{}
@@ -353,16 +318,6 @@ func getPossibleAccessPaths(ctx sessionctx.Context, tbl table.Table, dbName, tbl
 	return publicPaths, nil
 }
 
-// FindColumnInfoByID finds ColumnInfo in cols by ID.
-func FindColumnInfoByID(colInfos []*model.ColumnInfo, id int64) *model.ColumnInfo {
-	for _, info := range colInfos {
-		if info.ID == id {
-			return info
-		}
-	}
-	return nil
-}
-
 // splitWhere split a where expression to a list of AND conditions.
 func splitWhere(where ast.ExprNode) []ast.ExprNode {
 	var conditions []ast.ExprNode
@@ -381,20 +336,4 @@ func splitWhere(where ast.ExprNode) []ast.ExprNode {
 		conditions = append(conditions, where)
 	}
 	return conditions
-}
-
-func (b *PlanBuilder) getDefaultValue(col *table.Column) (*expression.Constant, error) {
-	var (
-		value types.Datum
-		err   error
-	)
-	if col.DefaultIsExpr && col.DefaultExpr != nil {
-		value, err = table.EvalColDefaultExpr(b.ctx, col.ToInfo(), col.DefaultExpr)
-	} else {
-		value, err = table.GetColDefaultValue(b.ctx, col.ToInfo())
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &expression.Constant{Value: value, RetType: &col.FieldType}, nil
 }

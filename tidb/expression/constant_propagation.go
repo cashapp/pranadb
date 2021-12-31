@@ -24,7 +24,6 @@ import (
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/chunk"
-	"github.com/squareup/pranadb/tidb/util/disjointset"
 	"github.com/squareup/pranadb/tidb/util/logutil"
 	"go.uber.org/zap"
 )
@@ -34,10 +33,10 @@ var MaxPropagateColsCnt = 100
 
 // nolint:structcheck
 type basePropConstSolver struct {
-	colMapper map[int64]int       // colMapper maps column to its index
-	eqList    []*Constant         // if eqList[i] != nil, it means col_i = eqList[i]
-	unionSet  *disjointset.IntSet // unionSet stores the relations like col_i = col_j
-	columns   []*Column           // columns stores all columns appearing in the conditions
+	colMapper map[int64]int // colMapper maps column to its index
+	eqList    []*Constant   // if eqList[i] != nil, it means col_i = eqList[i]
+	unionSet  *IntSet       // unionSet stores the relations like col_i = col_j
+	columns   []*Column     // columns stores all columns appearing in the conditions
 	ctx       sessionctx.Context
 }
 
@@ -237,7 +236,7 @@ func (s *propConstSolver) propagateConstantEQ() {
 // We maintain a unionSet representing the equivalent for every two columns.
 func (s *propConstSolver) propagateColumnEQ() {
 	visited := make([]bool, len(s.conditions))
-	s.unionSet = disjointset.NewIntSet(len(s.columns))
+	s.unionSet = NewIntSet(len(s.columns))
 	for i := range s.conditions {
 		if fun, ok := s.conditions[i].(*ScalarFunction); ok && fun.FuncName.L == ast.EQ {
 			lCol, lOk := fun.GetArgs()[0].(*Column)
@@ -541,7 +540,7 @@ func (s *propOuterJoinConstSolver) propagateColumnEQ() {
 		return
 	}
 	visited := make([]bool, 2*len(s.joinConds)+len(s.filterConds))
-	s.unionSet = disjointset.NewIntSet(len(s.columns))
+	s.unionSet = NewIntSet(len(s.columns))
 	var outerCol, innerCol *Column
 	// Only consider column equal condition in joinConds.
 	// If we have column equal in filter condition, the outer join should have been simplified already.

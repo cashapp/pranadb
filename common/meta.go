@@ -298,10 +298,6 @@ var (
 	KafkaEncodingStringBytes = KafkaEncoding{Encoding: EncodingStringBytes}
 )
 
-func KafkaEncodingProtobuf(schema string) KafkaEncoding {
-	return KafkaEncoding{Encoding: EncodingProtobuf, SchemaName: schema}
-}
-
 type Encoding int
 
 const (

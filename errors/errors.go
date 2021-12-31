@@ -139,10 +139,6 @@ func Trace(err error) error {
 	return err
 }
 
-func HasStack(err error) bool {
-	return true
-}
-
 func AddStack(err error) error {
 	return err
 }

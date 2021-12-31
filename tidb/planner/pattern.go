@@ -37,8 +37,6 @@ const (
 	OperandSelection
 	// OperandDataSource is the operand for LogicalDataSource.
 	OperandDataSource
-	// OperandUnionScan is the operand for LogicalUnionScan.
-	OperandUnionScan
 	// OperandUnionAll is the operand for LogicalUnionAll.
 	OperandUnionAll
 	// OperandSort is the operand for LogicalSort.

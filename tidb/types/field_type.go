@@ -30,9 +30,6 @@ import (
 // UnspecifiedLength is unspecified length.
 const UnspecifiedLength = -1
 
-// ErrorLength is error length for blob or text.
-const ErrorLength = 0
-
 // FieldType records field type information.
 type FieldType = ast.FieldType
 
@@ -318,16 +315,6 @@ func DefaultTypeForValue(value interface{}, tp *FieldType, char string, collate 
 		tp.Flen = UnspecifiedLength
 		tp.Decimal = UnspecifiedLength
 	}
-}
-
-// DefaultCharsetForType returns the default charset/collation for mysql type.
-func DefaultCharsetForType(tp byte) (string, string) {
-	switch tp {
-	case mysql.TypeVarString, mysql.TypeString, mysql.TypeVarchar:
-		// Default charset for string types is utf8mb4.
-		return mysql.DefaultCharset, mysql.DefaultCollationName
-	}
-	return charset.CharsetBin, charset.CollationBin
 }
 
 // MergeFieldType merges two MySQL type to a new type.
@@ -1296,6 +1283,3 @@ func SetBinChsClnFlag(ft *FieldType) {
 	ft.Collate = charset.CollationBin
 	ft.Flag |= mysql.BinaryFlag
 }
-
-// VarStorageLen indicates this column is a variable length column.
-const VarStorageLen = ast.VarStorageLen

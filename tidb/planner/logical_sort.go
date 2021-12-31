@@ -21,7 +21,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalSort stands for the order by plan.
@@ -33,7 +32,7 @@ type LogicalSort struct {
 
 // Init initializes LogicalSort.
 func (ls LogicalSort) Init(ctx sessionctx.Context, offset int) *LogicalSort {
-	ls.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeSort, &ls, offset)
+	ls.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeSort, &ls, offset)
 	return &ls
 }
 

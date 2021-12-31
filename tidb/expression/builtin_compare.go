@@ -1190,28 +1190,6 @@ func GetAccurateCmpType(lhs, rhs Expression) types.EvalType {
 	return cmpType
 }
 
-// GetCmpFunction get the compare function according to two arguments.
-func GetCmpFunction(ctx sessionctx.Context, lhs, rhs Expression) CompareFunc {
-	switch GetAccurateCmpType(lhs, rhs) {
-	case types.ETInt:
-		return CompareInt
-	case types.ETReal:
-		return CompareReal
-	case types.ETDecimal:
-		return CompareDecimal
-	case types.ETString:
-		_, dstCollation := DeriveCollationFromExprs(ctx, lhs, rhs)
-		return genCompareString(dstCollation)
-	case types.ETDuration:
-		return CompareDuration
-	case types.ETDatetime, types.ETTimestamp:
-		return CompareTime
-	case types.ETJson:
-		return CompareJSON
-	}
-	return nil
-}
-
 // isTemporalColumn checks if a expression is a temporal column,
 // temporal column indicates time column or duration column.
 func isTemporalColumn(expr Expression) bool {
@@ -2664,12 +2642,6 @@ func CompareInt(sctx sessionctx.Context, lhsArg, rhsArg Expression, lhsRow, rhsR
 		res = types.CompareInt64(arg0, arg1)
 	}
 	return int64(res), false, nil
-}
-
-func genCompareString(collation string) func(sctx sessionctx.Context, lhsArg Expression, rhsArg Expression, lhsRow chunk.Row, rhsRow chunk.Row) (int64, bool, error) {
-	return func(sctx sessionctx.Context, lhsArg, rhsArg Expression, lhsRow, rhsRow chunk.Row) (int64, bool, error) {
-		return CompareStringWithCollationInfo(sctx, lhsArg, rhsArg, lhsRow, rhsRow, collation)
-	}
 }
 
 // CompareStringWithCollationInfo compares two strings with the specified collation information.
