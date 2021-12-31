@@ -29,8 +29,8 @@ require (
 	github.com/lib/pq v1.10.4 // indirect
 	github.com/lni/dragonboat/v3 v3.3.4
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
-	github.com/opencontainers/image-spec v1.0.1 // indirect
-	github.com/opencontainers/runc v1.0.2 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
+	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3 // indirect
 	github.com/pingcap/failpoint v0.0.0-20210918120811-547c13e3eb00
