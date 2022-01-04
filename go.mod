@@ -33,7 +33,6 @@ require (
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3 // indirect
-	github.com/pingcap/failpoint v0.0.0-20210918120811-547c13e3eb00
 	github.com/pingcap/log v0.0.0-20200511115504-543df19646ad
 	github.com/pingcap/parser v0.0.0-20210618053735-57843e8185c4
 	github.com/pkg/errors v0.9.1

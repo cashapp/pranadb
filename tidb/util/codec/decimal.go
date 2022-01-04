@@ -18,7 +18,6 @@
 package codec
 
 import (
-	"github.com/pingcap/failpoint"
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/types"
@@ -39,12 +38,6 @@ func EncodeDecimal(b []byte, dec *types.MyDecimal, precision, frac int) ([]byte,
 
 // DecodeDecimal decodes bytes to decimal.
 func DecodeDecimal(b []byte) ([]byte, *types.MyDecimal, int, int, error) {
-	failpoint.Inject("errorInDecodeDecimal", func(val failpoint.Value) {
-		if val.(bool) {
-			failpoint.Return(b, nil, 0, 0, errors.Error("gofail error"))
-		}
-	})
-
 	if len(b) < 3 {
 		return b, nil, 0, 0, errors.Error("insufficient bytes to decode value")
 	}
