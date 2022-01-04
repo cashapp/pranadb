@@ -2064,7 +2064,7 @@ func doDivMod(from1, from2, to, mod *MyDecimal, fracIncr int) error {
 	}
 	if prec2 <= 0 {
 		/* short-circuit everything: from2 == 0 */
-		return tidb.ErrDivByZero
+		return tidb.ErrDivisionByZero
 	}
 
 	prec2 -= countLeadingZeroes((prec2-1)%digitsPerWord, from2.wordBuf[idx2])

@@ -91,7 +91,7 @@ func (b *builtinArithmeticDivideDecimalSig) vecEvalDecimal(input *chunk.Chunk, r
 			continue
 		}
 		err = types.DecimalDiv(&x[i], &y[i], &to, types.DivFracIncr)
-		if err == tidb.ErrDivByZero {
+		if err == tidb.ErrDivisionByZero {
 			if err = handleDivisionByZeroError(b.ctx); err != nil {
 				return err
 			}
@@ -488,7 +488,7 @@ func (b *builtinArithmeticModDecimalSig) vecEvalDecimal(input *chunk.Chunk, resu
 			continue
 		}
 		err = types.DecimalMod(&x[i], &y[i], &to)
-		if err == tidb.ErrDivByZero {
+		if err == tidb.ErrDivisionByZero {
 			if err := handleDivisionByZeroError(b.ctx); err != nil {
 				return err
 			}
@@ -609,7 +609,7 @@ func (b *builtinArithmeticIntDivideDecimalSig) vecEvalInt(input *chunk.Chunk, re
 
 		c := &types.MyDecimal{}
 		err = types.DecimalDiv(&num[0][i], &num[1][i], c, types.DivFracIncr)
-		if err == tidb.ErrDivByZero {
+		if err == tidb.ErrDivisionByZero {
 			if err = handleDivisionByZeroError(b.ctx); err != nil {
 				return err
 			}

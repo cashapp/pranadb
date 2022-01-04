@@ -703,7 +703,7 @@ func (s *builtinArithmeticDivideDecimalSig) evalDecimal(row chunk.Row) (*types.M
 
 	c := &types.MyDecimal{}
 	err = types.DecimalDiv(a, b, c, types.DivFracIncr)
-	if err == tidb.ErrDivByZero {
+	if err == tidb.ErrDivisionByZero {
 		return c, true, handleDivisionByZeroError(s.ctx)
 	} else if err == tidb.ErrTruncated {
 		sc := s.ctx.GetSessionVars().StmtCtx
@@ -819,7 +819,7 @@ func (s *builtinArithmeticIntDivideDecimalSig) evalInt(row chunk.Row) (ret int64
 
 	c := &types.MyDecimal{}
 	err = types.DecimalDiv(num[0], num[1], c, types.DivFracIncr)
-	if err == tidb.ErrDivByZero {
+	if err == tidb.ErrDivisionByZero {
 		return 0, true, handleDivisionByZeroError(s.ctx)
 	}
 	if err == tidb.ErrTruncated {
@@ -991,7 +991,7 @@ func (s *builtinArithmeticModDecimalSig) evalDecimal(row chunk.Row) (*types.MyDe
 	}
 	c := &types.MyDecimal{}
 	err = types.DecimalMod(a, b, c)
-	if err == tidb.ErrDivByZero {
+	if err == tidb.ErrDivisionByZero {
 		return c, true, handleDivisionByZeroError(s.ctx)
 	}
 	return c, err != nil, err
