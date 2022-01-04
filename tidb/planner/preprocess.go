@@ -64,13 +64,8 @@ type preprocessorFlag uint8
 const (
 	// inPrepare is set when visiting in prepare statement.
 	inPrepare preprocessorFlag = 1 << iota
-	// inTxnRetry is set when visiting in transaction retry.
-	inTxnRetry
 	// parentIsJoin is set when visiting node's parent is join.
 	parentIsJoin
-	// inSequenceFunction is set when visiting a sequence function.
-	// This flag indicates the tableName in these function should be checked as sequence object.
-	inSequenceFunction
 )
 
 // PreprocessorReturn is used to retain information obtained in the preprocessor.
@@ -112,10 +107,6 @@ func (p *preprocessor) Enter(in ast.Node) (out ast.Node, skipChildren bool) {
 		p.checkNonUniqTableAlias(node)
 	case *ast.FuncCastExpr:
 		p.checkFuncCastExpr(node)
-	case *ast.FuncCallExpr:
-		if node.FnName.L == ast.NextVal || node.FnName.L == ast.LastVal || node.FnName.L == ast.SetVal {
-			p.flag |= inSequenceFunction
-		}
 	default:
 		p.flag &= ^parentIsJoin
 	}
@@ -171,17 +162,6 @@ func (p *preprocessor) Leave(in ast.Node) (out ast.Node, ok bool) {
 				}
 			}
 			break
-		}
-
-		// no need sleep when retry transaction and avoid unexpect sleep caused by retry.
-		if p.flag&inTxnRetry > 0 && x.FnName.L == ast.Sleep {
-			if len(x.Args) == 1 {
-				x.Args[0] = ast.NewValueExpr(0, "", "")
-			}
-		}
-
-		if x.FnName.L == ast.NextVal || x.FnName.L == ast.LastVal || x.FnName.L == ast.SetVal {
-			p.flag &= ^inSequenceFunction
 		}
 	}
 
@@ -271,13 +251,7 @@ func (p *preprocessor) handleTableName(tn *ast.TableName) {
 	}
 
 	dbInfo, _ := p.ensureInfoSchema().SchemaByName(tn.Schema)
-	// tableName should be checked as sequence object.
-	if p.flag&inSequenceFunction > 0 {
-		if !tableInfo.IsSequence() {
-			p.err = tidb.ErrWrongObject.GenWithStackByArgs(dbInfo.Name.O, tableInfo.Name.O, "SEQUENCE")
-			return
-		}
-	}
+
 	tn.TableInfo = tableInfo
 	tn.DBInfo = dbInfo
 }

@@ -18,11 +18,11 @@
 package planner
 
 import (
-	"context"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
+	"strings"
 )
 
 // LogicalUnionAll represents LogicalUnionAll plan.
@@ -36,7 +36,7 @@ func (p LogicalUnionAll) Init(ctx sessionctx.Context, offset int) *LogicalUnionA
 	return &p
 }
 
-func (b *PlanBuilder) buildProjection4Union(ctx context.Context, u *LogicalUnionAll) {
+func (b *PlanBuilder) buildProjection4Union(u *LogicalUnionAll) {
 	unionCols := make([]*expression.Column, 0, u.children[0].Schema().Len())
 	names := make([]*types.FieldName, 0, u.children[0].Schema().Len())
 
@@ -132,4 +132,12 @@ func (p *LogicalUnionAll) DeriveStats(childStats []*property.StatsInfo, selfSche
 		}
 	}
 	return p.stats, nil
+}
+
+func (p *LogicalUnionAll) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("UnionAll\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	return builder.String()
 }

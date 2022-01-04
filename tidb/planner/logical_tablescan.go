@@ -18,11 +18,13 @@
 package planner
 
 import (
+	"fmt"
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/util/ranger"
+	"strings"
 )
 
 // LogicalTableScan is the logical table scan operator for TiKV.
@@ -108,4 +110,18 @@ func (ts *LogicalTableScan) DeriveStats(childStats []*property.StatsInfo, selfSc
 		return nil, err
 	}
 	return ts.stats, nil
+}
+
+func (p *LogicalTableScan) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("TableScan\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	builder.WriteString(fmt.Sprintf("DataSource: %s\n", p.Source.String()))
+	for _, rng := range p.Ranges {
+		builder.WriteString(rng.String())
+		builder.WriteString("\n")
+	}
+	return builder.String()
 }

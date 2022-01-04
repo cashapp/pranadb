@@ -19,11 +19,13 @@ package planner
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/pingcap/parser/ast"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"sort"
+	"strings"
 )
 
 // LogicalSelection represents a where or having predicate.
@@ -145,4 +147,13 @@ func (p *LogicalSelection) replaceExprColumns(replace map[string]*expression.Col
 	for _, expr := range p.Conditions {
 		resolveExprAndReplace(expr, replace)
 	}
+}
+
+func (p *LogicalSelection) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("Selection:\n")
+	for _, cond := range p.Conditions {
+		builder.WriteString(fmt.Sprintf("Condition:%s\n", cond))
+	}
+	return builder.String()
 }

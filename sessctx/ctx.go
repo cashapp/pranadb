@@ -8,7 +8,7 @@ import (
 	"github.com/squareup/pranadb/tidb/types"
 )
 
-func NewSessionContext(is infoschema.InfoSchema, pullQuery bool, database string) *SessCtx {
+func NewSessionContext(is infoschema.InfoSchema, database string) *SessCtx {
 	sessVars := variable.NewSessionVars()
 	// This is necessary to ensure prepared statement param markers are created properly in the
 	// plan
@@ -33,7 +33,7 @@ func toDatums(args []interface{}) variable.PreparedParams {
 }
 
 func NewDummySessionContext() sessionctx.Context {
-	return NewSessionContext(nil, false, "test")
+	return NewSessionContext(nil, "test")
 }
 
 type SessCtx struct {

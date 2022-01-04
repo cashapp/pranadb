@@ -23,6 +23,7 @@ import (
 	"github.com/squareup/pranadb/tidb/expression/aggregation"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
+	"strings"
 )
 
 // LogicalAggregation represents an aggregate plan.
@@ -294,4 +295,29 @@ func (la *LogicalAggregation) ExtractColGroups(_ [][]*expression.Column) [][]*ex
 		return [][]*expression.Column{expression.SortColumns(gbyCols)}
 	}
 	return nil
+}
+
+func (p *LogicalAggregation) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("Aggregation\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	builder.WriteString("Aggregate functions: [")
+	for i, af := range p.AggFuncs {
+		builder.WriteString(af.String())
+		if i != len(p.AggFuncs)-1 {
+			builder.WriteString(",")
+		}
+	}
+	builder.WriteString("]\n")
+	builder.WriteString("Group-by items: [")
+	for i, gbi := range p.GroupByItems {
+		builder.WriteString(gbi.String())
+		if i != len(p.GroupByItems)-1 {
+			builder.WriteString(",")
+		}
+	}
+	builder.WriteString("]")
+	return builder.String()
 }

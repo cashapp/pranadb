@@ -643,3 +643,7 @@ func buildLogicalJoinSchema(joinType JoinType, join LogicalPlan) *expression.Sch
 	}
 	return newSchema
 }
+
+func (p *LogicalJoin) String() string {
+	return ""
+}

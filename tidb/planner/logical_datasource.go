@@ -35,6 +35,7 @@ import (
 	"go.uber.org/zap"
 	"math"
 	"sort"
+	"strings"
 )
 
 // LogicalDataSource represents a tableScan without condition push down.
@@ -600,7 +601,7 @@ func (ds *LogicalDataSource) initStats(colGroups [][]*expression.Column) {
 		return
 	}
 	if ds.statisticTable == nil {
-		ds.statisticTable = getStatsTable(ds.ctx, ds.tableInfo, ds.tableInfo.ID)
+		ds.statisticTable = getStatsTable(ds.tableInfo)
 	}
 	tableStats := &property.StatsInfo{
 		RowCount:     float64(ds.statisticTable.Count),
@@ -879,4 +880,13 @@ func (ds *LogicalDataSource) PruneColumns(parentUsedCols []*expression.Column) e
 		ds.handleCols = nil
 	}
 	return nil
+}
+
+func (p *LogicalDataSource) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("DataSource\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	return builder.String()
 }
