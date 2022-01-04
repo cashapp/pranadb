@@ -660,17 +660,6 @@ func (b *PlanBuilder) buildProjectionFieldNameFromExpressions(ctx context.Contex
 	}
 
 	innerExpr := getInnerFromParenthesesAndUnaryPlus(field.Expr)
-	funcCall, isFuncCall := innerExpr.(*ast.FuncCallExpr)
-	// When used to produce a result set column, NAME_CONST() causes the column to have the given name.
-	// See https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_name-const for details
-	if isFuncCall && funcCall.FnName.L == ast.NameConst {
-		if v, err := evalAstExpr(b.ctx, funcCall.Args[0]); err == nil {
-			if s, err := v.ToString(); err == nil {
-				return model.NewCIStr(s), nil
-			}
-		}
-		return model.NewCIStr(""), tidb.ErrWrongArguments.GenWithStackByArgs("NAME_CONST")
-	}
 	valueExpr, isValueExpr := innerExpr.(*driver.ValueExpr)
 
 	// Non-literal: Output as inputed, except that comments need to be removed.
@@ -2879,4 +2868,34 @@ func findPrimaryIndex(tblInfo *model.TableInfo) *model.IndexInfo {
 		}
 	}
 	return pkIdx
+}
+
+// AggregateFuncExtractor visits Expr tree.
+// It collects AggregateFuncExpr from AST Node.
+type AggregateFuncExtractor struct {
+	// skipAggMap stores correlated aggregate functions which have been built in outer query,
+	// so extractor in sub-query will skip these aggregate functions.
+	skipAggMap map[*ast.AggregateFuncExpr]*expression.CorrelatedColumn
+	// AggFuncs is the collected AggregateFuncExprs.
+	AggFuncs []*ast.AggregateFuncExpr
+}
+
+// Enter implements Visitor interface.
+func (a *AggregateFuncExtractor) Enter(n ast.Node) (ast.Node, bool) {
+	switch n.(type) {
+	case *ast.SelectStmt, *ast.SetOprStmt:
+		return n, true
+	}
+	return n, false
+}
+
+// Leave implements Visitor interface.
+func (a *AggregateFuncExtractor) Leave(n ast.Node) (ast.Node, bool) {
+	switch v := n.(type) {
+	case *ast.AggregateFuncExpr:
+		if _, ok := a.skipAggMap[v]; !ok {
+			a.AggFuncs = append(a.AggFuncs, v)
+		}
+	}
+	return n, true
 }

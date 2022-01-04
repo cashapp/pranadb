@@ -84,7 +84,6 @@ func (r *ImplProjection) OnImplement(expr *GroupExpr, reqProp *property.Physical
 	}
 	proj := PhysicalProjection{
 		Exprs:                logicProj.Exprs,
-		CalculateNoDelay:     logicProj.CalculateNoDelay,
 		AvoidColumnEvaluator: logicProj.AvoidColumnEvaluator,
 	}.Init(logicProj.SCtx(), logicProp.Stats.ScaleByExpectCnt(reqProp.ExpectedCnt), logicProj.SelectBlockOffset(), childProp)
 	proj.SetSchema(logicProp.Schema)

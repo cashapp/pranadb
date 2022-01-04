@@ -31,7 +31,6 @@ type PhysicalProjection struct {
 	physicalSchemaProducer
 
 	Exprs                []expression.Expression
-	CalculateNoDelay     bool
 	AvoidColumnEvaluator bool
 }
 

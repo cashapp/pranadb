@@ -26,7 +26,6 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb"
 	"github.com/squareup/pranadb/tidb/expression"
-	"github.com/squareup/pranadb/tidb/infoschema"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
 	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
@@ -35,44 +34,6 @@ import (
 	"github.com/squareup/pranadb/tidb/util/stringutil"
 	"strconv"
 )
-
-func init() {
-	expression.EvalAstExpr = evalAstExpr
-	expression.RewriteAstExpr = rewriteAstExpr
-}
-
-// evalAstExpr evaluates ast expression directly.
-func evalAstExpr(sctx sessionctx.Context, expr ast.ExprNode) (types.Datum, error) {
-	if val, ok := expr.(*driver.ValueExpr); ok {
-		return val.Datum, nil
-	}
-	newExpr, err := rewriteAstExpr(sctx, expr, nil, nil)
-	if err != nil {
-		return types.Datum{}, err
-	}
-	return newExpr.Eval(chunk.Row{})
-}
-
-// rewriteAstExpr rewrites ast expression directly.
-func rewriteAstExpr(sctx sessionctx.Context, expr ast.ExprNode, schema *expression.Schema, names types.NameSlice) (expression.Expression, error) {
-	var is infoschema.InfoSchema
-	// in tests, it may be null
-	if s, ok := sctx.GetInfoSchema().(infoschema.InfoSchema); ok {
-		is = s
-	}
-	b := NewPlanBuilder(sctx, is)
-	fakePlan := LogicalTableDual{}.Init(sctx, 0)
-	if schema != nil {
-		fakePlan.schema = schema
-		fakePlan.names = names
-	}
-	b.curClause = expressionClause
-	newExpr, _, err := b.rewrite(context.TODO(), expr, fakePlan, nil, true)
-	if err != nil {
-		return nil, err
-	}
-	return newExpr, nil
-}
 
 // rewrite function rewrites ast expr to expression.Expression.
 // aggMapper maps ast.AggregateFuncExpr to the columns offset in p's output schema.
@@ -373,29 +334,6 @@ func (er *expressionRewriter) Enter(inNode ast.Node) (ast.Node, bool) {
 		er.asScalar = true
 	}
 	return inNode, false
-}
-
-// popExistsSubPlan will remove the useless plan in exist's child.
-// See comments inside the method for more details.
-func (er *expressionRewriter) popExistsSubPlan(p LogicalPlan) LogicalPlan {
-out:
-	for {
-		switch plan := p.(type) {
-		// This can be removed when in exists clause,
-		// e.g. exists(select count(*) from t order by a) is equal to exists t.
-		case *LogicalProjection, *LogicalSort:
-			p = p.Children()[0]
-		case *LogicalAggregation:
-			if len(plan.GroupByItems) == 0 {
-				p = LogicalTableDual{RowCount: 1}.Init(er.sctx, er.b.getSelectOffset())
-				break out
-			}
-			p = p.Children()[0]
-		default:
-			break out
-		}
-	}
-	return p
 }
 
 // Leave implements Visitor interface.

@@ -16,8 +16,7 @@ type NominalSort struct {
 	// These two fields are used to switch ScalarFunctions to Constants. For these
 	// NominalSorts, we need to converted to Projections check if the ScalarFunctions
 	// are out of bounds. (issue #11653)
-	ByItems    []*util.ByItems
-	OnlyColumn bool
+	ByItems []*util.ByItems
 }
 
 // Init initializes NominalSort.

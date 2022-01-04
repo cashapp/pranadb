@@ -42,3 +42,23 @@ func (p PhysicalUnionScan) Init(ctx sessionctx.Context, stats *property.StatsInf
 	p.stats = stats
 	return &p
 }
+
+// ResolveIndices implements Plan interface.
+func (p *PhysicalUnionScan) ResolveIndices() (err error) {
+	err = p.basePhysicalPlan.ResolveIndices()
+	if err != nil {
+		return err
+	}
+	for i, expr := range p.Conditions {
+		p.Conditions[i], err = expr.ResolveIndices(p.children[0].Schema())
+		if err != nil {
+			return err
+		}
+	}
+	resolvedHandleCol, err := p.HandleCols.ResolveIndices(p.children[0].Schema())
+	if err != nil {
+		return err
+	}
+	p.HandleCols = resolvedHandleCol
+	return
+}
