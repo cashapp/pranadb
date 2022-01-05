@@ -1,11 +1,18 @@
 ### Build docker image.
 
+**PranaDB**
 ```bash
 cd $PROJECT_DIR
 
 docker build -f docker/Dockerfile -t pranadb:latest . 	
 ```
 
+**Prana CLI**
+```bash
+cd $PROJECT_DIR
+
+docker build -f docker/cli.Dockerfile -t pranadb-cli:latest .
+```
 ### Run locally.
 
 ```bash
