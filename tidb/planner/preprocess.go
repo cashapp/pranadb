@@ -30,7 +30,6 @@ import (
 	"github.com/squareup/pranadb/tidb"
 	"github.com/squareup/pranadb/tidb/infoschema"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/table"
 	"github.com/squareup/pranadb/tidb/types"
 	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
 )
@@ -130,7 +129,7 @@ const (
 	TypeSelect
 )
 
-func (p *preprocessor) tableByName(tn *ast.TableName) (table.Table, error) {
+func (p *preprocessor) tableByName(tn *ast.TableName) (*model.TableInfo, error) {
 	currentDB := p.ctx.GetSessionVars().CurrentDB
 	if tn.Schema.String() != "" {
 		currentDB = tn.Schema.L
@@ -265,13 +264,12 @@ func (p *preprocessor) handleTableName(tn *ast.TableName) {
 		tn.Schema = model.NewCIStr(currentDB)
 	}
 
-	table, err := p.tableByName(tn)
+	tableInfo, err := p.tableByName(tn)
 	if err != nil {
 		p.err = err
 		return
 	}
 
-	tableInfo := table.Meta()
 	dbInfo, _ := p.ensureInfoSchema().SchemaByName(tn.Schema)
 	// tableName should be checked as sequence object.
 	if p.flag&inSequenceFunction > 0 {

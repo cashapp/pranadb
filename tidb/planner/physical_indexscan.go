@@ -25,7 +25,6 @@ import (
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/statistics"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
@@ -63,7 +62,7 @@ type PhysicalIndexScan struct {
 
 // Init initializes PhysicalIndexScan.
 func (p PhysicalIndexScan) Init(ctx sessionctx.Context, offset int) *PhysicalIndexScan {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeIdxScan, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeIdxScan, &p, offset)
 	return &p
 }
 

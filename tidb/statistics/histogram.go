@@ -26,13 +26,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pingcap/failpoint"
 	"github.com/pingcap/parser/charset"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/terror"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/tidb/kv"
 	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 	"github.com/squareup/pranadb/tidb/sessionctx/variable"
 	"github.com/squareup/pranadb/tidb/types"
@@ -532,10 +530,10 @@ func validRange(sc *stmtctx.StatementContext, ran *ranger.Range, encoded bool) b
 		}
 	}
 	if ran.LowExclude {
-		low = kv.Key(low).PrefixNext()
+		low = ranger.Key(low).PrefixNext()
 	}
 	if !ran.HighExclude {
-		high = kv.Key(high).PrefixNext()
+		high = ranger.Key(high).PrefixNext()
 	}
 	return bytes.Compare(low, high) < 0
 }
@@ -1045,10 +1043,10 @@ func (idx *Index) GetRowCount(sc *stmtctx.StatementContext, coll *HistColl, inde
 		}
 		// The final interval is [low, high)
 		if indexRange.LowExclude {
-			lb = kv.Key(lb).PrefixNext()
+			lb = ranger.Key(lb).PrefixNext()
 		}
 		if !indexRange.HighExclude {
-			rb = kv.Key(rb).PrefixNext()
+			rb = ranger.Key(rb).PrefixNext()
 		}
 		l := types.NewBytesDatum(lb)
 		r := types.NewBytesDatum(rb)
@@ -1130,10 +1128,6 @@ func (idx *Index) expBackoffEstimation(sc *stmtctx.StatementContext, coll *HistC
 	for i := 0; i < l && i < 4; i++ {
 		singleColumnEstResults[i] = singleColumnEstResults[i] / float64(coll.Count)
 	}
-	failpoint.Inject("cleanEstResults", func() {
-		singleColumnEstResults = singleColumnEstResults[:0]
-		l = 0
-	})
 	if l == 1 {
 		return singleColumnEstResults[0], true, nil
 	} else if l == 2 {
@@ -1215,7 +1209,7 @@ func (idx *Index) newIndexBySelectivity(sc *stmtctx.StatementContext, statsNode 
 			// Encoded value can only go to its next quickly. So ranHighEncode is actually range.HighVal's PrefixNext value.
 			// So the Bound should also go to its PrefixNext.
 			bucketLowerEncoded := idx.Bounds.GetRow(highBucketIdx * 2).GetBytes(0)
-			if bytes.Compare(ranHighEncode, kv.Key(bucketLowerEncoded).PrefixNext()) < 0 {
+			if bytes.Compare(ranHighEncode, ranger.Key(bucketLowerEncoded).PrefixNext()) < 0 {
 				break
 			}
 		}
@@ -1392,7 +1386,7 @@ func (hg *Histogram) ExtractTopN(cms *CMSketch, topN *TopN, numCols int, numTopN
 				continue
 			}
 			dataSet[string(prefixColData)] = struct{}{}
-			res := hg.BetweenRowCount(types.NewBytesDatum(prefixColData), types.NewBytesDatum(kv.Key(prefixColData).PrefixNext()))
+			res := hg.BetweenRowCount(types.NewBytesDatum(prefixColData), types.NewBytesDatum(ranger.Key(prefixColData).PrefixNext()))
 			if res >= limit {
 				dataCnts = append(dataCnts, dataCnt{prefixColData, uint64(res)})
 			}

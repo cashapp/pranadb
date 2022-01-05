@@ -40,7 +40,6 @@ import (
 
 // Time format without fractional seconds precision.
 const (
-	DateFormat = "2006-01-02"
 	TimeFormat = "2006-01-02 15:04:05"
 	// TimeFSPFormat is time format with fractional seconds precision.
 	TimeFSPFormat = "2006-01-02 15:04:05.000000"
@@ -58,9 +57,6 @@ const (
 	// MaxTime is the maximum for mysql time type.
 	MaxTime = gotime.Duration(838*3600+59*60+59) * gotime.Second
 	// ZeroDatetimeStr is the string representation of a zero datetime.
-	ZeroDatetimeStr = "0000-00-00 00:00:00"
-	// ZeroDateStr is the string representation of a zero date.
-	ZeroDateStr = "0000-00-00"
 
 	// TimeMaxHour is the max hour for mysql time type.
 	TimeMaxHour = 838
@@ -174,8 +170,6 @@ var (
 const (
 	// GoDurationDay is the gotime.Duration which equals to a Day.
 	GoDurationDay = gotime.Hour * 24
-	// GoDurationWeek is the gotime.Duration which equals to a Week.
-	GoDurationWeek = GoDurationDay * 7
 )
 
 // FromGoTime translates time.Time to mysql time internal representation.
@@ -350,11 +344,6 @@ func (t Time) CoreTime() CoreTime {
 func (t *Time) SetCoreTime(ct CoreTime) {
 	*(*uint64)(&t.coreTime) &= ^coreTimeBitFieldMask
 	*(*uint64)(&t.coreTime) |= (uint64(ct) & coreTimeBitFieldMask)
-}
-
-// CurrentTime returns current time with type tp.
-func CurrentTime(tp uint8) Time {
-	return NewTime(FromGoTime(gotime.Now()), tp, 0)
 }
 
 // ConvertTimeZone converts the time value from one timezone to another.
@@ -1213,29 +1202,6 @@ func scanTimeArgs(seps []string, args ...*int) error {
 	return nil
 }
 
-// ParseYear parses a formatted string and returns a year number.
-func ParseYear(str string) (int16, error) {
-	v, err := strconv.ParseInt(str, 10, 16)
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	y := int16(v)
-
-	if len(str) == 4 {
-		// Nothing to do.
-	} else if len(str) == 2 || len(str) == 1 {
-		y = int16(adjustYear(int(y)))
-	} else {
-		return 0, errors.Trace(tidb.ErrInvalidYearFormat)
-	}
-
-	if y < MinYear || y > MaxYear {
-		return 0, errors.Trace(tidb.ErrInvalidYearFormat)
-	}
-
-	return y, nil
-}
-
 // adjustYear adjusts year according to y.
 // See https://dev.mysql.com/doc/refman/5.7/en/two-digit-years.html
 func adjustYear(y int) int {
@@ -2003,17 +1969,6 @@ func ParseTimeFromNum(sc *stmtctx.StatementContext, num int64, tp byte, fsp int8
 // ParseDatetimeFromNum is a helper function wrapping ParseTimeFromNum with datetime type and default fsp.
 func ParseDatetimeFromNum(sc *stmtctx.StatementContext, num int64) (Time, error) {
 	return ParseTimeFromNum(sc, num, mysql.TypeDatetime, DefaultFsp)
-}
-
-// ParseTimestampFromNum is a helper function wrapping ParseTimeFromNum with timestamp type and default fsp.
-func ParseTimestampFromNum(sc *stmtctx.StatementContext, num int64) (Time, error) {
-	return ParseTimeFromNum(sc, num, mysql.TypeTimestamp, DefaultFsp)
-}
-
-// ParseDateFromNum is a helper function wrapping ParseTimeFromNum with date type.
-func ParseDateFromNum(sc *stmtctx.StatementContext, num int64) (Time, error) {
-	// date has no fractional seconds precision
-	return ParseTimeFromNum(sc, num, mysql.TypeDate, MinFsp)
 }
 
 // TimeFromDays Converts a day number to a date.

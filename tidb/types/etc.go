@@ -22,16 +22,10 @@
 package types
 
 import (
-	"github.com/squareup/pranadb/tidb"
-	"io"
-
 	"github.com/pingcap/parser/charset"
 	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/opcode"
-	"github.com/pingcap/parser/terror"
 	ast "github.com/pingcap/parser/types"
-	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/tidb/util/collate"
+	"github.com/squareup/pranadb/tidb"
 )
 
 // IsTypeBlob returns a boolean indicating whether the tp is a blob type.
@@ -50,18 +44,6 @@ func IsTypeVarchar(tp byte) bool {
 // IsTypeUnspecified returns a boolean indicating whether the tp is the Unspecified type.
 func IsTypeUnspecified(tp byte) bool {
 	return tp == mysql.TypeUnspecified
-}
-
-// IsTypePrefixable returns a boolean indicating
-// whether an index on a column with the tp can be defined with a prefix.
-func IsTypePrefixable(tp byte) bool {
-	return IsTypeBlob(tp) || IsTypeChar(tp)
-}
-
-// IsTypeFractionable returns a boolean indicating
-// whether the tp can has time fraction.
-func IsTypeFractionable(tp byte) bool {
-	return tp == mysql.TypeDatetime || tp == mysql.TypeDuration || tp == mysql.TypeTimestamp
 }
 
 // IsTypeTime returns a boolean indicating
@@ -110,17 +92,6 @@ func IsNonBinaryStr(ft *FieldType) bool {
 	return false
 }
 
-// NeedRestoredData returns if a type needs restored data.
-// If the type is char and the collation is _bin, NeedRestoredData() returns false.
-func NeedRestoredData(ft *FieldType) bool {
-	if collate.NewCollationEnabled() &&
-		IsNonBinaryStr(ft) &&
-		!(collate.IsBinCollation(ft.Collate) && !IsTypeVarchar(ft.Tp)) {
-		return true
-	}
-	return false
-}
-
 // IsString returns a boolean indicating
 // whether the field type is a string type.
 func IsString(tp byte) bool {
@@ -155,28 +126,6 @@ var TypeStr = ast.TypeStr
 // KindStr converts kind to a string.
 func KindStr(kind byte) (r string) {
 	return kind2Str[kind]
-}
-
-// TypeToStr converts a field to a string.
-// It is used for converting Text to Blob,
-// or converting Char to Binary.
-// Args:
-//	tp: type enum
-//	cs: charset
-var TypeToStr = ast.TypeToStr
-
-// EOFAsNil filtrates errors,
-// If err is equal to io.EOF returns nil.
-func EOFAsNil(err error) error {
-	if terror.ErrorEqual(err, io.EOF) {
-		return nil
-	}
-	return errors.Trace(err)
-}
-
-// InvOp2 returns an invalid operation error.
-func InvOp2(x, y interface{}, o opcode.Op) (interface{}, error) {
-	return nil, errors.Errorf("Invalid operation: %v %v %v (mismatched types %T and %T)", x, o, y, x, y)
 }
 
 // overflow returns an overflowed error.

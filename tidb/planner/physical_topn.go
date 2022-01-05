@@ -23,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"math"
 )
 
@@ -40,7 +39,7 @@ type PhysicalTopN struct {
 
 // Init initializes PhysicalTopN.
 func (p PhysicalTopN) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalTopN {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeTopN, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeTopN, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p

@@ -23,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"math"
 )
 
@@ -38,7 +37,7 @@ type PhysicalSort struct {
 
 // Init initializes PhysicalSort.
 func (p PhysicalSort) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalSort {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeSort, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeSort, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p

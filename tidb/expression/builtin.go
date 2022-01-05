@@ -29,8 +29,6 @@ package expression
 
 import (
 	"github.com/squareup/pranadb/tidb"
-	"sort"
-	"strings"
 	"sync"
 
 	"github.com/pingcap/parser/ast"
@@ -512,16 +510,6 @@ func (b *baseFunctionClass) verifyArgsByCount(l int) error {
 	return nil
 }
 
-// VerifyArgsWrapper verifies a function by its name and the count of the arguments.
-// Note that this function assumes that the function is supported.
-func VerifyArgsWrapper(name string, l int) error {
-	f, ok := funcs[name]
-	if !ok {
-		return nil
-	}
-	return f.verifyArgsByCount(l)
-}
-
 // functionClass is the interface for a function which may contains multiple functions.
 type functionClass interface {
 	// getFunction gets a function signature by the types and the counts of given arguments.
@@ -749,37 +737,4 @@ var funcs = map[string]functionClass{
 	ast.JSONDepth:         &jsonDepthFunctionClass{baseFunctionClass{ast.JSONDepth, 1, 1}},
 	ast.JSONKeys:          &jsonKeysFunctionClass{baseFunctionClass{ast.JSONKeys, 1, 2}},
 	ast.JSONLength:        &jsonLengthFunctionClass{baseFunctionClass{ast.JSONLength, 1, 2}},
-}
-
-// IsFunctionSupported check if given function name is a builtin sql function.
-func IsFunctionSupported(name string) bool {
-	_, ok := funcs[name]
-	return ok
-}
-
-// GetBuiltinList returns a list of builtin functions
-func GetBuiltinList() []string {
-	res := make([]string, 0, len(funcs))
-	notImplementedFunctions := []string{ast.RowFunc, ast.IsTruthWithNull}
-	for funcName := range funcs {
-		skipFunc := false
-		// Skip not implemented functions
-		for _, notImplFunc := range notImplementedFunctions {
-			if funcName == notImplFunc {
-				skipFunc = true
-			}
-		}
-		// Skip literal functions
-		// (their names are not readable: 'tidb`.(dateliteral, for example)
-		// See: https://github.com/pingcap/parser/pull/591
-		if strings.HasPrefix(funcName, "'tidb`.(") {
-			skipFunc = true
-		}
-		if skipFunc {
-			continue
-		}
-		res = append(res, funcName)
-	}
-	sort.Strings(res)
-	return res
 }

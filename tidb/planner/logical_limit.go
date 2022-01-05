@@ -22,7 +22,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalLimit represents offset and limit plan.
@@ -35,7 +34,7 @@ type LogicalLimit struct {
 
 // Init initializes LogicalLimit.
 func (p LogicalLimit) Init(ctx sessionctx.Context, offset int) *LogicalLimit {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeLimit, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeLimit, &p, offset)
 	return &p
 }
 
@@ -51,7 +50,7 @@ func (p *LogicalLimit) BuildKeyInfo(selfSchema *expression.Schema, childSchema [
 func (p *LogicalLimit) HashCode() []byte {
 	// PlanType + SelectOffset + Offset + Count
 	result := make([]byte, 24)
-	binary.BigEndian.PutUint32(result, uint32(plancodec.TypeStringToPhysicalID(p.tp)))
+	binary.BigEndian.PutUint32(result, uint32(TypeStringToPhysicalID(p.tp)))
 	binary.BigEndian.PutUint32(result[4:], uint32(p.SelectBlockOffset()))
 	binary.BigEndian.PutUint64(result[8:], p.Offset)
 	binary.BigEndian.PutUint64(result[16:], p.Count)

@@ -23,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalUnionAll represents LogicalUnionAll plan.
@@ -33,7 +32,7 @@ type LogicalUnionAll struct {
 
 // Init initializes LogicalUnionAll.
 func (p LogicalUnionAll) Init(ctx sessionctx.Context, offset int) *LogicalUnionAll {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeUnion, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeUnion, &p, offset)
 	return &p
 }
 

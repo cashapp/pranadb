@@ -24,7 +24,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
@@ -49,7 +48,7 @@ type LogicalIndexScan struct {
 
 // Init initializes LogicalIndexScan.
 func (is LogicalIndexScan) Init(ctx sessionctx.Context, offset int) *LogicalIndexScan {
-	is.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeIdxScan, &is, offset)
+	is.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeIdxScan, &is, offset)
 	return &is
 }
 

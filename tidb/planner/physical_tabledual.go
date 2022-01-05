@@ -22,7 +22,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &PhysicalTableDual{}
@@ -40,7 +39,7 @@ type PhysicalTableDual struct {
 
 // Init initializes PhysicalTableDual.
 func (p PhysicalTableDual) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int) *PhysicalTableDual {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeDual, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeDual, &p, offset)
 	p.stats = stats
 	return &p
 }

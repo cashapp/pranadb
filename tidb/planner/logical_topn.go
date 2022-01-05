@@ -22,7 +22,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalTopN represents a top-n plan.
@@ -36,7 +35,7 @@ type LogicalTopN struct {
 
 // Init initializes LogicalTopN.
 func (lt LogicalTopN) Init(ctx sessionctx.Context, offset int) *LogicalTopN {
-	lt.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeTopN, &lt, offset)
+	lt.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeTopN, &lt, offset)
 	return &lt
 }
 

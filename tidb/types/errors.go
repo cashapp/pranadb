@@ -19,8 +19,6 @@ package types
 
 // const strings for ErrWrongValue
 const (
-	DateTimeStr  = "datetime"
-	DateStr      = "date"
-	TimeStr      = "time"
-	TimestampStr = "timestamp"
+	DateTimeStr = "datetime"
+	TimeStr     = "time"
 )

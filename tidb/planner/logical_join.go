@@ -24,7 +24,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"math"
 )
 
@@ -110,7 +109,7 @@ func (tp JoinType) String() string {
 
 // Init initializes LogicalJoin.
 func (p LogicalJoin) Init(ctx sessionctx.Context, offset int) *LogicalJoin {
-	p.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeJoin, &p, offset)
+	p.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeJoin, &p, offset)
 	return &p
 }
 
@@ -612,4 +611,35 @@ func addConstOneForEmptyProjection(p LogicalPlan) {
 		Value:   constOne.Value,
 		RetType: constOne.GetType(),
 	})
+}
+
+func clonePossibleProperties(props [][]*expression.Column) [][]*expression.Column {
+	res := make([][]*expression.Column, len(props))
+	for i, prop := range props {
+		clonedProp := make([]*expression.Column, len(prop))
+		for j, col := range prop {
+			clonedProp[j] = col.Clone().(*expression.Column)
+		}
+		res[i] = clonedProp
+	}
+	return res
+}
+
+func buildLogicalJoinSchema(joinType JoinType, join LogicalPlan) *expression.Schema {
+	leftSchema := join.Children()[0].Schema()
+	switch joinType {
+	case SemiJoin, AntiSemiJoin:
+		return leftSchema.Clone()
+	case LeftOuterSemiJoin, AntiLeftOuterSemiJoin:
+		newSchema := leftSchema.Clone()
+		newSchema.Append(join.Schema().Columns[join.Schema().Len()-1])
+		return newSchema
+	}
+	newSchema := expression.MergeSchema(leftSchema, join.Children()[1].Schema())
+	if joinType == LeftOuterJoin {
+		resetNotNullFlag(newSchema, leftSchema.Len(), newSchema.Len())
+	} else if joinType == RightOuterJoin {
+		resetNotNullFlag(newSchema, 0, leftSchema.Len())
+	}
+	return newSchema
 }

@@ -19,12 +19,11 @@ package infoschema
 
 import (
 	"github.com/pingcap/parser/model"
-	"github.com/squareup/pranadb/tidb/table"
 )
 
 type InfoSchema interface {
 	SchemaByName(schema model.CIStr) (*model.DBInfo, bool)
-	TableByName(schema, table model.CIStr) (table.Table, error)
-	TableByID(id int64) (table.Table, bool)
+	TableByName(schema, table model.CIStr) (*model.TableInfo, error)
+	TableByID(id int64) (*model.TableInfo, bool)
 	SchemaMetaVersion() int64
 }

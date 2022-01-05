@@ -7,12 +7,6 @@ import (
 type ExecutorType uint32
 
 const (
-	ExecutorTypeSelect ExecutorType = iota
-	ExecutorTypeAggregation
-	ExecutorTypeTableScan
-)
-
-const (
 	orderByMaxRows = 50000
 	queryBatchSize = 10000
 )

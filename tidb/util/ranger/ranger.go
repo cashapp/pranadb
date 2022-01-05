@@ -19,6 +19,7 @@ package ranger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"github.com/squareup/pranadb/tidb"
 	"math"
 	"sort"
@@ -30,7 +31,6 @@ import (
 	"github.com/pingcap/parser/terror"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/expression"
-	"github.com/squareup/pranadb/tidb/kv"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 	"github.com/squareup/pranadb/tidb/types"
@@ -43,14 +43,14 @@ func validInterval(sc *stmtctx.StatementContext, low, high *point) (bool, error)
 		return false, errors.Trace(err)
 	}
 	if low.excl {
-		l = kv.Key(l).PrefixNext()
+		l = Key(l).PrefixNext()
 	}
 	r, err := codec.EncodeKey(sc, nil, high.value)
 	if err != nil {
 		return false, errors.Trace(err)
 	}
 	if !high.excl {
-		r = kv.Key(r).PrefixNext()
+		r = Key(r).PrefixNext()
 	}
 	return bytes.Compare(l, r) < 0, nil
 }
@@ -419,14 +419,14 @@ func UnionRanges(sc *stmtctx.StatementContext, ranges []*Range, mergeConsecutive
 			return nil, errors.Trace(err)
 		}
 		if ran.LowExclude {
-			left = kv.Key(left).PrefixNext()
+			left = Key(left).PrefixNext()
 		}
 		right, err := codec.EncodeKey(sc, nil, ran.HighVal...)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
 		if !ran.HighExclude {
-			right = kv.Key(right).PrefixNext()
+			right = Key(right).PrefixNext()
 		}
 		objects = append(objects, &sortRange{originalValue: ran, encodedStart: left, encodedEnd: right})
 	}
@@ -585,4 +585,40 @@ func points2EqOrInCond(ctx sessionctx.Context, points []*point, col *expression.
 		funcName = ast.In
 	}
 	return expression.NewFunctionInternal(ctx, funcName, col.GetType(), args...)
+}
+
+// Key represents high-level Key type.
+type Key []byte
+
+// PrefixNext returns the next prefix key.
+//
+// Assume there are keys like:
+//
+//   rowkey1
+//   rowkey1_column1
+//   rowkey1_column2
+//   rowKey2
+//
+// If we seek 'rowkey1' Next, we will get 'rowkey1_column1'.
+// If we seek 'rowkey1' PrefixNext, we will get 'rowkey2'.
+func (k Key) PrefixNext() Key {
+	buf := make([]byte, len(k))
+	copy(buf, k)
+	var i int
+	for i = len(k) - 1; i >= 0; i-- {
+		buf[i]++
+		if buf[i] != 0 {
+			break
+		}
+	}
+	if i == -1 {
+		copy(buf, k)
+		buf = append(buf, 0)
+	}
+	return buf
+}
+
+// String implements fmt.Stringer interface.
+func (k Key) String() string {
+	return hex.EncodeToString(k)
 }

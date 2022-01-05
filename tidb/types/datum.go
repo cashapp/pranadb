@@ -19,23 +19,20 @@ package types
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/tidb"
-	"math"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
-	"unicode/utf8"
-	"unsafe"
-
 	"github.com/pingcap/parser/charset"
 	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/parser/terror"
 	"github.com/pingcap/parser/types"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/tidb"
 	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 	"github.com/squareup/pranadb/tidb/types/json"
 	"github.com/squareup/pranadb/tidb/util/hack"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // Kind constants.
@@ -1942,12 +1939,6 @@ func NewCollationStringDatum(s string, collation string, length int) (d Datum) {
 	return d
 }
 
-// NewFloat64Datum creates a new Datum from a float64 value.
-func NewFloat64Datum(f float64) (d Datum) {
-	d.SetFloat64(f)
-	return d
-}
-
 // NewFloat32Datum creates a new Datum from a float32 value.
 func NewFloat32Datum(f float32) (d Datum) {
 	d.SetFloat32(f)
@@ -1972,39 +1963,9 @@ func NewDecimalDatum(dec *MyDecimal) (d Datum) {
 	return d
 }
 
-// NewJSONDatum creates a new Datum from a BinaryJSON value
-func NewJSONDatum(j json.BinaryJSON) (d Datum) {
-	d.SetMysqlJSON(j)
-	return d
-}
-
-// NewBinaryLiteralDatum creates a new BinaryLiteral Datum for a BinaryLiteral value.
-func NewBinaryLiteralDatum(b BinaryLiteral) (d Datum) {
-	d.SetBinaryLiteral(b)
-	return d
-}
-
-// NewMysqlBitDatum creates a new MysqlBit Datum for a BinaryLiteral value.
-func NewMysqlBitDatum(b BinaryLiteral) (d Datum) {
-	d.SetMysqlBit(b)
-	return d
-}
-
-// NewMysqlEnumDatum creates a new MysqlEnum Datum for a Enum value.
-func NewMysqlEnumDatum(e Enum) (d Datum) {
-	d.SetMysqlEnum(e, mysql.DefaultCollationName)
-	return d
-}
-
 // NewCollateMysqlEnumDatum create a new MysqlEnum Datum for a Enum value with collation information.
 func NewCollateMysqlEnumDatum(e Enum, collation string) (d Datum) {
 	d.SetMysqlEnum(e, collation)
-	return d
-}
-
-// NewMysqlSetDatum creates a new MysqlSet Datum for a Enum value.
-func NewMysqlSetDatum(e Set, collation string) (d Datum) {
-	d.SetMysqlSet(e, collation)
 	return d
 }
 
@@ -2025,36 +1986,6 @@ func MinNotNullDatum() Datum {
 // MaxValueDatum returns a datum represents max value.
 func MaxValueDatum() Datum {
 	return Datum{k: KindMaxValue}
-}
-
-// SortDatums sorts a slice of datum.
-func SortDatums(sc *stmtctx.StatementContext, datums []Datum) error {
-	sorter := datumsSorter{datums: datums, sc: sc}
-	sort.Sort(&sorter)
-	return sorter.err
-}
-
-type datumsSorter struct {
-	datums []Datum
-	sc     *stmtctx.StatementContext
-	err    error
-}
-
-func (ds *datumsSorter) Len() int {
-	return len(ds.datums)
-}
-
-func (ds *datumsSorter) Less(i, j int) bool {
-	cmp, err := ds.datums[i].CompareDatum(ds.sc, &ds.datums[j])
-	if err != nil {
-		ds.err = errors.Trace(err)
-		return true
-	}
-	return cmp < 0
-}
-
-func (ds *datumsSorter) Swap(i, j int) {
-	ds.datums[i], ds.datums[j] = ds.datums[j], ds.datums[i]
 }
 
 // DatumsToString converts several datums to formatted string.
@@ -2094,15 +2025,6 @@ func DatumsToStrNoErr(datums []Datum) string {
 	str, err := DatumsToString(datums, true)
 	terror.Log(errors.Trace(err))
 	return str
-}
-
-// CloneRow deep copies a Datum slice.
-func CloneRow(dr []Datum) []Datum {
-	c := make([]Datum, len(dr))
-	for i, d := range dr {
-		d.Copy(&c[i])
-	}
-	return c
 }
 
 // GetMaxValue returns the max value datum for each type.
@@ -2282,31 +2204,4 @@ func ChangeReverseResultByUpperLowerBound(
 		}
 	}
 	return d, nil
-}
-
-const (
-	sizeOfEmptyDatum = int(unsafe.Sizeof(Datum{}))
-	sizeOfMysqlTime  = int(unsafe.Sizeof(ZeroTime))
-	sizeOfMyDecimal  = MyDecimalStructSize
-)
-
-// EstimatedMemUsage returns the estimated bytes consumed of a one-dimensional
-// or two-dimensional datum array.
-func EstimatedMemUsage(array []Datum, numOfRows int) int64 {
-	if numOfRows == 0 {
-		return 0
-	}
-	var bytesConsumed int
-	for _, d := range array {
-		switch d.Kind() {
-		case KindMysqlDecimal:
-			bytesConsumed += sizeOfMyDecimal
-		case KindMysqlTime:
-			bytesConsumed += sizeOfMysqlTime
-		default:
-			bytesConsumed += len(d.b)
-		}
-	}
-	bytesConsumed += len(array) * sizeOfEmptyDatum
-	return int64(bytesConsumed * numOfRows)
 }

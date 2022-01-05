@@ -18,7 +18,6 @@
 package stringutil
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/tidb/util/hack"
 )
 
@@ -179,13 +178,6 @@ type StringerFunc func() string
 // String implements fmt.Stringer
 func (l StringerFunc) String() string {
 	return l()
-}
-
-// MemoizeStr returns memoized version of stringFunc.
-func MemoizeStr(l func() string) fmt.Stringer {
-	return StringerFunc(func() string {
-		return l()
-	})
 }
 
 // StringerStr defines a alias to normal string.

@@ -22,7 +22,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &PhysicalUnionScan{}
@@ -38,8 +37,28 @@ type PhysicalUnionScan struct {
 
 // Init initializes PhysicalUnionScan.
 func (p PhysicalUnionScan) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalUnionScan {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeUnionScan, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeUnionScan, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p
+}
+
+// ResolveIndices implements Plan interface.
+func (p *PhysicalUnionScan) ResolveIndices() (err error) {
+	err = p.basePhysicalPlan.ResolveIndices()
+	if err != nil {
+		return err
+	}
+	for i, expr := range p.Conditions {
+		p.Conditions[i], err = expr.ResolveIndices(p.children[0].Schema())
+		if err != nil {
+			return err
+		}
+	}
+	resolvedHandleCol, err := p.HandleCols.ResolveIndices(p.children[0].Schema())
+	if err != nil {
+		return err
+	}
+	p.HandleCols = resolvedHandleCol
+	return
 }

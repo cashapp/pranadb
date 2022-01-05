@@ -36,23 +36,6 @@ type NotificationListener interface {
 	HandleNotification(notification Notification) error
 }
 
-func SerializeNotification(notification Notification) ([]byte, error) {
-	b := proto.NewBuffer(nil)
-	nt := TypeForNotification(notification)
-	if nt == NotificationTypeUnknown {
-		return nil, errors.Errorf("invalid notification type %d", nt)
-	}
-	err := b.EncodeVarint(uint64(nt))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	err = b.Marshal(notification)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return b.Bytes(), nil
-}
-
 func DeserializeNotification(data []byte) (Notification, error) {
 	b := proto.NewBuffer(data)
 	nt, err := b.DecodeVarint()

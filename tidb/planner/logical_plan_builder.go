@@ -39,7 +39,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/statistics"
-	"github.com/squareup/pranadb/tidb/table/tables"
 	"github.com/squareup/pranadb/tidb/types"
 	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
 	"github.com/squareup/pranadb/tidb/util/chunk"
@@ -661,17 +660,6 @@ func (b *PlanBuilder) buildProjectionFieldNameFromExpressions(ctx context.Contex
 	}
 
 	innerExpr := getInnerFromParenthesesAndUnaryPlus(field.Expr)
-	funcCall, isFuncCall := innerExpr.(*ast.FuncCallExpr)
-	// When used to produce a result set column, NAME_CONST() causes the column to have the given name.
-	// See https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_name-const for details
-	if isFuncCall && funcCall.FnName.L == ast.NameConst {
-		if v, err := evalAstExpr(b.ctx, funcCall.Args[0]); err == nil {
-			if s, err := v.ToString(); err == nil {
-				return model.NewCIStr(s), nil
-			}
-		}
-		return model.NewCIStr(""), tidb.ErrWrongArguments.GenWithStackByArgs("NAME_CONST")
-	}
 	valueExpr, isValueExpr := innerExpr.(*driver.ValueExpr)
 
 	// Non-literal: Output as inputed, except that comments need to be removed.
@@ -1464,8 +1452,6 @@ func resolveFromSelectFields(v *ast.ColumnNameExpr, fields []*ast.SelectField, i
 // It converts ColunmNameExpr to AggregateFuncExpr and collects AggregateFuncExpr.
 type havingWindowAndOrderbyExprResolver struct {
 	inAggFunc    bool
-	inWindowFunc bool
-	inWindowSpec bool
 	inExpr       bool
 	err          error
 	p            LogicalPlan
@@ -1494,21 +1480,7 @@ func (a *havingWindowAndOrderbyExprResolver) Enter(n ast.Node) (node ast.Node, s
 	switch n.(type) {
 	case *ast.AggregateFuncExpr:
 		a.inAggFunc = true
-	case *ast.WindowFuncExpr:
-		a.inWindowFunc = true
-	case *ast.WindowSpec:
-		a.inWindowSpec = true
 	case *driver.ParamMarkerExpr, *ast.ColumnNameExpr, *ast.ColumnName:
-	case *ast.SubqueryExpr, *ast.ExistsSubqueryExpr:
-		// Enter a new context, skip it.
-		// For example: select sum(c) + c + exists(select c from t) from t;
-		return n, true
-	case *ast.PartitionByClause:
-		a.pushCurClause(partitionByClause)
-	case *ast.OrderByClause:
-		if a.inWindowSpec {
-			a.pushCurClause(windowOrderByClause)
-		}
 	default:
 		a.inExpr = true
 	}
@@ -1574,13 +1546,9 @@ func (a *havingWindowAndOrderbyExprResolver) Leave(n ast.Node) (node ast.Node, o
 			Expr:      v,
 			AsName:    model.NewCIStr(fmt.Sprintf("sel_agg_%d", len(a.selectFields))),
 		})
-	case *ast.OrderByClause:
-		if a.inWindowSpec {
-			a.popCurClause()
-		}
 	case *ast.ColumnNameExpr:
 		resolveFieldsFirst := true
-		if a.inAggFunc || a.inWindowFunc || a.inWindowSpec || (a.curClause == orderByClause && a.inExpr) || a.curClause == fieldList {
+		if a.inAggFunc || (a.curClause == orderByClause && a.inExpr) || a.curClause == fieldList {
 			resolveFieldsFirst = false
 		}
 		if !a.inAggFunc && a.curClause != orderByClause {
@@ -1626,8 +1594,7 @@ func (a *havingWindowAndOrderbyExprResolver) Leave(n ast.Node) (node ast.Node, o
 			var err error
 			index, err = a.resolveFromPlan(v, a.p)
 			_ = err
-			if index == -1 && a.curClause != fieldList &&
-				a.curClause != windowOrderByClause && a.curClause != partitionByClause {
+			if index == -1 && a.curClause != fieldList {
 				index, a.err = resolveFromSelectFields(v, a.selectFields, false)
 			}
 		}
@@ -2618,12 +2585,11 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 	dbName := tn.Schema
 	sessionVars := b.ctx.GetSessionVars()
 
-	tbl, err := b.is.TableByName(dbName, tn.Name)
+	tableInfo, err := b.is.TableByName(dbName, tn.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	tableInfo := tbl.Meta()
 	var authErr error
 	b.visitInfo = appendVisitInfo(b.visitInfo, mysql.SelectPriv, dbName.L, tableInfo.Name.L, "", authErr)
 
@@ -2631,7 +2597,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 	if tblName.L == "" {
 		tblName = tn.Name
 	}
-	possiblePaths, err := getPossibleAccessPaths(b.ctx, tbl, dbName, tblName, false, b.is.SchemaMetaVersion())
+	possiblePaths, err := getPossibleAccessPaths(b.ctx, tableInfo, dbName, tblName, false, b.is.SchemaMetaVersion())
 	if err != nil {
 		return nil, err
 	}
@@ -2642,7 +2608,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 			continue
 		}
 		for _, indexCol := range index.Columns {
-			colInfo := tbl.Cols()[indexCol.Offset]
+			colInfo := tableInfo.Columns[indexCol.Offset]
 			if colInfo.IsGenerated() && !colInfo.GeneratedStored {
 				b.optFlag |= flagGcSubstitute
 				break
@@ -2650,12 +2616,11 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 		}
 	}
 
-	columns := tbl.Cols()
+	columns := tableInfo.Columns
 
 	ds := LogicalDataSource{
 		DBName:              dbName,
 		TableAsName:         asName,
-		table:               tbl,
 		tableInfo:           tableInfo,
 		possibleAccessPaths: possiblePaths,
 		Columns:             make([]*model.ColumnInfo, 0, len(columns)),
@@ -2666,7 +2631,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 	schema := expression.NewSchema(make([]*expression.Column, 0, len(columns))...)
 	names := make([]*types.FieldName, 0, len(columns))
 	for i, col := range columns {
-		ds.Columns = append(ds.Columns, col.ToInfo())
+		ds.Columns = append(ds.Columns, col)
 		names = append(names, &types.FieldName{
 			DBName:            dbName,
 			TblName:           tableInfo.Name,
@@ -2683,7 +2648,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 			OrigName: names[i].String(),
 			IsHidden: col.Hidden,
 		}
-		if col.IsPKHandleColumn(tableInfo) {
+		if isPKHandleColumn(tableInfo, col) {
 			handleCols = &IntHandleCols{col: newCol}
 		}
 		schema.Append(newCol)
@@ -2693,7 +2658,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 	// column is not the primary key of "ds".
 	if handleCols == nil {
 		if tableInfo.IsCommonHandle {
-			primaryIdx := tables.FindPrimaryIndex(tableInfo)
+			primaryIdx := findPrimaryIndex(tableInfo)
 			handleCols = NewCommonHandleCols(b.ctx.GetSessionVars().StmtCtx, tableInfo, primaryIdx, ds.TblCols)
 		} else {
 			extraCol := ds.newExtraHandleSchemaCol()
@@ -2718,7 +2683,7 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 
 	// Init commonHandleCols and commonHandleLens for data source.
 	if tableInfo.IsCommonHandle {
-		ds.commonHandleCols, ds.commonHandleLens = expression.IndexInfo2Cols(ds.Columns, ds.schema.Columns, tables.FindPrimaryIndex(tableInfo))
+		ds.commonHandleCols, ds.commonHandleLens = expression.IndexInfo2Cols(ds.Columns, ds.schema.Columns, findPrimaryIndex(tableInfo))
 	}
 	// Init FullIdxCols, FullIdxColLens for accessPaths.
 	for _, path := range ds.possibleAccessPaths {
@@ -2733,20 +2698,6 @@ func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, as
 		sessionVars.StmtCtx.TblInfo2UnionScan = make(map[*model.TableInfo]bool)
 	}
 	sessionVars.StmtCtx.TblInfo2UnionScan[tableInfo] = false
-
-	for i, colExpr := range ds.Schema().Columns {
-		var expr expression.Expression
-		if i < len(columns) {
-			if columns[i].IsGenerated() && !columns[i].GeneratedStored {
-				var err error
-				expr, _, err = b.rewrite(ctx, columns[i].GeneratedExpr, ds, nil, true)
-				if err != nil {
-					return nil, err
-				}
-				colExpr.VirtualExpr = expr.Clone()
-			}
-		}
-	}
 
 	return result, nil
 }
@@ -2902,4 +2853,49 @@ func isNullRejected(ctx sessionctx.Context, schema *expression.Schema, expr expr
 		return true
 	}
 	return false
+}
+
+func isPKHandleColumn(tbInfo *model.TableInfo, colInfo *model.ColumnInfo) bool {
+	return tbInfo.PKIsHandle && mysql.HasPriKeyFlag(colInfo.Flag)
+}
+
+func findPrimaryIndex(tblInfo *model.TableInfo) *model.IndexInfo {
+	var pkIdx *model.IndexInfo
+	for _, idx := range tblInfo.Indices {
+		if idx.Primary {
+			pkIdx = idx
+			break
+		}
+	}
+	return pkIdx
+}
+
+// AggregateFuncExtractor visits Expr tree.
+// It collects AggregateFuncExpr from AST Node.
+type AggregateFuncExtractor struct {
+	// skipAggMap stores correlated aggregate functions which have been built in outer query,
+	// so extractor in sub-query will skip these aggregate functions.
+	skipAggMap map[*ast.AggregateFuncExpr]*expression.CorrelatedColumn
+	// AggFuncs is the collected AggregateFuncExprs.
+	AggFuncs []*ast.AggregateFuncExpr
+}
+
+// Enter implements Visitor interface.
+func (a *AggregateFuncExtractor) Enter(n ast.Node) (ast.Node, bool) {
+	switch n.(type) {
+	case *ast.SelectStmt, *ast.SetOprStmt:
+		return n, true
+	}
+	return n, false
+}
+
+// Leave implements Visitor interface.
+func (a *AggregateFuncExtractor) Leave(n ast.Node) (ast.Node, bool) {
+	switch v := n.(type) {
+	case *ast.AggregateFuncExpr:
+		if _, ok := a.skipAggMap[v]; !ok {
+			a.AggFuncs = append(a.AggFuncs, v)
+		}
+	}
+	return n, true
 }

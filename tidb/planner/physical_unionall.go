@@ -21,7 +21,6 @@ package planner
 import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &PhysicalUnionAll{}
@@ -33,7 +32,7 @@ type PhysicalUnionAll struct {
 
 // Init initializes PhysicalUnionAll.
 func (p PhysicalUnionAll) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *PhysicalUnionAll {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeUnion, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeUnion, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p

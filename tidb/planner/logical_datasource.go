@@ -28,11 +28,9 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/statistics"
-	"github.com/squareup/pranadb/tidb/table"
 	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/collate"
 	"github.com/squareup/pranadb/tidb/util/logutil"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 	"go.uber.org/zap"
 	"math"
@@ -43,7 +41,6 @@ import (
 type LogicalDataSource struct {
 	logicalSchemaProducer
 
-	table     table.Table
 	tableInfo *model.TableInfo
 	Columns   []*model.ColumnInfo
 	DBName    model.CIStr
@@ -80,7 +77,7 @@ type LogicalDataSource struct {
 
 // Init initializes LogicalDataSource.
 func (ds LogicalDataSource) Init(ctx sessionctx.Context, offset int) *LogicalDataSource {
-	ds.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeDataSource, &ds, offset)
+	ds.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeDataSource, &ds, offset)
 	return &ds
 }
 
@@ -464,7 +461,7 @@ func (ds *LogicalDataSource) isCoveringIndex(columns, indexColumns []*expression
 		isClusteredNewCollationIdx := collate.NewCollationEnabled() &&
 			col.GetType().EvalType() == types.ETString &&
 			!mysql.HasBinaryFlag(col.GetType().Flag)
-		if !coveredByPlainIndex && coveredByClusteredIndex && isClusteredNewCollationIdx && ds.table.Meta().CommonHandleVersion == 0 {
+		if !coveredByPlainIndex && coveredByClusteredIndex && isClusteredNewCollationIdx && ds.tableInfo.CommonHandleVersion == 0 {
 			return false
 		}
 	}
@@ -603,7 +600,7 @@ func (ds *LogicalDataSource) initStats(colGroups [][]*expression.Column) {
 		return
 	}
 	if ds.statisticTable == nil {
-		ds.statisticTable = getStatsTable(ds.ctx, ds.tableInfo, ds.table.Meta().ID)
+		ds.statisticTable = getStatsTable(ds.ctx, ds.tableInfo, ds.tableInfo.ID)
 	}
 	tableStats := &property.StatsInfo{
 		RowCount:     float64(ds.statisticTable.Count),

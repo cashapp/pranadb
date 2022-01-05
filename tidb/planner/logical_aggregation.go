@@ -23,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/tidb/expression/aggregation"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 // LogicalAggregation represents an aggregate plan.
@@ -43,7 +42,7 @@ type LogicalAggregation struct {
 
 // Init initializes LogicalAggregation.
 func (la LogicalAggregation) Init(ctx sessionctx.Context, offset int) *LogicalAggregation {
-	la.baseLogicalPlan = newBaseLogicalPlan(ctx, plancodec.TypeAgg, &la, offset)
+	la.baseLogicalPlan = newBaseLogicalPlan(ctx, TypeAgg, &la, offset)
 	return &la
 }
 

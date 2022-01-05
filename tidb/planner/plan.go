@@ -142,6 +142,11 @@ func (p *baseLogicalPlan) MaxOneRow() bool {
 	return p.maxOneRow
 }
 
+// PreparePossibleProperties implements LogicalPlan PreparePossibleProperties interface.
+func (p *baseLogicalPlan) PreparePossibleProperties(schema *expression.Schema, childrenProperties ...[][]*expression.Column) [][]*expression.Column {
+	return nil
+}
+
 type basePhysicalPlan struct {
 	basePlan
 
@@ -163,6 +168,17 @@ func (p *basePhysicalPlan) SetCost(cost float64) {
 
 func (p *basePhysicalPlan) GetChildReqProps(idx int) *property.PhysicalProperty {
 	return p.childrenReqProps[idx]
+}
+
+// ResolveIndices implements Plan interface.
+func (p *basePhysicalPlan) ResolveIndices() (err error) {
+	for _, child := range p.children {
+		err = child.ResolveIndices()
+		if err != nil {
+			return err
+		}
+	}
+	return
 }
 
 // HasMaxOneRow returns if the LogicalPlan will output at most one row.
@@ -322,6 +338,15 @@ func (p *basePhysicalPlan) Children() []PhysicalPlan {
 // SetChildren implements LogicalPlan SetChildren interface.
 func (p *baseLogicalPlan) SetChildren(children ...LogicalPlan) {
 	p.children = children
+}
+
+// HashCode implements LogicalPlan interface.
+func (p *baseLogicalPlan) HashCode() []byte {
+	// We use PlanID for the default hash, so if two plans do not have
+	// the same id, the hash value will never be the same.
+	result := make([]byte, 0, 4)
+	result = encodeIntAsUint32(result, p.id)
+	return result
 }
 
 // SetChildren implements PhysicalPlan SetChildren interface.

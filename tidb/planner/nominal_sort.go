@@ -4,7 +4,6 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
-	"github.com/squareup/pranadb/tidb/util/plancodec"
 )
 
 var _ PhysicalPlan = &NominalSort{}
@@ -17,13 +16,12 @@ type NominalSort struct {
 	// These two fields are used to switch ScalarFunctions to Constants. For these
 	// NominalSorts, we need to converted to Projections check if the ScalarFunctions
 	// are out of bounds. (issue #11653)
-	ByItems    []*util.ByItems
-	OnlyColumn bool
+	ByItems []*util.ByItems
 }
 
 // Init initializes NominalSort.
 func (p NominalSort) Init(ctx sessionctx.Context, stats *property.StatsInfo, offset int, props ...*property.PhysicalProperty) *NominalSort {
-	p.basePhysicalPlan = newBasePhysicalPlan(ctx, plancodec.TypeSort, &p, offset)
+	p.basePhysicalPlan = newBasePhysicalPlan(ctx, TypeSort, &p, offset)
 	p.childrenReqProps = props
 	p.stats = stats
 	return &p
