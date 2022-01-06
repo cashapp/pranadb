@@ -18,7 +18,6 @@
 package planner
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
@@ -67,8 +66,9 @@ func (p *LogicalSort) PreparePossibleProperties(schema *expression.Schema, child
 func (p *LogicalSort) String() string {
 	builder := strings.Builder{}
 	builder.WriteString("Sort:\n")
+	builder.WriteString("By-Items: ")
 	for _, bi := range p.ByItems {
-		builder.WriteString(fmt.Sprintf("ByItem:%s\n", bi))
+		builder.WriteString(bi.String())
 	}
 	return builder.String()
 }

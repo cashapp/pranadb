@@ -157,6 +157,7 @@ func (p *baseLogicalPlan) Dump() string {
 	builder := strings.Builder{}
 	builder.WriteString(p.self.String())
 	lc := len(p.children)
+	builder.WriteString("\n")
 	if lc > 0 {
 		builder.WriteString("|\n|\n|\nv\n")
 	}

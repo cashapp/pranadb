@@ -13,7 +13,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- * This source code is a based on original source from the TiDB project
  */
 
 package parplan
@@ -28,7 +27,8 @@ func TestSimpleWildcard(t *testing.T) {
 	testLogicalPlan(t, "select * from table1",
 		`Projection
 Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
-Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]|
+Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]
+|
 |
 |
 v
@@ -41,7 +41,22 @@ func TestSingleColumn(t *testing.T) {
 	testLogicalPlan(t, "select col0 from table1",
 		`Projection
 Schema: Columns: [test.table1.col0]
-Expressions: [test.table1.col0]|
+Expressions: [test.table1.col0]
+|
+|
+|
+v
+DataSource
+Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
+`)
+}
+
+func TestMultipleColumns(t *testing.T) {
+	testLogicalPlan(t, "select col0, col1, col2 from table1",
+		`Projection
+Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
+Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]
+|
 |
 |
 v
@@ -54,12 +69,13 @@ func TestSimpleWhere(t *testing.T) {
 	testLogicalPlan(t, "select col0 from table1 where col0=12345",
 		`Projection
 Schema: Columns: [test.table1.col0]
-Expressions: [test.table1.col0]|
+Expressions: [test.table1.col0]
+|
 |
 |
 v
 Selection:
-Condition:eq(test.table1.col0, 12345)
+Conditions: [eq(test.table1.col0, 12345)]
 |
 |
 |
@@ -73,14 +89,16 @@ func TestSimpleAggregation(t *testing.T) {
 	testLogicalPlan(t, "select col0, count(col1) from table1 group by col0",
 		`Projection
 Schema: Columns: [test.table1.col0,Column#4]
-Expressions: [test.table1.col0,Column#4]|
+Expressions: [test.table1.col0,Column#4]
+|
 |
 |
 v
 Aggregation
 Schema: Columns: [Column#4,test.table1.col0,test.table1.col1,test.table1.col2]
 Aggregate functions: [count(test.table1.col1),firstrow(test.table1.col0),firstrow(test.table1.col1),firstrow(test.table1.col2)]
-Group-by items: [test.table1.col0]|
+Group-by items: [test.table1.col0]
+|
 |
 |
 v
@@ -92,20 +110,23 @@ Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
 func TestUnionAll(t *testing.T) {
 	testLogicalPlan(t, "select * from table1 union all select * from table2",
 		`UnionAll
-Schema: Columns: [Column#7,Column#8,Column#9]|
+Schema: Columns: [Column#7,Column#8,Column#9]
+|
 |
 |
 v
 ============ Child 0
 Projection
 Schema: Columns: [Column#7,Column#8,Column#9]
-Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]|
+Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]
+|
 |
 |
 v
 Projection
 Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
-Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]|
+Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]
+|
 |
 |
 v
@@ -114,18 +135,40 @@ Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
 ============ Child 1
 Projection
 Schema: Columns: [Column#7,Column#8,Column#9]
-Expressions: [test.table2.col0,test.table2.col1,test.table2.col2]|
+Expressions: [test.table2.col0,test.table2.col1,test.table2.col2]
+|
 |
 |
 v
 Projection
 Schema: Columns: [test.table2.col0,test.table2.col1,test.table2.col2]
-Expressions: [test.table2.col0,test.table2.col1,test.table2.col2]|
+Expressions: [test.table2.col0,test.table2.col1,test.table2.col2]
+|
 |
 |
 v
 DataSource
 Schema: Columns: [test.table2.col0,test.table2.col1,test.table2.col2]
+`)
+}
+
+func TestOrderBy(t *testing.T) {
+	testLogicalPlan(t, "select col0, col1, col2 from table1 order by col0, col1",
+		`Sort:
+By-Items: test.table1.col0test.table1.col1
+|
+|
+|
+v
+Projection
+Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
+Expressions: [test.table1.col0,test.table1.col1,test.table1.col2]
+|
+|
+|
+v
+DataSource
+Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
 `)
 }
 

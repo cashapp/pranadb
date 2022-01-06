@@ -273,8 +273,7 @@ func (p *LogicalProjection) String() string {
 	builder.WriteString("Schema: ")
 	builder.WriteString(p.schema.String())
 	builder.WriteString("\n")
-	builder.WriteString("Expressions: ")
-	builder.WriteString("[")
+	builder.WriteString("Expressions: [")
 	for i, expr := range p.Exprs {
 		builder.WriteString(expr.String())
 		if i != len(p.Exprs)-1 {

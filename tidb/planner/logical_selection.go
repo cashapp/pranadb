@@ -19,7 +19,6 @@ package planner
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/pingcap/parser/ast"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
@@ -152,8 +151,13 @@ func (p *LogicalSelection) replaceExprColumns(replace map[string]*expression.Col
 func (p *LogicalSelection) String() string {
 	builder := strings.Builder{}
 	builder.WriteString("Selection:\n")
-	for _, cond := range p.Conditions {
-		builder.WriteString(fmt.Sprintf("Condition:%s\n", cond))
+	builder.WriteString("Conditions: [")
+	for i, cond := range p.Conditions {
+		builder.WriteString(cond.String())
+		if i != len(p.Conditions)-1 {
+			builder.WriteString(",")
+		}
 	}
+	builder.WriteString("]")
 	return builder.String()
 }

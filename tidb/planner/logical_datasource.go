@@ -887,6 +887,5 @@ func (p *LogicalDataSource) String() string {
 	builder.WriteString("DataSource\n")
 	builder.WriteString("Schema: ")
 	builder.WriteString(p.schema.String())
-	builder.WriteString("\n")
 	return builder.String()
 }
