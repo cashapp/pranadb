@@ -22,6 +22,7 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/sessionctx"
+	"strings"
 )
 
 // LogicalTopN represents a top-n plan.
@@ -85,4 +86,10 @@ func (lt *LogicalTopN) DeriveStats(childStats []*property.StatsInfo, selfSchema 
 	}
 	lt.stats = deriveLimitStats(childStats[0], float64(lt.Count))
 	return lt.stats, nil
+}
+
+func (p *LogicalTopN) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("TopN\n")
+	return builder.String()
 }

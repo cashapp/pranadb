@@ -18,7 +18,6 @@
 package planner
 
 import (
-	"context"
 	"fmt"
 	"github.com/squareup/pranadb/tidb"
 	"math"
@@ -114,7 +113,7 @@ func (a *aggOrderByResolver) Leave(inNode ast.Node) (ast.Node, bool) {
 	return inNode, true
 }
 
-func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFuncList []*ast.AggregateFuncExpr, gbyItems []expression.Expression,
+func (b *PlanBuilder) buildAggregation(p LogicalPlan, aggFuncList []*ast.AggregateFuncExpr, gbyItems []expression.Expression,
 	correlatedAggMap map[*ast.AggregateFuncExpr]int) (LogicalPlan, map[int]int, error) {
 	b.optFlag |= flagBuildKeyInfo
 	b.optFlag |= flagPushDownAgg
@@ -137,7 +136,7 @@ func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFu
 	for i, aggFunc := range aggFuncList {
 		newArgList := make([]expression.Expression, 0, len(aggFunc.Args))
 		for _, arg := range aggFunc.Args {
-			newArg, np, err := b.rewrite(ctx, arg, p, nil, true)
+			newArg, np, err := b.rewrite(arg, p, nil, true)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -164,7 +163,7 @@ func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFu
 				if resolver.err != nil {
 					return nil, nil, errors.Trace(resolver.err)
 				}
-				newByItem, np, err := b.rewrite(ctx, retExpr.(ast.ExprNode), p, nil, true)
+				newByItem, np, err := b.rewrite(retExpr.(ast.ExprNode), p, nil, true)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -250,22 +249,22 @@ func (b *PlanBuilder) buildAggregation(ctx context.Context, p LogicalPlan, aggFu
 	return plan4Agg, aggIndexMap, nil
 }
 
-func (b *PlanBuilder) buildTableRefs(ctx context.Context, from *ast.TableRefsClause) (p LogicalPlan, err error) {
-	return b.buildResultSetNode(ctx, from.TableRefs)
+func (b *PlanBuilder) buildTableRefs(from *ast.TableRefsClause) (p LogicalPlan, err error) {
+	return b.buildResultSetNode(from.TableRefs)
 }
 
-func (b *PlanBuilder) buildResultSetNode(ctx context.Context, node ast.ResultSetNode) (p LogicalPlan, err error) {
+func (b *PlanBuilder) buildResultSetNode(node ast.ResultSetNode) (p LogicalPlan, err error) {
 	switch x := node.(type) {
 	case *ast.Join:
-		return b.buildJoin(ctx, x)
+		return b.buildJoin(x)
 	case *ast.TableSource:
 		switch v := x.Source.(type) {
 		case *ast.SelectStmt:
-			p, err = b.buildSelect(ctx, v)
+			p, err = b.buildSelect(v)
 		case *ast.SetOprStmt:
-			p, err = b.buildSetOpr(ctx, v)
+			p, err = b.buildSetOpr(v)
 		case *ast.TableName:
-			p, err = b.buildDataSource(ctx, v, &x.AsName)
+			p, err = b.buildDataSource(v, &x.AsName)
 		default:
 			err = tidb.ErrUnsupportedType.GenWithStackByArgs(v)
 		}
@@ -293,9 +292,9 @@ func (b *PlanBuilder) buildResultSetNode(ctx context.Context, node ast.ResultSet
 		}
 		return p, nil
 	case *ast.SelectStmt:
-		return b.buildSelect(ctx, x)
+		return b.buildSelect(x)
 	case *ast.SetOprStmt:
-		return b.buildSetOpr(ctx, x)
+		return b.buildSetOpr(x)
 	default:
 		return nil, tidb.ErrUnsupportedType.GenWithStack("Unsupported ast.ResultSetNode(%T) for buildResultSetNode()", x)
 	}
@@ -311,24 +310,24 @@ func resetNotNullFlag(schema *expression.Schema, start, end int) {
 	}
 }
 
-func (b *PlanBuilder) buildJoin(ctx context.Context, joinNode *ast.Join) (LogicalPlan, error) {
+func (b *PlanBuilder) buildJoin(joinNode *ast.Join) (LogicalPlan, error) {
 	// We will construct a "Join" node for some statements like "INSERT",
 	// "DELETE", "UPDATE", "REPLACE". For this scenario "joinNode.Right" is nil
 	// and we only build the left "ResultSetNode".
 	if joinNode.Right == nil {
-		return b.buildResultSetNode(ctx, joinNode.Left)
+		return b.buildResultSetNode(joinNode.Left)
 	}
 
 	b.optFlag = b.optFlag | flagPredicatePushDown
 	// Add join reorder flag regardless of inner join or outer join.
 	b.optFlag = b.optFlag | flagJoinReOrder
 
-	leftPlan, err := b.buildResultSetNode(ctx, joinNode.Left)
+	leftPlan, err := b.buildResultSetNode(joinNode.Left)
 	if err != nil {
 		return nil, err
 	}
 
-	rightPlan, err := b.buildResultSetNode(ctx, joinNode.Right)
+	rightPlan, err := b.buildResultSetNode(joinNode.Right)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +398,7 @@ func (b *PlanBuilder) buildJoin(ctx context.Context, joinNode *ast.Join) (Logica
 		}
 	} else if joinNode.On != nil {
 		b.curClause = onClause
-		onExpr, newPlan, err := b.rewrite(ctx, joinNode.On.Expr, joinPlan, nil, false)
+		onExpr, newPlan, err := b.rewrite(joinNode.On.Expr, joinPlan, nil, false)
 		if err != nil {
 			return nil, err
 		}
@@ -577,7 +576,7 @@ func (b *PlanBuilder) coalesceCommonColumns(p *LogicalJoin, leftPlan, rightPlan 
 	return nil
 }
 
-func (b *PlanBuilder) buildSelection(ctx context.Context, p LogicalPlan, where ast.ExprNode, aggMapper map[*ast.AggregateFuncExpr]int) (LogicalPlan, error) {
+func (b *PlanBuilder) buildSelection(p LogicalPlan, where ast.ExprNode, aggMapper map[*ast.AggregateFuncExpr]int) (LogicalPlan, error) {
 	b.optFlag |= flagPredicatePushDown
 	if b.curClause != havingClause {
 		b.curClause = whereClause
@@ -587,7 +586,7 @@ func (b *PlanBuilder) buildSelection(ctx context.Context, p LogicalPlan, where a
 	expressions := make([]expression.Expression, 0, len(conditions))
 	selection := LogicalSelection{buildByHaving: aggMapper != nil}.Init(b.ctx, b.getSelectOffset())
 	for _, cond := range conditions {
-		expr, np, err := b.rewrite(ctx, cond, p, aggMapper, false)
+		expr, np, err := b.rewrite(cond, p, aggMapper, false)
 		if err != nil {
 			return nil, err
 		}
@@ -653,7 +652,7 @@ func (b *PlanBuilder) buildProjectionFieldNameFromColumns(origField *ast.SelectF
 }
 
 // buildProjectionFieldNameFromExpressions builds the field name when field expression is a normal expression.
-func (b *PlanBuilder) buildProjectionFieldNameFromExpressions(ctx context.Context, field *ast.SelectField) (model.CIStr, error) {
+func (b *PlanBuilder) buildProjectionFieldNameFromExpressions(field *ast.SelectField) (model.CIStr, error) {
 	if agg, ok := field.Expr.(*ast.AggregateFuncExpr); ok && agg.F == ast.AggFuncFirstRow {
 		// When the query is select t.a from t group by a; The Column Name should be a but not t.a;
 		return agg.Args[0].(*ast.ColumnNameExpr).Name.Name, nil
@@ -707,7 +706,7 @@ func (b *PlanBuilder) buildProjectionFieldNameFromExpressions(ctx context.Contex
 }
 
 // buildProjectionField builds the field object according to SelectField in projection.
-func (b *PlanBuilder) buildProjectionField(ctx context.Context, p LogicalPlan, field *ast.SelectField, expr expression.Expression) (*expression.Column, *types.FieldName, error) {
+func (b *PlanBuilder) buildProjectionField(p LogicalPlan, field *ast.SelectField, expr expression.Expression) (*expression.Column, *types.FieldName, error) {
 	var origTblName, tblName, origColName, colName, dbName model.CIStr
 	innerNode := getInnerFromParenthesesAndUnaryPlus(field.Expr)
 	col, isCol := expr.(*expression.Column)
@@ -730,7 +729,7 @@ func (b *PlanBuilder) buildProjectionField(ctx context.Context, p LogicalPlan, f
 	} else {
 		// Other: field is an expression.
 		var err error
-		if colName, err = b.buildProjectionFieldNameFromExpressions(ctx, field); err != nil {
+		if colName, err = b.buildProjectionFieldNameFromExpressions(field); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -753,7 +752,6 @@ func (b *PlanBuilder) buildProjectionField(ctx context.Context, p LogicalPlan, f
 }
 
 type userVarTypeProcessor struct {
-	ctx     context.Context
 	plan    LogicalPlan
 	builder *PlanBuilder
 	mapper  map[*ast.AggregateFuncExpr]int
@@ -768,7 +766,7 @@ func (p *userVarTypeProcessor) Enter(in ast.Node) (ast.Node, bool) {
 	if v.IsSystem || v.Value == nil {
 		return in, true
 	}
-	_, p.plan, p.err = p.builder.rewrite(p.ctx, v, p.plan, p.mapper, true)
+	_, p.plan, p.err = p.builder.rewrite(v, p.plan, p.mapper, true)
 	return in, true
 }
 
@@ -776,13 +774,12 @@ func (p *userVarTypeProcessor) Leave(in ast.Node) (ast.Node, bool) {
 	return in, p.err == nil
 }
 
-func (b *PlanBuilder) preprocessUserVarTypes(ctx context.Context, p LogicalPlan, fields []*ast.SelectField, mapper map[*ast.AggregateFuncExpr]int) error {
+func (b *PlanBuilder) preprocessUserVarTypes(p LogicalPlan, fields []*ast.SelectField, mapper map[*ast.AggregateFuncExpr]int) error {
 	aggMapper := make(map[*ast.AggregateFuncExpr]int)
 	for agg, i := range mapper {
 		aggMapper[agg] = i
 	}
 	processor := userVarTypeProcessor{
-		ctx:     ctx,
 		plan:    p,
 		builder: b,
 		mapper:  aggMapper,
@@ -816,9 +813,9 @@ func findColFromNaturalUsingJoin(p LogicalPlan, col *expression.Column) (name *t
 }
 
 // buildProjection returns a Projection plan and non-aux columns length.
-func (b *PlanBuilder) buildProjection(ctx context.Context, p LogicalPlan, fields []*ast.SelectField, mapper map[*ast.AggregateFuncExpr]int,
+func (b *PlanBuilder) buildProjection(p LogicalPlan, fields []*ast.SelectField, mapper map[*ast.AggregateFuncExpr]int,
 	windowMapper map[*ast.WindowFuncExpr]int, considerWindow bool, expandGenerateColumn bool) (LogicalPlan, []expression.Expression, int, error) {
-	err := b.preprocessUserVarTypes(ctx, p, fields, mapper)
+	err := b.preprocessUserVarTypes(p, fields, mapper)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -848,7 +845,7 @@ func (b *PlanBuilder) buildProjection(ctx context.Context, p LogicalPlan, fields
 		} else if !considerWindow && isWindowFuncField {
 			expr := expression.NewZero()
 			proj.Exprs = append(proj.Exprs, expr)
-			col, name, err := b.buildProjectionField(ctx, p, field, expr)
+			col, name, err := b.buildProjectionField(p, field, expr)
 			if err != nil {
 				return nil, nil, 0, err
 			}
@@ -856,7 +853,7 @@ func (b *PlanBuilder) buildProjection(ctx context.Context, p LogicalPlan, fields
 			newNames = append(newNames, name)
 			continue
 		}
-		newExpr, np, err := b.rewriteWithPreprocess(ctx, field.Expr, p, mapper, windowMapper, true, nil)
+		newExpr, np, err := b.rewriteWithPreprocess(field.Expr, p, mapper, windowMapper, true, nil)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -872,7 +869,7 @@ func (b *PlanBuilder) buildProjection(ctx context.Context, p LogicalPlan, fields
 		p = np
 		proj.Exprs = append(proj.Exprs, newExpr)
 
-		col, name, err := b.buildProjectionField(ctx, p, field, newExpr)
+		col, name, err := b.buildProjectionField(p, field, newExpr)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -957,7 +954,7 @@ func unionJoinFieldType(a, b *types.FieldType) *types.FieldType {
 	return resultTp
 }
 
-func (b *PlanBuilder) buildSetOpr(ctx context.Context, setOpr *ast.SetOprStmt) (LogicalPlan, error) {
+func (b *PlanBuilder) buildSetOpr(setOpr *ast.SetOprStmt) (LogicalPlan, error) {
 
 	// Because INTERSECT has higher precedence than UNION and EXCEPT. We build it first.
 	selectPlans := make([]LogicalPlan, 0, len(setOpr.SelectList.Selects))
@@ -983,14 +980,14 @@ func (b *PlanBuilder) buildSetOpr(ctx context.Context, setOpr *ast.SetOprStmt) (
 			intersects = append(intersects, selects[i+1])
 			i++
 		}
-		selectPlan, afterSetOpr, err := b.buildIntersect(ctx, intersects)
+		selectPlan, afterSetOpr, err := b.buildIntersect(intersects)
 		if err != nil {
 			return nil, err
 		}
 		selectPlans = append(selectPlans, selectPlan)
 		afterSetOprs = append(afterSetOprs, afterSetOpr)
 	}
-	setOprPlan, err := b.buildExcept(ctx, selectPlans, afterSetOprs)
+	setOprPlan, err := b.buildExcept(selectPlans, afterSetOprs)
 	if err != nil {
 		return nil, err
 	}
@@ -1003,7 +1000,7 @@ func (b *PlanBuilder) buildSetOpr(ctx context.Context, setOpr *ast.SetOprStmt) (
 	b.handleHelper.pushMap(nil)
 
 	if setOpr.OrderBy != nil {
-		setOprPlan, err = b.buildSort(ctx, setOprPlan, setOpr.OrderBy.Items, nil, nil)
+		setOprPlan, err = b.buildSort(setOprPlan, setOpr.OrderBy.Items, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1062,17 +1059,17 @@ func (b *PlanBuilder) buildSemiJoinForSetOperator(
 
 // buildIntersect build the set operator for 'intersect'. It is called before buildExcept and buildUnion because of its
 // higher precedence.
-func (b *PlanBuilder) buildIntersect(ctx context.Context, selects []ast.Node) (LogicalPlan, *ast.SetOprType, error) {
+func (b *PlanBuilder) buildIntersect(selects []ast.Node) (LogicalPlan, *ast.SetOprType, error) {
 	var leftPlan LogicalPlan
 	var err error
 	var afterSetOperator *ast.SetOprType
 	switch x := selects[0].(type) {
 	case *ast.SelectStmt:
 		afterSetOperator = x.AfterSetOperator
-		leftPlan, err = b.buildSelect(ctx, x)
+		leftPlan, err = b.buildSelect(x)
 	case *ast.SetOprSelectList:
 		afterSetOperator = x.AfterSetOperator
-		leftPlan, err = b.buildSetOpr(ctx, &ast.SetOprStmt{SelectList: x})
+		leftPlan, err = b.buildSetOpr(&ast.SetOprStmt{SelectList: x})
 	}
 	if err != nil {
 		return nil, nil, err
@@ -1090,13 +1087,13 @@ func (b *PlanBuilder) buildIntersect(ctx context.Context, selects []ast.Node) (L
 				// TODO: support intersect all
 				return nil, nil, errors.Errorf("TiDB do not support intersect all")
 			}
-			rightPlan, err = b.buildSelect(ctx, x)
+			rightPlan, err = b.buildSelect(x)
 		case *ast.SetOprSelectList:
 			if *x.AfterSetOperator == ast.IntersectAll {
 				// TODO: support intersect all
 				return nil, nil, errors.Errorf("TiDB do not support intersect all")
 			}
-			rightPlan, err = b.buildSetOpr(ctx, &ast.SetOprStmt{SelectList: x})
+			rightPlan, err = b.buildSetOpr(&ast.SetOprStmt{SelectList: x})
 		}
 		if err != nil {
 			return nil, nil, err
@@ -1114,7 +1111,7 @@ func (b *PlanBuilder) buildIntersect(ctx context.Context, selects []ast.Node) (L
 
 // buildExcept build the set operators for 'except', and in this function, it calls buildUnion at the same time. Because
 // Union and except has the same precedence.
-func (b *PlanBuilder) buildExcept(ctx context.Context, selects []LogicalPlan, afterSetOpts []*ast.SetOprType) (LogicalPlan, error) {
+func (b *PlanBuilder) buildExcept(selects []LogicalPlan, afterSetOpts []*ast.SetOprType) (LogicalPlan, error) {
 	unionPlans := []LogicalPlan{selects[0]}
 	tmpAfterSetOpts := []*ast.SetOprType{nil}
 	columnNums := selects[0].Schema().Len()
@@ -1124,7 +1121,7 @@ func (b *PlanBuilder) buildExcept(ctx context.Context, selects []LogicalPlan, af
 			return nil, tidb.ErrWrongNumberOfColumnsInSelect.GenWithStackByArgs()
 		}
 		if *afterSetOpts[i] == ast.Except {
-			leftPlan, err := b.buildUnion(ctx, unionPlans, tmpAfterSetOpts)
+			leftPlan, err := b.buildUnion(unionPlans, tmpAfterSetOpts)
 			if err != nil {
 				return nil, err
 			}
@@ -1142,19 +1139,19 @@ func (b *PlanBuilder) buildExcept(ctx context.Context, selects []LogicalPlan, af
 			tmpAfterSetOpts = append(tmpAfterSetOpts, afterSetOpts[i])
 		}
 	}
-	return b.buildUnion(ctx, unionPlans, tmpAfterSetOpts)
+	return b.buildUnion(unionPlans, tmpAfterSetOpts)
 }
 
-func (b *PlanBuilder) buildUnion(ctx context.Context, selects []LogicalPlan, afterSetOpts []*ast.SetOprType) (LogicalPlan, error) {
+func (b *PlanBuilder) buildUnion(selects []LogicalPlan, afterSetOpts []*ast.SetOprType) (LogicalPlan, error) {
 	if len(selects) == 1 {
 		return selects[0], nil
 	}
-	distinctSelectPlans, allSelectPlans, err := b.divideUnionSelectPlans(ctx, selects, afterSetOpts)
+	distinctSelectPlans, allSelectPlans, err := b.divideUnionSelectPlans(selects, afterSetOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	unionDistinctPlan := b.buildUnionAll(ctx, distinctSelectPlans)
+	unionDistinctPlan := b.buildUnionAll(distinctSelectPlans)
 	if unionDistinctPlan != nil {
 		unionDistinctPlan, err = b.buildDistinct(unionDistinctPlan, unionDistinctPlan.Schema().Len())
 		if err != nil {
@@ -1166,7 +1163,7 @@ func (b *PlanBuilder) buildUnion(ctx context.Context, selects []LogicalPlan, aft
 		}
 	}
 
-	unionAllPlan := b.buildUnionAll(ctx, allSelectPlans)
+	unionAllPlan := b.buildUnionAll(allSelectPlans)
 	unionPlan := unionDistinctPlan
 	if unionAllPlan != nil {
 		unionPlan = unionAllPlan
@@ -1180,7 +1177,7 @@ func (b *PlanBuilder) buildUnion(ctx context.Context, selects []LogicalPlan, aft
 // divide rule ref:
 //		https://dev.mysql.com/doc/refman/5.7/en/union.html
 // "Mixed UNION types are treated such that a DISTINCT union overrides any ALL union to its left."
-func (b *PlanBuilder) divideUnionSelectPlans(ctx context.Context, selects []LogicalPlan, setOprTypes []*ast.SetOprType) (distinctSelects []LogicalPlan, allSelects []LogicalPlan, err error) {
+func (b *PlanBuilder) divideUnionSelectPlans(selects []LogicalPlan, setOprTypes []*ast.SetOprType) (distinctSelects []LogicalPlan, allSelects []LogicalPlan, err error) {
 	firstUnionAllIdx := 0
 	columnNums := selects[0].Schema().Len()
 	for i := len(selects) - 1; i > 0; i-- {
@@ -1194,13 +1191,13 @@ func (b *PlanBuilder) divideUnionSelectPlans(ctx context.Context, selects []Logi
 	return selects[:firstUnionAllIdx], selects[firstUnionAllIdx:], nil
 }
 
-func (b *PlanBuilder) buildUnionAll(ctx context.Context, subPlan []LogicalPlan) LogicalPlan {
+func (b *PlanBuilder) buildUnionAll(subPlan []LogicalPlan) LogicalPlan {
 	if len(subPlan) == 0 {
 		return nil
 	}
 	u := LogicalUnionAll{}.Init(b.ctx, b.getSelectOffset())
 	u.children = subPlan
-	b.buildProjection4Union(ctx, u)
+	b.buildProjection4Union(u)
 	return u
 }
 
@@ -1221,24 +1218,24 @@ func (t *itemTransformer) Leave(inNode ast.Node) (ast.Node, bool) {
 	return inNode, false
 }
 
-func (b *PlanBuilder) buildSort(ctx context.Context, p LogicalPlan, byItems []*ast.ByItem, aggMapper map[*ast.AggregateFuncExpr]int, windowMapper map[*ast.WindowFuncExpr]int) (*LogicalSort, error) {
-	return b.buildSortWithCheck(ctx, p, byItems, aggMapper, windowMapper, nil, 0, false)
+func (b *PlanBuilder) buildSort(p LogicalPlan, byItems []*ast.ByItem, aggMapper map[*ast.AggregateFuncExpr]int, windowMapper map[*ast.WindowFuncExpr]int) (*LogicalSort, error) {
+	return b.buildSortWithCheck(p, byItems, aggMapper, windowMapper, nil, 0, false)
 }
 
-func (b *PlanBuilder) buildSortWithCheck(ctx context.Context, p LogicalPlan, byItems []*ast.ByItem, aggMapper map[*ast.AggregateFuncExpr]int, windowMapper map[*ast.WindowFuncExpr]int,
+func (b *PlanBuilder) buildSortWithCheck(p LogicalPlan, byItems []*ast.ByItem, aggMapper map[*ast.AggregateFuncExpr]int, windowMapper map[*ast.WindowFuncExpr]int,
 	projExprs []expression.Expression, oldLen int, hasDistinct bool) (*LogicalSort, error) {
 	if _, isUnion := p.(*LogicalUnionAll); isUnion {
 		b.curClause = globalOrderByClause
 	} else {
 		b.curClause = orderByClause
 	}
-	sort := LogicalSort{}.Init(b.ctx, b.getSelectOffset())
+	srt := LogicalSort{}.Init(b.ctx, b.getSelectOffset())
 	exprs := make([]*util.ByItems, 0, len(byItems))
 	transformer := &itemTransformer{}
 	for i, item := range byItems {
 		newExpr, _ := item.Expr.Accept(transformer)
 		item.Expr = newExpr.(ast.ExprNode)
-		it, np, err := b.rewriteWithPreprocess(ctx, item.Expr, p, aggMapper, windowMapper, true, nil)
+		it, np, err := b.rewriteWithPreprocess(item.Expr, p, aggMapper, windowMapper, true, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1254,9 +1251,9 @@ func (b *PlanBuilder) buildSortWithCheck(ctx context.Context, p LogicalPlan, byI
 		p = np
 		exprs = append(exprs, &util.ByItems{Expr: it, Desc: item.Desc})
 	}
-	sort.ByItems = exprs
-	sort.SetChildren(p)
-	return sort, nil
+	srt.ByItems = exprs
+	srt.SetChildren(p)
+	return srt, nil
 }
 
 // checkOrderByInDistinct checks whether ORDER BY has conflicts with DISTINCT, see #12442
@@ -1695,13 +1692,13 @@ func (b *PlanBuilder) extractAggFuncsInByItems(byItems []*ast.ByItem) []*ast.Agg
 }
 
 // extractCorrelatedAggFuncs extracts correlated aggregates which belong to outer query from aggregate function list.
-func (b *PlanBuilder) extractCorrelatedAggFuncs(ctx context.Context, p LogicalPlan, aggFuncs []*ast.AggregateFuncExpr) (outer []*ast.AggregateFuncExpr, err error) {
+func (b *PlanBuilder) extractCorrelatedAggFuncs(p LogicalPlan, aggFuncs []*ast.AggregateFuncExpr) (outer []*ast.AggregateFuncExpr, err error) {
 	corCols := make([]*expression.CorrelatedColumn, 0, len(aggFuncs))
 	cols := make([]*expression.Column, 0, len(aggFuncs))
 	aggMapper := make(map[*ast.AggregateFuncExpr]int)
 	for _, agg := range aggFuncs {
 		for _, arg := range agg.Args {
-			expr, _, err := b.rewrite(ctx, arg, p, aggMapper, true)
+			expr, _, err := b.rewrite(arg, p, aggMapper, true)
 			if err != nil {
 				return nil, err
 			}
@@ -2328,7 +2325,7 @@ func allColFromExprNode(p LogicalPlan, n ast.Node, names map[*types.FieldName]st
 	n.Accept(extractor)
 }
 
-func (b *PlanBuilder) resolveGbyExprs(ctx context.Context, p LogicalPlan, gby *ast.GroupByClause, fields []*ast.SelectField) (LogicalPlan, []expression.Expression, error) {
+func (b *PlanBuilder) resolveGbyExprs(p LogicalPlan, gby *ast.GroupByClause, fields []*ast.SelectField) (LogicalPlan, []expression.Expression, error) {
 	b.curClause = groupByClause
 	exprs := make([]expression.Expression, 0, len(gby.Items))
 	resolver := &gbyResolver{
@@ -2351,7 +2348,7 @@ func (b *PlanBuilder) resolveGbyExprs(ctx context.Context, p LogicalPlan, gby *a
 		}
 
 		itemExpr := retExpr.(ast.ExprNode)
-		expr, np, err := b.rewrite(ctx, itemExpr, p, nil, true)
+		expr, np, err := b.rewrite(itemExpr, p, nil, true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2423,7 +2420,7 @@ func (b *PlanBuilder) popVisitInfo() {
 	b.visitInfo = b.visitInfo[:len(b.visitInfo)-1]
 }
 
-func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p LogicalPlan, err error) {
+func (b *PlanBuilder) buildSelect(sel *ast.SelectStmt) (p LogicalPlan, err error) {
 	b.pushSelectOffset(sel.QueryBlockOffset)
 	defer func() {
 		b.popSelectOffset()
@@ -2442,7 +2439,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 		projExprs                     []expression.Expression
 	)
 
-	p, err = b.buildTableRefs(ctx, sel.From)
+	p, err = b.buildTableRefs(sel.From)
 	if err != nil {
 		return nil, err
 	}
@@ -2454,7 +2451,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 	}
 
 	if sel.GroupBy != nil {
-		p, gbyCols, err = b.resolveGbyExprs(ctx, p, sel.GroupBy, sel.Fields.Fields)
+		p, gbyCols, err = b.resolveGbyExprs(p, sel.GroupBy, sel.Fields.Fields)
 		if err != nil {
 			return nil, err
 		}
@@ -2485,7 +2482,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 	defer func() { b.allNames = b.allNames[:len(b.allNames)-1] }()
 
 	if sel.Where != nil {
-		p, err = b.buildSelection(ctx, p, sel.Where, nil)
+		p, err = b.buildSelection(p, sel.Where, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2506,7 +2503,7 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 	}
 	if needBuildAgg {
 		var aggIndexMap map[int]int
-		p, aggIndexMap, err = b.buildAggregation(ctx, p, aggFuncs, gbyCols, correlatedAggMap)
+		p, aggIndexMap, err = b.buildAggregation(p, aggFuncs, gbyCols, correlatedAggMap)
 		if err != nil {
 			return nil, err
 		}
@@ -2518,14 +2515,14 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 	var oldLen int
 	// According to https://dev.mysql.com/doc/refman/8.0/en/window-functions-usage.html,
 	// we can only process window functions after having clause, so `considerWindow` is false now.
-	p, projExprs, oldLen, err = b.buildProjection(ctx, p, sel.Fields.Fields, totalMap, nil, false, sel.OrderBy != nil)
+	p, projExprs, oldLen, err = b.buildProjection(p, sel.Fields.Fields, totalMap, nil, false, sel.OrderBy != nil)
 	if err != nil {
 		return nil, err
 	}
 
 	if sel.Having != nil {
 		b.curClause = havingClause
-		p, err = b.buildSelection(ctx, p, sel.Having.Expr, havingMap)
+		p, err = b.buildSelection(p, sel.Having.Expr, havingMap)
 		if err != nil {
 			return nil, err
 		}
@@ -2540,9 +2537,9 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 
 	if sel.OrderBy != nil {
 		if b.ctx.GetSessionVars().SQLMode.HasOnlyFullGroupBy() {
-			p, err = b.buildSortWithCheck(ctx, p, sel.OrderBy.Items, orderMap, nil, projExprs, oldLen, sel.Distinct)
+			p, err = b.buildSortWithCheck(p, sel.OrderBy.Items, orderMap, nil, projExprs, oldLen, sel.Distinct)
 		} else {
-			p, err = b.buildSort(ctx, p, sel.OrderBy.Items, orderMap, nil)
+			p, err = b.buildSort(p, sel.OrderBy.Items, orderMap, nil)
 		}
 		if err != nil {
 			return nil, err
@@ -2577,11 +2574,11 @@ func (b *PlanBuilder) buildSelect(ctx context.Context, sel *ast.SelectStmt) (p L
 // 1. tidb-server started and statistics handle has not been initialized.
 // 2. table row count from statistics is zero.
 // 3. statistics is outdated.
-func getStatsTable(ctx sessionctx.Context, tblInfo *model.TableInfo, pid int64) *statistics.Table {
+func getStatsTable(tblInfo *model.TableInfo) *statistics.Table {
 	return statistics.PseudoTable(tblInfo)
 }
 
-func (b *PlanBuilder) buildDataSource(ctx context.Context, tn *ast.TableName, asName *model.CIStr) (LogicalPlan, error) {
+func (b *PlanBuilder) buildDataSource(tn *ast.TableName, asName *model.CIStr) (LogicalPlan, error) {
 	dbName := tn.Schema
 	sessionVars := b.ctx.GetSessionVars()
 

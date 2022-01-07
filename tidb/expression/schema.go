@@ -56,7 +56,10 @@ func (s *Schema) String() string {
 		}
 		ukStrs = append(ukStrs, "["+strings.Join(ukColStrs, ",")+"]")
 	}
-	return "Column: [" + strings.Join(colStrs, ",") + "] Unique key: [" + strings.Join(ukStrs, ",") + "]"
+	if len(ukStrs) != 0 {
+		return "Columns: [" + strings.Join(colStrs, ",") + "] Unique key: [" + strings.Join(ukStrs, ",") + "]"
+	}
+	return "Columns: [" + strings.Join(colStrs, ",") + "]"
 }
 
 // Clone copies the total schema.

@@ -24,6 +24,7 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"sort"
+	"strings"
 )
 
 // LogicalSelection represents a where or having predicate.
@@ -145,4 +146,18 @@ func (p *LogicalSelection) replaceExprColumns(replace map[string]*expression.Col
 	for _, expr := range p.Conditions {
 		resolveExprAndReplace(expr, replace)
 	}
+}
+
+func (p *LogicalSelection) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("Selection:\n")
+	builder.WriteString("Conditions: [")
+	for i, cond := range p.Conditions {
+		builder.WriteString(cond.String())
+		if i != len(p.Conditions)-1 {
+			builder.WriteString(",")
+		}
+	}
+	builder.WriteString("]")
+	return builder.String()
 }

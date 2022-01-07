@@ -18,7 +18,6 @@
 package planner
 
 import (
-	"context"
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/charset"
 	"github.com/pingcap/parser/mysql"
@@ -39,8 +38,8 @@ import (
 // aggMapper maps ast.AggregateFuncExpr to the columns offset in p's output schema.
 // asScalar means whether this expression must be treated as a scalar expression.
 // And this function returns a result expression, a new plan that may have apply or semi-join.
-func (b *PlanBuilder) rewrite(ctx context.Context, exprNode ast.ExprNode, p LogicalPlan, aggMapper map[*ast.AggregateFuncExpr]int, asScalar bool) (expression.Expression, LogicalPlan, error) {
-	expr, resultPlan, err := b.rewriteWithPreprocess(ctx, exprNode, p, aggMapper, nil, asScalar, nil)
+func (b *PlanBuilder) rewrite(exprNode ast.ExprNode, p LogicalPlan, aggMapper map[*ast.AggregateFuncExpr]int, asScalar bool) (expression.Expression, LogicalPlan, error) {
+	expr, resultPlan, err := b.rewriteWithPreprocess(exprNode, p, aggMapper, nil, asScalar, nil)
 	return expr, resultPlan, err
 }
 
@@ -48,7 +47,6 @@ func (b *PlanBuilder) rewrite(ctx context.Context, exprNode ast.ExprNode, p Logi
 // before really using its node in `expressionRewriter.Leave`. In that case, we first call
 // er.preprocess(expr), which returns a new expr. Then we use the new expr in `Leave`.
 func (b *PlanBuilder) rewriteWithPreprocess(
-	ctx context.Context,
 	exprNode ast.ExprNode,
 	p LogicalPlan, aggMapper map[*ast.AggregateFuncExpr]int,
 	windowMapper map[*ast.WindowFuncExpr]int,
@@ -58,7 +56,7 @@ func (b *PlanBuilder) rewriteWithPreprocess(
 	b.rewriterCounter++
 	defer func() { b.rewriterCounter-- }()
 
-	rewriter := b.getExpressionRewriter(ctx, p)
+	rewriter := b.getExpressionRewriter(p)
 	// The rewriter maybe is obtained from "b.rewriterPool", "rewriter.err" is
 	// not nil means certain previous procedure has not handled this error.
 	// Here we give us one more chance to make a correct behavior by handling
@@ -76,7 +74,7 @@ func (b *PlanBuilder) rewriteWithPreprocess(
 	return expr, resultPlan, err
 }
 
-func (b *PlanBuilder) getExpressionRewriter(ctx context.Context, p LogicalPlan) (rewriter *expressionRewriter) {
+func (b *PlanBuilder) getExpressionRewriter(p LogicalPlan) (rewriter *expressionRewriter) {
 	defer func() {
 		if p != nil {
 			rewriter.schema = p.Schema()
@@ -85,7 +83,7 @@ func (b *PlanBuilder) getExpressionRewriter(ctx context.Context, p LogicalPlan) 
 	}()
 
 	if len(b.rewriterPool) < b.rewriterCounter {
-		rewriter = &expressionRewriter{p: p, b: b, sctx: b.ctx, ctx: ctx}
+		rewriter = &expressionRewriter{p: p, b: b, sctx: b.ctx}
 		b.rewriterPool = append(b.rewriterPool, rewriter)
 		return
 	}
@@ -99,7 +97,6 @@ func (b *PlanBuilder) getExpressionRewriter(ctx context.Context, p LogicalPlan) 
 	rewriter.tryFoldCounter = 0
 	rewriter.ctxStack = rewriter.ctxStack[:0]
 	rewriter.ctxNameStk = rewriter.ctxNameStk[:0]
-	rewriter.ctx = ctx
 	rewriter.err = nil
 	return
 }
@@ -152,7 +149,6 @@ type expressionRewriter struct {
 	windowMap  map[*ast.WindowFuncExpr]int
 	b          *PlanBuilder
 	sctx       sessionctx.Context
-	ctx        context.Context
 
 	// asScalar indicates the return value must be a scalar value.
 	// NOTE: This value can be changed during expression rewritten.
@@ -239,7 +235,7 @@ func (er *expressionRewriter) constructBinaryOpFunction(l expression.Expression,
 	}
 }
 
-func (er *expressionRewriter) buildSubquery(ctx context.Context, subq *ast.SubqueryExpr) (LogicalPlan, error) {
+func (er *expressionRewriter) buildSubquery(subq *ast.SubqueryExpr) (LogicalPlan, error) {
 	if er.schema != nil {
 		outerSchema := er.schema.Clone()
 		er.b.outerSchemas = append(er.b.outerSchemas, outerSchema)
@@ -250,7 +246,7 @@ func (er *expressionRewriter) buildSubquery(ctx context.Context, subq *ast.Subqu
 		}()
 	}
 
-	np, err := er.b.buildResultSetNode(ctx, subq.Query)
+	np, err := er.b.buildResultSetNode(subq.Query)
 	if err != nil {
 		return nil, err
 	}

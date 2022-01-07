@@ -18,10 +18,12 @@
 package planner
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
+	"strings"
 )
 
 // Plan is the description of an execution flow.
@@ -96,6 +98,10 @@ type LogicalPlan interface {
 
 	// SetChild sets the ith child for the plan.
 	SetChild(i int, child LogicalPlan)
+
+	String() string
+
+	Dump() string
 }
 
 // PhysicalPlan is a tree of the physical operators.
@@ -145,6 +151,23 @@ func (p *baseLogicalPlan) MaxOneRow() bool {
 // PreparePossibleProperties implements LogicalPlan PreparePossibleProperties interface.
 func (p *baseLogicalPlan) PreparePossibleProperties(schema *expression.Schema, childrenProperties ...[][]*expression.Column) [][]*expression.Column {
 	return nil
+}
+
+func (p *baseLogicalPlan) Dump() string {
+	builder := strings.Builder{}
+	builder.WriteString(p.self.String())
+	lc := len(p.children)
+	builder.WriteString("\n")
+	if lc > 0 {
+		builder.WriteString("|\n|\n|\nv\n")
+	}
+	for i, child := range p.children {
+		if lc > 1 {
+			builder.WriteString(fmt.Sprintf("============ Child %d\n", i))
+		}
+		builder.WriteString(child.Dump())
+	}
+	return builder.String()
 }
 
 type basePhysicalPlan struct {

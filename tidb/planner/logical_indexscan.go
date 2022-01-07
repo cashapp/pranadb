@@ -18,6 +18,7 @@
 package planner
 
 import (
+	"fmt"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/tidb/expression"
@@ -25,6 +26,7 @@ import (
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/ranger"
+	"strings"
 )
 
 // LogicalIndexScan is the logical index scan operator for TiKV.
@@ -160,4 +162,18 @@ func matchIndicesProp(idxCols []*expression.Column, colLens []int, propItems []p
 		}
 	}
 	return true
+}
+
+func (p *LogicalIndexScan) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("IndexScan\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	builder.WriteString(fmt.Sprintf("DataSource: %s\n", p.Source.String()))
+	for _, rng := range p.Ranges {
+		builder.WriteString(rng.String())
+		builder.WriteString("\n")
+	}
+	return builder.String()
 }

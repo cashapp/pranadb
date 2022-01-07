@@ -18,7 +18,6 @@
 package planner
 
 import (
-	"context"
 	"github.com/cznic/mathutil"
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/model"
@@ -188,13 +187,13 @@ func NewPlanBuilder(sctx sessionctx.Context, is infoschema.InfoSchema) *PlanBuil
 }
 
 // Build builds the ast node to a Plan.
-func (b *PlanBuilder) Build(ctx context.Context, node ast.Node) (Plan, error) {
+func (b *PlanBuilder) Build(node ast.Node) (Plan, error) {
 	b.optFlag |= flagPrunColumns
 	switch x := node.(type) {
 	case *ast.SelectStmt:
-		return b.buildSelect(ctx, x)
+		return b.buildSelect(x)
 	case *ast.SetOprStmt:
-		return b.buildSetOpr(ctx, x)
+		return b.buildSetOpr(x)
 	}
 	return nil, tidb.ErrUnsupportedType.GenWithStack("Unsupported type %T", node)
 }

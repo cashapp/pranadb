@@ -81,3 +81,7 @@ func (p *LogicalTableDual) HashCode() []byte {
 	result = encodeIntAsUint32(result, p.RowCount)
 	return result
 }
+
+func (p *LogicalTableDual) String() string {
+	return ""
+}

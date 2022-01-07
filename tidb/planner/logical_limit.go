@@ -19,9 +19,11 @@ package planner
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
+	"strings"
 )
 
 // LogicalLimit represents offset and limit plan.
@@ -80,4 +82,15 @@ func (p *LogicalLimit) DeriveStats(childStats []*property.StatsInfo, selfSchema 
 	}
 	p.stats = deriveLimitStats(childStats[0], float64(p.Count))
 	return p.stats, nil
+}
+
+func (p *LogicalLimit) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("Limit\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	builder.WriteString(fmt.Sprintf("Offset:%d\n", p.Offset))
+	builder.WriteString(fmt.Sprintf("Count:%d\n", p.Count))
+	return builder.String()
 }

@@ -1,7 +1,6 @@
 package parplan
 
 import (
-	"context"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/planner"
 
@@ -16,8 +15,8 @@ import (
 type Planner struct {
 	pushQueryOptimizer *planner.Optimizer
 	pullQueryOptimizer *planner.Optimizer
-	parser             *parser
-	ctx                *sessctx.SessCtx
+	parser             *Parser
+	sessionCtx         *sessctx.SessCtx
 	schema             *common.Schema
 	is                 infoschema.InfoSchema
 	pullQuery          bool
@@ -25,13 +24,13 @@ type Planner struct {
 
 func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
 	is := schemaToInfoSchema(schema)
-	sessCtx := sessctx.NewSessionContext(is, pullQuery, schema.Name)
+	sessCtx := sessctx.NewSessionContext(is, schema.Name)
 	// TODO different rules for push and pull queries
 	pl := &Planner{
 		pushQueryOptimizer: planner.NewOptimizer(),
 		pullQueryOptimizer: planner.NewOptimizer(),
-		parser:             newParser(),
-		ctx:                sessCtx,
+		parser:             NewParser(),
+		sessionCtx:         sessCtx,
 		schema:             schema,
 		is:                 is,
 		pullQuery:          pullQuery,
@@ -40,12 +39,12 @@ func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
 }
 
 func (p *Planner) SetPSArgs(args []interface{}) {
-	p.ctx.SetArgs(args)
+	p.sessionCtx.SetArgs(args)
 }
 
 func (p *Planner) RefreshInfoSchema() {
 	p.is = schemaToInfoSchema(p.schema)
-	p.ctx.SetInfoSchema(p.is)
+	p.sessionCtx.SetInfoSchema(p.is)
 }
 
 func (p *Planner) Parse(query string) (AstHandle, error) {
@@ -62,30 +61,37 @@ func (p *Planner) QueryToPlan(query string, prepare bool) (planner.PhysicalPlan,
 
 func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
 
-	var err error
-	if prepare {
-		err = planner.Preprocess(p.ctx, stmt.stmt, planner.InPrepare)
-	} else {
-		err = planner.Preprocess(p.ctx, stmt.stmt)
+	if err := p.preprocess(stmt.stmt, prepare); err != nil {
+		return nil, nil, err
 	}
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	logicalPlan, err := p.createLogicalPlan(context.TODO(), p.ctx, stmt.stmt, p.is)
+	logicalPlan, err := p.createLogicalPlan(p.sessionCtx, stmt.stmt, p.is)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
 
-	phys, err := p.createPhysicalPlan(p.ctx, logicalPlan, true)
+	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, true)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
 	return phys, logicalPlan, nil
 }
 
-func (p *Planner) createLogicalPlan(ctx context.Context, sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (planner.LogicalPlan, error) {
+func (p *Planner) preprocess(stmt ast.Node, prepare bool) error {
+	var err error
+	if prepare {
+		err = planner.Preprocess(p.sessionCtx, stmt, planner.InPrepare)
+	} else {
+		err = planner.Preprocess(p.sessionCtx, stmt)
+	}
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+func (p *Planner) createLogicalPlan(sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (planner.LogicalPlan, error) {
 	builder := planner.NewPlanBuilder(sessionContext, is)
-	plan, err := builder.Build(ctx, node)
+	plan, err := builder.Build(node)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

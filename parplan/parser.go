@@ -10,18 +10,18 @@ import (
 	driver "github.com/squareup/pranadb/tidb/types/parser_driver"
 )
 
-func newParser() *parser {
+func NewParser() *Parser {
 	p := pc_parser.New()
 	p.SetStrictDoubleTypeCheck(false)
 	p.EnableWindowFunc(false)
-	return &parser{p}
+	return &Parser{p}
 }
 
-type parser struct {
+type Parser struct {
 	parser *pc_parser.Parser
 }
 
-func (p *parser) Parse(sql string) (stmt AstHandle, err error) {
+func (p *Parser) Parse(sql string) (stmt AstHandle, err error) {
 	stmtNodes, warns, err := p.parser.Parse(sql, charset.CharsetUTF8, "")
 	if err != nil {
 		return AstHandle{}, errors.WithStack(err)

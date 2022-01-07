@@ -22,6 +22,7 @@ import (
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"sort"
+	"strings"
 )
 
 // LogicalProjection represents a select fields plan.
@@ -29,7 +30,7 @@ type LogicalProjection struct {
 	logicalSchemaProducer
 
 	Exprs []expression.Expression
-	
+
 	// AvoidColumnEvaluator is a temporary variable which is ONLY used to avoid
 	// building columnEvaluator for the expressions of Projection which is
 	// built by buildProjection4Union.
@@ -264,4 +265,21 @@ func (p *LogicalProjection) HashCode() []byte {
 		result = append(result, exprHashCode...)
 	}
 	return result
+}
+
+func (p *LogicalProjection) String() string {
+	builder := strings.Builder{}
+	builder.WriteString("Projection\n")
+	builder.WriteString("Schema: ")
+	builder.WriteString(p.schema.String())
+	builder.WriteString("\n")
+	builder.WriteString("Expressions: [")
+	for i, expr := range p.Exprs {
+		builder.WriteString(expr.String())
+		if i != len(p.Exprs)-1 {
+			builder.WriteString(",")
+		}
+	}
+	builder.WriteString("]")
+	return builder.String()
 }
