@@ -10,6 +10,9 @@ import (
 	"io/ioutil"
 )
 
+// Runner represents a command line client that runs commands from a script file against a load runner server
+// The commands are expressed in the script file as a JSON array containing JSON objects - each object describes a
+// command
 type Runner struct {
 	scriptFile    string
 	serverAddress string
@@ -36,17 +39,16 @@ func (r *Runner) Run() error {
 	if err := json.Unmarshal(scriptData, &commands); err != nil {
 		return err
 	}
-	log.Printf("commands %v", commands)
 	for _, command := range commands {
-		log.Printf("Got command %v", command)
-		// Kind of clunky
 		com := command
 		bytes, err := json.Marshal(&com)
 		if err != nil {
 			return err
 		}
+		sCommand := string(bytes)
+		log.Infof("Executing command: %s", sCommand)
 		_, err = client.RunCommand(context.Background(), &loadrunner.RunCommandRequest{
-			CommandJson: string(bytes),
+			CommandJson: sCommand,
 		})
 		if err != nil {
 			return err
