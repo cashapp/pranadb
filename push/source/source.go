@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/squareup/pranadb/metrics"
 
 	log "github.com/sirupsen/logrus"
@@ -65,6 +68,7 @@ type Source struct {
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
+	messagesIngested        prometheus.Counter
 }
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder, cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics metrics.Server) (*Source, error) {
@@ -123,6 +127,10 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
 		enableStats:             cfg.EnableSourceStats,
+		messagesIngested: promauto.NewCounter(prometheus.CounterOpts{
+			Name: fmt.Sprintf("%s_messages_ingested_total", sourceInfo.Name),
+			Help: "Total number of kafka messages ingested for a source",
+		}),
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -342,6 +350,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if err := s.cluster.WriteBatch(batch); err != nil {
 		return errors.WithStack(err)
 	}
+	s.messagesIngested.Add(float64(rows.RowCount()))
 	return s.mover.TransferData(shardID, true)
 }
 
