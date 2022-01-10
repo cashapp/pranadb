@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/squareup/pranadb/metrics"
 
 	log "github.com/sirupsen/logrus"
@@ -66,6 +69,13 @@ type Source struct {
 	enableStats             bool
 	commitOffsets           common.AtomicBool
 }
+
+var (
+	messagesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_messages_ingested_total",
+		Help: "counter for kafka messages ingested, segmented by topic",
+	}, []string{"source"})
+)
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder, cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics metrics.Server) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
@@ -342,6 +352,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if err := s.cluster.WriteBatch(batch); err != nil {
 		return errors.WithStack(err)
 	}
+	messagesIngested.WithLabelValues(s.sourceInfo.Name).Add(float64(rows.RowCount()))
 	return s.mover.TransferData(shardID, true)
 }
 
