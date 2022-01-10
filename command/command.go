@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync/atomic"
 
@@ -70,6 +71,8 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	// concurrently
 	session.Lock.Lock()
 	defer session.Lock.Unlock()
+
+	log.Printf("Executing sql statement \"%s\"", sql)
 
 	ast, err := parser.Parse(sql)
 	if err != nil {

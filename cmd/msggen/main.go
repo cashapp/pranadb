@@ -1,16 +1,15 @@
 package main
 
 import (
-	"log"
-	"os"
-	"time"
-
 	"github.com/alecthomas/kong"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/msggen"
+	"log"
+	"os"
+	"time"
 )
 
-type arguments struct {
+type Arguments struct {
 	GeneratorName   string
 	TopicName       string
 	Partitions      int
@@ -27,7 +26,7 @@ func main() {
 }
 
 func run(args []string) error {
-	cfg := arguments{KafkaProperties: make(map[string]string)}
+	cfg := Arguments{KafkaProperties: make(map[string]string)}
 	parser, err := kong.New(&cfg)
 	if err != nil {
 		return errors.WithStack(err)

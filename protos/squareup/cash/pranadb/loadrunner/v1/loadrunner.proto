@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.loadrunner.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/loadrunner";
+
+service LoadRunnerService {
+  rpc RunCommand(RunCommandRequest) returns (google.protobuf.Empty);
+}
+
+message RunCommandRequest {
+  string command_json = 1;
+}

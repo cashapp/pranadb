@@ -98,6 +98,11 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			}
 		},
 	}
+	for k, v := range kafkaProps {
+		if err := setProperty(producer, k, v); err != nil {
+			return errors.WithStack(err)
+		}
+	}
 	go func() {
 		for {
 			select {
@@ -109,11 +114,6 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			}
 		}
 	}()
-	for k, v := range kafkaProps {
-		if err := setProperty(producer, k, v); err != nil {
-			return errors.WithStack(err)
-		}
-	}
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	for i := indexStart; i < indexStart+numMessages; i++ {
 		msg, err := gen.GenerateMessage(i, rnd)
@@ -183,7 +183,7 @@ func setProperty(cfg *kafkaclient.Writer, k, v string) error {
 	case "bootstrap.servers":
 		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
 	default:
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s", v))
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s:%s", k, v))
 	}
 	return nil
 }
