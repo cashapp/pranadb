@@ -68,7 +68,6 @@ type Source struct {
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
-	messagesIngested        prometheus.Counter
 }
 
 var (
