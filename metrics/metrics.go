@@ -45,7 +45,7 @@ func (s *Server) Start() error {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("prometheus http export server failed to listen %v", err)
 		} else {
-			log.Debugf("Started prometheus http server on address localhost:2112")
+			log.Debugf("Started prometheus http server on address %s", s.config.MetricsBind)
 		}
 	}()
 	return nil
