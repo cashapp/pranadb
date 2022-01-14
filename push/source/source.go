@@ -68,12 +68,13 @@ type Source struct {
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
+	messagesIngestedCounter metrics.Counter
 }
 
 var (
 	messagesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "pranadb_messages_ingested_total",
-		Help: "counter for kafka messages ingested, segmented by topic",
+		Help: "counter for number of kafka messages ingested, segmented by source name",
 	}, []string{"source"})
 )
 
@@ -118,6 +119,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	messagesIngestedCounter := messagesIngested.WithLabelValues(sourceInfo.Name)
 	source := &Source{
 		sourceInfo:              sourceInfo,
 		tableExecutor:           tableExec,
@@ -133,6 +135,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
 		enableStats:             cfg.EnableSourceStats,
+		messagesIngestedCounter: messagesIngestedCounter,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -352,7 +355,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if err := s.cluster.WriteBatch(batch); err != nil {
 		return errors.WithStack(err)
 	}
-	messagesIngested.WithLabelValues(s.sourceInfo.Name).Add(float64(rows.RowCount()))
+	s.messagesIngestedCounter.Add(float64(rows.RowCount()))
 	return s.mover.TransferData(shardID, true)
 }
 
