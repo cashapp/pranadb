@@ -77,7 +77,7 @@ func createConfigWithAllFields() conf.Config {
 		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,
 		APIServerSessionCheckInterval: 6 * time.Second,
-		MetricsBind:                   "localhost:2112",
+		MetricsBind:                   "localhost:9102",
 		EnableMetrics:                 false,
 	}
 }
