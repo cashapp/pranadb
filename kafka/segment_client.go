@@ -6,6 +6,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type SegmentMessageProviderFactory struct {
 }
 
 func (smpf *SegmentMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
+	log.Info("Creating SegmentMessageProviderFactory")
 	mp := &SegmentKafkaMessageProvider{}
 	mp.krpf = smpf
 	mp.topicName = smpf.topicName

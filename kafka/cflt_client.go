@@ -29,6 +29,7 @@ type ConfluentMessageProviderFactory struct {
 }
 
 func (cmpf *ConfluentMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
+	log.Info("Creating ConfluentMessageProviderFactory")
 	kmp := &ConfluentMessageProvider{}
 	kmp.krpf = cmpf
 	kmp.topicName = cmpf.topicName
