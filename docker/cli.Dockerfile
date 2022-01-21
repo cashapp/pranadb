@@ -12,8 +12,6 @@ RUN go mod download
 
 COPY . .
 
-# Build the Go app
-# `-tags musl` is required by the confluent kafka library. https://github.com/confluentinc/confluent-kafka-go/issues/454
 RUN go build -o ./out/prana ./cmd/prana
 
 # Start fresh from a smaller image
