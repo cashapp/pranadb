@@ -2,6 +2,8 @@ package push
 
 import (
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"math/rand"
 	"sync"
 	"time"
@@ -29,25 +31,33 @@ import (
 )
 
 type Engine struct {
-	lock              sync.RWMutex
-	localShardsLock   sync.RWMutex
-	started           bool
-	schedulers        map[uint64]*sched.ShardScheduler
-	sources           map[uint64]*source.Source
-	materializedViews map[uint64]*MaterializedView
-	remoteConsumers   sync.Map
-	mover             *mover.Mover
-	localLeaderShards []uint64
-	cluster           cluster.Cluster
-	sharder           *sharder.Sharder
-	meta              *meta.Controller
-	rnd               *rand.Rand
-	cfg               *conf.Config
-	queryExec         common.SimpleQueryExec
-	protoRegistry     protolib.Resolver
-	readyToReceive    common.AtomicBool
-	metrics           metrics.Server
+	lock                      sync.RWMutex
+	localShardsLock           sync.RWMutex
+	started                   bool
+	schedulers                map[uint64]*sched.ShardScheduler
+	sources                   map[uint64]*source.Source
+	materializedViews         map[uint64]*MaterializedView
+	remoteConsumers           sync.Map
+	mover                     *mover.Mover
+	localLeaderShards         []uint64
+	cluster                   cluster.Cluster
+	sharder                   *sharder.Sharder
+	meta                      *meta.Controller
+	rnd                       *rand.Rand
+	cfg                       *conf.Config
+	queryExec                 common.SimpleQueryExec
+	protoRegistry             protolib.Resolver
+	readyToReceive            common.AtomicBool
+	metrics                   metrics.Server
+	processBatchTimeHistogram metrics.Observer
 }
+
+var (
+	processBatchVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_process_batch_time_nanos",
+		Help: "histogram measuring time to process batches of rows in the push engine in nanoseconds",
+	}, []string{"node_id"})
+)
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
 // e.g. a source or an aggregator
@@ -69,14 +79,15 @@ type remoteRowsHandler interface {
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics *metrics.Server) *Engine {
 	engine := Engine{
-		mover:         mover.NewMover(cluster),
-		cluster:       cluster,
-		sharder:       sharder,
-		meta:          meta,
-		rnd:           rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
-		cfg:           cfg,
-		queryExec:     queryExec,
-		protoRegistry: registry,
+		mover:                     mover.NewMover(cluster),
+		cluster:                   cluster,
+		sharder:                   sharder,
+		meta:                      meta,
+		rnd:                       rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:                       cfg,
+		queryExec:                 queryExec,
+		protoRegistry:             registry,
+		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
 	}
 	engine.createMaps()
 	return &engine
@@ -296,10 +307,13 @@ func (s *shardListener) scheduleHandleRemoteBatch() {
 
 func (p *Engine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
 	scheduler.ScheduleActionFireAndForget(func() error {
+		start := time.Now()
 		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		durNanos := time.Now().Sub(start).Nanoseconds()
+		p.processBatchTimeHistogram.Observe(float64(durNanos))
 		if hasForwards {
 			return p.mover.TransferData(scheduler.ShardID(), true)
 		}
