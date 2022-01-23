@@ -22,14 +22,14 @@ func NewMover(cluster cluster.Cluster) *Mover {
 	return &Mover{cluster: cluster}
 }
 
-func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row, currRow *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) error {
+func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row, currRow *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) (int, error) {
 	var prevValueBuff []byte
 	if prevRow != nil {
 		prevValueBuff = make([]byte, 0, 32)
 		var err error
 		prevValueBuff, err = common.EncodeRow(prevRow, colTypes, prevValueBuff)
 		if err != nil {
-			return errors.WithStack(err)
+			return 0, errors.WithStack(err)
 		}
 	}
 	var currValueBuff []byte
@@ -38,10 +38,11 @@ func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row,
 		var err error
 		currValueBuff, err = common.EncodeRow(currRow, colTypes, currValueBuff)
 		if err != nil {
-			return errors.WithStack(err)
+			return 0, errors.WithStack(err)
 		}
 	}
-	return m.QueueForRemoteSend(remoteShardID, prevValueBuff, currValueBuff, localShardID, remoteConsumerID, batch)
+	l := len(prevValueBuff) + len(currValueBuff)
+	return l, m.QueueForRemoteSend(remoteShardID, prevValueBuff, currValueBuff, localShardID, remoteConsumerID, batch)
 }
 
 func (m *Mover) QueueForRemoteSend(remoteShardID uint64, prevValueBuff []byte, currValueBuff []byte, localShardID uint64, remoteConsumerID uint64, batch *cluster.WriteBatch) error {

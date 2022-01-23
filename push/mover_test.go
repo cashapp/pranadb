@@ -424,7 +424,7 @@ func queueRows(t *testing.T, numRows int, colTypes []common.ColumnType, rf *comm
 	rows := generateRows(t, numRows, colTypes, shard, rf, localShardID)
 	batch := cluster.NewWriteBatch(sendingShardID, false)
 	for _, rowToSend := range rows {
-		err := pe.Mover().QueueRowForRemoteSend(rowToSend.remoteShardID, nil, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
+		_, err := pe.Mover().QueueRowForRemoteSend(rowToSend.remoteShardID, nil, rowToSend.row, sendingShardID, rowToSend.remoteConsumerID, colTypes, batch)
 		require.NoError(t, err)
 	}
 	err := store.WriteBatch(batch)

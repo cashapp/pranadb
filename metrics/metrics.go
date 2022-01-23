@@ -21,6 +21,7 @@ type (
 	SummaryVec    = prometheus.SummaryVec
 	HistogramOpts = prometheus.HistogramOpts
 	HistogramVec  = prometheus.HistogramVec
+	Observer      = prometheus.Observer
 )
 
 type Server struct {

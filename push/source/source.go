@@ -68,13 +68,33 @@ type Source struct {
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
-	messagesIngestedCounter metrics.Counter
+	rowsIngestedCounter     metrics.Counter
+	batchesIngestedCounter  metrics.Counter
+	bytesIngestedCounter    metrics.Counter
+	ingestDurationHistogram metrics.Observer
+	ingestRowSizeHistogram  metrics.Observer
 }
 
 var (
-	messagesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "pranadb_messages_ingested_total",
-		Help: "counter for number of kafka messages ingested, segmented by source name",
+	rowsIngestedVec = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_rows_ingested_total",
+		Help: "counter for number of rows ingested, segmented by source name",
+	}, []string{"source"})
+	batchesIngestedVec = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_batches_ingested_total",
+		Help: "counter for number of row batches ingested, segmented by source name",
+	}, []string{"source"})
+	bytesIngestedVec = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_bytes_ingested_total",
+		Help: "counter for number of row bytes ingested, segmented by source name",
+	}, []string{"source"})
+	ingestBatchTimeVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_ingest_batch_time_nanos",
+		Help: "histogram measuring time to ingest batches of rows in sources in nanoseconds",
+	}, []string{"source"})
+	ingestRowSizeVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_ingest_row_size",
+		Help: "histogram measuring size of ingested rows in bytes",
 	}, []string{"source"})
 )
 
@@ -119,7 +139,11 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	messagesIngestedCounter := messagesIngested.WithLabelValues(sourceInfo.Name)
+	rowsIngestedCounter := rowsIngestedVec.WithLabelValues(sourceInfo.Name)
+	batchesIngestedCounter := batchesIngestedVec.WithLabelValues(sourceInfo.Name)
+	bytesIngestedCounter := bytesIngestedVec.WithLabelValues(sourceInfo.Name)
+	ingestDurationHistogram := ingestBatchTimeVec.WithLabelValues(sourceInfo.Name)
+	ingestRowSizeHistogram := ingestRowSizeVec.WithLabelValues(sourceInfo.Name)
 	source := &Source{
 		sourceInfo:              sourceInfo,
 		tableExecutor:           tableExec,
@@ -135,7 +159,11 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
 		enableStats:             cfg.EnableSourceStats,
-		messagesIngestedCounter: messagesIngestedCounter,
+		rowsIngestedCounter:     rowsIngestedCounter,
+		batchesIngestedCounter:  batchesIngestedCounter,
+		bytesIngestedCounter:    bytesIngestedCounter,
+		ingestDurationHistogram: ingestDurationHistogram,
+		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -318,6 +346,9 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {
+
+	start := time.Now()
+
 	rows, err := mp.ParseMessages(messages)
 	if err != nil {
 		return errors.WithStack(err)
@@ -332,6 +363,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	tableID := info.ID
 	batch := cluster.NewWriteBatch(shardID, false)
 
+	totBatchSizeBytes := 0
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)
@@ -344,10 +376,12 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 			return errors.WithStack(err)
 		}
 		// TODO we can consider an optimisation where execute on any local shards directly
-		err = s.mover.QueueRowForRemoteSend(destShardID, nil, &row, shardID, tableID, colTypes, batch)
+		l, err := s.mover.QueueRowForRemoteSend(destShardID, nil, &row, shardID, tableID, colTypes, batch)
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		totBatchSizeBytes += l
+		s.ingestRowSizeHistogram.Observe(float64(l))
 	}
 
 	s.commitOffsetsToPrana(offsetsToCommit, batch)
@@ -355,7 +389,13 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	if err := s.cluster.WriteBatch(batch); err != nil {
 		return errors.WithStack(err)
 	}
-	s.messagesIngestedCounter.Add(float64(rows.RowCount()))
+
+	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
+	s.ingestDurationHistogram.Observe(float64(ingestTimeNanos))
+	s.rowsIngestedCounter.Add(float64(rows.RowCount()))
+	s.batchesIngestedCounter.Add(1)
+	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
+
 	return s.mover.TransferData(shardID, true)
 }
 
