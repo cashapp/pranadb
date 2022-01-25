@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/loadrunner"
 	"net/http" //nolint:stylecheck
 
 	"github.com/squareup/pranadb/lifecycle"
@@ -67,7 +68,11 @@ func NewServer(config conf.Config) (*Server, error) {
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
-	apiServer := api.NewAPIServer(commandExecutor, protoRegistry, config)
+	var lr *loadrunner.LoadRunner
+	if config.EnableLoadRunner {
+		lr = loadrunner.NewLoadRunner(config)
+	}
+	apiServer := api.NewAPIServer(commandExecutor, lr, protoRegistry, config)
 
 	services := []service{
 		lifeCycleMgr,
@@ -82,6 +87,10 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader,
 		apiServer,
 		metrics,
+	}
+
+	if lr != nil {
+		services = append(services, lr)
 	}
 
 	server := Server{

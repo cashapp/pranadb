@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/loadrunner"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"net"
 	"sync"
 )
 
@@ -19,8 +18,7 @@ import (
 type LoadRunner struct {
 	lock             sync.RWMutex
 	started          bool
-	conf             Config
-	gsrv             *grpc.Server
+	cfg              conf.Config
 	commandFactories map[string]CommandFactory
 }
 
@@ -29,8 +27,8 @@ const (
 	loadRunnerNodeIDField = "load_runner_node_id"
 )
 
-func NewLoadRunner(conf Config) *LoadRunner {
-	return &LoadRunner{commandFactories: make(map[string]CommandFactory), conf: conf}
+func NewLoadRunner(conf conf.Config) *LoadRunner {
+	return &LoadRunner{commandFactories: make(map[string]CommandFactory), cfg: conf}
 }
 
 func (p *LoadRunner) Start() error {
@@ -39,21 +37,11 @@ func (p *LoadRunner) Start() error {
 	if p.started {
 		return nil
 	}
-	address := p.conf.APIServerListenAddresses[p.conf.NodeID]
-	list, err := net.Listen("tcp", address)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	p.gsrv = grpc.NewServer()
-	reflection.Register(p.gsrv)
-	loadrunner.RegisterLoadRunnerServiceServer(p.gsrv, p)
 	if err := p.registerCommands(); err != nil {
 		log.Printf("Failed to register commands %v", err)
 		return err
 	}
 	p.started = true
-	go p.startServer(list)
-	log.Infof("Started LoadRunner with ID %d on address %s", p.conf.NodeID, address)
 	return nil
 }
 
@@ -63,21 +51,10 @@ func (p *LoadRunner) Stop() error {
 	if !p.started {
 		return nil
 	}
-	p.gsrv.Stop()
 	return nil
 }
 
-func (p *LoadRunner) startServer(list net.Listener) {
-	err := p.gsrv.Serve(list) //nolint:ifshort
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	p.started = false
-	if err != nil {
-		log.Errorf("loadrunner grpc server listen failed: %v", err)
-	}
-}
-
-func (p *LoadRunner) RunCommand(ctx context.Context, request *loadrunner.RunCommandRequest) (*emptypb.Empty, error) {
+func (p *LoadRunner) RunCommand(request *service.RunCommandRequest) (*emptypb.Empty, error) {
 
 	log.Infof("Load-runner received command %s", request.CommandJson)
 
@@ -107,7 +84,7 @@ func (p *LoadRunner) RunCommand(ctx context.Context, request *loadrunner.RunComm
 	}
 	loadRunnerNodeID := int(fLoadRunnerNodeID)
 
-	if loadRunnerNodeID != p.conf.NodeID {
+	if loadRunnerNodeID != p.cfg.NodeID {
 		err := p.forwardCommand(loadRunnerNodeID, jsonString)
 		log.Errorf("Forward commandConfig returned with err %v", err)
 		return &emptypb.Empty{}, err
@@ -127,16 +104,16 @@ func (p *LoadRunner) RunCommand(ctx context.Context, request *loadrunner.RunComm
 
 func (p *LoadRunner) forwardCommand(loadRunnerNodeID int, command string) error {
 	log.Infof("Forwarding command to node %d", loadRunnerNodeID)
-	if loadRunnerNodeID < 0 || loadRunnerNodeID >= len(p.conf.APIServerListenAddresses) {
+	if loadRunnerNodeID < 0 || loadRunnerNodeID >= len(p.cfg.APIServerListenAddresses) {
 		return errors.Errorf("invalid load runner node id %d", loadRunnerNodeID)
 	}
-	address := p.conf.APIServerListenAddresses[loadRunnerNodeID]
+	address := p.cfg.APIServerListenAddresses[loadRunnerNodeID]
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	client := loadrunner.NewLoadRunnerServiceClient(conn)
-	_, err = client.RunCommand(context.Background(), &loadrunner.RunCommandRequest{
+	client := service.NewPranaDBServiceClient(conn)
+	_, err = client.RunCommand(context.Background(), &service.RunCommandRequest{
 		CommandJson: command,
 	})
 	if err := conn.Close(); err != nil {

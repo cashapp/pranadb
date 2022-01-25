@@ -91,6 +91,10 @@ message RegisterProtobufsRequest {
   google.protobuf.FileDescriptorSet descriptors = 1;
 }
 
+message RunCommandRequest {
+  string command_json = 1;
+}
+
 service PranaDBService {
   rpc CreateSession(google.protobuf.Empty) returns (CreateSessionResponse);
   rpc CloseSession(CloseSessionRequest) returns (google.protobuf.Empty);
@@ -98,4 +102,5 @@ service PranaDBService {
   // Execute SQL and return results.
   rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
   rpc RegisterProtobufs(RegisterProtobufsRequest) returns (google.protobuf.Empty);
+  rpc RunCommand(RunCommandRequest) returns (google.protobuf.Empty);
 }

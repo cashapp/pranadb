@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/squareup/pranadb/loadrunner"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,7 @@ type Server struct {
 	lock                 sync.Mutex
 	started              bool
 	ce                   *command.Executor
+	loadrunner           *loadrunner.LoadRunner
 	serverAddress        string
 	gsrv                 *grpc.Server
 	errorSequence        int64
@@ -39,9 +41,10 @@ type Server struct {
 	protoRegistry        *protolib.ProtoRegistry
 }
 
-func NewAPIServer(ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
+func NewAPIServer(ce *command.Executor, loadrunner *loadrunner.LoadRunner, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
 	return &Server{
 		ce:                   ce,
+		loadrunner:           loadrunner,
 		protoRegistry:        protobufs,
 		serverAddress:        cfg.APIServerListenAddresses[cfg.NodeID],
 		expSessCheckInterval: cfg.APIServerSessionCheckInterval,
@@ -246,6 +249,13 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		}
 	}
 	return nil
+}
+
+func (s *Server) RunCommand(_ context.Context, request *service.RunCommandRequest) (*emptypb.Empty, error) {
+	if s.loadrunner == nil {
+		return nil, errors.New("loadrunner not enabled")
+	}
+	return s.loadrunner.RunCommand(request)
 }
 
 func (s *Server) RegisterProtobufs(ctx context.Context, request *service.RegisterProtobufsRequest) (*emptypb.Empty, error) {
