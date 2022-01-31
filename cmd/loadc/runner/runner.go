@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/loadrunner"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/grpc"
 	"io/ioutil"
 )
@@ -30,7 +30,7 @@ func (r *Runner) Run() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	client := loadrunner.NewLoadRunnerServiceClient(conn)
+	client := service.NewPranaDBServiceClient(conn)
 	scriptData, err := ioutil.ReadFile(r.scriptFile)
 	if err != nil {
 		return err
@@ -47,7 +47,7 @@ func (r *Runner) Run() error {
 		}
 		sCommand := string(bytes)
 		log.Infof("Executing command: %s", sCommand)
-		_, err = client.RunCommand(context.Background(), &loadrunner.RunCommandRequest{
+		_, err = client.RunCommand(context.Background(), &service.RunCommandRequest{
 			CommandJson: sCommand,
 		})
 		if err != nil {
