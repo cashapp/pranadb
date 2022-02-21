@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	defaultNumConsumersPerSource  = 2
+	defaultNumConsumersPerSource  = 1
 	defaultPollTimeoutMs          = 20
-	defaultMaxPollMessages        = 10000
+	defaultMaxPollMessages        = 1000
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
@@ -170,6 +170,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 }
 
 func (s *Source) Start() error {
+	log.Infof("Starting source %s.%s", s.sourceInfo.SchemaName, s.sourceInfo.Name)
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -396,7 +397,11 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
-	return s.mover.TransferData(shardID, true)
+	err = s.mover.TransferData(shardID, true)
+
+	log.Infof("Source %s.%s ingested batch of %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, len(messages))
+
+	return err
 }
 
 // We commit the Kafka offsets in the same batch as we stage the rows for forwarding.

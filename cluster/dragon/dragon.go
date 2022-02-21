@@ -29,14 +29,13 @@ const (
 
 	locksClusterID uint64 = 2
 
-	// timeout for initial shard call - allows nodes to startup
-	initialShardTimeout = 15 * time.Minute
-
 	sequenceGroupSize = 3
 
 	locksGroupSize = 3
 
-	retryDelay = 100 * time.Millisecond
+	retryDelay = 500 * time.Millisecond
+
+	callTimeout = 1 * time.Hour
 )
 
 func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
@@ -60,7 +59,6 @@ type Dragon struct {
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
-	firstShardAccessed           sync.Map
 }
 
 type snapshot struct {
@@ -75,11 +73,11 @@ func (s *snapshot) Close() {
 
 func init() {
 	// This should be customizable, but these are good defaults
-	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
+	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
 	logger.GetLogger("raft").SetLevel(logger.ERROR)
-	logger.GetLogger("rsm").SetLevel(logger.ERROR)
-	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Otherwise we get loads of spam in logs
-	logger.GetLogger("grpc").SetLevel(logger.ERROR)
+	logger.GetLogger("rsm").SetLevel(logger.WARNING)
+	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam otherwise
+	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -181,13 +179,12 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		return nil, errors.WithStack(err)
 	}
 
-	timeout := d.getTimeout(queryInfo.ShardID)
 	res, err := d.executeWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 		cancel()
 		return res, errors.WithStack(err)
-	}, timeout)
+	}, callTimeout)
 
 	if err != nil {
 		err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
@@ -235,11 +232,11 @@ func (d *Dragon) Start() error {
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}
-	pebble, err := pebble.Open(pebbleDir, pebbleOptions)
+	peb, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	d.pebble = pebble
+	d.pebble = peb
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
@@ -251,7 +248,7 @@ func (d *Dragon) Start() error {
 		DeploymentID:        uint64(d.cnf.ClusterID),
 		WALDir:              dragonBoatDir,
 		NodeHostDir:         dragonBoatDir,
-		RTTMillisecond:      200,
+		RTTMillisecond:      100,
 		RaftAddress:         nodeAddress,
 		SystemEventListener: d,
 	}
@@ -279,7 +276,7 @@ func (d *Dragon) Start() error {
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
-	log.Infof("Prana node %d waiting for a quorum", d.cnf.NodeID)
+	log.Infof("Prana node %d waiting for cluster to start", d.cnf.NodeID)
 
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
@@ -296,18 +293,18 @@ func (d *Dragon) Start() error {
 
 	d.started = true
 
-	log.Infof("Prana node %d quorum attained", d.cnf.NodeID)
+	log.Infof("Prana node %d cluster started", d.cnf.NodeID)
 
 	return nil
 }
 
 func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
 	_, err := d.executeWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), initialShardTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		res, err := d.nh.SyncRead(ctx, shardID, request)
 		cancel()
 		return res, errors.WithStack(err)
-	}, initialShardTimeout)
+	}, callTimeout)
 	return errors.WithStack(err)
 }
 
@@ -527,8 +524,8 @@ func (d *Dragon) joinShardGroups() error {
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        10,
-		HeartbeatRTT:       1,
+		ElectionRTT:        20,
+		HeartbeatRTT:       2,
 		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.DataSnapshotEntries),
 		CompactionOverhead: uint64(d.cnf.DataCompactionOverhead),
@@ -554,8 +551,8 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 func (d *Dragon) joinSequenceGroup() error {
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        10,
-		HeartbeatRTT:       1,
+		ElectionRTT:        20,
+		HeartbeatRTT:       2,
 		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.SequenceSnapshotEntries),
 		CompactionOverhead: uint64(d.cnf.SequenceCompactionOverhead),
@@ -576,8 +573,8 @@ func (d *Dragon) joinSequenceGroup() error {
 func (d *Dragon) joinLockGroup() error {
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        10,
-		HeartbeatRTT:       1,
+		ElectionRTT:        20,
+		HeartbeatRTT:       2,
 		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.LocksSnapshotEntries),
 		CompactionOverhead: uint64(d.cnf.LocksCompactionOverhead),
@@ -693,20 +690,22 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
-			return nil, errors.WithStack(err)
+			// If we timeout, then something is seriously wrong - we should just exit
+			log.Errorf("timeout in making dragonboat calls, exiting %+v", err)
+			os.Exit(1)
+			return nil, nil
 		}
 		time.Sleep(retryDelay)
 	}
 }
 
 func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemachine.Result, error) {
-	timeout := d.getTimeout(session.ClusterID)
 	r, err := d.executeWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
 		cancel()
 		return res, errors.WithStack(err)
-	}, timeout)
+	}, callTimeout)
 	if err != nil {
 		common.DumpStacks()
 		return statemachine.Result{}, errors.WithStack(err)
@@ -716,20 +715,6 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		panic(fmt.Sprintf("not a sm result %v", smRes))
 	}
 	return smRes, errors.WithStack(err)
-}
-
-func (d *Dragon) getTimeout(shardID uint64) time.Duration {
-	_, initialised := d.firstShardAccessed.Load(shardID)
-	var res time.Duration
-	if !initialised {
-		// The first time a shard is accessed after startup the other nodes of the cluster might not be up yet
-		// so we use a much longer timeout to give other nodes time to start, otherwise we use a shorter timeout
-		res = initialShardTimeout
-	} else {
-		res = d.cnf.RaftCallTimeout
-	}
-	d.firstShardAccessed.Store(shardID, struct{}{})
-	return res
 }
 
 // ISystemEventListener implementation

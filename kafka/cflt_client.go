@@ -1,5 +1,5 @@
-//go:build confluent
-// +build confluent
+//go:build !segmentio
+// +build !segmentio
 
 package kafka
 
@@ -137,9 +137,11 @@ func (cmp *ConfluentMessageProvider) Start() error {
 	defer cmp.lock.Unlock()
 
 	cm := &kafka.ConfigMap{
-		"group.id":           cmp.krpf.groupID,
-		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": false,
+		"group.id":             cmp.krpf.groupID,
+		"auto.offset.reset":    "earliest",
+		"enable.auto.commit":   false,
+		"session.timeout.ms":   60000,
+		"max.poll.interval.ms": 5 * 60 * 1000,
 	}
 	for k, v := range cmp.krpf.props {
 		if err := cm.SetKey(k, v); err != nil {

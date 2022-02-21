@@ -1,5 +1,5 @@
-//go:build !confluent
-// +build !confluent
+//go:build segmentio
+// +build segmentio
 
 package kafka
 

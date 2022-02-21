@@ -26,7 +26,6 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-raft-call-timeout                 = "17s"
 debug                             = true
 notifier-heartbeat-interval       = "76s"
 enable-api-server                 = true

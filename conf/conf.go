@@ -14,7 +14,6 @@ const (
 	DefaultSequenceCompactionOverhead    = 250
 	DefaultLocksSnapshotEntries          = 1000
 	DefaultLocksCompactionOverhead       = 250
-	DefaultRaftCallTimeout               = 30 * time.Second
 	DefaultNotifierHeartbeatInterval     = 5 * time.Second
 	DefaultAPIServerSessionTimeout       = 30 * time.Second
 	DefaultAPIServerSessionCheckInterval = 5 * time.Second
@@ -27,7 +26,6 @@ type Config struct {
 	NotifListenAddresses          []string
 	NumShards                     int
 	ReplicationFactor             int
-	RaftCallTimeout               time.Duration
 	DataDir                       string
 	TestServer                    bool
 	KafkaBrokers                  BrokerConfigs
@@ -133,9 +131,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if c.LocksCompactionOverhead > c.LocksSnapshotEntries {
 			return errors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= LocksCompactionOverhead")
 		}
-		if c.RaftCallTimeout <= 0 {
-			return errors.NewInvalidConfigurationError("RaftCallTimeout must be > 0")
-		}
 	}
 	if c.EnableLifecycleEndpoint {
 		if c.LifeCycleListenAddress == "" {
@@ -177,7 +172,6 @@ func NewDefaultConfig() *Config {
 		SequenceCompactionOverhead:    DefaultSequenceCompactionOverhead,
 		LocksSnapshotEntries:          DefaultLocksSnapshotEntries,
 		LocksCompactionOverhead:       DefaultLocksCompactionOverhead,
-		RaftCallTimeout:               DefaultRaftCallTimeout,
 		NotifierHeartbeatInterval:     DefaultNotifierHeartbeatInterval,
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,

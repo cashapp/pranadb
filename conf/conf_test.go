@@ -171,18 +171,6 @@ func NodeIDOutOfRangeConf() Config {
 	return cnf
 }
 
-func invalidRaftTimeoutZero() Config {
-	cnf := confAllFields
-	cnf.RaftCallTimeout = 0
-	return cnf
-}
-
-func invalidRaftTimeoutLessThanZero() Config {
-	cnf := confAllFields
-	cnf.RaftCallTimeout = -1
-	return cnf
-}
-
 const (
 	lifeCycleListenAddress = "localhost:8765"
 	startupEndpointPath    = "/started"
@@ -259,8 +247,6 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
 	{"PDB0004 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
 	{"PDB0004 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
-	{"PDB0004 - Invalid configuration: RaftCallTimeout must be > 0", invalidRaftTimeoutZero()},
-	{"PDB0004 - Invalid configuration: RaftCallTimeout must be > 0", invalidRaftTimeoutLessThanZero()},
 }
 
 func TestValidate(t *testing.T) {
@@ -297,7 +283,6 @@ var confAllFields = Config{
 	SequenceCompactionOverhead:    1001,
 	LocksSnapshotEntries:          101,
 	LocksCompactionOverhead:       51,
-	RaftCallTimeout:               10 * time.Second,
 	Debug:                         true,
 	NotifierHeartbeatInterval:     76 * time.Second,
 	EnableAPIServer:               true,
