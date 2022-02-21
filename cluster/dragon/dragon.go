@@ -29,9 +29,13 @@ const (
 
 	locksClusterID uint64 = 2
 
+	nodesStartedClusterID uint64 = 3
+
 	sequenceGroupSize = 3
 
 	locksGroupSize = 3
+
+	nodesStartedGroupSize = 3
 
 	retryDelay = 500 * time.Millisecond
 
@@ -207,7 +211,7 @@ func (d *Dragon) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExe
 	d.remoteQueryExecutionCallback = callback
 }
 
-func (d *Dragon) Start() error {
+func (d *Dragon) Start() error { // nolint:gocyclo
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if d.started {
@@ -274,27 +278,100 @@ func (d *Dragon) Start() error {
 		return errors.WithStack(err)
 	}
 
+	err = d.joinNodesStartedGroup()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
 	// Now we make sure all groups are ready by executing lookups against them.
 
 	log.Infof("Prana node %d waiting for cluster to start", d.cnf.NodeID)
 
+	log.Info("Checking all data shards are alive")
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
 			return errors.WithStack(err)
 		}
 	}
+	log.Info("Checking lock shard is alive")
 	if err := d.ExecutePingLookup(locksClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
+	log.Info("Checking sequence shard is alive")
 	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
+	log.Info("Checking nodes started shard is alive")
+	if err := d.ExecutePingLookup(nodesStartedClusterID, nil); err != nil {
+		return errors.WithStack(err)
+	}
 
+	log.Info("Waiting for all nodes to start")
+
+	// Now we wait for all nodes to start - note for clean startup we require all nodes, not just a quorum.
+	// Otherwise, we would start sources before all nodes were started resulting in it being harder for other shard
+	// replicas to come online when other nodes started as they would have to catch up.
+	// We do this by using a Raft state machine with a sequence number for each node. Each node calls update to
+	// increment its own sequence, and other nodes wait until they see sequences for other nodes increment which means
+	// they are up.
+	numNodes := len(d.cnf.RaftAddresses)
+	prevSeqs := make(map[uint64]uint64)
+	for {
+		if err := d.incNodesStartedSequence(); err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		res, err := d.nh.SyncRead(ctx, nodesStartedClusterID, []byte{})
+		cancel()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		bytes, ok := res.([]byte)
+		if !ok {
+			panic("not a []byte")
+		}
+		seqMap := bytesToMap(bytes)
+
+		if len(seqMap) == numNodes {
+			incremented := 0
+			for nid, seq := range seqMap {
+				prevSeq, ok := prevSeqs[nid]
+				if !ok || seq <= prevSeq {
+					prevSeqs = seqMap
+					break
+				}
+				incremented++
+			}
+			if incremented == len(seqMap) {
+				if err := d.incNodesStartedSequence(); err != nil {
+					return err
+				}
+				break
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	d.started = true
 
 	log.Infof("Prana node %d cluster started", d.cnf.NodeID)
 
+	return nil
+}
+
+func (d *Dragon) incNodesStartedSequence() error {
+	currNodeID := uint64(d.cnf.NodeID)
+	cs := d.nh.GetNoOPSession(nodesStartedClusterID)
+	var buff []byte
+	buff = common.AppendUint64ToBufferBE(buff, currNodeID)
+	proposeRes, err := d.proposeWithRetry(cs, buff)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if proposeRes.Value != nodesStartedStateMachineUpdatedOK {
+		return errors.Errorf("unexpected return value from writing to nodes started: %d", proposeRes.Value)
+	}
 	return nil
 }
 
@@ -587,6 +664,28 @@ func (d *Dragon) joinLockGroup() error {
 		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
 	}
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+func (d *Dragon) joinNodesStartedGroup() error {
+	rc := config.Config{
+		NodeID:             uint64(d.cnf.NodeID + 1),
+		ElectionRTT:        20,
+		HeartbeatRTT:       2,
+		CheckQuorum:        true,
+		SnapshotEntries:    uint64(d.cnf.LocksSnapshotEntries),
+		CompactionOverhead: uint64(d.cnf.LocksCompactionOverhead),
+		ClusterID:          nodesStartedClusterID,
+	}
+
+	initialMembers := make(map[uint64]string)
+	// Dragonboat nodes must start at 1, zero is not allowed
+	for i := 0; i < nodesStartedGroupSize; i++ {
+		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
+	}
+	if err := d.nh.StartCluster(initialMembers, false, d.newNodesStartedSM, rc); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil

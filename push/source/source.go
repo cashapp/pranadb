@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	defaultNumConsumersPerSource  = 1
+	defaultNumConsumersPerSource  = 2
 	defaultPollTimeoutMs          = 20
 	defaultMaxPollMessages        = 1000
 	maxRetryDelay                 = time.Second * 30
