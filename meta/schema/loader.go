@@ -131,6 +131,8 @@ func (l *Loader) Start() error { //nolint:gocyclo
 		}
 	}
 
+	log.Info("Starting sources")
+
 	for _, src := range srcsToStart {
 		if err := src.Start(); err != nil {
 			// We don't prevent startup of the server if a source can't start - a source might not start, e.g.

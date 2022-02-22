@@ -70,7 +70,6 @@ func createConfigWithAllFields() conf.Config {
 		SequenceCompactionOverhead:    1001,
 		LocksSnapshotEntries:          101,
 		LocksCompactionOverhead:       51,
-		RaftCallTimeout:               17 * time.Second,
 		Debug:                         true,
 		NotifierHeartbeatInterval:     76 * time.Second,
 		EnableAPIServer:               true,

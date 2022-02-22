@@ -14,9 +14,9 @@ COPY . .
 
 # Build the Go app
 # `-tags musl` is required by the confluent kafka library. https://github.com/confluentinc/confluent-kafka-go/issues/454
-# and we MUST use the Confluent client - the segment client is only for local development as it does not handle
+# and we MUST use the Confluent client (this is the default)- the segment client is only for local development as it does not handle
 # rebalance well
-RUN go build -tags confluent,musl -o ./out/pranadb ./cmd/pranadb
+RUN go build -tags musl -o ./out/pranadb ./cmd/pranadb
 
 # Start fresh from a smaller image
 FROM alpine:latest
