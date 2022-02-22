@@ -43,6 +43,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/twmb/murmur3 v1.1.6
 	github.com/uber-go/atomic v0.0.0-00010101000000-000000000000
+	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.15.0
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
 	golang.org/x/sys v0.0.0-20210817190340-bfb29a6856f2 // indirect

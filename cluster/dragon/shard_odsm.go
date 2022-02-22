@@ -2,8 +2,6 @@ package dragon
 
 import (
 	"fmt"
-	"io"
-
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3/statemachine"
 	log "github.com/sirupsen/logrus"
@@ -11,6 +9,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
+	"io"
 )
 
 const (
@@ -25,7 +24,7 @@ const (
 	shardStateMachineResponseOK uint64 = 1
 )
 
-func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) statemachine.IOnDiskStateMachine {
+func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
 	processor := calcProcessingNode(nodeIDs, shardID, nodeID)
 	ssm := ShardOnDiskStateMachine{
 		nodeID:    nodeID,
@@ -50,6 +49,14 @@ type ShardOnDiskStateMachine struct {
 	nodeIDs       []int
 	processor     bool
 	shardListener cluster.ShardListener
+	updated       common.AtomicBool
+}
+
+func (s *ShardOnDiskStateMachine) LogLastUpdate() {
+	if s.updated.Get() {
+		log.Infof("data shard %d updated", s.shardID)
+		s.updated.Set(false)
+	}
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
@@ -57,6 +64,7 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
+	s.updated.Set(true)
 	hasForward := false //nolint:ifshort
 	batch := s.dragon.pebble.NewBatch()
 	for i, entry := range entries {
@@ -238,6 +246,7 @@ func (s *ShardOnDiskStateMachine) PrepareSnapshot() (interface{}, error) {
 }
 
 func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, _ <-chan struct{}) error {
+	log.Infof("data shard %d saving snapshot", s.shardID)
 	snapshot, ok := i.(*pebble.Snapshot)
 	if !ok {
 		panic("not a snapshot")
@@ -245,10 +254,13 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 	prefix := make([]byte, 0, 8)
 	prefix = common.AppendUint64ToBufferBE(prefix, s.shardID)
 	log.Printf("Saving data snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, s.shardID, prefix)
-	return saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
+	err := saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
+	log.Infof("data shard %d save snapshot done", s.shardID)
+	return err
 }
 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
+	log.Infof("data shard %d recover from snapshot", s.shardID)
 	startPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID)
 	endPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID+1)
 	log.Infof("Restoring data snapshot on node %d shardid %d", s.dragon.cnf.NodeID, s.shardID)
@@ -257,6 +269,7 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 		return errors.WithStack(err)
 	}
 	s.maybeTriggerRemoteWriteOccurred()
+	log.Infof("data shard %d recover from snapshot done", s.shardID)
 	return nil
 }
 

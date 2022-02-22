@@ -101,6 +101,7 @@ func (m *MessageConsumer) pollLoop() {
 			m.consumerError(err, true)
 			return
 		}
+
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
 			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)

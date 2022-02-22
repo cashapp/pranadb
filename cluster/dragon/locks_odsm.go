@@ -64,6 +64,7 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
+	log.Infof("locks shard update entries %d", len(entries))
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	batch := s.dragon.pebble.NewBatch()
@@ -110,6 +111,7 @@ outer:
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
+	log.Info("locks shard updated")
 	return entries, nil
 }
 
@@ -151,6 +153,7 @@ func (s *locksODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i2 <
 }
 
 func (s *locksODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
+	log.Info("locks shard recover from snapshot")
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
@@ -159,7 +162,9 @@ func (s *locksODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan str
 	if err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir); err != nil {
 		return errors.WithStack(err)
 	}
-	return s.loadLocks()
+	err := s.loadLocks()
+	log.Info("locks shard recover from snapshot done")
+	return err
 }
 
 func (s *locksODStateMachine) Close() error {

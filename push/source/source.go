@@ -2,6 +2,9 @@ package source
 
 import (
 	"fmt"
+
+	"go.uber.org/ratelimit"
+
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -37,6 +40,7 @@ const (
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
 	pollTimeoutPropName           = "prana.source.polltimeoutms"
 	maxPollMessagesPropName       = "prana.source.maxpollmessages"
+	ingestLimitRowsPerSecond      = 2000
 )
 
 type RowProcessor interface {
@@ -73,6 +77,7 @@ type Source struct {
 	bytesIngestedCounter    metrics.Counter
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
+	rateLimiter             ratelimit.Limiter
 }
 
 var (
@@ -144,6 +149,9 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	bytesIngestedCounter := bytesIngestedVec.WithLabelValues(sourceInfo.Name)
 	ingestDurationHistogram := ingestBatchTimeVec.WithLabelValues(sourceInfo.Name)
 	ingestRowSizeHistogram := ingestRowSizeVec.WithLabelValues(sourceInfo.Name)
+	// We limit the ingest rate of the source to this value - this prevents the node getting overloaded which can result
+	// in unstable behaviour
+	rl := ratelimit.New(ingestLimitRowsPerSecond)
 	source := &Source{
 		sourceInfo:              sourceInfo,
 		tableExecutor:           tableExec,
@@ -164,6 +172,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		bytesIngestedCounter:    bytesIngestedCounter,
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
+		rateLimiter:             rl,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -334,6 +343,10 @@ func (s *Source) stop() error {
 	return nil
 }
 
+func (s *Source) limitRate() {
+	s.rateLimiter.Take()
+}
+
 func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, scheduler *sched.ShardScheduler,
 	mp *MessageParser) error {
 	errChan := scheduler.ScheduleAction(func() error {
@@ -366,6 +379,9 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 
 	totBatchSizeBytes := 0
 	for i := 0; i < rows.RowCount(); i++ {
+
+		s.rateLimiter.Take()
+
 		row := rows.GetRow(i)
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)

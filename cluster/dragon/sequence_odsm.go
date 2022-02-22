@@ -28,6 +28,7 @@ func (s *sequenceODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
+	log.Infof("sequence shard update entries %d", len(entries))
 	batch := s.dragon.pebble.NewBatch()
 	latestSeqVals := make(map[string][]byte)
 	for i, entry := range entries {
@@ -68,6 +69,7 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
+	log.Info("Sequence shard updated")
 	return entries, nil
 }
 
@@ -85,20 +87,26 @@ func (s *sequenceODStateMachine) PrepareSnapshot() (interface{}, error) {
 }
 
 func (s *sequenceODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i2 <-chan struct{}) error {
+	log.Info("sequence shard save snapshot")
 	snapshot, ok := i.(*pebble.Snapshot)
 	if !ok {
 		panic("not a snapshot")
 	}
 	prefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, tableSequenceClusterID, 16)
 	log.Printf("Saving sequence snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, tableSequenceClusterID, prefix)
-	return saveSnapshotDataToWriter(snapshot, prefix, writer, tableSequenceClusterID)
+	err := saveSnapshotDataToWriter(snapshot, prefix, writer, tableSequenceClusterID)
+	log.Info("sequence shard save snapshot done")
+	return err
 }
 
 func (s *sequenceODStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
+	log.Info("sequence shard receover from snapshot")
 	startPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, tableSequenceClusterID, 16)
 	endPrefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID+1, tableSequenceClusterID, 16)
 	log.Infof("Restoring sequence snapshot on node %d", s.dragon.cnf.NodeID)
-	return restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
+	err := restoreSnapshotDataFromReader(s.dragon.pebble, startPrefix, endPrefix, reader, s.dragon.ingestDir)
+	log.Info("sequence shard recover from snapshot done")
+	return err
 }
 
 func (s *sequenceODStateMachine) Close() error {

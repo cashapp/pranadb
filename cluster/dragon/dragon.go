@@ -39,7 +39,9 @@ const (
 
 	retryDelay = 500 * time.Millisecond
 
-	callTimeout = 1 * time.Hour
+	retryTimeout = 10 * time.Minute
+
+	callTimeout = 5 * time.Second
 )
 
 func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
@@ -63,6 +65,9 @@ type Dragon struct {
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
+
+	sl  sync.Mutex
+	sms []*ShardOnDiskStateMachine
 }
 
 type snapshot struct {
@@ -188,7 +193,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
 		cancel()
 		return res, errors.WithStack(err)
-	}, callTimeout)
+	}, retryTimeout)
 
 	if err != nil {
 		err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
@@ -218,6 +223,8 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return nil
 	}
 
+	log.Infof("Starting dragon on node %d", d.cnf.NodeID)
+
 	if d.remoteQueryExecutionCallback == nil {
 		panic("remote query execution callback must be set before start")
 	}
@@ -242,6 +249,8 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	}
 	d.pebble = peb
 
+	log.Infof("Opened pebble on node %d", d.cnf.NodeID)
+
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
 	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
@@ -257,31 +266,43 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		SystemEventListener: d,
 	}
 
+	d.checkLogUpdates()
+
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	d.nh = nh
 
+	log.Infof("Joining groups on node %d", d.cnf.NodeID)
+
 	err = d.joinSequenceGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
+
+	log.Infof("Joined sequence group on node %d", d.cnf.NodeID)
 
 	err = d.joinLockGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	log.Infof("Joined lock group on node %d", d.cnf.NodeID)
+
 	err = d.joinShardGroups()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	log.Infof("Joined shard groups on node %d", d.cnf.NodeID)
+
 	err = d.joinNodesStartedGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
+
+	log.Infof("Joined node started group on node %d", d.cnf.NodeID)
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
@@ -307,52 +328,6 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return errors.WithStack(err)
 	}
 
-	log.Info("Waiting for all nodes to start")
-
-	// Now we wait for all nodes to start - note for clean startup we require all nodes, not just a quorum.
-	// Otherwise, we would start sources before all nodes were started resulting in it being harder for other shard
-	// replicas to come online when other nodes started as they would have to catch up.
-	// We do this by using a Raft state machine with a sequence number for each node. Each node calls update to
-	// increment its own sequence, and other nodes wait until they see sequences for other nodes increment which means
-	// they are up.
-	numNodes := len(d.cnf.RaftAddresses)
-	prevSeqs := make(map[uint64]uint64)
-	for {
-		if err := d.incNodesStartedSequence(); err != nil {
-			return err
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-		res, err := d.nh.SyncRead(ctx, nodesStartedClusterID, []byte{})
-		cancel()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		bytes, ok := res.([]byte)
-		if !ok {
-			panic("not a []byte")
-		}
-		seqMap := bytesToMap(bytes)
-
-		if len(seqMap) == numNodes {
-			incremented := 0
-			for nid, seq := range seqMap {
-				prevSeq, ok := prevSeqs[nid]
-				if !ok || seq <= prevSeq {
-					prevSeqs = seqMap
-					break
-				}
-				incremented++
-			}
-			if incremented == len(seqMap) {
-				if err := d.incNodesStartedSequence(); err != nil {
-					return err
-				}
-				break
-			}
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
 	d.started = true
 
 	log.Infof("Prana node %d cluster started", d.cnf.NodeID)
@@ -381,7 +356,7 @@ func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
 		res, err := d.nh.SyncRead(ctx, shardID, request)
 		cancel()
 		return res, errors.WithStack(err)
-	}, callTimeout)
+	}, retryTimeout)
 	return errors.WithStack(err)
 }
 
@@ -615,7 +590,9 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	}
 
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
-		return newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
+		sm := newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
+		d.addShardSM(sm)
+		return sm
 	}
 
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
@@ -623,6 +600,25 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 		return
 	}
 	ch <- nil
+}
+
+func (d *Dragon) addShardSM(sm *ShardOnDiskStateMachine) {
+	d.sl.Lock()
+	defer d.sl.Unlock()
+	d.sms = append(d.sms, sm)
+}
+
+func (d *Dragon) checkLogUpdates() {
+	time.AfterFunc(5*time.Second, func() {
+		d.sl.Lock()
+		defer d.sl.Unlock()
+		log.Info("Checking if data shards updated")
+		for _, sm := range d.sms {
+			sm.LogLastUpdate()
+		}
+		d.checkLogUpdates()
+		log.Info("Done checking if data shards updated")
+	})
 }
 
 func (d *Dragon) joinSequenceGroup() error {
@@ -785,7 +781,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		if err == nil {
 			return res, nil
 		}
-		if !errors.Is(err, dragonboat.ErrClusterNotReady) {
+		if !errors.Is(err, dragonboat.ErrClusterNotReady) && !errors.Is(err, dragonboat.ErrTimeout) {
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
@@ -804,7 +800,7 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
 		cancel()
 		return res, errors.WithStack(err)
-	}, callTimeout)
+	}, retryTimeout)
 	if err != nil {
 		common.DumpStacks()
 		return statemachine.Result{}, errors.WithStack(err)

@@ -20,6 +20,7 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/common"
 	"io"
+	"io/ioutil"
 )
 
 const (
@@ -64,14 +65,9 @@ func (n *nodesStartedSM) SaveSnapshot(writer io.Writer, collection statemachine.
 }
 
 func (n *nodesStartedSM) RecoverFromSnapshot(reader io.Reader, files []statemachine.SnapshotFile, i <-chan struct{}) error {
-	var bytes []byte
-	for len(bytes) < 8 {
-		readBuff := make([]byte, 8)
-		n, err := reader.Read(readBuff)
-		if err != nil {
-			return err
-		}
-		bytes = append(bytes, readBuff[:n]...)
+	bytes, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return err
 	}
 	n.startSequences = bytesToMap(bytes)
 	return nil
