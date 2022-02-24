@@ -78,5 +78,6 @@ func createConfigWithAllFields() conf.Config {
 		APIServerSessionCheckInterval: 6 * time.Second,
 		MetricsBind:                   "localhost:9102",
 		EnableMetrics:                 false,
+		GlobalIngestLimitRowsPerSec:   5000,
 	}
 }

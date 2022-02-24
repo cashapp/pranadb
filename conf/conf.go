@@ -17,6 +17,7 @@ const (
 	DefaultNotifierHeartbeatInterval     = 5 * time.Second
 	DefaultAPIServerSessionTimeout       = 30 * time.Second
 	DefaultAPIServerSessionCheckInterval = 5 * time.Second
+	DefaultGlobalIngestLimitRowsPerSec   = 1000
 )
 
 type Config struct {
@@ -50,6 +51,7 @@ type Config struct {
 	LiveEndpointPath              string
 	MetricsBind                   string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
 	EnableMetrics                 bool
+	GlobalIngestLimitRowsPerSec   int
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -146,6 +148,9 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("ReadyEndpointPath must be specified")
 		}
 	}
+	if c.GlobalIngestLimitRowsPerSec < -1 || c.GlobalIngestLimitRowsPerSec == 0 {
+		return errors.NewInvalidConfigurationError("GlobalIngestLimitRowsPerSec must be > 0 or -1")
+	}
 	return nil
 }
 
@@ -175,6 +180,7 @@ func NewDefaultConfig() *Config {
 		NotifierHeartbeatInterval:     DefaultNotifierHeartbeatInterval,
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,
+		GlobalIngestLimitRowsPerSec:   DefaultGlobalIngestLimitRowsPerSec,
 	}
 }
 
@@ -183,6 +189,7 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		NotifierHeartbeatInterval:     DefaultNotifierHeartbeatInterval,
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,
+		GlobalIngestLimitRowsPerSec:   DefaultGlobalIngestLimitRowsPerSec,
 		NodeID:                        0,
 		NumShards:                     10,
 		TestServer:                    true,

@@ -218,6 +218,18 @@ func invalidReadyEndpointPath() Config {
 	return cnf
 }
 
+func invalidGlobalIngestLimitRowsPerSecZero() Config {
+	cnf := confAllFields
+	cnf.GlobalIngestLimitRowsPerSec = 0
+	return cnf
+}
+
+func invalidGlobalIngestLimitRowsPerNegative() Config {
+	cnf := confAllFields
+	cnf.GlobalIngestLimitRowsPerSec = -10
+	return cnf
+}
+
 var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
 	{"PDB0004 - Invalid configuration: ClusterID must be >= 0", invalidClusterIDConf()},
@@ -247,6 +259,8 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
 	{"PDB0004 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
 	{"PDB0004 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
+	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
+	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
 }
 
 func TestValidate(t *testing.T) {
@@ -289,4 +303,5 @@ var confAllFields = Config{
 	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 	APIServerSessionTimeout:       41 * time.Second,
 	APIServerSessionCheckInterval: 6 * time.Second,
+	GlobalIngestLimitRowsPerSec:   3000,
 }
