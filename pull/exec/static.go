@@ -30,6 +30,17 @@ func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
 	}
 }
 
+func ShowTableRows(rows *common.Rows) *StaticRows {
+	return &StaticRows{
+		pullExecutorBase: pullExecutorBase{
+			colTypes:       rows.ColumnTypes(),
+			colNames:       []string{"tables"},
+			simpleColNames: []string{"tables"},
+		},
+		rows: rows,
+	}
+}
+
 func (s *StaticRows) GetRows(limit int) (rows *common.Rows, err error) {
 	return s.rows, nil
 }

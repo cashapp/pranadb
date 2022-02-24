@@ -2,9 +2,10 @@ package command
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync/atomic"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/squareup/pranadb/cluster"
@@ -160,6 +161,12 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return exec.Empty, nil
 	case ast.Use != "":
 		return e.execUse(session, ast.Use)
+	case ast.Show != nil && ast.Show.Tables != "":
+		rows, err := e.execShowTables(session)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return rows, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
@@ -228,6 +235,11 @@ func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullE
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	session.UseSchema(schema)
 	return exec.Empty, nil
+}
+
+func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, error) {
+	rows, _ := e.pullEngine.ExecuteQuery(session.Schema.Name, fmt.Sprintf("select * from sys.tables where schema=%s", session.Schema.Name))
+	return exec.ShowTableRows(rows), nil
 }
 
 func (e *Executor) RunningCommands() int {

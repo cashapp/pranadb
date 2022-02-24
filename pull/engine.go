@@ -24,6 +24,7 @@ type Engine struct {
 	cluster            cluster.Cluster
 	metaController     *meta.Controller
 	nodeID             int
+	queryExec          common.SimpleQueryExec
 }
 
 func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *Engine {
