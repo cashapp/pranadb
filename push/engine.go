@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/ratelimit"
 	"math/rand"
 	"sync"
 	"time"
@@ -48,8 +49,8 @@ type Engine struct {
 	queryExec                 common.SimpleQueryExec
 	protoRegistry             protolib.Resolver
 	readyToReceive            common.AtomicBool
-	metrics                   metrics.Server
 	processBatchTimeHistogram metrics.Observer
+	globalRateLimiter         ratelimit.Limiter
 }
 
 var (
@@ -78,6 +79,14 @@ type remoteRowsHandler interface {
 }
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics *metrics.Server) *Engine {
+	// We limit the ingest rate of the source to this value - this prevents the node getting overloaded which can result
+	// in unstable behaviour
+	var rl ratelimit.Limiter
+	if cfg.GlobalIngestLimitRowsPerSec != -1 {
+		rl = ratelimit.New(cfg.GlobalIngestLimitRowsPerSec)
+	} else {
+		rl = nil
+	}
 	engine := Engine{
 		mover:                     mover.NewMover(cluster),
 		cluster:                   cluster,
@@ -88,6 +97,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		queryExec:                 queryExec,
 		protoRegistry:             registry,
 		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
+		globalRateLimiter:         rl,
 	}
 	engine.createMaps()
 	return &engine
@@ -546,7 +556,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
-		p.metrics,
+		p,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -598,4 +608,10 @@ func (p *Engine) IsEmpty() bool {
 		return true
 	})
 	return len(p.sources) == 0 && len(p.materializedViews) == 0 && numRecs == 0
+}
+
+func (p *Engine) Limit() {
+	if p.globalRateLimiter != nil {
+		p.globalRateLimiter.Take()
+	}
 }

@@ -48,3 +48,5 @@ kafka-brokers = {
     }
   }
 }
+
+global-ingest-limit-rows-per-sec = 5000
