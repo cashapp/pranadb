@@ -165,13 +165,17 @@ func (f *FakeCluster) Stop() error {
 	return nil
 }
 
+func (f *FakeCluster) WriteBatchLocally(batch *WriteBatch) error {
+	return f.WriteBatch(batch)
+}
+
 func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if batch.ShardID < DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-	for k, v := range batch.puts.TheMap {
+	for k, v := range batch.Puts.TheMap {
 		kBytes := common.StringToByteSliceZeroCopy(k)
 		f.putInternal(&kvWrapper{
 			key:   kBytes,
@@ -191,7 +195,7 @@ func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 		shardListener := f.shardListeners[batch.ShardID]
 		go shardListener.RemoteWriteOccurred()
 	}
-	return nil
+	return batch.AfterCommit()
 }
 
 func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
@@ -200,7 +204,7 @@ func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
 	return f.getInternal(&kvWrapper{key: key}), nil
 }
 
-func (f *FakeCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error {
+func (f *FakeCluster) DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.deleteAllDataInRangeForShard(shardID, startPrefix, endPrefix)

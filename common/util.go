@@ -5,6 +5,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"unsafe"
 
@@ -48,11 +49,36 @@ func StringToByteSliceZeroCopy(str string) []byte {
 	return (*[max]byte)(unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&str)).Data))[:len(str):len(str)]
 }
 
+// strings to check for to filter out goroutines when dumping stacks - Pebble for example has many goroutines that are not usually relevant
+// and create a lot of clutter in the stack reports
+var spamLines = []string{"releaseLoop.func1", "sync.runtime_notifyListWait"}
+
 // DumpStacks dumps stacks for all goroutines to stdout, useful when debugging
 func DumpStacks() {
+	doDumpStacks(true)
+}
+
+func doDumpStacks(filterSpam bool) {
 	buf := make([]byte, 1<<16)
 	runtime.Stack(buf, true)
-	fmt.Printf("%s", buf)
+	s := string(buf)
+	lines := strings.Split(s, "\n")
+	ignoring := false
+	for i, line := range lines {
+		// Screen out Pebble spam
+		if filterSpam && strings.HasPrefix(line, "goroutine ") {
+			nextLine := lines[i+1]
+			ignoring = false
+			for _, spam := range spamLines {
+				if strings.Index(nextLine, spam) != -1 {
+					ignoring = true
+				}
+			}
+		}
+		if !ignoring {
+			fmt.Println(line)
+		}
+	}
 }
 
 func InvokeCloser(closer io.Closer) {

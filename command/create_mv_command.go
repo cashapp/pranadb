@@ -139,8 +139,7 @@ func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*
 	querySQL := ast.Query.String()
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()
-	mv, err := push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
-	return mv, errors.WithStack(err)
+	return push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
 }
 
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
