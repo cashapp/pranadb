@@ -83,9 +83,9 @@ func (s *snapshot) Close() {
 func init() {
 	// This should be customizable, but these are good defaults
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
-	logger.GetLogger("raft").SetLevel(logger.ERROR)
+	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam otherwise
+	logger.GetLogger("transport").SetLevel(logger.WARNING) // Get a lot of spam otherwise
 	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
