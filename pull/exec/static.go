@@ -31,13 +31,20 @@ func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
 }
 
 func ShowTableRows(rows *common.Rows) *StaticRows {
+	colTypes := []common.ColumnType{common.VarcharColumnType}
+	rf := common.NewRowsFactory(colTypes)
+	rfRows := rf.NewRows(rows.RowCount())
+	for i := 0; i < rows.RowCount(); i++ {
+		val := rows.GetRow(i)
+		rfRows.AppendStringToColumn(0, val.GetString(3))
+	}
 	return &StaticRows{
 		pullExecutorBase: pullExecutorBase{
-			colTypes:       rows.ColumnTypes(),
+			colTypes:       rfRows.ColumnTypes(),
 			colNames:       []string{"tables"},
 			simpleColNames: []string{"tables"},
 		},
-		rows: rows,
+		rows: rfRows,
 	}
 }
 

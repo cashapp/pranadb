@@ -238,7 +238,9 @@ func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullE
 }
 
 func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, error) {
-	rows, _ := e.pullEngine.ExecuteQuery(session.Schema.Name, fmt.Sprintf("select * from sys.tables where schema=%s", session.Schema.Name))
+	rows, _ := e.pullEngine.ExecuteQuery("sys", "select * from tables")
+	log.Print(rows)
+
 	return exec.ShowTableRows(rows), nil
 }
 
