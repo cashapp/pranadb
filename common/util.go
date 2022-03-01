@@ -66,10 +66,10 @@ func doDumpStacks(filterSpam bool) {
 	lines := strings.Split(s, "\n")
 	ignoring := false
 	for i, line := range lines {
+		ignoring = false
 		// Screen out Pebble spam
-		if filterSpam && strings.HasPrefix(line, "goroutine ") {
+		if filterSpam && strings.HasPrefix(line, "goroutine ") && i != len(lines)-1 {
 			nextLine := lines[i+1]
-			ignoring = false
 			for _, spam := range spamLines {
 				if strings.Index(nextLine, spam) != -1 {
 					ignoring = true
