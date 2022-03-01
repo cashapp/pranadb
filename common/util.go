@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -77,6 +78,9 @@ func doDumpStacks(filterSpam bool) {
 		}
 		if !ignoring {
 			fmt.Println(line)
+			// Sadly, the logging system mangles stack traces, because it orders lines by time and many lines can
+			// be written with the same time, so they end up being randomly ordered. So, we introduce a sleep
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }
