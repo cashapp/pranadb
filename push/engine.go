@@ -312,10 +312,10 @@ func (s *shardListener) RemoteWriteOccurred() {
 }
 
 func (s *shardListener) scheduleHandleRemoteBatch() {
-	s.p.maybeHandleRemoteBatch(s.sched)
+	s.p.MaybeHandleRemoteBatch(s.sched)
 }
 
-func (p *Engine) maybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
+func (p *Engine) MaybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
 	scheduler.ScheduleActionFireAndForget(func() error {
 		start := time.Now()
 		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
@@ -444,7 +444,7 @@ func (p *Engine) checkForPendingData() error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		p.maybeHandleRemoteBatch(scheduler)
+		p.MaybeHandleRemoteBatch(scheduler)
 	}
 	return nil
 }

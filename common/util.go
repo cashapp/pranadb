@@ -5,7 +5,9 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -48,11 +50,42 @@ func StringToByteSliceZeroCopy(str string) []byte {
 	return (*[max]byte)(unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&str)).Data))[:len(str):len(str)]
 }
 
+// strings to check for to filter out goroutines when dumping stacks - Pebble for example has many goroutines that are not usually relevant
+// and create a lot of clutter in the stack reports
+var spamLines = []string{"releaseLoop.func1", "sync.runtime_notifyListWait"}
+
 // DumpStacks dumps stacks for all goroutines to stdout, useful when debugging
 func DumpStacks() {
+	doDumpStacks(true)
+}
+
+func doDumpStacks(filterSpam bool) {
 	buf := make([]byte, 1<<16)
 	runtime.Stack(buf, true)
-	fmt.Printf("%s", buf)
+	s := string(buf)
+	lines := strings.Split(s, "\n")
+	ignoring := false
+	for i, line := range lines {
+		// Screen out Pebble spam
+		if filterSpam && strings.HasPrefix(line, "goroutine ") {
+			if i != len(lines)-1 {
+				nextLine := lines[i+1]
+				for _, spam := range spamLines {
+					if strings.Index(nextLine, spam) != -1 {
+						ignoring = true
+					}
+				}
+			} else {
+				ignoring = false
+			}
+		}
+		if !ignoring {
+			fmt.Println(line)
+			// Sadly, the logging system mangles stack traces, because it orders lines by time and many lines can
+			// be written with the same time, so they end up being randomly ordered. So, we introduce a sleep
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
 }
 
 func InvokeCloser(closer io.Closer) {

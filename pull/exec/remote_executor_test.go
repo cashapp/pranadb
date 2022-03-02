@@ -192,6 +192,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
+	return nil
+}
+
+func (t *testCluster) DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error {
+	return nil
+}
+
 func (t *testCluster) CreateSnapshot() (cluster.Snapshot, error) {
 	return nil, nil
 }

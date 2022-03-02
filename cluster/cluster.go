@@ -21,6 +21,9 @@ type Cluster interface {
 	// WriteBatch writes a batch reliability to storage
 	WriteBatch(batch *WriteBatch) error
 
+	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
+	WriteBatchLocally(batch *WriteBatch) error
+
 	LocalGet(key []byte) ([]byte, error)
 
 	// LocalScan scans the local store
@@ -49,7 +52,7 @@ type Cluster interface {
 
 	DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error
 
-	DeleteAllDataInRangeForShard(shardID uint64, startPrefix []byte, endPrefix []byte) error
+	DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
 	RegisterMembershipListener(listener MembershipListener)
 

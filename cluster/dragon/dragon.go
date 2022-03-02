@@ -83,9 +83,9 @@ func (s *snapshot) Close() {
 func init() {
 	// This should be customizable, but these are good defaults
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
-	logger.GetLogger("raft").SetLevel(logger.ERROR)
+	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam otherwise
+	logger.GetLogger("transport").SetLevel(logger.WARNING) // Get a lot of spam otherwise
 	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
@@ -375,14 +375,33 @@ func (d *Dragon) Stop() error {
 	return errors.WithStack(err)
 }
 
+func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
+	if batch.ShardID < cluster.DataShardIDBase {
+		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
+	}
+	pebBatch := d.pebble.NewBatch()
+	for k, v := range batch.Puts.TheMap {
+		if err := pebBatch.Set([]byte(k), v, nil); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	for k := range batch.Deletes.TheMap {
+		if err := pebBatch.Delete([]byte(k), nil); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	if err := errors.WithStack(d.pebble.Apply(pebBatch, nosyncWriteOptions)); err != nil {
+		return err
+	}
+	return batch.AfterCommit()
+}
+
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 
 	/*
-		We use a NOOP session as we do not need duplicate detection at the Raft level
-
 		Batches are written in two cases:
 		1. A batch that handles some rows which have arrived in the receiver queue for a shard.
 		In this case the batch contains
@@ -421,7 +440,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 		return errors.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
 	}
 
-	return nil
+	return batch.AfterCommit()
 }
 
 func (d *Dragon) LocalGet(key []byte) ([]byte, error) {
@@ -483,7 +502,22 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 	return pairs, nil
 }
 
-func (d *Dragon) DeleteAllDataInRangeForShard(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
+func (d *Dragon) DeleteAllDataInRangeForShardLocally(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
+	// Remember, key must be in big-endian order
+	startPrefixWithShard := make([]byte, 0, 16)
+	startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
+	startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
+
+	endPrefixWithShard := make([]byte, 0, 16)
+	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
+	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+
+	pebBatch := d.pebble.NewBatch()
+
+	return errors.WithStack(pebBatch.DeleteRange(startPrefixWithShard, endPrefixWithShard, nosyncWriteOptions))
+}
+
+func (d *Dragon) deleteAllDataInRangeForShard(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
 	// Remember, key must be in big-endian order
 	startPrefixWithShard := make([]byte, 0, 16)
 	startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
@@ -521,7 +555,7 @@ func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix 
 		chans[i] = ch
 		theShardID := shardID
 		go func() {
-			err := d.DeleteAllDataInRangeForShard(theShardID, startPrefix, endPrefix)
+			err := d.deleteAllDataInRangeForShard(theShardID, startPrefix, endPrefix)
 			ch <- err
 		}()
 	}
@@ -787,6 +821,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		if time.Now().Sub(start) >= timeout {
 			// If we timeout, then something is seriously wrong - we should just exit
 			log.Errorf("timeout in making dragonboat calls, exiting %+v", err)
+			common.DumpStacks()
 			os.Exit(1)
 			return nil, nil
 		}
