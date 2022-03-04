@@ -286,3 +286,37 @@ pranadb> select * from customer_balances where customer_id=12;
 |12|other|117|5811145.800000000000000000000000000000|
 3 rows returned
 ````
+
+## Using Docker Compose
+
+You can run the same demo using Docker Compose. You can follow the above steps to create sources and materialized views
+and interact with Prana cluster. These are the Make targets to use:
+
+### Start
+```shell
+make start
+```
+Brings up Kafka, Zookeeper, 3 PranaDB containers and PranaDB load runner container.
+
+### Stop
+```shell
+make stop
+```
+
+### Connect
+```shell
+make connect
+```
+Connects to the PranaDB and open a shell session.
+
+### Create Topics
+```shell
+make create-topics
+```
+Creates the `payments` topic.
+
+### Publish random payments
+```shell
+make publish-payments [delay=10ms] [num_messages=1000] [index_start=0]
+```
+Publishes random payments to the `payments` topic. The amount of messages is defined in
