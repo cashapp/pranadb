@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/alecthomas/kong"
-	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/msggen"
 	"log"
 	"os"
 	"time"
+
+	"github.com/alecthomas/kong"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/msggen"
 )
 
 type Arguments struct {
@@ -36,10 +37,6 @@ func run(args []string) error {
 		return errors.WithStack(err)
 	}
 	gm, err := msggen.NewGenManager()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	err = msggen.MetricsServer()
 	if err != nil {
 		return errors.WithStack(err)
 	}
