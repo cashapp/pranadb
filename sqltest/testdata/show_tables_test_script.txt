@@ -1,3 +1,5 @@
+use test;
+show tables;
 --create topic testtopic;
 use test0;
 create source test_source_0(

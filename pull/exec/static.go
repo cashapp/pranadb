@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 // Empty executor.
@@ -30,23 +31,24 @@ func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
 	}
 }
 
-func ShowTableRows(rows *common.Rows) *StaticRows {
-	colTypes := []common.ColumnType{common.VarcharColumnType, common.VarcharColumnType}
-	rf := common.NewRowsFactory(colTypes)
-	rfRows := rf.NewRows(rows.RowCount())
-	for i := 0; i < rows.RowCount(); i++ {
-		val := rows.GetRow(i)
-		rfRows.AppendStringToColumn(0, val.GetString(0))
-		rfRows.AppendStringToColumn(1, val.GetString(1))
+// NewStaticRows created static rows pull executor.
+func NewStaticRows(colNames []string, rows *common.Rows) (*StaticRows, error) {
+	sr := &StaticRows{
+		pullExecutorBase: pullExecutorBase{},
+		rows:             rows,
 	}
-	return &StaticRows{
-		pullExecutorBase: pullExecutorBase{
-			colTypes:       rfRows.ColumnTypes(),
-			colNames:       []string{"table", "kind"},
-			simpleColNames: []string{"table", "kind"},
-		},
-		rows: rfRows,
+	if rows == nil || rows.RowCount() == 0 {
+		return sr, nil
 	}
+	row := rows.GetRow(0)
+	colTypes := row.ColumnTypes()
+	if len(colNames) != len(colTypes) {
+		return nil, errors.Errorf("got different length of column names and column types arrays: colNames=%d, colTypes=%d", len(colNames), len(colTypes))
+	}
+	sr.colNames = colNames
+	sr.simpleColNames = colNames
+	sr.colTypes = colTypes
+	return sr, nil
 }
 
 func (s *StaticRows) GetRows(limit int) (rows *common.Rows, err error) {

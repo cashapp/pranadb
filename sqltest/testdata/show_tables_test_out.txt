@@ -1,3 +1,7 @@
+use test;
+0 rows returned
+show tables;
+0 rows returned
 --create topic testtopic;
 use test0;
 0 rows returned
@@ -17,9 +21,9 @@ create source test_source_0(
 create materialized view test_mv_0 as select * from test_source_0;
 0 rows returned
 show tables;
-|table|kind|
-|test_mv_0|materialized_view|
-|test_source_0|source|
+|table|
+|test_mv_0|
+|test_source_0|
 2 rows returned
 
 use test1;
@@ -37,8 +41,8 @@ create source test_source_1(
 );
 0 rows returned
 show tables;
-|table|kind|
-|test_source_1|source|
+|table|
+|test_source_1|
 1 rows returned
 
 drop source test_source_1;
