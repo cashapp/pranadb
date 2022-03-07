@@ -64,7 +64,7 @@ func NewCreateSourceCommand(e *Executor, schemaName string, sql string, tableSeq
 	}
 }
 
-func (c *CreateSourceCommand) BeforePrepare() error {
+func (c *CreateSourceCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -73,12 +73,7 @@ func (c *CreateSourceCommand) BeforePrepare() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if err = c.validate(); err != nil {
-		return errors.WithStack(err)
-	}
-
-	// Before prepare we just persist the source info in the tables table
-	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateAdd)
+	return c.validate()
 }
 
 func (c *CreateSourceCommand) validate() error {
@@ -122,7 +117,22 @@ func (c *CreateSourceCommand) validate() error {
 	return nil
 }
 
-func (c *CreateSourceCommand) OnPrepare() error {
+func (c *CreateSourceCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *CreateSourceCommand) NumPhases() int {
+	return 2
+}
+
+func (c *CreateSourceCommand) onPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -150,7 +160,7 @@ func (c *CreateSourceCommand) OnPrepare() error {
 	return nil
 }
 
-func (c *CreateSourceCommand) OnCommit() error {
+func (c *CreateSourceCommand) onCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -163,12 +173,12 @@ func (c *CreateSourceCommand) OnCommit() error {
 	return c.e.metaController.RegisterSource(c.sourceInfo)
 }
 
-func (c *CreateSourceCommand) AfterCommit() error {
+func (c *CreateSourceCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	// Update row in metadata tables table to prepare=false
-	return c.e.metaController.PersistSource(c.sourceInfo, meta.PrepareStateCommitted)
+	return c.e.metaController.PersistSource(c.sourceInfo)
 }
 
 // nolint: gocyclo

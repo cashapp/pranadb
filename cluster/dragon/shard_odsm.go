@@ -54,7 +54,7 @@ type ShardOnDiskStateMachine struct {
 
 func (s *ShardOnDiskStateMachine) LogLastUpdate() {
 	if s.updated.Get() {
-		log.Infof("data shard %d updated", s.shardID)
+		log.Tracef("data shard %d updated", s.shardID)
 		s.updated.Set(false)
 	}
 }

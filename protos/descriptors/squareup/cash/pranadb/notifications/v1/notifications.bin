@@ -1,11 +1,11 @@
 
-ÿ
-:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ú
+û
+:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
 
-command_id (R	commandId
-prepare (Rprepare!
+command_id (R	commandId
+phase (Rphase!
 command_type (RcommandType
 schema_name (	R
 schemaName

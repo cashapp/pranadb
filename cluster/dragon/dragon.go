@@ -85,7 +85,7 @@ func init() {
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
 	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.WARNING) // Get a lot of spam otherwise
+	logger.GetLogger("transport").SetLevel(logger.CRITICAL)
 	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
@@ -646,12 +646,12 @@ func (d *Dragon) checkLogUpdates() {
 	time.AfterFunc(5*time.Second, func() {
 		d.sl.Lock()
 		defer d.sl.Unlock()
-		log.Info("Checking if data shards updated")
+		log.Trace("Checking if data shards updated")
 		for _, sm := range d.sms {
 			sm.LogLastUpdate()
 		}
 		d.checkLogUpdates()
-		log.Info("Done checking if data shards updated")
+		log.Trace("Done checking if data shards updated")
 	})
 }
 

@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/meta"
 )
 
 type DropIndexCommand struct {
@@ -59,7 +58,7 @@ func NewDropIndexCommand(e *Executor, schemaName string, sql string) *DropIndexC
 	}
 }
 
-func (c *DropIndexCommand) BeforePrepare() error {
+func (c *DropIndexCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -68,12 +67,25 @@ func (c *DropIndexCommand) BeforePrepare() error {
 		return errors.WithStack(err)
 	}
 	c.indexInfo = indexInfo
-
-	// Update row in indexes table to mark it as pending delete
-	return c.e.metaController.PersistIndex(indexInfo, meta.PrepareStateDelete)
+	return nil
 }
 
-func (c *DropIndexCommand) OnPrepare() error {
+func (c *DropIndexCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *DropIndexCommand) NumPhases() int {
+	return 2
+}
+
+func (c *DropIndexCommand) onPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -90,14 +102,14 @@ func (c *DropIndexCommand) OnPrepare() error {
 	return nil
 }
 
-func (c *DropIndexCommand) OnCommit() error {
+func (c *DropIndexCommand) onCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	return c.e.pushEngine.RemoveIndex(c.indexInfo, c.originating)
 }
 
-func (c *DropIndexCommand) AfterCommit() error {
+func (c *DropIndexCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

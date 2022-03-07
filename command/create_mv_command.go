@@ -67,7 +67,7 @@ func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tabl
 	}
 }
 
-func (c *CreateMVCommand) BeforePrepare() error {
+func (c *CreateMVCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -90,10 +90,27 @@ func (c *CreateMVCommand) BeforePrepare() error {
 	if rows.RowCount() != 0 {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
-	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateAdd)
+	return nil
 }
 
-func (c *CreateMVCommand) OnPrepare() error {
+func (c *CreateMVCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onFill()
+	case 2:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *CreateMVCommand) NumPhases() int {
+	return 5
+}
+
+func (c *CreateMVCommand) onPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -113,25 +130,29 @@ func (c *CreateMVCommand) OnPrepare() error {
 	return c.mv.Connect(false, true)
 }
 
-func (c *CreateMVCommand) OnCommit() error {
+func (c *CreateMVCommand) onFill() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	// Fill the MV from it's feeding sources and MVs
-	// Before the fill completes the MV will be connected to it's feeding sources or MVs
-	if err := c.mv.Fill(); err != nil {
-		return errors.WithStack(err)
-	}
+	return c.mv.Fill()
+}
+
+func (c *CreateMVCommand) onCommit() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// Now we have filled OK on all nodes we can register the MV so it can be used by clients
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
 		return errors.WithStack(err)
 	}
 	return c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables)
 }
 
-func (c *CreateMVCommand) AfterCommit() error {
+func (c *CreateMVCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables, meta.PrepareStateAdd)
+	return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables)
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {

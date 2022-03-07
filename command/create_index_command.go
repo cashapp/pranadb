@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 )
 
@@ -65,24 +64,37 @@ func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string
 	}
 }
 
-func (c *CreateIndexCommand) BeforePrepare() error {
+func (c *CreateIndexCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	var err error
 	c.indexInfo, err = c.getIndexInfo(c.ast)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	// Before prepare we just persist the index info in the indexes table
-	return c.e.metaController.PersistIndex(c.indexInfo, meta.PrepareStateAdd)
+	return err
 }
 
-func (c *CreateIndexCommand) OnPrepare() error {
+func (c *CreateIndexCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onFill()
+	case 2:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *CreateIndexCommand) NumPhases() int {
+	return 3
+}
+
+func (c *CreateIndexCommand) onPrepare() error {
 	return nil
 }
 
-func (c *CreateIndexCommand) OnCommit() error {
+func (c *CreateIndexCommand) onFill() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -100,17 +112,19 @@ func (c *CreateIndexCommand) OnCommit() error {
 			return errors.Errorf("invalid create index statement %s", c.createIndexSQL)
 		}
 	}
+	// We create the index but we don't register it yet
+	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
+}
 
-	if err := c.e.pushEngine.CreateIndex(c.indexInfo, true); err != nil {
-		return err
-	}
+func (c *CreateIndexCommand) onCommit() error {
+	// Now we register the index so it can be used in queries
 	return c.e.metaController.RegisterIndex(c.indexInfo)
 }
 
-func (c *CreateIndexCommand) AfterCommit() error {
+func (c *CreateIndexCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistIndex(c.indexInfo, meta.PrepareStateCommitted)
+	return c.e.metaController.PersistIndex(c.indexInfo)
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {
