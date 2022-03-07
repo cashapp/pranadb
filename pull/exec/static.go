@@ -2,6 +2,7 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 )
 
 // Empty executor.
@@ -28,6 +29,26 @@ func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
 		},
 		rows: rows,
 	}
+}
+
+// NewStaticRows created static rows pull executor.
+func NewStaticRows(colNames []string, rows *common.Rows) (*StaticRows, error) {
+	sr := &StaticRows{
+		pullExecutorBase: pullExecutorBase{},
+		rows:             rows,
+	}
+	if rows == nil || rows.RowCount() == 0 {
+		return sr, nil
+	}
+	row := rows.GetRow(0)
+	colTypes := row.ColumnTypes()
+	if len(colNames) != len(colTypes) {
+		return nil, errors.Errorf("got different length of column names and column types arrays: colNames=%d, colTypes=%d", len(colNames), len(colTypes))
+	}
+	sr.colNames = colNames
+	sr.simpleColNames = colNames
+	sr.colTypes = colTypes
+	return sr, nil
 }
 
 func (s *StaticRows) GetRows(limit int) (rows *common.Rows, err error) {

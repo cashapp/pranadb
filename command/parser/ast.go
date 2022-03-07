@@ -150,6 +150,11 @@ type Execute struct {
 	Args []string `(@String | @Number)*`
 }
 
+// Show statement
+type Show struct {
+	Tables string `  @"TABLES"`
+}
+
 // AST root.
 type AST struct {
 	Select  string // Unaltered SELECT statement, if any.
@@ -158,5 +163,6 @@ type AST struct {
 	Use     string   `(  "USE" @Ident`
 	Execute *Execute ` | "EXECUTE" @@`
 	Drop    *Drop    ` | "DROP" @@ `
-	Create  *Create  ` | "CREATE" @@ ) ";"?`
+	Create  *Create  ` | "CREATE" @@ `
+	Show    *Show    ` | "SHOW" @@ ) ";"?`
 }
