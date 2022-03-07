@@ -21,9 +21,9 @@ create source test_source_0(
 create materialized view test_mv_0 as select * from test_source_0;
 0 rows returned
 show tables;
-|table|
-|test_mv_0|
-|test_source_0|
+|table|kind|
+|test_mv_0|materialized_view|
+|test_source_0|source|
 2 rows returned
 
 use test1;
@@ -41,11 +41,14 @@ create source test_source_1(
 );
 0 rows returned
 show tables;
-|table|
-|test_source_1|
+|table|kind|
+|test_source_1|source|
 1 rows returned
 
 drop source test_source_1;
+0 rows returned
+
+show tables;
 0 rows returned
 
 use test0;
@@ -53,6 +56,9 @@ use test0;
 drop materialized view test_mv_0;
 0 rows returned
 drop source test_source_0;
+0 rows returned
+
+show tables;
 0 rows returned
 
 --delete topic testtopic;

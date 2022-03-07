@@ -33,8 +33,12 @@ show tables;
 
 drop source test_source_1;
 
+show tables;
+
 use test0;
 drop materialized view test_mv_0;
 drop source test_source_0;
+
+show tables;
 
 --delete topic testtopic;

@@ -238,12 +238,12 @@ func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullE
 }
 
 func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, error) {
-	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select name from tables where schema_name='%s' order by name", session.Schema.Name))
+	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select name, kind from tables where schema_name='%s' and kind <> 'internal' order by kind, name", session.Schema.Name))
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	staticRows, err := exec.NewStaticRows([]string{"table"}, rows)
+	staticRows, err := exec.NewStaticRows([]string{"table", "kind"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 
