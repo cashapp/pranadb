@@ -85,7 +85,7 @@ func init() {
 	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
 	logger.GetLogger("raft").SetLevel(logger.WARNING)
 	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.CRITICAL)
+	logger.GetLogger("transport").SetLevel(logger.WARNING)
 	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 

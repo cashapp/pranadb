@@ -107,7 +107,7 @@ func (c *CreateMVCommand) OnPhase(phase int32) error {
 }
 
 func (c *CreateMVCommand) NumPhases() int {
-	return 5
+	return 3
 }
 
 func (c *CreateMVCommand) onPrepare() error {

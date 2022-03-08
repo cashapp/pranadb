@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/lni/dragonboat/v3/logger"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -40,7 +41,7 @@ import (
 )
 
 const (
-	TestPrefix         = "basic_source" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -108,6 +109,8 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 		FullTimestamp:          true,
 		DisableLevelTruncation: true,
 	})
+
+	logger.GetLogger("transport").SetLevel(logger.WARNING) // Get a lot of spam in the logs otherwise
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
