@@ -4,16 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/squareup/pranadb/errors"
 
@@ -21,21 +15,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/sharder"
-)
-
-var (
-	producedCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "msg_gen_produced_total",
-		Help: "Total number of kafka messages written",
-	})
-	producedErrorsCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "msg_gen_errors_total",
-		Help: "Total number of errors",
-	})
-	producedDurationMicroObserver = promauto.NewSummary(prometheus.SummaryOpts{
-		Name: "msg_gen_duration",
-		Help: "Duration of message processing",
-	})
 )
 
 // MessageGenerator - quick and dirty Kafka message generator for demos, tests etc
@@ -140,20 +119,6 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			Time:      msg.TimeStamp,
 			Headers:   kheaders,
 		}
-		var e error
-		start := time.Now()
-
-		// setup function cleanup and reporting
-		defer func() {
-			durationMicro := time.Since(start).Microseconds()
-
-			producedCounter.Inc()
-			producedDurationMicroObserver.Observe(float64(durationMicro))
-
-			if r := recover(); r != nil || e != nil {
-				producedErrorsCounter.Inc()
-			}
-		}()
 
 		if e := producer.WriteMessages(context.Background(), kmsg); e != nil {
 			return errors.WithStack(e)
@@ -184,14 +149,6 @@ func setProperty(cfg *kafkaclient.Writer, k, v string) error {
 		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
 	default:
 		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s:%s", k, v))
-	}
-	return nil
-}
-
-func MetricsServer() error {
-	http.Handle("/metrics", promhttp.Handler())
-	if err := http.ListenAndServe(":2113", nil); err != nil {
-		return errors.WithStack(err)
 	}
 	return nil
 }
