@@ -110,7 +110,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 		DisableLevelTruncation: true,
 	})
 
-	logger.GetLogger("transport").SetLevel(logger.WARNING) // Get a lot of spam in the logs otherwise
+	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam in the logs otherwise
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
