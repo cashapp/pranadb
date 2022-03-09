@@ -15,6 +15,7 @@ const (
 	OffsetsTableID  = 10
 	ProtobufTableID = 11
 	IndexTableID    = 12
+	ToDeleteTableID = 13
 
 	UserTableIDBase = 1000
 )

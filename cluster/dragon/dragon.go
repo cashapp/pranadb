@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/squareup/pranadb/table"
 	"os"
 	"path/filepath"
 	"sync"
@@ -42,6 +43,8 @@ const (
 	retryTimeout = 10 * time.Minute
 
 	callTimeout = 5 * time.Second
+
+	toDeleteShardID uint64 = 4
 )
 
 func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
@@ -223,7 +226,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return nil
 	}
 
-	log.Infof("Starting dragon on node %d", d.cnf.NodeID)
+	log.Tracef("Starting dragon on node %d", d.cnf.NodeID)
 
 	if d.remoteQueryExecutionCallback == nil {
 		panic("remote query execution callback must be set before start")
@@ -249,7 +252,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	}
 	d.pebble = peb
 
-	log.Infof("Opened pebble on node %d", d.cnf.NodeID)
+	log.Tracef("Opened pebble on node %d", d.cnf.NodeID)
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
@@ -274,57 +277,62 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	}
 	d.nh = nh
 
-	log.Infof("Joining groups on node %d", d.cnf.NodeID)
+	log.Tracef("Joining groups on node %d", d.cnf.NodeID)
 
 	err = d.joinSequenceGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Infof("Joined sequence group on node %d", d.cnf.NodeID)
+	log.Tracef("Joined sequence group on node %d", d.cnf.NodeID)
 
 	err = d.joinLockGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Infof("Joined lock group on node %d", d.cnf.NodeID)
+	log.Tracef("Joined lock group on node %d", d.cnf.NodeID)
 
 	err = d.joinShardGroups()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Infof("Joined shard groups on node %d", d.cnf.NodeID)
+	log.Tracef("Joined shard groups on node %d", d.cnf.NodeID)
 
 	err = d.joinNodesStartedGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Infof("Joined node started group on node %d", d.cnf.NodeID)
+	log.Tracef("Joined node started group on node %d", d.cnf.NodeID)
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
 	log.Infof("Prana node %d waiting for cluster to start", d.cnf.NodeID)
 
-	log.Info("Checking all data shards are alive")
+	log.Trace("Checking all data shards are alive")
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	log.Info("Checking lock shard is alive")
+	log.Trace("Checking lock shard is alive")
 	if err := d.ExecutePingLookup(locksClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
-	log.Info("Checking sequence shard is alive")
+	log.Trace("Checking sequence shard is alive")
 	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
-	log.Info("Checking nodes started shard is alive")
+	log.Trace("Checking nodes started shard is alive")
 	if err := d.ExecutePingLookup(nodesStartedClusterID, nil); err != nil {
+		return errors.WithStack(err)
+	}
+
+	log.Trace("Checking for any to_delete data to delete")
+	if err := d.checkDeleteToDeleteData(); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -511,10 +519,21 @@ func (d *Dragon) DeleteAllDataInRangeForShardLocally(theShardID uint64, startPre
 	endPrefixWithShard := make([]byte, 0, 16)
 	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
 	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+	batch := d.pebble.NewBatch()
+	if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
+		return errors.WithStack(err)
+	}
+	if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
 
-	pebBatch := d.pebble.NewBatch()
-
-	return errors.WithStack(pebBatch.DeleteRange(startPrefixWithShard, endPrefixWithShard, nosyncWriteOptions))
+func (d *Dragon) deleteAllDataInRangeLocally(batch *pebble.Batch, startPrefix []byte, endPrefix []byte) error {
+	if err := batch.DeleteRange(startPrefix, endPrefix, nosyncWriteOptions); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func (d *Dragon) deleteAllDataInRangeForShard(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
@@ -527,15 +546,19 @@ func (d *Dragon) deleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
 	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
 
+	return d.deleteAllDataInRangeForShardFullPrefix(theShardID, startPrefixWithShard, endPrefixWithShard)
+}
+
+func (d *Dragon) deleteAllDataInRangeForShardFullPrefix(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
 	cs := d.nh.GetNoOPSession(theShardID)
 
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
 
-	buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefixWithShard)))
-	buff = append(buff, startPrefixWithShard...)
-	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefixWithShard)))
-	buff = append(buff, endPrefixWithShard...)
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefix)))
+	buff = append(buff, startPrefix...)
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefix)))
+	buff = append(buff, endPrefix...)
 
 	proposeRes, err := d.proposeWithRetry(cs, buff)
 	if err != nil {
@@ -845,6 +868,113 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		panic(fmt.Sprintf("not a sm result %v", smRes))
 	}
 	return smRes, errors.WithStack(err)
+}
+
+func (d *Dragon) AddPrefixesToDelete(local bool, prefixes ...[]byte) error {
+	batch := d.pebble.NewBatch()
+	for _, prefix := range prefixes {
+		key := createToDeleteKey(local, prefix)
+		if err := batch.Set(key, nil, nil); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+func (d *Dragon) RemovePrefixesToDelete(local bool, prefixes ...[]byte) error {
+	batch := d.pebble.NewBatch()
+	for _, prefix := range prefixes {
+		key := createToDeleteKey(local, prefix)
+		if err := batch.Delete(key, nil); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+const localFlagTrue byte = 1
+const localFlagFalse byte = 0
+
+func createToDeleteKey(local bool, prefix []byte) []byte {
+	key := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 17+len(prefix))
+	if local {
+		key = append(key, localFlagTrue)
+	} else {
+		key = append(key, localFlagFalse)
+	}
+	key = append(key, prefix...)
+	return key
+}
+
+func (d *Dragon) checkDeleteToDeleteData() error {
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 16)
+	keyEndPrefix := table.EncodeTableKeyPrefix(common.ToDeleteTableID+1, toDeleteShardID, 16)
+
+	kvPairs, err := d.LocalScan(keyStartPrefix, keyEndPrefix, -1)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	var localPrefixes [][]byte
+	var remotePrefixes [][]byte
+	for _, kvPair := range kvPairs {
+		b := kvPair.Key[16]
+		local := b == localFlagTrue
+		prefix := kvPair.Key[17:]
+		if local {
+			localPrefixes = append(localPrefixes, prefix)
+		} else {
+			remotePrefixes = append(remotePrefixes, prefix)
+		}
+	}
+
+	if len(localPrefixes) != 0 {
+		// Process the local deletes
+		batch := d.pebble.NewBatch()
+		for _, prefix := range localPrefixes {
+			log.Tracef("Deleting all local data with prefix %s", common.DumpDataKey(prefix))
+			endPrefix := common.IncrementBytesBigEndian(prefix)
+			if err := d.deleteAllDataInRangeLocally(batch, prefix, endPrefix); err != nil {
+				return err
+			}
+		}
+		if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	if len(remotePrefixes) != 0 {
+		// Process the replicated deletes
+		for _, prefix := range remotePrefixes {
+			log.Tracef("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
+			endPrefix := common.IncrementBytesBigEndian(prefix)
+			// shard id is first 8 bytes
+			shardID, _ := common.ReadUint64FromBufferBE(prefix, 0)
+			if err := d.deleteAllDataInRangeForShardFullPrefix(shardID, prefix, endPrefix); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Now remove from to_delete table
+	if len(localPrefixes) != 0 {
+		if err := d.RemovePrefixesToDelete(true, localPrefixes...); err != nil {
+			return err
+		}
+	}
+	if len(remotePrefixes) != 0 {
+		if err := d.RemovePrefixesToDelete(true, remotePrefixes...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ISystemEventListener implementation

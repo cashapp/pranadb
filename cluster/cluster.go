@@ -60,6 +60,11 @@ type Cluster interface {
 
 	ReleaseLock(prefix string) (bool, error)
 
+	// AddPrefixesToDelete Adds one or more key prefixes to delete from local storage at start-up
+	AddPrefixesToDelete(local bool, prefixes ...[]byte) error
+
+	RemovePrefixesToDelete(local bool, prefixes ...[]byte) error
+
 	Start() error
 
 	Stop() error
