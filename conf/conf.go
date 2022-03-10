@@ -53,6 +53,7 @@ type Config struct {
 	EnableMetrics                 bool
 	GlobalIngestLimitRowsPerSec   int
 	EnableFailureInjector         bool
+	ScreenDragonLogSpam           bool
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo

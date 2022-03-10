@@ -17,7 +17,7 @@
 package failinject
 
 import (
-	log "github.com/sirupsen/logrus"
+	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"os"
@@ -28,13 +28,9 @@ func NewInjector() Injector {
 	return &defaultInjector{}
 }
 
-func NewDummyInjector() Injector {
-	return &dummyInjector{}
-}
-
 type Injector interface {
 	RegisterFailpoint(name string, exit bool, err error) (Failpoint, error)
-	GetFailpoint(name string) (Failpoint, error)
+	GetFailpoint(name string) Failpoint
 	Start() error
 	Stop() error
 }
@@ -79,16 +75,16 @@ func (i *defaultInjector) RegisterFailpoint(name string, exit bool, err error) (
 	return fp, nil
 }
 
-func (i *defaultInjector) GetFailpoint(name string) (Failpoint, error) {
+func (i *defaultInjector) GetFailpoint(name string) Failpoint {
 	o, ok := i.failpoints.Load(name)
 	if !ok {
-		return nil, errors.Errorf("no failpoint registered with name %s", name)
+		panic(fmt.Sprintf("no failpoint registered with name %s", name))
 	}
 	fp, ok := o.(Failpoint)
 	if !ok {
 		panic("not a Failpoint")
 	}
-	return fp, nil
+	return fp
 }
 
 func (f *defaultFailpoint) Check() error {
@@ -96,7 +92,8 @@ func (f *defaultFailpoint) Check() error {
 		return nil
 	}
 	if f.exit {
-		log.Trace("Exiting as failpoint %s has been triggered", f.name)
+		// We write direct to stdout as log is buffered and line can be lost with exit right after
+		fmt.Printf("Exiting as failpoint %s has been triggered", f.name)
 		os.Exit(1)
 		return nil
 	}
@@ -108,38 +105,14 @@ func (f *defaultFailpoint) SetActive(active bool) {
 }
 
 func (i *defaultInjector) Start() error {
-	return nil
+	return i.registerFailpoints()
 }
 
 func (i *defaultInjector) Stop() error {
 	return nil
 }
 
-type dummyInjector struct {
-}
-
-func (d *dummyInjector) RegisterFailpoint(name string, exit bool, err error) (Failpoint, error) {
-	return &dummyFailpoint{}, nil
-}
-
-func (i *dummyInjector) GetFailpoint(name string) (Failpoint, error) {
-	return &dummyFailpoint{}, nil
-}
-
-func (i *dummyInjector) Start() error {
-	return nil
-}
-
-func (i *dummyInjector) Stop() error {
-	return nil
-}
-
-type dummyFailpoint struct {
-}
-
-func (df *dummyFailpoint) Check() error {
-	return nil
-}
-
-func (f *dummyFailpoint) SetActive(active bool) {
+func (i *defaultInjector) registerFailpoints() error {
+	_, err := i.RegisterFailpoint("create_mv", true, nil)
+	return err
 }

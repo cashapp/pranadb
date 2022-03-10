@@ -64,10 +64,9 @@ func NewCreateSourceCommand(e *Executor, schemaName string, sql string, tableSeq
 	}
 }
 
-func (c *CreateSourceCommand) BeforeLocal() error {
+func (c *CreateSourceCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	var err error
 	c.sourceInfo, err = c.getSourceInfo(c.ast)
 	if err != nil {
@@ -120,9 +119,9 @@ func (c *CreateSourceCommand) validate() error {
 func (c *CreateSourceCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
@@ -132,7 +131,7 @@ func (c *CreateSourceCommand) NumPhases() int {
 	return 2
 }
 
-func (c *CreateSourceCommand) onPrepare() error {
+func (c *CreateSourceCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -160,7 +159,7 @@ func (c *CreateSourceCommand) onPrepare() error {
 	return nil
 }
 
-func (c *CreateSourceCommand) onCommit() error {
+func (c *CreateSourceCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -173,12 +172,15 @@ func (c *CreateSourceCommand) onCommit() error {
 	return c.e.metaController.RegisterSource(c.sourceInfo)
 }
 
-func (c *CreateSourceCommand) AfterLocal() error {
+func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Update row in metadata tables table to prepare=false
-	return c.e.metaController.PersistSource(c.sourceInfo)
+	if phase == 0 {
+		// We persist the source *before* it is registered
+		return c.e.metaController.PersistSource(c.sourceInfo)
+	}
+	return nil
 }
 
 // nolint: gocyclo

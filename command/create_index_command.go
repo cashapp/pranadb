@@ -10,14 +10,15 @@ import (
 )
 
 type CreateIndexCommand struct {
-	lock           sync.Mutex
-	e              *Executor
-	pl             *parplan.Planner
-	schema         *common.Schema
-	createIndexSQL string
-	tableSequences []uint64
-	indexInfo      *common.IndexInfo
-	ast            *parser.CreateIndex
+	lock             sync.Mutex
+	e                *Executor
+	pl               *parplan.Planner
+	schema           *common.Schema
+	createIndexSQL   string
+	tableSequences   []uint64
+	indexInfo        *common.IndexInfo
+	ast              *parser.CreateIndex
+	prefixesToDelete [][]byte
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -64,37 +65,34 @@ func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string
 	}
 }
 
-func (c *CreateIndexCommand) BeforeLocal() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	var err error
-	c.indexInfo, err = c.getIndexInfo(c.ast)
-	return err
-}
-
 func (c *CreateIndexCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onFill()
-	case 2:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
 }
 
 func (c *CreateIndexCommand) NumPhases() int {
-	return 3
+	return 2
 }
 
-func (c *CreateIndexCommand) onPrepare() error {
-	return nil
+func (c *CreateIndexCommand) Before() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	var err error
+	c.indexInfo, err = c.getIndexInfo(c.ast)
+
+	// We store rows in the to_delete table - if index creation fails (e.g. node crashes) then on restart the index state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	c.prefixesToDelete, err = storeToDeletePrefixes(c.indexInfo.ID, c.e.cluster)
+	return err
 }
 
-func (c *CreateIndexCommand) onFill() error {
+func (c *CreateIndexCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -116,15 +114,35 @@ func (c *CreateIndexCommand) onFill() error {
 	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
 }
 
-func (c *CreateIndexCommand) onCommit() error {
+func (c *CreateIndexCommand) onPhase1() error {
 	// Now we register the index so it can be used in queries
 	return c.e.metaController.RegisterIndex(c.indexInfo)
 }
 
-func (c *CreateIndexCommand) AfterLocal() error {
+func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistIndex(c.indexInfo)
+	if phase == 0 {
+		// We persist the index after it's been filled but *before* it's been registered
+		return c.e.metaController.PersistIndex(c.indexInfo)
+	}
+	/*
+		FIXME, FIXME
+		When to remove prefixes to delete?
+
+		If we do this before persisting in tables table then if it crashes before recording in tables table then we will
+		have orphaned rows
+
+		If we do this *after* persisting in tables table, then if crash happens after recording in tables table but before
+		removing from to_delete table, then rows will be deleted from MV on restart!.
+
+		Solution: we need to write into the tables table and delete from the to_delete table in the same write batch
+
+		-- Same for MVs!
+
+	*/
+
+	return nil
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {

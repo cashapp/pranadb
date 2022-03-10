@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync/atomic"
 
@@ -32,6 +33,7 @@ type Executor struct {
 	protoRegistry     protolib.Resolver
 	sessionIDSequence int64
 	ddlRunner         *DDLCommandRunner
+	failureInjector   failinject.Injector
 }
 
 type sessCloser struct {
@@ -50,8 +52,9 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 		notifClient:       notifClient,
 		protoRegistry:     protoRegistry,
 		sessionIDSequence: -1,
+		failureInjector:   failureInjector,
 	}
-	commandRunner := NewDDLCommandRunner(ex, failureInjector)
+	commandRunner := NewDDLCommandRunner(ex)
 	ex.ddlRunner = commandRunner
 	return ex
 }
@@ -252,4 +255,22 @@ func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, err
 
 func (e *Executor) RunningCommands() int {
 	return e.ddlRunner.runningCommands()
+}
+
+func (e *Executor) FailureInjector() failinject.Injector {
+	return e.failureInjector
+}
+
+func storeToDeletePrefixes(tableID uint64, clust cluster.Cluster) ([][]byte, error) {
+	// We record prefixes in the to_delete table - this makes sure MV data is deleted on restart if failure occurs
+	// after this
+	var prefixes [][]byte
+	for _, shardID := range clust.GetAllShardIDs() {
+		prefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
+		prefixes = append(prefixes, prefix)
+	}
+	if err := clust.AddPrefixesToDelete(false, prefixes...); err != nil {
+		return nil, err
+	}
+	return prefixes, nil
 }

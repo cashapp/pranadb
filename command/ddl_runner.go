@@ -1,7 +1,6 @@
 package command
 
 import (
-	"github.com/squareup/pranadb/failinject"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,12 +26,14 @@ type DDLCommand interface {
 
 	TableSequences() []uint64
 
-	BeforeLocal() error
-
-	AfterLocal() error
+	// Before is called on the originating node before the first phase
+	Before() error
 
 	// OnPhase is called on every node in the cluster passing in the phase
 	OnPhase(phase int32) error
+
+	// AfterPhase is called on the originating node once successful responses from the specified phase have been returned
+	AfterPhase(phase int32) error
 
 	LockName() string
 
@@ -51,18 +52,11 @@ const (
 	DDLCommandTypeDropIndex
 )
 
-func NewDDLCommandRunner(ce *Executor, failureInjector failinject.Injector) *DDLCommandRunner {
-	fp, err := failureInjector.RegisterFailpoint("create_mv", true, nil)
-	if err != nil {
-		panic(err.Error())
-	}
+func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	return &DDLCommandRunner{
-		ce:              ce,
-		commands:        make(map[string]DDLCommand),
-		idSeq:           -1,
-		failureInjector: failureInjector,
-
-		createMVFP: fp,
+		ce:       ce,
+		commands: make(map[string]DDLCommand),
+		idSeq:    -1,
 	}
 }
 
@@ -86,13 +80,10 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 }
 
 type DDLCommandRunner struct {
-	lock            sync.Mutex
-	ce              *Executor
-	commands        map[string]DDLCommand
-	idSeq           int64
-	failureInjector failinject.Injector
-
-	createMVFP failinject.Failpoint
+	lock     sync.Mutex
+	ce       *Executor
+	commands map[string]DDLCommand
+	idSeq    int64
 }
 
 func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint64) string {
@@ -171,15 +162,18 @@ func (d *DDLCommandRunner) releaseLock(lockName string) {
 }
 
 func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
-	if err := command.BeforeLocal(); err != nil {
+	if err := command.Before(); err != nil {
 		return errors.WithStack(err)
 	}
 	for phase := 0; phase < command.NumPhases(); phase++ {
 		if err := d.broadcastDDL(int32(phase), ddlInfo); err != nil {
 			return errors.WithStack(err)
 		}
+		if err := command.AfterPhase(int32(phase)); err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	return command.AfterLocal()
+	return nil
 }
 
 func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLStatementInfo) error {

@@ -35,6 +35,7 @@ create source test_source_1(
 select * from test_source_1 order by col0;
 
 -- trigger a failure;
+-- activate failpoint create_mv 0;
 create materialized view test_mv_1 as select * from test_source_1;
 
 --restart cluster;

@@ -376,7 +376,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 }
 
 func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) (chan error, error) {
-	log.Info("Starting replay from snapshot")
+	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -386,7 +386,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, mover)
 		snapshot.Close()
 		ch <- err
-		log.Info("Replay from snapshot complete")
+		log.Trace("Replay from snapshot complete")
 	}()
 
 	return ch, nil
@@ -430,7 +430,7 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 				}
 				startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
 				numRows += len(kvp)
-				log.Infof("filled batch of %d", len(kvp))
+				log.Tracef("filled batch of %d", len(kvp))
 			}
 		}()
 	}

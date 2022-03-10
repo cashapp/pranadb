@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/table"
 	"os"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/logger"
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
@@ -81,15 +81,6 @@ func (s *snapshot) Close() {
 	if err := s.pebbleSnapshot.Close(); err != nil {
 		log.Errorf("failed to close snapshot %+v", err)
 	}
-}
-
-func init() {
-	// This should be customizable, but these are good defaults
-	logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
-	logger.GetLogger("raft").SetLevel(logger.WARNING)
-	logger.GetLogger("rsm").SetLevel(logger.WARNING)
-	logger.GetLogger("transport").SetLevel(logger.WARNING)
-	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 }
 
 func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
@@ -224,6 +215,21 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	defer d.lock.Unlock()
 	if d.started {
 		return nil
+	}
+
+	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
+	if d.cnf.ScreenDragonLogSpam {
+		logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
+		logger.GetLogger("raft").SetLevel(logger.ERROR)
+		logger.GetLogger("rsm").SetLevel(logger.ERROR)
+		logger.GetLogger("transport").SetLevel(logger.CRITICAL)
+		logger.GetLogger("grpc").SetLevel(logger.ERROR)
+	} else {
+		logger.GetLogger("dragonboat").SetLevel(logger.WARNING)
+		logger.GetLogger("raft").SetLevel(logger.WARNING)
+		logger.GetLogger("rsm").SetLevel(logger.WARNING)
+		logger.GetLogger("transport").SetLevel(logger.WARNING)
+		logger.GetLogger("grpc").SetLevel(logger.WARNING)
 	}
 
 	log.Tracef("Starting dragon on node %d", d.cnf.NodeID)

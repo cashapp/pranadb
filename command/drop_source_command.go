@@ -9,13 +9,14 @@ import (
 )
 
 type DropSourceCommand struct {
-	lock        sync.Mutex
-	e           *Executor
-	schemaName  string
-	sql         string
-	sourceName  string
-	sourceInfo  *common.SourceInfo
-	originating bool
+	lock             sync.Mutex
+	e                *Executor
+	schemaName       string
+	sql              string
+	sourceName       string
+	sourceInfo       *common.SourceInfo
+	originating      bool
+	prefixesToDelete [][]byte
 }
 
 func (c *DropSourceCommand) CommandType() DDLCommandType {
@@ -56,7 +57,7 @@ func NewDropSourceCommand(e *Executor, schemaName string, sql string) *DropSourc
 	}
 }
 
-func (c *DropSourceCommand) BeforeLocal() error {
+func (c *DropSourceCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -80,9 +81,9 @@ func (c *DropSourceCommand) BeforeLocal() error {
 func (c *DropSourceCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
@@ -92,7 +93,7 @@ func (c *DropSourceCommand) NumPhases() int {
 	return 2
 }
 
-func (c *DropSourceCommand) onPrepare() error {
+func (c *DropSourceCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -115,7 +116,7 @@ func (c *DropSourceCommand) onPrepare() error {
 	return src.Stop()
 }
 
-func (c *DropSourceCommand) onCommit() error {
+func (c *DropSourceCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -132,12 +133,29 @@ func (c *DropSourceCommand) onCommit() error {
 	return nil
 }
 
-func (c *DropSourceCommand) AfterLocal() error {
+func (c *DropSourceCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Delete the source from the tables table
-	return c.e.metaController.DeleteSource(c.sourceInfo.ID)
+	switch phase {
+	case 0:
+		// We record prefixes in the to_delete table - this makes sure MV data is deleted on restart if failure occurs
+		// after this
+		var err error
+		c.prefixesToDelete, err = storeToDeletePrefixes(c.sourceInfo.ID, c.e.cluster)
+		if err != nil {
+			return err
+		}
+
+		// Delete the source from the tables table - this must happen before the source data is deleted or we can
+		// end up with partial source on recovery after failure
+		return c.e.metaController.DeleteSource(c.sourceInfo.ID)
+	case 1:
+		// Now delete rows from the to_delete table
+		return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+	}
+
+	return nil
 }
 
 func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
