@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/failinject"
 	"strings"
 	"sync/atomic"
 
@@ -38,7 +39,9 @@ type sessCloser struct {
 	notifClient notifier.Client
 }
 
-func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine, cluster cluster.Cluster, notifClient notifier.Client, protoRegistry protolib.Resolver) *Executor {
+func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
+	cluster cluster.Cluster, notifClient notifier.Client, protoRegistry protolib.Resolver,
+	failureInjector failinject.Injector) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
@@ -48,7 +51,7 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 		protoRegistry:     protoRegistry,
 		sessionIDSequence: -1,
 	}
-	commandRunner := NewDDLCommandRunner(ex)
+	commandRunner := NewDDLCommandRunner(ex, failureInjector)
 	ex.ddlRunner = commandRunner
 	return ex
 }

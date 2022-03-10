@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/failinject"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,11 +51,18 @@ const (
 	DDLCommandTypeDropIndex
 )
 
-func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
+func NewDDLCommandRunner(ce *Executor, failureInjector failinject.Injector) *DDLCommandRunner {
+	fp, err := failureInjector.RegisterFailpoint("create_mv", true, nil)
+	if err != nil {
+		panic(err.Error())
+	}
 	return &DDLCommandRunner{
-		ce:       ce,
-		commands: make(map[string]DDLCommand),
-		idSeq:    -1,
+		ce:              ce,
+		commands:        make(map[string]DDLCommand),
+		idSeq:           -1,
+		failureInjector: failureInjector,
+
+		createMVFP: fp,
 	}
 }
 
@@ -78,10 +86,13 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 }
 
 type DDLCommandRunner struct {
-	lock     sync.Mutex
-	ce       *Executor
-	commands map[string]DDLCommand
-	idSeq    int64
+	lock            sync.Mutex
+	ce              *Executor
+	commands        map[string]DDLCommand
+	idSeq           int64
+	failureInjector failinject.Injector
+
+	createMVFP failinject.Failpoint
 }
 
 func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint64) string {

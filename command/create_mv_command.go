@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/table"
 	"sync"
 
@@ -23,6 +24,8 @@ type CreateMVCommand struct {
 	mv               *push.MaterializedView
 	ast              *parser.CreateMaterializedView
 	prefixesToDelete [][]byte
+
+	fp failinject.Failpoint
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
