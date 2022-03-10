@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/table"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -13,14 +14,15 @@ import (
 )
 
 type CreateMVCommand struct {
-	lock           sync.Mutex
-	e              *Executor
-	pl             *parplan.Planner
-	schema         *common.Schema
-	createMVSQL    string
-	tableSequences []uint64
-	mv             *push.MaterializedView
-	ast            *parser.CreateMaterializedView
+	lock             sync.Mutex
+	e                *Executor
+	pl               *parplan.Planner
+	schema           *common.Schema
+	createMVSQL      string
+	tableSequences   []uint64
+	mv               *push.MaterializedView
+	ast              *parser.CreateMaterializedView
+	prefixesToDelete [][]byte
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -90,7 +92,14 @@ func (c *CreateMVCommand) BeforeLocal() error {
 	if rows.RowCount() != 0 {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
-	return nil
+
+	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the state will
+	// be cleaned up
+	for _, shardID := range c.e.cluster.GetAllShardIDs() {
+		prefix := table.EncodeTableKeyPrefix(mv.Info.ID, shardID, 16)
+		c.prefixesToDelete = append(c.prefixesToDelete, prefix)
+	}
+	return c.e.cluster.AddPrefixesToDelete(false, c.prefixesToDelete...)
 }
 
 func (c *CreateMVCommand) OnPhase(phase int32) error {
@@ -152,7 +161,12 @@ func (c *CreateMVCommand) onCommit() error {
 func (c *CreateMVCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables)
+	if err := c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
+		return err
+	}
+
+	// Now delete rows from the to_delete table
+	return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {

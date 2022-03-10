@@ -192,6 +192,14 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) AddPrefixesToDelete(local bool, prefixes ...[]byte) error {
+	return nil
+}
+
+func (t *testCluster) RemovePrefixesToDelete(local bool, prefixes ...[]byte) error {
+	return nil
+}
+
 func (t *testCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	return nil
 }

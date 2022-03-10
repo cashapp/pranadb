@@ -334,3 +334,11 @@ func (f *FakeCluster) getInternal(key *kvWrapper) []byte {
 	}
 	return nil
 }
+
+func (f *FakeCluster) AddPrefixesToDelete(local bool, prefixes ...[]byte) error {
+	return nil
+}
+
+func (f *FakeCluster) RemovePrefixesToDelete(local bool, prefixes ...[]byte) error {
+	return nil
+}

@@ -207,6 +207,15 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	return t.store.WriteBatchLocally(wb)
 }
 
+func (t *TableExecutor) addFillTableToDelete(fillTableID uint64, schedulers map[uint64]*sched.ShardScheduler) ([][]byte, error) {
+	var prefixes [][]byte
+	for shardID := range schedulers {
+		prefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 16)
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, t.store.AddPrefixesToDelete(true, prefixes...)
+}
+
 // FillTo - fills the specified PushExecutor with all the rows in the table and also captures any new changes that
 // might arrive while the fill is in progress. Once the fill is complete and the table executor and the push executor
 // are in sync then the operation completes
@@ -219,6 +228,11 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 		return errors.WithStack(err)
 	}
 	fillTableID += common.UserTableIDBase
+
+	prefixes, err := t.addFillTableToDelete(fillTableID, schedulers)
+	if err != nil {
+		return err
+	}
 
 	// Lock the executor so no rows can be processed
 	t.lock.Lock()
@@ -340,6 +354,10 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 		if err := t.store.DeleteAllDataInRangeForShardLocally(shardID, tableStartPrefix, tableEndPrefix); err != nil {
 			return errors.WithStack(err)
 		}
+	}
+
+	if err := t.store.RemovePrefixesToDelete(true, prefixes...); err != nil {
+		return err
 	}
 
 	log.Trace("Deleted all temp data")
