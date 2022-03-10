@@ -223,7 +223,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, m.Info.Name, schedulers, m.pe.mover)
+			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.mover, m.pe.failInject)
 			ch <- err
 		}()
 	}

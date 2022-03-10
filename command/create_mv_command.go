@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -13,15 +14,15 @@ import (
 )
 
 type CreateMVCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	pl               *parplan.Planner
-	schema           *common.Schema
-	createMVSQL      string
-	tableSequences   []uint64
-	mv               *push.MaterializedView
-	ast              *parser.CreateMaterializedView
-	prefixesToDelete [][]byte
+	lock           sync.Mutex
+	e              *Executor
+	pl             *parplan.Planner
+	schema         *common.Schema
+	createMVSQL    string
+	tableSequences []uint64
+	mv             *push.MaterializedView
+	ast            *parser.CreateMaterializedView
+	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -111,7 +112,7 @@ func (c *CreateMVCommand) Before() error {
 
 	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the MV state will
 	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
-	c.prefixesToDelete, err = storeToDeletePrefixes(mv.Info.ID, c.e.cluster)
+	c.toDeleteBatch, err = storeToDeleteBatch(mv.Info.ID, c.e.cluster)
 	return err
 }
 
@@ -140,12 +141,7 @@ func (c *CreateMVCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Fill the MV from it's feeding sources and MVs
-	if err := c.mv.Fill(); err != nil {
-		return err
-	}
-
-	// Maybe inject an error just after fill
-	return c.e.FailureInjector().GetFailpoint("create_mv").Check()
+	return c.mv.Fill()
 }
 
 func (c *CreateMVCommand) onPhase2() error {
@@ -165,6 +161,12 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 	defer c.lock.Unlock()
 	switch phase {
 	case 1:
+
+		// Maybe inject an error after fill but before row in tables table is persisted
+		if err := c.e.FailureInjector().GetFailpoint("create_mv_1").CheckFail(); err != nil {
+			return err
+		}
+
 		// We add the MV to the tables table once the fill phase is complete
 		// We only do this on the originating node
 		// We need to do this *before* the MV is available to clients otherwise a node failure and restart could cause
@@ -174,10 +176,13 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 		}
 	case 2:
 
-		// FIXME - if crash occurs before prefixes are removed then on restart data for perfectly ok mv can be deleted
-		
+		// Maybe inject an error after fill and after row in tables table is persisted but before to_delete rows removed
+		if err := c.e.FailureInjector().GetFailpoint("create_mv_2").CheckFail(); err != nil {
+			return err
+		}
+
 		// Now delete rows from the to_delete table
-		return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 	}
 	return nil
 }

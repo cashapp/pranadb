@@ -47,7 +47,7 @@ const (
 	toDeleteShardID uint64 = 4
 )
 
-func NewDragon(cnf conf.Config) (cluster.Cluster, error) {
+func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
@@ -68,9 +68,8 @@ type Dragon struct {
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
-
-	sl  sync.Mutex
-	sms []*ShardOnDiskStateMachine
+	sl                           sync.Mutex
+	sms                          []*ShardOnDiskStateMachine
 }
 
 type snapshot struct {
@@ -232,7 +231,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		logger.GetLogger("grpc").SetLevel(logger.WARNING)
 	}
 
-	log.Tracef("Starting dragon on node %d", d.cnf.NodeID)
+	log.Debugf("Starting dragon on node %d", d.cnf.NodeID)
 
 	if d.remoteQueryExecutionCallback == nil {
 		panic("remote query execution callback must be set before start")
@@ -258,7 +257,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	}
 	d.pebble = peb
 
-	log.Tracef("Opened pebble on node %d", d.cnf.NodeID)
+	log.Debugf("Opened pebble on node %d", d.cnf.NodeID)
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
@@ -283,62 +282,57 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	}
 	d.nh = nh
 
-	log.Tracef("Joining groups on node %d", d.cnf.NodeID)
+	log.Debugf("Joining groups on node %d", d.cnf.NodeID)
 
 	err = d.joinSequenceGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Tracef("Joined sequence group on node %d", d.cnf.NodeID)
+	log.Debugf("Joined sequence group on node %d", d.cnf.NodeID)
 
 	err = d.joinLockGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Tracef("Joined lock group on node %d", d.cnf.NodeID)
+	log.Debugf("Joined lock group on node %d", d.cnf.NodeID)
 
 	err = d.joinShardGroups()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Tracef("Joined shard groups on node %d", d.cnf.NodeID)
+	log.Debugf("Joined shard groups on node %d", d.cnf.NodeID)
 
 	err = d.joinNodesStartedGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	log.Tracef("Joined node started group on node %d", d.cnf.NodeID)
+	log.Debugf("Joined node started group on node %d", d.cnf.NodeID)
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
 	log.Infof("Prana node %d waiting for cluster to start", d.cnf.NodeID)
 
-	log.Trace("Checking all data shards are alive")
+	log.Debug("Checking all data shards are alive")
 	req := []byte{shardStateMachineLookupPing}
 	for _, shardID := range d.allShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	log.Trace("Checking lock shard is alive")
+	log.Debug("Checking lock shard is alive")
 	if err := d.ExecutePingLookup(locksClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
-	log.Trace("Checking sequence shard is alive")
+	log.Debug("Checking sequence shard is alive")
 	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
-	log.Trace("Checking nodes started shard is alive")
+	log.Debug("Checking nodes started shard is alive")
 	if err := d.ExecutePingLookup(nodesStartedClusterID, nil); err != nil {
-		return errors.WithStack(err)
-	}
-
-	log.Trace("Checking for any to_delete data to delete")
-	if err := d.checkDeleteToDeleteData(); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -675,12 +669,12 @@ func (d *Dragon) checkLogUpdates() {
 	time.AfterFunc(5*time.Second, func() {
 		d.sl.Lock()
 		defer d.sl.Unlock()
-		log.Trace("Checking if data shards updated")
+		log.Debug("Checking if data shards updated")
 		for _, sm := range d.sms {
 			sm.LogLastUpdate()
 		}
 		d.checkLogUpdates()
-		log.Trace("Done checking if data shards updated")
+		log.Debug("Done checking if data shards updated")
 	})
 }
 
@@ -866,7 +860,6 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 		return res, errors.WithStack(err)
 	}, retryTimeout)
 	if err != nil {
-		common.DumpStacks()
 		return statemachine.Result{}, errors.WithStack(err)
 	}
 	smRes, ok := r.(statemachine.Result)
@@ -876,10 +869,10 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 	return smRes, errors.WithStack(err)
 }
 
-func (d *Dragon) AddPrefixesToDelete(local bool, prefixes ...[]byte) error {
+func (d *Dragon) AddToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 	batch := d.pebble.NewBatch()
-	for _, prefix := range prefixes {
-		key := createToDeleteKey(local, prefix)
+	for _, prefix := range deleteBatch.Prefixes {
+		key := createToDeleteKey(deleteBatch.Local, deleteBatch.ConditionalTableID, prefix)
 		if err := batch.Set(key, nil, nil); err != nil {
 			return errors.WithStack(err)
 		}
@@ -890,10 +883,10 @@ func (d *Dragon) AddPrefixesToDelete(local bool, prefixes ...[]byte) error {
 	return nil
 }
 
-func (d *Dragon) RemovePrefixesToDelete(local bool, prefixes ...[]byte) error {
+func (d *Dragon) RemoveToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 	batch := d.pebble.NewBatch()
-	for _, prefix := range prefixes {
-		key := createToDeleteKey(local, prefix)
+	for _, prefix := range deleteBatch.Prefixes {
+		key := createToDeleteKey(deleteBatch.Local, deleteBatch.ConditionalTableID, prefix)
 		if err := batch.Delete(key, nil); err != nil {
 			return errors.WithStack(err)
 		}
@@ -907,18 +900,24 @@ func (d *Dragon) RemovePrefixesToDelete(local bool, prefixes ...[]byte) error {
 const localFlagTrue byte = 1
 const localFlagFalse byte = 0
 
-func createToDeleteKey(local bool, prefix []byte) []byte {
-	key := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 17+len(prefix))
+func createToDeleteKey(local bool, conditionalTableID uint64, prefix []byte) []byte {
+	key := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 16+1+8+len(prefix))
 	if local {
 		key = append(key, localFlagTrue)
 	} else {
 		key = append(key, localFlagFalse)
 	}
+	key = common.AppendUint64ToBufferBE(key, conditionalTableID)
 	key = append(key, prefix...)
 	return key
 }
 
-func (d *Dragon) checkDeleteToDeleteData() error {
+func (d *Dragon) PostStartChecks(queryExec common.SimpleQueryExec) error {
+	return d.checkDeleteToDeleteData(queryExec)
+}
+
+func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error { //nolint:gocyclo
+	log.Debug("Checking for any to_delete data to delete")
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ToDeleteTableID+1, toDeleteShardID, 16)
 
@@ -927,60 +926,116 @@ func (d *Dragon) checkDeleteToDeleteData() error {
 		return errors.WithStack(err)
 	}
 
-	var localPrefixes [][]byte
-	var remotePrefixes [][]byte
-	for _, kvPair := range kvPairs {
-		b := kvPair.Key[16]
-		local := b == localFlagTrue
-		prefix := kvPair.Key[17:]
-		if local {
-			localPrefixes = append(localPrefixes, prefix)
-		} else {
-			remotePrefixes = append(remotePrefixes, prefix)
-		}
-	}
+	var localBatches []*cluster.ToDeleteBatch
+	var remoteBatches []*cluster.ToDeleteBatch
+	var currBatch *cluster.ToDeleteBatch
 
-	if len(localPrefixes) != 0 {
-		// Process the local deletes
-		batch := d.pebble.NewBatch()
-		for _, prefix := range localPrefixes {
-			log.Tracef("Deleting all local data with prefix %s", common.DumpDataKey(prefix))
-			endPrefix := common.IncrementBytesBigEndian(prefix)
-			if err := d.deleteAllDataInRangeLocally(batch, prefix, endPrefix); err != nil {
-				return err
+	log.Printf("Got %d to_delete entries", len(kvPairs))
+
+	for _, kvPair := range kvPairs {
+		offset := 16
+		b := kvPair.Key[offset]
+		offset++
+		local := b == localFlagTrue
+		conditionalTableID, _ := common.ReadUint64FromBufferBE(kvPair.Key, offset)
+		offset += 8
+		prefix := kvPair.Key[offset:]
+
+		log.Printf("prefix is %s", common.DumpDataKey(prefix))
+
+		if currBatch == nil || currBatch.ConditionalTableID != conditionalTableID {
+			currBatch = &cluster.ToDeleteBatch{
+				Local:              local,
+				ConditionalTableID: conditionalTableID,
+			}
+			if local {
+				localBatches = append(localBatches, currBatch)
+			} else {
+				remoteBatches = append(remoteBatches, currBatch)
 			}
 		}
-		if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
+		currBatch.Prefixes = append(currBatch.Prefixes, prefix)
+	}
+
+	log.Printf("Num local to_delete %d num remote to_delete %d", len(localBatches), len(remoteBatches))
+
+	if len(localBatches) != 0 {
+		// Process the local deletes
+		log.Debug("We have local batches to delete")
+		pBatch := d.pebble.NewBatch()
+		for _, batch := range localBatches {
+			exists, err := d.tableExists(queryExec, batch.ConditionalTableID)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				for _, prefix := range batch.Prefixes {
+					log.Debugf("Deleting all local data with prefix %s", common.DumpDataKey(prefix))
+					endPrefix := common.IncrementBytesBigEndian(prefix)
+					if err := d.deleteAllDataInRangeLocally(pBatch, prefix, endPrefix); err != nil {
+						return err
+					}
+				}
+			} else {
+				// Conditional key exists - this means we do not delete the data
+				log.Debugf("Not deleting to_delete data as table with id %d exists", batch.ConditionalTableID)
+			}
+		}
+		if err := d.pebble.Apply(pBatch, nosyncWriteOptions); err != nil {
 			return errors.WithStack(err)
 		}
 	}
 
-	if len(remotePrefixes) != 0 {
+	if len(remoteBatches) != 0 {
+		log.Println("********** processing remote batches")
 		// Process the replicated deletes
-		for _, prefix := range remotePrefixes {
-			log.Tracef("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
-			endPrefix := common.IncrementBytesBigEndian(prefix)
-			// shard id is first 8 bytes
-			shardID, _ := common.ReadUint64FromBufferBE(prefix, 0)
-			if err := d.deleteAllDataInRangeForShardFullPrefix(shardID, prefix, endPrefix); err != nil {
+		for _, batch := range remoteBatches {
+			log.Println("Does the table exist?")
+			exists, err := d.tableExists(queryExec, batch.ConditionalTableID)
+			if err != nil {
+				log.Printf("failed to execute the fucking query %+v", err)
 				return err
+			}
+			log.Printf("Table %d exists? %t", batch.ConditionalTableID, exists)
+			if !exists {
+				log.Printf("Table does not exist, there are %d prefixes", len(batch.Prefixes))
+				for _, prefix := range batch.Prefixes {
+					log.Debugf("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
+					endPrefix := common.IncrementBytesBigEndian(prefix)
+					// shard id is first 8 bytes
+					shardID, _ := common.ReadUint64FromBufferBE(prefix, 0)
+					if err := d.deleteAllDataInRangeForShardFullPrefix(shardID, prefix, endPrefix); err != nil {
+						return err
+					}
+				}
+			} else {
+				log.Debug("Table exists so not deleting table data")
 			}
 		}
 	}
 
 	// Now remove from to_delete table
-	if len(localPrefixes) != 0 {
-		if err := d.RemovePrefixesToDelete(true, localPrefixes...); err != nil {
+	for _, batch := range localBatches {
+		if err := d.RemoveToDeleteBatch(batch); err != nil {
 			return err
 		}
 	}
-	if len(remotePrefixes) != 0 {
-		if err := d.RemovePrefixesToDelete(true, remotePrefixes...); err != nil {
+	for _, batch := range remoteBatches {
+		if err := d.RemoveToDeleteBatch(batch); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (d *Dragon) tableExists(queryExec common.SimpleQueryExec, id uint64) (bool, error) {
+	sql := fmt.Sprintf("select * from tables where id=%d", id)
+	rows, err := queryExec.ExecuteQuery("sys", sql)
+	if err != nil {
+		return false, err
+	}
+	return rows.RowCount() != 0, nil
 }
 
 // ISystemEventListener implementation

@@ -23,7 +23,7 @@ func NewDummyInjector() Injector {
 type dummyInjector struct {
 }
 
-func (d *dummyInjector) RegisterFailpoint(name string, exit bool, err error) (Failpoint, error) {
+func (d *dummyInjector) RegisterFailpoint(name string) (Failpoint, error) {
 	return &dummyFailpoint{}, nil
 }
 
@@ -42,9 +42,12 @@ func (d *dummyInjector) Stop() error {
 type dummyFailpoint struct {
 }
 
-func (df *dummyFailpoint) Check() error {
+func (df *dummyFailpoint) SetFailAction(action FailAction) {
+}
+
+func (df *dummyFailpoint) CheckFail() error {
 	return nil
 }
 
-func (df *dummyFailpoint) SetActive(active bool) {
+func (df *dummyFailpoint) Deactivate() {
 }

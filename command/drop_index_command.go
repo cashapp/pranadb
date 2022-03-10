@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -9,15 +10,15 @@ import (
 )
 
 type DropIndexCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	schemaName       string
-	sql              string
-	tableName        string
-	indexName        string
-	indexInfo        *common.IndexInfo
-	originating      bool
-	prefixesToDelete [][]byte
+	lock          sync.Mutex
+	e             *Executor
+	schemaName    string
+	sql           string
+	tableName     string
+	indexName     string
+	indexInfo     *common.IndexInfo
+	originating   bool
+	toDeleteBatch *cluster.ToDeleteBatch
 }
 
 func (c *DropIndexCommand) CommandType() DDLCommandType {
@@ -119,7 +120,7 @@ func (c *DropIndexCommand) AfterPhase(phase int32) error {
 		// We record prefixes in the to_delete table - this makes sure index data is deleted on restart if failure occurs
 		// after this
 		var err error
-		c.prefixesToDelete, err = storeToDeletePrefixes(c.indexInfo.ID, c.e.cluster)
+		c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
 		if err != nil {
 			return err
 		}
@@ -131,7 +132,7 @@ func (c *DropIndexCommand) AfterPhase(phase int32) error {
 		}
 	case 1:
 		// Now delete rows from the to_delete table
-		return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 	}
 	return nil
 }

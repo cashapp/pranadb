@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -10,15 +11,15 @@ import (
 )
 
 type CreateIndexCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	pl               *parplan.Planner
-	schema           *common.Schema
-	createIndexSQL   string
-	tableSequences   []uint64
-	indexInfo        *common.IndexInfo
-	ast              *parser.CreateIndex
-	prefixesToDelete [][]byte
+	lock           sync.Mutex
+	e              *Executor
+	pl             *parplan.Planner
+	schema         *common.Schema
+	createIndexSQL string
+	tableSequences []uint64
+	indexInfo      *common.IndexInfo
+	ast            *parser.CreateIndex
+	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -85,10 +86,13 @@ func (c *CreateIndexCommand) Before() error {
 	defer c.lock.Unlock()
 	var err error
 	c.indexInfo, err = c.getIndexInfo(c.ast)
+	if err != nil {
+		return err
+	}
 
 	// We store rows in the to_delete table - if index creation fails (e.g. node crashes) then on restart the index state will
 	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
-	c.prefixesToDelete, err = storeToDeletePrefixes(c.indexInfo.ID, c.e.cluster)
+	c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
 	return err
 }
 
@@ -123,25 +127,15 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if phase == 0 {
-		// We persist the index after it's been filled but *before* it's been registered
-		return c.e.metaController.PersistIndex(c.indexInfo)
+		// We persist the index after it's been filled but *before* it's been registered - otherwise in case of
+		// failure the index can disappear after it has been used
+		if err := c.e.metaController.PersistIndex(c.indexInfo); err != nil {
+			return err
+		}
+
+		// We can now remove from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 	}
-	/*
-		FIXME, FIXME
-		When to remove prefixes to delete?
-
-		If we do this before persisting in tables table then if it crashes before recording in tables table then we will
-		have orphaned rows
-
-		If we do this *after* persisting in tables table, then if crash happens after recording in tables table but before
-		removing from to_delete table, then rows will be deleted from MV on restart!.
-
-		Solution: we need to write into the tables table and delete from the to_delete table in the same write batch
-
-		-- Same for MVs!
-
-	*/
-
 	return nil
 }
 

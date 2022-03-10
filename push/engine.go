@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/squareup/pranadb/failinject"
 	"go.uber.org/ratelimit"
 	"math/rand"
 	"sync"
@@ -51,6 +52,7 @@ type Engine struct {
 	readyToReceive            common.AtomicBool
 	processBatchTimeHistogram metrics.Observer
 	globalRateLimiter         ratelimit.Limiter
+	failInject                failinject.Injector
 }
 
 var (
@@ -78,7 +80,8 @@ type remoteRowsHandler interface {
 	HandleRemoteRows(rowsBatch exec.RowsBatch, ctx *exec.ExecutionContext) error
 }
 
-func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver, metrics *metrics.Server) *Engine {
+func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
+	queryExec common.SimpleQueryExec, registry protolib.Resolver, failInject failinject.Injector) *Engine {
 	// We limit the ingest rate of the source to this value - this prevents the node getting overloaded which can result
 	// in unstable behaviour
 	var rl ratelimit.Limiter
@@ -98,6 +101,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		protoRegistry:             registry,
 		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
 		globalRateLimiter:         rl,
+		failInject:                failInject,
 	}
 	engine.createMaps()
 	return &engine
@@ -237,7 +241,7 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, schedulers, p.mover); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.mover, p.failInject); err != nil {
 			return err
 		}
 	} else {

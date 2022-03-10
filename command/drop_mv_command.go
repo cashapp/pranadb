@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -10,15 +11,15 @@ import (
 )
 
 type DropMVCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	schemaName       string
-	sql              string
-	mvName           string
-	mv               *push.MaterializedView
-	schema           *common.Schema
-	originating      bool
-	prefixesToDelete [][]byte
+	lock          sync.Mutex
+	e             *Executor
+	schemaName    string
+	sql           string
+	mvName        string
+	mv            *push.MaterializedView
+	schema        *common.Schema
+	originating   bool
+	toDeleteBatch *cluster.ToDeleteBatch
 }
 
 func (c *DropMVCommand) CommandType() DDLCommandType {
@@ -137,7 +138,7 @@ func (c *DropMVCommand) AfterPhase(phase int32) error {
 	switch phase {
 	case 0:
 		var err error
-		c.prefixesToDelete, err = storeToDeletePrefixes(c.mv.Info.ID, c.e.cluster)
+		c.toDeleteBatch, err = storeToDeleteBatch(c.mv.Info.ID, c.e.cluster)
 		if err != nil {
 			return err
 		}
@@ -147,7 +148,7 @@ func (c *DropMVCommand) AfterPhase(phase int32) error {
 		return c.e.metaController.DeleteMaterializedView(c.mv.Info, c.mv.InternalTables)
 	case 1:
 		// Now delete rows from the to_delete table
-		return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 	}
 	return nil
 }

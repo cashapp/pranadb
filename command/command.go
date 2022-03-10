@@ -68,6 +68,7 @@ func (e *Executor) Start() error {
 }
 
 func (e *Executor) Stop() error {
+	e.ddlRunner.clear()
 	return e.notifClient.Stop()
 }
 
@@ -261,16 +262,21 @@ func (e *Executor) FailureInjector() failinject.Injector {
 	return e.failureInjector
 }
 
-func storeToDeletePrefixes(tableID uint64, clust cluster.Cluster) ([][]byte, error) {
-	// We record prefixes in the to_delete table - this makes sure MV data is deleted on restart if failure occurs
+func storeToDeleteBatch(tableID uint64, clust cluster.Cluster) (*cluster.ToDeleteBatch, error) {
+	// We record prefixes in the to_delete table - this makes sure data is deleted on restart if failure occurs
 	// after this
 	var prefixes [][]byte
 	for _, shardID := range clust.GetAllShardIDs() {
 		prefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
 		prefixes = append(prefixes, prefix)
 	}
-	if err := clust.AddPrefixesToDelete(false, prefixes...); err != nil {
+	batch := &cluster.ToDeleteBatch{
+		Local:              false,
+		ConditionalTableID: tableID,
+		Prefixes:           prefixes,
+	}
+	if err := clust.AddToDeleteBatch(batch); err != nil {
 		return nil, err
 	}
-	return prefixes, nil
+	return batch, nil
 }

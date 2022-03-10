@@ -1,3 +1,8 @@
+--cluster only;
+
+-- This script tests that data created during a failed 'create materialized view' gets deleted from the database after;
+-- failure and restart;
+
 --create topic testtopic;
 use test;
 0 rows returned
@@ -48,99 +53,74 @@ select * from test_source_1 order by col0;
 |10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
 10 rows returned
 
--- we create the MV after the source is full of data;
+-- trigger a failure after a new MV has been filled but before it's been persisted to the tables table;
+-- in this case. The data in the MV should be deleted on restart after failure;
+
+--activate failpoint create_mv_1 -1;
+
 create materialized view test_mv_1 as select * from test_source_1;
+Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+
+--deactivate failpoint create_mv_1 -1;
+--restart cluster;
+
+use test;
 0 rows returned
 
--- The MV should have the data;
-select * from test_mv_1 order by col0;
-|col0|col1|col2|col3|col4|col5|col6|
-|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
-|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|4|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
-|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
-10 rows returned
+-- MV shouldn't exist;
+select * from test_mv_1;
+Failed to execute statement: PDB0002 - Table 'test.test_mv_1' doesn't exist
 
--- now create a second MV from the first MV;
-create materialized view test_mv_2 as select * from test_mv_1;
+-- trigger a failure after MV has been filled and persisted to storage but before to_delete rows have been removed
+-- at the end of the create MV process. In this case the MV should exist after restart;
+
+--activate failpoint create_mv_2 -1;
+
+create materialized view test_mv_2 as select * from test_source_1;
+Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+
+--deactivate failpoint create_mv_2 -1;
+--restart cluster;
+
+use test;
 0 rows returned
 
--- This MV should have the data too;
-select * from test_mv_2 order by col0;
+-- MV should exist;
+select * from test_mv_2;
 |col0|col1|col2|col3|col4|col5|col6|
-|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
 |2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|4|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
 |10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
 10 rows returned
-
--- Now load more data into test_source_1, it should appear in both MVs;
---load data dataset_2;
-
-select * from test_mv_1 order by col0;
-|col0|col1|col2|col3|col4|col5|col6|
-|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
-|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|4|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
-|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
-|11|110|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
-|12|210|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|13|310|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|14|410|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|15|510|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|16|610|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|17|710|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|18|810|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|19|910|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
-|20|1100|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
-20 rows returned
-select * from test_mv_2 order by col0;
-|col0|col1|col2|col3|col4|col5|col6|
-|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
-|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|4|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
-|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
-|11|110|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
-|12|210|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
-|13|310|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
-|14|410|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
-|15|510|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
-|16|610|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
-|17|710|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
-|18|810|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
-|19|910|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
-|20|1100|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
-20 rows returned
 
 drop materialized view test_mv_2;
 0 rows returned
-drop materialized view test_mv_1;
-0 rows returned
-drop source test_source_1;
+
+-- trigger a failure when an MV been fill has been mainly processed but the temporary row used in tableExecutor.FillTo();
+-- haven't been deleted from the to_delete table yet;
+
+--activate failpoint fill_to_1 2;
+
+create materialized view test_mv_3 as select * from test_source_1;
+Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+
+--deactivate failpoint fill_to_1 2;
+--restart cluster;
+
+use test;
 0 rows returned
 
+-- MV shouldn't exist;
+select * from test_mv_3;
+Failed to execute statement: PDB0002 - Table 'test.test_mv_3' doesn't exist
+
+drop source test_source_1;
+0 rows returned
 --delete topic testtopic;

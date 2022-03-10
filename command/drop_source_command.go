@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -9,14 +10,14 @@ import (
 )
 
 type DropSourceCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	schemaName       string
-	sql              string
-	sourceName       string
-	sourceInfo       *common.SourceInfo
-	originating      bool
-	prefixesToDelete [][]byte
+	lock          sync.Mutex
+	e             *Executor
+	schemaName    string
+	sql           string
+	sourceName    string
+	sourceInfo    *common.SourceInfo
+	originating   bool
+	toDeleteBatch *cluster.ToDeleteBatch
 }
 
 func (c *DropSourceCommand) CommandType() DDLCommandType {
@@ -142,7 +143,7 @@ func (c *DropSourceCommand) AfterPhase(phase int32) error {
 		// We record prefixes in the to_delete table - this makes sure MV data is deleted on restart if failure occurs
 		// after this
 		var err error
-		c.prefixesToDelete, err = storeToDeletePrefixes(c.sourceInfo.ID, c.e.cluster)
+		c.toDeleteBatch, err = storeToDeleteBatch(c.sourceInfo.ID, c.e.cluster)
 		if err != nil {
 			return err
 		}
@@ -152,7 +153,7 @@ func (c *DropSourceCommand) AfterPhase(phase int32) error {
 		return c.e.metaController.DeleteSource(c.sourceInfo.ID)
 	case 1:
 		// Now delete rows from the to_delete table
-		return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 	}
 
 	return nil

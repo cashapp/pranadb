@@ -18,90 +18,87 @@ package failinject
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"os"
 	"sync"
 )
 
 func NewInjector() Injector {
-	return &defaultInjector{}
+	return &defaultInjector{failpoints: make(map[string]*defaultFailpoint)}
 }
 
 type Injector interface {
-	RegisterFailpoint(name string, exit bool, err error) (Failpoint, error)
+	RegisterFailpoint(name string) (Failpoint, error)
 	GetFailpoint(name string) Failpoint
 	Start() error
 	Stop() error
 }
 
 type Failpoint interface {
-	Check() error
-	SetActive(active bool)
+	CheckFail() error
+	SetFailAction(action FailAction)
+	Deactivate()
 }
 
+type FailAction func() error
+
 type defaultInjector struct {
-	failpoints sync.Map
+	failpoints map[string]*defaultFailpoint
 	lock       sync.Mutex
 }
 
 type defaultFailpoint struct {
-	name   string
-	error  error
-	exit   bool
-	active common.AtomicBool
+	name       string
+	active     common.AtomicBool
+	failAction FailAction
 }
 
-func (i *defaultInjector) RegisterFailpoint(name string, exit bool, err error) (Failpoint, error) {
+func (i *defaultInjector) RegisterFailpoint(name string) (Failpoint, error) {
+
+	log.Printf("Registering *** failpoint ** %s", name)
+
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	o, ok := i.failpoints.Load(name)
-	if ok {
-		fp, ok := o.(Failpoint)
-		if !ok {
-			panic("not a Failpoint")
-		}
-		return fp, nil
-	}
-	if !exit && err == nil {
-		return nil, errors.Error("if Failpoint is not Exit=true then an error must be specified")
-	}
 	fp := &defaultFailpoint{
-		name:  name,
-		error: err,
-		exit:  exit,
+		name: name,
 	}
-	i.failpoints.Store(name, fp)
+	i.failpoints[name] = fp
 	return fp, nil
 }
 
 func (i *defaultInjector) GetFailpoint(name string) Failpoint {
-	o, ok := i.failpoints.Load(name)
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	fp, ok := i.failpoints[name]
 	if !ok {
 		panic(fmt.Sprintf("no failpoint registered with name %s", name))
-	}
-	fp, ok := o.(Failpoint)
-	if !ok {
-		panic("not a Failpoint")
 	}
 	return fp
 }
 
-func (f *defaultFailpoint) Check() error {
+func (f *defaultFailpoint) CheckFail() error {
+	log.Printf("Checkfail called on %v", f)
 	if !f.active.Get() {
+		log.Println("Not active")
 		return nil
 	}
-	if f.exit {
-		// We write direct to stdout as log is buffered and line can be lost with exit right after
-		fmt.Printf("Exiting as failpoint %s has been triggered", f.name)
-		os.Exit(1)
-		return nil
+	if f.failAction == nil {
+		log.Println("No fail action")
+		return errors.Errorf("no fail action specfied for failpoint %s", f.name)
 	}
-	return f.error
+	log.Println("Running fail action")
+	return f.failAction()
 }
 
-func (f *defaultFailpoint) SetActive(active bool) {
-	f.active.Set(active)
+func (f *defaultFailpoint) SetFailAction(action FailAction) {
+	f.active.Set(true)
+	f.failAction = action
+}
+
+func (f *defaultFailpoint) Deactivate() {
+	f.active.Set(false)
+	f.failAction = nil
 }
 
 func (i *defaultInjector) Start() error {
@@ -113,6 +110,14 @@ func (i *defaultInjector) Stop() error {
 }
 
 func (i *defaultInjector) registerFailpoints() error {
-	_, err := i.RegisterFailpoint("create_mv", true, nil)
+	_, err := i.RegisterFailpoint("create_mv_1")
+	if err != nil {
+		return err
+	}
+	_, err = i.RegisterFailpoint("create_mv_2")
+	if err != nil {
+		return err
+	}
+	_, err = i.RegisterFailpoint("fill_to_1")
 	return err
 }

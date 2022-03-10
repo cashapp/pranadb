@@ -204,3 +204,9 @@ func (d *DDLCommandRunner) runningCommands() int {
 	defer d.lock.Unlock()
 	return len(d.commands)
 }
+
+func (d *DDLCommandRunner) clear() {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.commands = make(map[string]DDLCommand)
+}
