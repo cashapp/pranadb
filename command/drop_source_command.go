@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/meta"
 )
 
 type DropSourceCommand struct {
@@ -57,7 +56,7 @@ func NewDropSourceCommand(e *Executor, schemaName string, sql string) *DropSourc
 	}
 }
 
-func (c *DropSourceCommand) BeforePrepare() error {
+func (c *DropSourceCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -75,12 +74,25 @@ func (c *DropSourceCommand) BeforePrepare() error {
 	if len(consuming) != 0 {
 		return errors.NewSourceHasChildrenError(c.sourceInfo.SchemaName, c.sourceInfo.Name, consuming)
 	}
-
-	// Update row in tables table to mark it as pending delete
-	return c.e.metaController.PersistSource(sourceInfo, meta.PrepareStateDelete)
+	return nil
 }
 
-func (c *DropSourceCommand) OnPrepare() error {
+func (c *DropSourceCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *DropSourceCommand) NumPhases() int {
+	return 2
+}
+
+func (c *DropSourceCommand) onPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -103,7 +115,7 @@ func (c *DropSourceCommand) OnPrepare() error {
 	return src.Stop()
 }
 
-func (c *DropSourceCommand) OnCommit() error {
+func (c *DropSourceCommand) onCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -120,7 +132,7 @@ func (c *DropSourceCommand) OnCommit() error {
 	return nil
 }
 
-func (c *DropSourceCommand) AfterCommit() error {
+func (c *DropSourceCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

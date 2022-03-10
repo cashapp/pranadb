@@ -64,7 +64,7 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
-	log.Infof("locks shard update entries %d", len(entries))
+	log.Tracef("locks shard update entries %d", len(entries))
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	batch := s.dragon.pebble.NewBatch()
@@ -111,7 +111,7 @@ outer:
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	log.Info("locks shard updated")
+	log.Trace("locks shard updated")
 	return entries, nil
 }
 

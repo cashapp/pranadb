@@ -28,7 +28,7 @@ func (s *sequenceODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
-	log.Infof("sequence shard update entries %d", len(entries))
+	log.Tracef("sequence shard update entries %d", len(entries))
 	batch := s.dragon.pebble.NewBatch()
 	latestSeqVals := make(map[string][]byte)
 	for i, entry := range entries {
@@ -69,7 +69,7 @@ func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statema
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	log.Info("Sequence shard updated")
+	log.Trace("Sequence shard updated")
 	return entries, nil
 }
 

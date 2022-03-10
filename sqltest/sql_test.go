@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/lni/dragonboat/v3/logger"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -108,6 +109,8 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 		FullTimestamp:          true,
 		DisableLevelTruncation: true,
 	})
+
+	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam in the logs otherwise
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()

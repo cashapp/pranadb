@@ -19,21 +19,13 @@ const (
 	IndexDefTableName      = "indexes"
 )
 
-type PrepareState int
-
-const (
-	PrepareStateCommitted = iota
-	PrepareStateAdd
-	PrepareStateDelete
-)
-
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
 var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	ID:             common.SchemaTableID,
 	SchemaName:     SystemSchemaName,
 	Name:           TableDefTableName,
 	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name", "prepare_state"},
+	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
 	ColumnTypes: []common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
@@ -43,7 +35,6 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-		common.TinyIntColumnType,
 	},
 }}
 
@@ -52,14 +43,13 @@ var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 	SchemaName:     SystemSchemaName,
 	Name:           IndexDefTableName,
 	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "schema_name", "name", "index_info", "table_name", "prepare_state"},
+	ColumnNames:    []string{"id", "schema_name", "name", "index_info", "table_name"},
 	ColumnTypes: []common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-		common.TinyIntColumnType,
 	},
 }}
 
@@ -230,11 +220,11 @@ func (c *Controller) RegisterIndex(indexInfo *common.IndexInfo) error {
 	return schema.PutIndex(indexInfo)
 }
 
-func (c *Controller) PersistIndex(indexInfo *common.IndexInfo, prepareState PrepareState) error {
+func (c *Controller) PersistIndex(indexInfo *common.IndexInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo, prepareState), wb); err != nil {
+	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
 	return c.cluster.WriteBatch(wb)
@@ -279,25 +269,25 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	return nil
 }
 
-func (c *Controller) PersistSource(sourceInfo *common.SourceInfo, prepareState PrepareState) error {
+func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo, prepareState), wb); err != nil {
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
 	return c.cluster.WriteBatch(wb)
 }
 
-func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo, prepareState PrepareState) error {
+func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
-	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo, prepareState), wb); err != nil {
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
 	for _, info := range internalTables {
-		if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info, prepareState), wb); err != nil {
+		if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeInternalTableInfoToRow(info), wb); err != nil {
 			return errors.WithStack(err)
 		}
 	}

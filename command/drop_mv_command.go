@@ -6,7 +6,6 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/push"
 )
 
@@ -59,7 +58,7 @@ func NewDropMVCommand(e *Executor, schemaName string, sql string) *DropMVCommand
 	}
 }
 
-func (c *DropMVCommand) BeforePrepare() error {
+func (c *DropMVCommand) BeforeLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -73,12 +72,25 @@ func (c *DropMVCommand) BeforePrepare() error {
 	if len(consuming) != 0 {
 		return errors.NewMaterializedViewHasChildrenError(mv.Info.SchemaName, mv.Info.Name, consuming)
 	}
-
-	// Update row in tables table to mark it as pending delete
-	return c.e.metaController.PersistMaterializedView(mv.Info, mv.InternalTables, meta.PrepareStateDelete)
+	return nil
 }
 
-func (c *DropMVCommand) OnPrepare() error {
+func (c *DropMVCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPrepare()
+	case 1:
+		return c.onCommit()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *DropMVCommand) NumPhases() int {
+	return 2
+}
+
+func (c *DropMVCommand) onPrepare() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -106,7 +118,7 @@ func (c *DropMVCommand) OnPrepare() error {
 	return c.mv.Disconnect()
 }
 
-func (c *DropMVCommand) OnCommit() error {
+func (c *DropMVCommand) onCommit() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	// Remove the mv from the push engine and delete all it's data
@@ -118,7 +130,7 @@ func (c *DropMVCommand) OnCommit() error {
 	return c.mv.Drop(c.originating)
 }
 
-func (c *DropMVCommand) AfterCommit() error {
+func (c *DropMVCommand) AfterLocal() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

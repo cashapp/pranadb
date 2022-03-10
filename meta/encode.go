@@ -16,14 +16,13 @@ const (
 )
 
 // EncodeIndexInfoToRow encodes a common.IndexInfo into a database row.
-func EncodeIndexInfoToRow(info *common.IndexInfo, prepareState PrepareState) *common.Row {
+func EncodeIndexInfoToRow(info *common.IndexInfo) *common.Row {
 	rows := indexInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.ID))
 	rows.AppendStringToColumn(1, info.SchemaName)
 	rows.AppendStringToColumn(2, info.Name)
 	rows.AppendStringToColumn(3, jsonEncode(info))
 	rows.AppendStringToColumn(4, info.TableName)
-	rows.AppendInt64ToColumn(5, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }
@@ -36,7 +35,7 @@ func DecodeIndexInfoRow(row *common.Row) *common.IndexInfo {
 }
 
 // EncodeSourceInfoToRow encodes a common.SourceInfo into a database row.
-func EncodeSourceInfoToRow(info *common.SourceInfo, prepareState PrepareState) *common.Row {
+func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindSource)
@@ -46,7 +45,6 @@ func EncodeSourceInfoToRow(info *common.SourceInfo, prepareState PrepareState) *
 	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
 	rows.AppendNullToColumn(6)
 	rows.AppendNullToColumn(7)
-	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }
@@ -60,7 +58,7 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 }
 
 // EncodeMaterializedViewInfoToRow encodes a common.MaterializedViewInfo into a database row.
-func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo, prepareState PrepareState) *common.Row {
+func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindMaterializedView)
@@ -70,7 +68,6 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo, prepareS
 	rows.AppendNullToColumn(5)
 	rows.AppendStringToColumn(6, info.Query)
 	rows.AppendNullToColumn(7)
-	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }
@@ -85,7 +82,7 @@ func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo
 }
 
 // EncodeInternalTableInfoToRow encodes a common.InternalTableInfo into a database row.
-func EncodeInternalTableInfoToRow(info *common.InternalTableInfo, prepareState PrepareState) *common.Row {
+func EncodeInternalTableInfoToRow(info *common.InternalTableInfo) *common.Row {
 	rows := tableInfoRowsFactory.NewRows(1)
 	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
 	rows.AppendStringToColumn(1, TableKindInternal)
@@ -95,7 +92,6 @@ func EncodeInternalTableInfoToRow(info *common.InternalTableInfo, prepareState P
 	rows.AppendNullToColumn(5)
 	rows.AppendNullToColumn(6)
 	rows.AppendStringToColumn(7, info.MaterializedViewName)
-	rows.AppendInt64ToColumn(8, int64(prepareState))
 	row := rows.GetRow(0)
 	return &row
 }

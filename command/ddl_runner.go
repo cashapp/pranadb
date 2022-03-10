@@ -26,19 +26,17 @@ type DDLCommand interface {
 
 	TableSequences() []uint64
 
-	// BeforePrepare is called on the originating node only before prepare is broadcast
-	BeforePrepare() error
+	BeforeLocal() error
 
-	// OnPrepare is called on every node on receipt of prepare DDL notification
-	OnPrepare() error
+	AfterLocal() error
 
-	// OnCommit is called on every node on receipt of commit DDL notification
-	OnCommit() error
-
-	// AfterCommit is called on the originating node only after all responses from commit have returned
-	AfterCommit() error
+	// OnPhase is called on every node in the cluster passing in the phase
+	OnPhase(phase int32) error
 
 	LockName() string
+
+	// NumPhases returns the number of phases in the command
+	NumPhases() int
 }
 
 type DDLCommandType int
@@ -102,27 +100,26 @@ func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification
 		panic("not a ddl statement info")
 	}
 	skey := d.generateCommandKey(uint64(ddlInfo.GetOriginatingNodeId()), uint64(ddlInfo.GetCommandId()))
-	if ddlInfo.GetPrepare() {
-		// If this comes in on the originating node the command will already be there
-		com, ok := d.commands[skey]
+	com, ok := d.commands[skey]
+	phase := ddlInfo.GetPhase()
+	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
+	if phase == 0 {
 		if !ok {
+			if originatingNode {
+				return errors.Errorf("cannot find command with id %d:%d on originating node", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+			}
 			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(), ddlInfo.GetTableSequences())
 			d.commands[skey] = com
 		}
-		if err := com.OnPrepare(); err != nil {
-			return errors.WithStack(err)
-		}
-	} else {
-		com, ok := d.commands[skey]
-		if !ok {
-			return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
-		}
-		if err := com.OnCommit(); err != nil {
-			return errors.WithStack(err)
-		}
+	} else if !ok {
+		return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+	}
+	err := com.OnPhase(phase)
+	if phase == int32(com.NumPhases()-1) {
+		// Final phase so delete the command
 		delete(d.commands, skey)
 	}
-	return nil
+	return err
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
@@ -163,25 +160,20 @@ func (d *DDLCommandRunner) releaseLock(lockName string) {
 }
 
 func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
-	if err := command.BeforePrepare(); err != nil {
+	if err := command.BeforeLocal(); err != nil {
 		return errors.WithStack(err)
 	}
-	if err := d.broadcastDDL(true, ddlInfo); err != nil {
-		return errors.WithStack(err)
+	for phase := 0; phase < command.NumPhases(); phase++ {
+		if err := d.broadcastDDL(int32(phase), ddlInfo); err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	if err := d.broadcastDDL(false, ddlInfo); err != nil {
-		return errors.WithStack(err)
-	}
-	return command.AfterCommit()
+	return command.AfterLocal()
 }
 
-func (d *DDLCommandRunner) broadcastDDL(prepare bool, ddlInfo *notifications.DDLStatementInfo) error {
+func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLStatementInfo) error {
 	// Broadcast DDL and wait for responses
-
-	// Broadcast should reach all nodes in the cluster, if a node has died, no DDL can be processed until it is
-	// brought back up. This can be some minutes later so we retry indefinitely. It should not be aborted unless
-	// the command is aborted by the user
-	ddlInfo.Prepare = prepare
+	ddlInfo.Phase = phase
 	return d.ce.notifClient.BroadcastSync(ddlInfo)
 }
 
