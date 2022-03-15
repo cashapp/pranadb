@@ -930,7 +930,7 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 	var remoteBatches []*cluster.ToDeleteBatch
 	var currBatch *cluster.ToDeleteBatch
 
-	log.Printf("Got %d to_delete entries", len(kvPairs))
+	log.Debugf("There are %d to_delete entries", len(kvPairs))
 
 	for _, kvPair := range kvPairs {
 		offset := 16
@@ -940,8 +940,6 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 		conditionalTableID, _ := common.ReadUint64FromBufferBE(kvPair.Key, offset)
 		offset += 8
 		prefix := kvPair.Key[offset:]
-
-		log.Printf("prefix is %s", common.DumpDataKey(prefix))
 
 		if currBatch == nil || currBatch.ConditionalTableID != conditionalTableID {
 			currBatch = &cluster.ToDeleteBatch{
@@ -957,11 +955,8 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 		currBatch.Prefixes = append(currBatch.Prefixes, prefix)
 	}
 
-	log.Printf("Num local to_delete %d num remote to_delete %d", len(localBatches), len(remoteBatches))
-
 	if len(localBatches) != 0 {
 		// Process the local deletes
-		log.Debug("We have local batches to delete")
 		pBatch := d.pebble.NewBatch()
 		for _, batch := range localBatches {
 			exists, err := d.tableExists(queryExec, batch.ConditionalTableID)
@@ -987,18 +982,14 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 	}
 
 	if len(remoteBatches) != 0 {
-		log.Println("********** processing remote batches")
 		// Process the replicated deletes
 		for _, batch := range remoteBatches {
-			log.Println("Does the table exist?")
 			exists, err := d.tableExists(queryExec, batch.ConditionalTableID)
 			if err != nil {
-				log.Printf("failed to execute the fucking query %+v", err)
 				return err
 			}
-			log.Printf("Table %d exists? %t", batch.ConditionalTableID, exists)
 			if !exists {
-				log.Printf("Table does not exist, there are %d prefixes", len(batch.Prefixes))
+				log.Debugf("Table does not exist, there are %d prefixes", len(batch.Prefixes))
 				for _, prefix := range batch.Prefixes {
 					log.Debugf("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
 					endPrefix := common.IncrementBytesBigEndian(prefix)
