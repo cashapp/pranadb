@@ -2,7 +2,7 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/table"
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -14,15 +14,15 @@ import (
 )
 
 type CreateMVCommand struct {
-	lock             sync.Mutex
-	e                *Executor
-	pl               *parplan.Planner
-	schema           *common.Schema
-	createMVSQL      string
-	tableSequences   []uint64
-	mv               *push.MaterializedView
-	ast              *parser.CreateMaterializedView
-	prefixesToDelete [][]byte
+	lock           sync.Mutex
+	e              *Executor
+	pl             *parplan.Planner
+	schema         *common.Schema
+	createMVSQL    string
+	tableSequences []uint64
+	mv             *push.MaterializedView
+	ast            *parser.CreateMaterializedView
+	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -69,17 +69,34 @@ func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tabl
 	}
 }
 
-func (c *CreateMVCommand) BeforeLocal() error {
+func (c *CreateMVCommand) OnPhase(phase int32) error {
+	switch phase {
+	case 0:
+		return c.onPhase0()
+	case 1:
+		return c.onPhase1()
+	case 2:
+		return c.onPhase2()
+	default:
+		panic("invalid phase")
+	}
+}
+
+func (c *CreateMVCommand) NumPhases() int {
+	return 3
+}
+
+func (c *CreateMVCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Before prepare we just persist the source info in the tables table
+	// Mainly validation
+
 	mv, err := c.createMVFromAST(c.ast)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	c.mv = mv
-
 	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
 	if ok {
 		return errors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
@@ -93,33 +110,13 @@ func (c *CreateMVCommand) BeforeLocal() error {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
 
-	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the state will
-	// be cleaned up
-	for _, shardID := range c.e.cluster.GetAllShardIDs() {
-		prefix := table.EncodeTableKeyPrefix(mv.Info.ID, shardID, 16)
-		c.prefixesToDelete = append(c.prefixesToDelete, prefix)
-	}
-	return c.e.cluster.AddPrefixesToDelete(false, c.prefixesToDelete...)
+	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the MV state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	c.toDeleteBatch, err = storeToDeleteBatch(mv.Info.ID, c.e.cluster)
+	return err
 }
 
-func (c *CreateMVCommand) OnPhase(phase int32) error {
-	switch phase {
-	case 0:
-		return c.onPrepare()
-	case 1:
-		return c.onFill()
-	case 2:
-		return c.onCommit()
-	default:
-		panic("invalid phase")
-	}
-}
-
-func (c *CreateMVCommand) NumPhases() int {
-	return 3
-}
-
-func (c *CreateMVCommand) onPrepare() error {
+func (c *CreateMVCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -139,7 +136,7 @@ func (c *CreateMVCommand) onPrepare() error {
 	return c.mv.Connect(false, true)
 }
 
-func (c *CreateMVCommand) onFill() error {
+func (c *CreateMVCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -147,26 +144,47 @@ func (c *CreateMVCommand) onFill() error {
 	return c.mv.Fill()
 }
 
-func (c *CreateMVCommand) onCommit() error {
+func (c *CreateMVCommand) onPhase2() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Now we have filled OK on all nodes we can register the MV so it can be used by clients
+	// The MV is now created and filled on all nodes but it isn't currently registered so it can't be used by clients
+	// We register it now
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
 		return errors.WithStack(err)
 	}
 	return c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables)
 }
 
-func (c *CreateMVCommand) AfterLocal() error {
+func (c *CreateMVCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if err := c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
-		return err
-	}
+	switch phase {
+	case 1:
 
-	// Now delete rows from the to_delete table
-	return c.e.cluster.RemovePrefixesToDelete(false, c.prefixesToDelete...)
+		// Maybe inject an error after fill but before row in tables table is persisted
+		if err := c.e.FailureInjector().GetFailpoint("create_mv_1").CheckFail(); err != nil {
+			return err
+		}
+
+		// We add the MV to the tables table once the fill phase is complete
+		// We only do this on the originating node
+		// We need to do this *before* the MV is available to clients otherwise a node failure and restart could cause
+		// the MV to disappear after it's been used
+		if err := c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
+			return err
+		}
+	case 2:
+
+		// Maybe inject an error after fill and after row in tables table is persisted but before to_delete rows removed
+		if err := c.e.FailureInjector().GetFailpoint("create_mv_2").CheckFail(); err != nil {
+			return err
+		}
+
+		// Now delete rows from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+	}
+	return nil
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {

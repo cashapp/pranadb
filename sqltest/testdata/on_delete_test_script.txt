@@ -1,0 +1,90 @@
+--cluster only;
+
+-- This script tests that data created during a failed 'create materialized view' gets deleted from the database after;
+-- failure and restart;
+
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+-- trigger a failure after a new MV has been filled but before it's been persisted to the tables table;
+-- in this case. The data in the MV should be deleted on restart after failure;
+
+--activate failpoint create_mv_1 -1;
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+--deactivate failpoint create_mv_1 -1;
+--restart cluster;
+
+use test;
+
+-- MV shouldn't exist;
+select * from test_mv_1;
+
+-- trigger a failure after MV has been filled and persisted to storage but before to_delete rows have been removed
+-- at the end of the create MV process. In this case the MV should exist after restart;
+
+--activate failpoint create_mv_2 -1;
+
+create materialized view test_mv_2 as select * from test_source_1;
+
+--deactivate failpoint create_mv_2 -1;
+--restart cluster;
+
+use test;
+
+-- MV should exist;
+select * from test_mv_2;
+
+drop materialized view test_mv_2;
+
+-- trigger a failure when an MV been fill has been mainly processed but the temporary row used in tableExecutor.FillTo();
+-- haven't been deleted from the to_delete table yet;
+
+--activate failpoint fill_to_1 2;
+
+create materialized view test_mv_3 as select * from test_source_1;
+
+--deactivate failpoint fill_to_1 2;
+--restart cluster;
+
+use test;
+
+-- MV shouldn't exist;
+select * from test_mv_3;
+
+drop source test_source_1;
+--delete topic testtopic;

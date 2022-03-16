@@ -88,6 +88,7 @@ func (s *Server) Stop() error {
 	if s.expSessCheckTimer != nil {
 		s.expSessCheckTimer.Stop()
 	}
+	s.errorSequence = 0
 	return nil
 }
 

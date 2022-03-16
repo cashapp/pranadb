@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/alecthomas/repr"
@@ -23,6 +24,7 @@ type CreateSourceCommand struct {
 	ast            *parser.CreateSource
 	sourceInfo     *common.SourceInfo
 	source         *source.Source
+	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateSourceCommand) CommandType() DDLCommandType {
@@ -64,16 +66,23 @@ func NewCreateSourceCommand(e *Executor, schemaName string, sql string, tableSeq
 	}
 }
 
-func (c *CreateSourceCommand) BeforeLocal() error {
+func (c *CreateSourceCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	var err error
 	c.sourceInfo, err = c.getSourceInfo(c.ast)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	return c.validate()
+	err = c.validate()
+	if err != nil {
+		return err
+	}
+
+	// We store rows in the to_delete table - if source creation fails (e.g. node crashes) then on restart the MV state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	c.toDeleteBatch, err = storeToDeleteBatch(c.sourceInfo.ID, c.e.cluster)
+	return err
 }
 
 func (c *CreateSourceCommand) validate() error {
@@ -120,9 +129,9 @@ func (c *CreateSourceCommand) validate() error {
 func (c *CreateSourceCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
@@ -132,7 +141,7 @@ func (c *CreateSourceCommand) NumPhases() int {
 	return 2
 }
 
-func (c *CreateSourceCommand) onPrepare() error {
+func (c *CreateSourceCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -160,7 +169,7 @@ func (c *CreateSourceCommand) onPrepare() error {
 	return nil
 }
 
-func (c *CreateSourceCommand) onCommit() error {
+func (c *CreateSourceCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -173,12 +182,21 @@ func (c *CreateSourceCommand) onCommit() error {
 	return c.e.metaController.RegisterSource(c.sourceInfo)
 }
 
-func (c *CreateSourceCommand) AfterLocal() error {
+func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Update row in metadata tables table to prepare=false
-	return c.e.metaController.PersistSource(c.sourceInfo)
+	if phase == 0 {
+		// We persist the source *before* it is registered - otherwise if failure occurs source can disappear after
+		// being used
+		if err := c.e.metaController.PersistSource(c.sourceInfo); err != nil {
+			return err
+		}
+
+		// Now delete rows from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+	}
+	return nil
 }
 
 // nolint: gocyclo

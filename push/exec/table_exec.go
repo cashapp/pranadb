@@ -5,6 +5,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/table"
@@ -207,21 +208,29 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	return t.store.WriteBatchLocally(wb)
 }
 
-func (t *TableExecutor) addFillTableToDelete(fillTableID uint64, schedulers map[uint64]*sched.ShardScheduler) ([][]byte, error) {
+func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint64, schedulers map[uint64]*sched.ShardScheduler) (*cluster.ToDeleteBatch, error) {
+	log.Debugf("Adding fill table to to_delete new_table_id %d fill_table_id %d", newTableID, fillTableID)
 	var prefixes [][]byte
 	for shardID := range schedulers {
 		prefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 16)
 		prefixes = append(prefixes, prefix)
 	}
-	return prefixes, t.store.AddPrefixesToDelete(true, prefixes...)
+	batch := &cluster.ToDeleteBatch{
+		Local:              true,
+		ConditionalTableID: newTableID,
+		Prefixes:           prefixes,
+	}
+	return batch, t.store.AddToDeleteBatch(batch)
 }
 
 // FillTo - fills the specified PushExecutor with all the rows in the table and also captures any new changes that
 // might arrive while the fill is in progress. Once the fill is complete and the table executor and the push executor
 // are in sync then the operation completes
-func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) error { //nolint:gocyclo
+//nolint:gocyclo
+func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID uint64,
+	schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover, failInject failinject.Injector) error {
 
-	log.Trace("Starting table executor fill")
+	log.Debug("Starting table executor fill")
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
@@ -229,7 +238,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 	}
 	fillTableID += common.UserTableIDBase
 
-	prefixes, err := t.addFillTableToDelete(fillTableID, schedulers)
+	toDeleteBatch, err := t.addFillTableToDelete(newTableID, fillTableID, schedulers)
 	if err != nil {
 		return err
 	}
@@ -356,7 +365,12 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 		}
 	}
 
-	if err := t.store.RemovePrefixesToDelete(true, prefixes...); err != nil {
+	// Maybe inject an error after fill but before the temp fill data has been deleted
+	if err := failInject.GetFailpoint("fill_to_1").CheckFail(); err != nil {
+		return err
+	}
+
+	if err := t.store.RemoveToDeleteBatch(toDeleteBatch); err != nil {
 		return err
 	}
 
@@ -376,7 +390,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, schedulers 
 }
 
 func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) (chan error, error) {
-	log.Info("Starting replay from snapshot")
+	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -386,7 +400,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, mover)
 		snapshot.Close()
 		ch <- err
-		log.Info("Replay from snapshot complete")
+		log.Trace("Replay from snapshot complete")
 	}()
 
 	return ch, nil
@@ -430,7 +444,7 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 				}
 				startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
 				numRows += len(kvp)
-				log.Infof("filled batch of %d", len(kvp))
+				log.Tracef("filled batch of %d", len(kvp))
 			}
 		}()
 	}

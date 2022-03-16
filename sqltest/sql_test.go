@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/lni/dragonboat/v3/logger"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -110,8 +109,6 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 		DisableLevelTruncation: true,
 	})
 
-	logger.GetLogger("transport").SetLevel(logger.CRITICAL) // Get a lot of spam in the logs otherwise
-
 	// Make sure we don't run tests in parallel
 	lock.Lock()
 	defer lock.Unlock()
@@ -166,6 +163,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			"localhost:63401",
 		}
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
+		cnf.ScreenDragonLogSpam = true
 		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
@@ -203,6 +201,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableAPIServer = true
 			cnf.APIServerListenAddresses = apiServerListenAddresses
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
+			cnf.EnableFailureInjector = true
+			cnf.ScreenDragonLogSpam = true
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -358,6 +358,7 @@ type sqlTest struct {
 	topics        []*kafka.Topic
 	cli           *client.Client
 	sessionID     string
+	clientNodeID  int
 	currentSchema string
 }
 
@@ -366,6 +367,8 @@ func (st *sqlTest) run() {
 	// Only run one test in the suite at a time
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
+
+	log.SetLevel(log.DebugLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
@@ -442,6 +445,15 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeDisableCommitOffsets(require, command)
 		} else if strings.HasPrefix(command, "--register protobuf") {
 			st.executeRegisterProtobufCommand(require, command)
+		} else if strings.HasPrefix(command, "--activate failpoint") {
+			st.executeActivateFailpoint(require, command)
+		} else if strings.HasPrefix(command, "--deactivate failpoint") {
+			st.executeDeactivateFailpoint(require, command)
+		} else if strings.HasPrefix(command, "--cluster only") {
+			if st.testSuite.numNodes == 1 {
+				st.closeClient(require)
+				return 1
+			}
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -946,6 +958,39 @@ func (st *sqlTest) executeRegisterProtobufCommand(require *require.Assertions, c
 	require.NoError(err)
 }
 
+func (st *sqlTest) executeActivateFailpoint(require *require.Assertions, cmd string) {
+	st.activateFailpoint(require, cmd, true)
+}
+
+func (st *sqlTest) executeDeactivateFailpoint(require *require.Assertions, cmd string) {
+	st.activateFailpoint(require, cmd, false)
+}
+
+func (st *sqlTest) activateFailpoint(require *require.Assertions, cmd string, activate bool) {
+	parts := strings.Split(cmd, " ")
+	sNodeID := parts[len(parts)-1]
+	fpName := parts[len(parts)-2]
+	nodeID, err := strconv.ParseInt(sNodeID, 10, 64)
+	require.NoError(err)
+	var prana *server.Server
+	if nodeID == -1 {
+		// This represents choose the node the client is currently connected to - this will be the originating node
+		// for the DDL command
+		prana = st.testSuite.pranaCluster[st.clientNodeID]
+	} else {
+		prana = st.testSuite.pranaCluster[nodeID]
+	}
+	fi := prana.GetFailureInjector()
+	fp := fi.GetFailpoint(fpName)
+	if activate {
+		fp.SetFailAction(func() error {
+			return errors.Errorf("failpoint %s triggered in prana %d", fpName, nodeID)
+		})
+	} else {
+		fp.Deactivate()
+	}
+}
+
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 	for _, prana := range st.testSuite.pranaCluster {
 		err := prana.GetPushEngine().WaitForProcessingToComplete()
@@ -1000,6 +1045,7 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	sessID, err := cli.CreateSession()
 	require.NoError(err)
 	st.sessionID = sessID
+	st.clientNodeID = id
 	return cli
 }
 

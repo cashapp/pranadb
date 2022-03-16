@@ -60,14 +60,21 @@ type Cluster interface {
 
 	ReleaseLock(prefix string) (bool, error)
 
-	// AddPrefixesToDelete Adds one or more key prefixes to delete from local storage at start-up
-	AddPrefixesToDelete(local bool, prefixes ...[]byte) error
+	AddToDeleteBatch(batch *ToDeleteBatch) error
 
-	RemovePrefixesToDelete(local bool, prefixes ...[]byte) error
+	RemoveToDeleteBatch(batch *ToDeleteBatch) error
 
 	Start() error
 
 	Stop() error
+
+	PostStartChecks(queryExec common.SimpleQueryExec) error
+}
+
+type ToDeleteBatch struct {
+	Local              bool
+	ConditionalTableID uint64
+	Prefixes           [][]byte
 }
 
 type Snapshot interface {

@@ -26,12 +26,14 @@ type DDLCommand interface {
 
 	TableSequences() []uint64
 
-	BeforeLocal() error
-
-	AfterLocal() error
+	// Before is called on the originating node before the first phase
+	Before() error
 
 	// OnPhase is called on every node in the cluster passing in the phase
 	OnPhase(phase int32) error
+
+	// AfterPhase is called on the originating node once successful responses from the specified phase have been returned
+	AfterPhase(phase int32) error
 
 	LockName() string
 
@@ -160,15 +162,18 @@ func (d *DDLCommandRunner) releaseLock(lockName string) {
 }
 
 func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
-	if err := command.BeforeLocal(); err != nil {
+	if err := command.Before(); err != nil {
 		return errors.WithStack(err)
 	}
 	for phase := 0; phase < command.NumPhases(); phase++ {
 		if err := d.broadcastDDL(int32(phase), ddlInfo); err != nil {
 			return errors.WithStack(err)
 		}
+		if err := command.AfterPhase(int32(phase)); err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	return command.AfterLocal()
+	return nil
 }
 
 func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLStatementInfo) error {
@@ -198,4 +203,10 @@ func (d *DDLCommandRunner) runningCommands() int {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	return len(d.commands)
+}
+
+func (d *DDLCommandRunner) clear() {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.commands = make(map[string]DDLCommand)
 }

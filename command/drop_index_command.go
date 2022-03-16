@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -9,14 +10,15 @@ import (
 )
 
 type DropIndexCommand struct {
-	lock        sync.Mutex
-	e           *Executor
-	schemaName  string
-	sql         string
-	tableName   string
-	indexName   string
-	indexInfo   *common.IndexInfo
-	originating bool
+	lock          sync.Mutex
+	e             *Executor
+	schemaName    string
+	sql           string
+	tableName     string
+	indexName     string
+	indexInfo     *common.IndexInfo
+	originating   bool
+	toDeleteBatch *cluster.ToDeleteBatch
 }
 
 func (c *DropIndexCommand) CommandType() DDLCommandType {
@@ -58,7 +60,7 @@ func NewDropIndexCommand(e *Executor, schemaName string, sql string) *DropIndexC
 	}
 }
 
-func (c *DropIndexCommand) BeforeLocal() error {
+func (c *DropIndexCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -73,9 +75,9 @@ func (c *DropIndexCommand) BeforeLocal() error {
 func (c *DropIndexCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
@@ -85,7 +87,7 @@ func (c *DropIndexCommand) NumPhases() int {
 	return 2
 }
 
-func (c *DropIndexCommand) onPrepare() error {
+func (c *DropIndexCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -102,19 +104,37 @@ func (c *DropIndexCommand) onPrepare() error {
 	return nil
 }
 
-func (c *DropIndexCommand) onCommit() error {
+func (c *DropIndexCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
+	// This disconnects and removes the data for the index (data removal only happens on the originating node)
 	return c.e.pushEngine.RemoveIndex(c.indexInfo, c.originating)
 }
 
-func (c *DropIndexCommand) AfterLocal() error {
+func (c *DropIndexCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Delete the index info from the indexes table
-	return c.e.metaController.DeleteIndex(c.indexInfo.ID)
+	switch phase {
+	case 0:
+		// We record prefixes in the to_delete table - this makes sure index data is deleted on restart if failure occurs
+		// after this
+		var err error
+		c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
+		if err != nil {
+			return err
+		}
+
+		// Delete the index info from the indexes table - we must do this before we start deleting the actual index data
+		// otherwise we can end up with a partial index if failure occurs
+		if err := c.e.metaController.DeleteIndex(c.indexInfo.ID); err != nil {
+			return err
+		}
+	case 1:
+		// Now delete rows from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+	}
+	return nil
 }
 
 func (c *DropIndexCommand) getIndexInfo() (*common.IndexInfo, error) {

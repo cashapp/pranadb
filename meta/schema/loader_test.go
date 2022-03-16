@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"github.com/squareup/pranadb/failinject"
 	"testing"
 
 	"github.com/squareup/pranadb/conf"
@@ -172,8 +173,8 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	shardr := sharder.NewSharder(clus)
 	pullEngine := pull.NewPullEngine(clus, metaController)
 	config := conf.NewTestConfig(fakeKafka.ID)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry, nil)
-	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, protolib.EmptyRegistry)
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry, failinject.NewDummyInjector())
+	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, protolib.EmptyRegistry, failinject.NewDummyInjector())
 	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
 	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)

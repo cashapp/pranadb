@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -18,6 +19,7 @@ type CreateIndexCommand struct {
 	tableSequences []uint64
 	indexInfo      *common.IndexInfo
 	ast            *parser.CreateIndex
+	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -64,37 +66,37 @@ func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string
 	}
 }
 
-func (c *CreateIndexCommand) BeforeLocal() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	var err error
-	c.indexInfo, err = c.getIndexInfo(c.ast)
-	return err
-}
-
 func (c *CreateIndexCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onFill()
-	case 2:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
 }
 
 func (c *CreateIndexCommand) NumPhases() int {
-	return 3
+	return 2
 }
 
-func (c *CreateIndexCommand) onPrepare() error {
-	return nil
+func (c *CreateIndexCommand) Before() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	var err error
+	c.indexInfo, err = c.getIndexInfo(c.ast)
+	if err != nil {
+		return err
+	}
+
+	// We store rows in the to_delete table - if index creation fails (e.g. node crashes) then on restart the index state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
+	return err
 }
 
-func (c *CreateIndexCommand) onFill() error {
+func (c *CreateIndexCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -116,15 +118,25 @@ func (c *CreateIndexCommand) onFill() error {
 	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
 }
 
-func (c *CreateIndexCommand) onCommit() error {
+func (c *CreateIndexCommand) onPhase1() error {
 	// Now we register the index so it can be used in queries
 	return c.e.metaController.RegisterIndex(c.indexInfo)
 }
 
-func (c *CreateIndexCommand) AfterLocal() error {
+func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	return c.e.metaController.PersistIndex(c.indexInfo)
+	if phase == 0 {
+		// We persist the index after it's been filled but *before* it's been registered - otherwise in case of
+		// failure the index can disappear after it has been used
+		if err := c.e.metaController.PersistIndex(c.indexInfo); err != nil {
+			return err
+		}
+
+		// We can now remove from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+	}
+	return nil
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {

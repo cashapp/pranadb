@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/failinject"
 	"net/http" //nolint:stylecheck
 
 	"github.com/squareup/pranadb/lifecycle"
@@ -58,10 +59,17 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)
-	metrics := metrics.NewServer(config)
-	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, metrics)
+	theMetrics := metrics.NewServer(config)
+	var failureInjector failinject.Injector
+	if config.EnableFailureInjector {
+		failureInjector = failinject.NewInjector()
+	} else {
+		failureInjector = failinject.NewDummyInjector()
+	}
+	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, protoRegistry)
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
+		protoRegistry, failureInjector)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)
@@ -81,7 +89,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		protoRegistry,
 		schemaLoader,
 		apiServer,
-		metrics,
+		theMetrics,
+		failureInjector,
 	}
 
 	server := Server{
@@ -99,7 +108,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		notifClient:     notifClient,
 		apiServer:       apiServer,
 		services:        services,
-		metrics:         metrics,
+		metrics:         theMetrics,
+		failureinjector: failureInjector,
 	}
 	return &server, nil
 }
@@ -123,6 +133,7 @@ type Server struct {
 	conf            conf.Config
 	debugServer     *http.Server
 	metrics         *metrics.Server
+	failureinjector failinject.Injector
 }
 
 type service interface {
@@ -154,6 +165,11 @@ func (s *Server) Start() error {
 			return errors.WithStack(err)
 		}
 	}
+
+	if err := s.cluster.PostStartChecks(s.pullEngine); err != nil {
+		return errors.WithStack(err)
+	}
+
 	if err := s.pushEngine.Ready(); err != nil {
 		return errors.WithStack(err)
 	}
@@ -226,4 +242,8 @@ func (s *Server) GetAPIServer() *api.Server {
 
 func (s *Server) GetConfig() conf.Config {
 	return s.conf
+}
+
+func (s *Server) GetFailureInjector() failinject.Injector {
+	return s.failureinjector
 }

@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -10,14 +11,15 @@ import (
 )
 
 type DropMVCommand struct {
-	lock        sync.Mutex
-	e           *Executor
-	schemaName  string
-	sql         string
-	mvName      string
-	mv          *push.MaterializedView
-	schema      *common.Schema
-	originating bool
+	lock          sync.Mutex
+	e             *Executor
+	schemaName    string
+	sql           string
+	mvName        string
+	mv            *push.MaterializedView
+	schema        *common.Schema
+	originating   bool
+	toDeleteBatch *cluster.ToDeleteBatch
 }
 
 func (c *DropMVCommand) CommandType() DDLCommandType {
@@ -58,7 +60,7 @@ func NewDropMVCommand(e *Executor, schemaName string, sql string) *DropMVCommand
 	}
 }
 
-func (c *DropMVCommand) BeforeLocal() error {
+func (c *DropMVCommand) Before() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -78,9 +80,9 @@ func (c *DropMVCommand) BeforeLocal() error {
 func (c *DropMVCommand) OnPhase(phase int32) error {
 	switch phase {
 	case 0:
-		return c.onPrepare()
+		return c.onPhase0()
 	case 1:
-		return c.onCommit()
+		return c.onPhase1()
 	default:
 		panic("invalid phase")
 	}
@@ -90,7 +92,7 @@ func (c *DropMVCommand) NumPhases() int {
 	return 2
 }
 
-func (c *DropMVCommand) onPrepare() error {
+func (c *DropMVCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -118,7 +120,7 @@ func (c *DropMVCommand) onPrepare() error {
 	return c.mv.Disconnect()
 }
 
-func (c *DropMVCommand) onCommit() error {
+func (c *DropMVCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	// Remove the mv from the push engine and delete all it's data
@@ -130,16 +132,28 @@ func (c *DropMVCommand) onCommit() error {
 	return c.mv.Drop(c.originating)
 }
 
-func (c *DropMVCommand) AfterLocal() error {
+func (c *DropMVCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	switch phase {
+	case 0:
+		var err error
+		c.toDeleteBatch, err = storeToDeleteBatch(c.mv.Info.ID, c.e.cluster)
+		if err != nil {
+			return err
+		}
 
-	// Delete the mv from the tables table
-	return c.e.metaController.DeleteMaterializedView(c.mv.Info, c.mv.InternalTables)
+		// Delete the mv from the tables table - we must do this before we delete the data for the MV otherwise we can
+		// end up with a partial MV on restart after failure
+		return c.e.metaController.DeleteMaterializedView(c.mv.Info, c.mv.InternalTables)
+	case 1:
+		// Now delete rows from the to_delete table
+		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+	}
+	return nil
 }
 
 func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
-
 	if c.mvName == "" {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
