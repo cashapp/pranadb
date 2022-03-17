@@ -30,7 +30,7 @@ custom computations.
 
 That's the vision behind PranaDB and we believe it's a very powerful proposition.
 
-### Example
+## Example
 
 Here's a quick example.
 
@@ -372,15 +372,30 @@ PranaDB supports the following datatypes
 
 #### SQL supported in materialized views
 
-PranaDB supports a subset of MySQL compatible SQL in materialized views.
-
-We support the
+We support a sub-set of SQL for defining materialized views. We do not currently support joins (although we intend to).
+We support queries with and without aggregations. We do not support sub-queries. We support many of the standard MySQL
+functions.
 
 ### Queries
 
+There are two types of queries that can be executed in PranaDB.
+
+Queries can be performed against any table-like structure in PranaDB - sources, materialized views or processors.
+
 #### Pull queries
 
+Pull queries are just like queries that you'd execute against a traditional relational database. You specify some SQL,
+it's sent to the cluster and processed at that point in time and a sequence of rows is returned.
+
+##### Prepared Statements
+
+PranaDB supports prepared statements - this enables the SQL to be parsed once instead of every time it is executed.
+
 #### Streaming queries
+
+These stay open on the server and incrementally send back updates as the result of the query changes.
+
+### Window functions
 
 TODO
 
