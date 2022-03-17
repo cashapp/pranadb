@@ -6,11 +6,14 @@ PranaDB is a *streaming database*.
 
 PranaDB ingests data streams from external sources - e.g. Apache Kafka topics, and allows you to define computations,
 usually expressed in standard SQL, over those streams. The results of those computations are stored persistently. We
-call these *materialized views* and they update automatically and continuously as new data arrives.
+call these *materialized views* and they update incrementally and continuously as new data arrives.
 
-Materialized views are typically defined using standard SQL but we also want to allow custom, user provided, lambda
-functions to be usable in materialized views in the future. You access the data in those materialized views by executing
+Materialized views are defined using standard SQL and you access the data in those materialized views by executing
 queries, also using standard SQL, just as you would with a traditional relational database.
+
+We also wish to support the execution of custom processing logic - external functions from PranaDB. This essentially
+will enable you to create custom materialized views where it is not feasible to define the processing in terms of SQL.
+Going ahead, these functions could be defined as gRPC endpoints, AWS lambdas, or in other ways.
 
 PranaDB is a real distributed database, it is not simply an in-memory cache, and is designed from the beginning to scale
 horizontally to effectively support views with very large amounts of data. Once ingested, it owns the data, it does not
@@ -281,7 +284,37 @@ first.
 
 ### Processors
 
-TODO
+*To be implemented*
+
+Processors allows PranaDB to call out to custom processing logic, potentially hosted remotely, and implemented as gRPC
+endpoints, AWS lambdas or in other ways. Essentially, this enables PranaDB to maintain custom materialized views where
+the mapping from the input data to the output data is defined not by SQL, but by custom logic.
+
+A processor is a table-like structure in PranaDB that takes as input some other table (a source, a materialized view, or
+another processor) and then sends the data to an external defined function. This could be implemented in an external
+gRPC endpoint, or as an AWS lambda, or elsewhere. The external function processes the data and returns the result to
+PranaDB where it is persisted.
+
+```
+create processor fraud_approved_transactions (
+    transaction_id varchar,
+    customer_id bigint,
+    transaction_time timestamp,
+    amount decimal(10, 2),
+    primary key (payment_id)
+ ) from all_transactions
+ with (  
+    type = "grpc"
+    properties = ( 
+       address = "some_host:5678"
+       encoding = "json"
+    )
+ )
+```
+
+This would take the data from the `all_transactions` source and for each input change call the specified gRPC endpoint.
+Returned results would be stored in PranaDB. Processors can be queried using standard SQL or used as input to other
+processors or materialized views.
 
 ### Secondary indexes
 
