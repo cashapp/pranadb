@@ -22,3 +22,5 @@ Think:
 
 [Try the demo (using Docker Compose)](docs/demo_docker_compose.md)
 
+[Frequently asked questions](docs/faq.md)
+
