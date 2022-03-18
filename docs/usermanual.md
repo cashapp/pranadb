@@ -24,9 +24,9 @@ stream, in much the same as you would with Apache Kafka. PranaDB then becomes a 
 such as Kafka) and a relational database (such as MySQL).
 
 Imagine a Kafka where you can query events in your topics using SQL and where you can make persistent projections of
-those events. With PranaDB the tricky problems of consistency, scalability and availability for you, and you just use
-SQL to define your views or retrieve data, or use lambdas, written in your programming language of choice to express
-custom computations.
+those events. With PranaDB the tricky problems of consistency, scalability and availability are handled for you, and you
+simply use SQL to define your views or retrieve data, and call functions written in your programming language of choice
+to express custom computations.
 
 That's the vision behind PranaDB and we believe it's a very powerful proposition.
 
@@ -393,19 +393,13 @@ PranaDB supports prepared statements - this enables the SQL to be parsed once in
 
 #### Streaming queries
 
+TODO
+
 These stay open on the server and incrementally send back updates as the result of the query changes.
 
 ### Window functions
 
 TODO
-
-## Clustering
-
-Sharding
-
-## Replication
-
-Raft
 
 ## Reference
 
