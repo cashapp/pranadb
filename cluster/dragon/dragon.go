@@ -3,12 +3,13 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/lni/dragonboat/v3/logger"
-	"github.com/squareup/pranadb/table"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/lni/dragonboat/v3/logger"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/lni/dragonboat/v3/client"
 	log "github.com/sirupsen/logrus"
@@ -269,6 +270,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		RTTMillisecond:      100,
 		RaftAddress:         nodeAddress,
 		SystemEventListener: d,
+		EnableMetrics:       d.cnf.EnableMetrics,
 	}
 
 	nh, err := dragonboat.NewNodeHost(nhc)
