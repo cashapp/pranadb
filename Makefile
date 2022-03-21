@@ -39,3 +39,6 @@ publish-payments:
 connect:
 	go run ./cmd/prana/ shell --addr=localhost:6584
 
+status:
+	docker-compose -f local-deployment/docker-compose.yaml ps -a
+
