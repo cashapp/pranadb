@@ -14,9 +14,10 @@ Think:
 
 * Like Kafka but where you can query the data in your topics
 * Like a relational database, but where you can get incrementally updating materialized views, and streaming queries.
-  Take your pick.
 
-[Find out more](docs/usermanual.md)
+Take your pick.
+
+[User manual](docs/usermanual.md)
 
 [Try the demo](docs/demo.md)
 
