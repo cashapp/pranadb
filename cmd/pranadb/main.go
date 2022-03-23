@@ -2,6 +2,9 @@ package main
 
 import (
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -26,7 +29,7 @@ func main() {
 	if err := r.run(os.Args[1:], true); err != nil {
 		log.WithError(err).Fatal("startup failed")
 	}
-	select {} // prevent main exiting
+	r.waitForShutdown()
 }
 
 type runner struct {
@@ -58,6 +61,25 @@ func (r *runner) run(args []string, start bool) error {
 		}
 	}
 	return nil
+}
+
+func (r *runner) waitForShutdown() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		sig := <-signals
+		logger := log.WithField("signal", sig)
+		logger.Info("Stopping Prana server")
+		err := r.server.Stop()
+		if err != nil {
+			logger.WithError(err).Error("Failed to stop Prana server")
+		} else {
+			logger.Info("Prana server stopped")
+		}
+	}()
+	wg.Wait()
 }
 
 func (r *runner) getServer() *server.Server {
