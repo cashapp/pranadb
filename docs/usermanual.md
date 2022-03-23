@@ -159,7 +159,7 @@ can have different types. Just like a relational database table you can query it
 SQL.
 
 The main difference between a relational database table and a PranaDB source is that you can directly `insert`, `update`
-or `delete` rows in it from a client. With a PranaDB you can't do that. The only way that rows in a PranaDB source get
+or `delete` rows in it from a client. With PranaDB you can't do that. The only way that rows in a PranaDB source get
 inserted, updated or deleted is by events being consumed from the Kafka topic and being translated to inserts/updates or
 deletes in the source.
 
@@ -282,6 +282,12 @@ materialized view is irreversible.
 You won't be able to drop a materialized view if it has child materialized views. You'll have to drop any children
 first.
 
+#### SQL supported in materialized views
+
+We support a sub-set of SQL for defining materialized views. We do not currently support joins (although we intend to).
+We support queries with and without aggregations. We do not support sub-queries. We support many of the standard MySQL
+functions.
+
 ### Processors
 
 *To be implemented*
@@ -312,7 +318,7 @@ create processor fraud_approved_transactions (
  )
 ```
 
-This would take the data from the `all_transactions` source and for each input change call the specified gRPC endpoint.
+This would take the data from the `all_transactions` source and for each input row call the specified gRPC endpoint.
 Returned results would be stored in PranaDB. Processors can be queried using standard SQL or used as input to other
 processors or materialized views.
 
@@ -353,7 +359,7 @@ drop index idx_customer_id on all_transactions;
 
 ### Sinks
 
-*TODO - not currently implemented*
+*To be implemented*
 
 Sinks are the mechanism by which changes to materialized views flow back as events to external Kafka topics.
 
@@ -370,12 +376,6 @@ PranaDB supports the following datatypes
   the decimal point.
 * `timestamp` - this is like the timestamp type in MySQL.
 
-#### SQL supported in materialized views
-
-We support a sub-set of SQL for defining materialized views. We do not currently support joins (although we intend to).
-We support queries with and without aggregations. We do not support sub-queries. We support many of the standard MySQL
-functions.
-
 ### Queries
 
 There are two types of queries that can be executed in PranaDB.
@@ -387,19 +387,25 @@ Queries can be performed against any table-like structure in PranaDB - sources, 
 Pull queries are just like queries that you'd execute against a traditional relational database. You specify some SQL,
 it's sent to the cluster and processed at that point in time and a sequence of rows is returned.
 
+Pull queries can currently be executed using the command line client or using the gRPC API.
+
+We currently support a subset of SQL in pull queries. We do not support joins, aggregations or sub-queries.
+
 ##### Prepared Statements
 
 PranaDB supports prepared statements - this enables the SQL to be parsed once instead of every time it is executed.
 
+Prepared statements are supported using the gRPC API.
+
 #### Streaming queries
 
-TODO
+*To be implemented*
 
 These stay open on the server and incrementally send back updates as the result of the query changes.
 
 ### Window functions
 
-TODO
+*To be implemented*
 
 ## Reference
 
@@ -411,23 +417,157 @@ Switches to the schema identified by `schema_name`
 
 ### `create source` statement
 
+Creates a source. A source ingests records from an external source (e.g. an Apache Kafka topic) into a table-like
+structure.
+
+```
+create source <source_name>(
+     <column1_name> <column1_datatype>,
+     <column2_name> <column2_datatype>,
+     ...,
+     primary key (<pk_column_name>)
+ ) with (
+     brokername = "<broker_name>",
+     topicname = "<topic_name",
+     headerencoding = "<header_encoding>",
+     keyencoding = "<key_encoding>",
+     valueencoding = "<value_encoding>",
+     columnselectors = (
+         <column1_selector>,
+         <column2_selector>,
+         ...
+     )
+ );
+```
+
+`source_name` - the name of the source - it must be unique in the schema with respect to any other entity (source,
+materialized view, sink or processor).
+`columnx_name` - the name of column x - it must be unique in the source.
+`columnx_datatype` - the datatype of the column x - one of `varchar`, `tinyint`, `int`, `bigint`, `decimal(p, s)`
+or `timestamp`.
+
+`broker_name` - the name of the Kafka broker to connect to. The names are defined along with the actual connection
+settings in the PranaDB server configuration.
+`topic_name` - the name of the Apache Kafka topic.
+
+A Kafka message consists of
+
+1. A set of headers - each header is a key, value pair. The key and value are both byte arrays.
+2. An optional key - this is a byte array
+3. The message value (the body of the message) this is the byte array.
+
+In order to map an incoming Kafka message into a row in the source, PranaDB needs to know how interpret the data in the
+headers, key and value. For example the key could be encoded as an UTF-8 string, and the value could be a JSON string or
+an encoded protobuf.
+
+`header_encoding`, `key_encoding` and `value_encoding` tell PranaDB how the headers, key and value are encoded. They can
+take the following values:
+
+* `json` - A JSON string
+* `protobuf:<schema_name>` - An encoded protobuf. `schema_name` must contain the protobuf schema name.
+  E.g. `com.squareup.cash.Payment`
+* `stringbytes` - string encoded in UTF-8 format
+* `float32be` - 32 bit float encoded in big endian format
+* `float64be` - 64 bit float encoded in big endian format
+* `int16be` - 16 bit int encoded in big endian format
+* `int32be` - 32 bit int encoded in big endian format
+* `int64be` - 64 bit int encoded in big endian format
+
+The column selectors determine how each column in the row gets its value from the headers, key or value of the Kafka
+message. We define a simple selector language for this that is similar to `jsonpath`. By default it's assumed that the
+column value comes from the value (message body) of the Kafka message. You then construct the selector to extract the
+appropriate field.
+
+Let's say your message value is encoded as JSON. Here's an example (whitespace added for clarity):
+
+```json
+{
+  "name": "bob's house",
+  "rooms": [
+    {
+      "name": "living room",
+      "length": 6,
+      "width": 10
+    },
+    {
+      "name": "kitchen",
+      "length": 8,
+      "width": 7
+    }
+  ]
+}
+```
+
+The selector `name` would simply extract `bob's house`. The selector `rooms[0].length` would extract `6`
+The selector `rooms[1].name` would extract `kitchen`
+
+The same works for protobuf encoded messages.
+
+If the column value needs to be extracted from headers then you use the special function `meta` to anchor the selector
+language to the headers not the value. You then use the selector language as above to extract the data.
+
+For example, if you wish to extract a column value from the a header called `my_key` of the Kafka message which is
+encoded as a string you would use:
+
+`meta("header").my_key`
+
+If the header is encoded as JSON or protobuf and you wanted to extract a nested field you could do:
+
+`meta("header").my_key.my_nested_field_name`
+
+Similarly if you want to extract data from the key of the Kafka message you use `meta("key")`.
+
+For extracting the timestamp of the Kafka message you use `meta("timestamp")`.
+
 ### `drop source` statement
+
+Drops a source
+
+`drop source <source_name>`
+
+This will fail if there are any child entities (materialized views, sinks or processors) - they must be dropped first.
 
 ### `create sink` statement
 
+*Not yet implemented*
+
 ### `drop sink` statement
+
+*Not yet implemented*
 
 ### `create materialized view` statement
 
+Creates a materialized view.
+
+`create materialized view <name> as <query>`
+
+Creates a materialized view with name `name` which is defined by the query `query`.
+
+`name` must be unique across all entities in the schema.
+
 ### `drop materialized view` statement
+
+Drops a materialized view - deleting all it's data.
+
+`drop materialized view <name>`
 
 ### `create index` statement
 
+Creates a secondary index on an entity such as a source or materialized view.
+
+`create index <name> on <entity_name>(<column1>, <column2>, ...)`
+
 ### `drop index` statement
+
+Drops an index
+
+`drop index <name> on <entity_name>`
 
 ### `show tables` statement
 
-### Query syntax
+Shows the tables in the current schema - tables include sources and materialized views;
+
+`show tables`
 
 ### Server configuration
 
@@ -492,4 +632,14 @@ The following configuration parameters are commonly used:
   port) of the Kafka brokers.
 * `log-level` one of `[trace|debug|info|warn|error]` - this determines the logging level for PranaDB. Logs are written
   to stdout.
+
+### The gRPC API
+
+PranaDB provides a [gRPC API](../protos/squareup/cash/pranadb/service/v1/service.proto) for access from applications.
+This is also used by the PranaDB command line client.
+
+The API is essentially very simple - you create a session, then you pass statements as strings to PranaDB and it returns
+results. The statements can be any statements that you can type at the PranaDB command line.
+
+
 

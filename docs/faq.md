@@ -3,7 +3,8 @@
 ## What's the current status of PranaDB?
 
 PranaDB is currently a work in progress and a technical preview. It's already pretty solid, but we are not feature
-complete and we haven't done much performance optimisation yet.
+complete and we haven't done much performance optimisation yet. To date, we have mainly been working on getting the
+fundamentals of the architecture right.
 
 ## How does PranaDB compare with other products on the market
 
