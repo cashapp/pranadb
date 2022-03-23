@@ -18,7 +18,6 @@ package failinject
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"sync"
@@ -55,9 +54,6 @@ type defaultFailpoint struct {
 }
 
 func (i *defaultInjector) RegisterFailpoint(name string) (Failpoint, error) {
-
-	log.Printf("Registering *** failpoint ** %s", name)
-
 	i.lock.Lock()
 	defer i.lock.Unlock()
 	fp := &defaultFailpoint{
@@ -78,16 +74,12 @@ func (i *defaultInjector) GetFailpoint(name string) Failpoint {
 }
 
 func (f *defaultFailpoint) CheckFail() error {
-	log.Printf("Checkfail called on %v", f)
 	if !f.active.Get() {
-		log.Println("Not active")
 		return nil
 	}
 	if f.failAction == nil {
-		log.Println("No fail action")
 		return errors.Errorf("no fail action specfied for failpoint %s", f.name)
 	}
-	log.Println("Running fail action")
 	return f.failAction()
 }
 

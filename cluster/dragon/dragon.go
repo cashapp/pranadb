@@ -259,6 +259,10 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	log.Debugf("Opened pebble on node %d", d.cnf.NodeID)
 
+	if err := d.checkConstantShards(d.cnf.NumShards); err != nil {
+		return err
+	}
+
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
 	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
@@ -1027,6 +1031,39 @@ func (d *Dragon) tableExists(queryExec common.SimpleQueryExec, id uint64) (bool,
 		return false, err
 	}
 	return rows.RowCount() != 0, nil
+}
+
+// Currently the number of shards in the cluster is fixed. We must make sure the user doesn't change the number of shards
+// in the config after the cluster has been created. So we store the number in the database and check
+func (d *Dragon) checkConstantShards(expectedShards int) error {
+	log.Debugf("Checking constant shards: %d", expectedShards)
+	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
+	propKey := []byte("num-shards")
+	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
+	key = append(key, propKey...)
+	v, err := d.LocalGet(key)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		log.Debug("New cluster - no value for num-shards in storage, persisting it")
+		// New cluster - persist the value
+		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedShards))
+		batch := d.pebble.NewBatch()
+		if err := batch.Set(key, v, nil); err != nil {
+			return errors.WithStack(err)
+		}
+		if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
+			return errors.WithStack(err)
+		}
+	} else {
+		shards, _ := common.ReadUint32FromBufferBE(v, 0)
+		log.Debugf("value for num-shards found in storage: %d", shards)
+		if int(shards) != expectedShards {
+			return errors.Errorf("number of shards in cluster cannot be changed after cluster creation. cluster value %d new value %d", expectedShards, shards)
+		}
+	}
+	return nil
 }
 
 // ISystemEventListener implementation
