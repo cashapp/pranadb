@@ -2,7 +2,6 @@ package source
 
 import (
 	"fmt"
-
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -14,18 +13,15 @@ import (
 	"github.com/squareup/pranadb/metrics"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/protolib"
+	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
-	"github.com/squareup/pranadb/table"
-
-	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
 )
 
@@ -61,7 +57,6 @@ type Source struct {
 	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
 	msgConsumers            []*MessageConsumer
-	startupCommittedOffsets map[int32]int64
 	queryExec               common.SimpleQueryExec
 	lock                    sync.Mutex
 	lastRestartDelay        time.Duration
@@ -69,7 +64,6 @@ type Source struct {
 	numConsumersPerSource   int
 	pollTimeoutMs           int
 	maxPollMessages         int
-	duplicateCount          int64
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
@@ -79,6 +73,8 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
+
+	totIngested uint64
 }
 
 var (
@@ -162,7 +158,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		schedSelector:           schedSelector,
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
-		startupCommittedOffsets: make(map[int32]int64),
 		numConsumersPerSource:   numConsumers,
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
@@ -185,10 +180,6 @@ func (s *Source) Start() error {
 
 	if s.started {
 		return nil
-	}
-
-	if err := s.loadStartupCommittedOffsets(); err != nil {
-		return errors.WithStack(err)
 	}
 
 	if len(s.msgConsumers) != 0 {
@@ -216,7 +207,7 @@ func (s *Source) Start() error {
 		}
 
 		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
-			s.maxPollMessages, s, scheduler, s.startupCommittedOffsets)
+			s.maxPollMessages, s, scheduler)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -240,15 +231,13 @@ func (s *Source) IsRunning() bool {
 }
 
 func (s *Source) Drop() error {
-	// Delete the committed offsets for the source
-	offsetsStartPrefix := common.AppendUint64ToBufferBE(nil, common.OffsetsTableID)
-	offsetsStartPrefix = common.KeyEncodeString(offsetsStartPrefix, s.sourceInfo.SchemaName)
-	offsetsStartPrefix = common.KeyEncodeString(offsetsStartPrefix, s.sourceInfo.Name)
-	offsetsEndPrefix := common.IncrementBytesBigEndian(offsetsStartPrefix)
-
-	if err := s.cluster.DeleteAllDataInRangeForAllShards(offsetsStartPrefix, offsetsEndPrefix); err != nil {
+	// Delete the deduplication ids for the source
+	startPrefix := common.AppendUint64ToBufferBE(nil, common.ForwardDedupTableID)
+	endPrefix := common.IncrementBytesBigEndian(startPrefix)
+	if err := s.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix); err != nil {
 		return errors.WithStack(err)
 	}
+
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)
@@ -269,27 +258,6 @@ func (s *Source) RemoveConsumingExecutor(mvName string) {
 
 func (s *Source) GetConsumingMVs() []string {
 	return s.tableExecutor.GetConsumingMvNames()
-}
-
-func (s *Source) loadStartupCommittedOffsets() error {
-	rows, err := s.queryExec.ExecuteQuery("sys",
-		fmt.Sprintf("select partition_id, offset from %s where schema_name='%s' and source_name='%s'",
-			meta.SourceOffsetsTableName, s.sourceInfo.SchemaName, s.sourceInfo.Name))
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	for i := 0; i < rows.RowCount(); i++ {
-		row := rows.GetRow(i)
-		partID := row.GetInt64(0)
-		offset := row.GetInt64(1)
-		currOff, ok := s.startupCommittedOffsets[int32(partID)]
-		if !ok || offset > currOff {
-			// It's possible that we might have duplicate rows as the mapping of message consumer to ingesting shard ID
-			// changes, so in that case we take the largest offset
-			s.startupCommittedOffsets[int32(partID)] = offset
-		}
-	}
-	return nil
 }
 
 // An error occurred in the consumer
@@ -343,10 +311,10 @@ func (s *Source) stop() error {
 	return nil
 }
 
-func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, scheduler *sched.ShardScheduler,
+func (s *Source) handleMessages(messages []*kafka.Message, scheduler *sched.ShardScheduler,
 	mp *MessageParser) error {
 	errChan := scheduler.ScheduleAction(func() error {
-		return s.ingestMessages(messages, offsetsToCommit, scheduler.ShardID(), mp)
+		return s.ingestMessages(messages, scheduler.ShardID(), mp)
 	})
 	err, ok := <-errChan
 	if !ok {
@@ -355,7 +323,7 @@ func (s *Source) handleMessages(messages []*kafka.Message, offsetsToCommit map[i
 	return errors.WithStack(err)
 }
 
-func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[int32]int64, shardID uint64, mp *MessageParser) error {
+func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *MessageParser) error {
 
 	start := time.Now()
 
@@ -371,11 +339,14 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 	pkCols := info.PrimaryKeyCols
 	colTypes := info.ColumnTypes
 	tableID := info.ID
-	batch := cluster.NewWriteBatch(shardID, false)
+
+	log.Debugf("Ingesting batch of %d", len(messages))
+
+	forwardBatches := make(map[uint64]*cluster.WriteBatch)
 
 	totBatchSizeBytes := 0
 	for i := 0; i < rows.RowCount(); i++ {
-		// We throttle the global ingest to prevent the node getting overload - it's easy otherwise to saturate the
+		// We throttle the global ingest to prevent the node getting overloaded - it's easy otherwise to saturate the
 		// disk throughput which can make the node unstable
 		s.globalRateLimiter.Limit()
 
@@ -389,19 +360,61 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		// TODO we can consider an optimisation where execute on any local shards directly
-		l, err := s.mover.QueueRowForRemoteSend(destShardID, nil, &row, shardID, tableID, colTypes, batch)
-		if err != nil {
-			return errors.WithStack(err)
+
+		forwardBatch, ok := forwardBatches[destShardID]
+		if !ok {
+			forwardBatch = cluster.NewWriteBatch(destShardID, true)
+			forwardBatches[destShardID] = forwardBatch
 		}
+
+		kMsg := messages[i]
+		dedupKey := make([]byte, 0, 24)
+		dedupKey = common.AppendUint64ToBufferBE(dedupKey, tableID)
+		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.PartitionID))
+		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.Offset))
+
+		log.Printf("partition id is %d", kMsg.PartInfo.PartitionID)
+
+		receiverKey := s.mover.EncodeReceiverForIngestKey(destShardID, dedupKey, tableID)
+
+		valueBuff := make([]byte, 0, 32)
+		var encodedRow []byte
+		encodedRow, err = common.EncodeRow(&row, colTypes, valueBuff)
+		if err != nil {
+			return err
+		}
+
+		forwardBatch.AddPut(receiverKey, s.mover.EncodePrevAndCurrentRow(nil, encodedRow))
+
+		l := len(valueBuff)
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
 	}
 
-	s.commitOffsetsToPrana(offsetsToCommit, batch)
+	lb := len(forwardBatches)
+	chs := make([]chan error, 0, lb)
 
-	if err := s.cluster.WriteBatch(batch); err != nil {
-		return errors.WithStack(err)
+	for _, b := range forwardBatches {
+		ch := make(chan error, 1)
+		chs = append(chs, ch)
+		theBatch := b
+		go func() {
+			err := s.cluster.WriteBatchWithDedup(theBatch)
+			if err != nil {
+				ch <- err
+				return
+			}
+			ch <- nil
+		}()
+	}
+	for i := 0; i < lb; i++ {
+		err, ok := <-chs[i]
+		if !ok {
+			panic("channel closed")
+		}
+		if err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
 	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
@@ -412,35 +425,11 @@ func (s *Source) ingestMessages(messages []*kafka.Message, offsetsToCommit map[i
 
 	err = s.mover.TransferData(shardID, true)
 
-	log.Infof("Source %s.%s ingested batch of %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, len(messages))
+	tot := atomic.AddUint64(&s.totIngested, uint64(len(messages)))
+
+	log.Infof("Source %s.%s ingested batch of %d total ingested %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, len(messages), tot)
 
 	return err
-}
-
-// We commit the Kafka offsets in the same batch as we stage the rows for forwarding.
-// We need to commit the offsets here, as if the node fails after committing in Prana but before committing
-// in Kafka, then on recovery the same messages can be delivered again. In order to filter out the duplicates
-// we store the last received offsets here and we will reject any in the consumer that we've seen before
-func (s *Source) commitOffsetsToPrana(offsets map[int32]int64, batch *cluster.WriteBatch) {
-	for partID, offset := range offsets {
-
-		val := make([]byte, 0, 36)
-		val = append(val, 1)
-		val = common.AppendStringToBufferLE(val, s.sourceInfo.SchemaName)
-		val = append(val, 1)
-		val = common.AppendStringToBufferLE(val, s.sourceInfo.Name)
-		val = append(val, 1)
-		val = common.AppendUint64ToBufferLE(val, uint64(partID))
-		val = append(val, 1)
-		val = common.AppendUint64ToBufferLE(val, uint64(offset))
-
-		key := table.EncodeTableKeyPrefix(common.OffsetsTableID, batch.ShardID, 40)
-		key = common.KeyEncodeString(key, s.sourceInfo.SchemaName)
-		key = common.KeyEncodeString(key, s.sourceInfo.Name)
-		key = common.KeyEncodeInt64(key, int64(partID))
-
-		batch.AddPut(key, val)
-	}
 }
 
 func (s *Source) TableExecutor() *exec.TableExecutor {
@@ -457,14 +446,6 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 		m[k] = v
 	}
 	return m
-}
-
-func (s *Source) startupLastOffset(partitionID int32) int64 {
-	off, ok := s.startupCommittedOffsets[partitionID]
-	if !ok {
-		off = 0
-	}
-	return off
 }
 
 func GenerateGroupID(clusterID int, sourceInfo *common.SourceInfo) string {
@@ -484,14 +465,6 @@ func getOrDefaultIntValue(propName string, props map[string]string, def int) (in
 		res = def
 	}
 	return res, nil
-}
-
-func (s *Source) incrementDuplicateCount() {
-	atomic.AddInt64(&s.duplicateCount, 1)
-}
-
-func (s *Source) GetDuplicateCount() int64 {
-	return atomic.LoadInt64(&s.duplicateCount)
 }
 
 func (s *Source) addCommittedCount(val int64) {

@@ -11,38 +11,33 @@ import (
 )
 
 type MessageConsumer struct {
-	msgProvider             kafka.MessageProvider
-	pollTimeout             time.Duration
-	maxMessages             int
-	source                  *Source
-	loopCh                  chan struct{}
-	scheduler               *sched.ShardScheduler
-	startupCommittedOffsets map[int32]int64
-	running                 common.AtomicBool
-	messageParser           *MessageParser
-	msgBatch                []*kafka.Message
-	offsetsToCommit         map[int32]int64
+	msgProvider     kafka.MessageProvider
+	pollTimeout     time.Duration
+	maxMessages     int
+	source          *Source
+	loopCh          chan struct{}
+	scheduler       *sched.ShardScheduler
+	running         common.AtomicBool
+	messageParser   *MessageParser
+	msgBatch        []*kafka.Message
+	offsetsToCommit map[int32]int64
 }
 
-func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source, scheduler *sched.ShardScheduler, startupCommitOffsets map[int32]int64) (*MessageConsumer, error) {
-	lcm := make(map[int32]int64)
-	for k, v := range startupCommitOffsets {
-		lcm[k] = v
-	}
+func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
+	scheduler *sched.ShardScheduler) (*MessageConsumer, error) {
 	messageParser, err := NewMessageParser(source.sourceInfo, source.protoRegistry)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	mc := &MessageConsumer{
-		msgProvider:             msgProvider,
-		pollTimeout:             pollTimeout,
-		maxMessages:             maxMessages,
-		source:                  source,
-		scheduler:               scheduler,
-		startupCommittedOffsets: lcm,
-		loopCh:                  make(chan struct{}, 1),
-		messageParser:           messageParser,
-		offsetsToCommit:         make(map[int32]int64),
+		msgProvider:     msgProvider,
+		pollTimeout:     pollTimeout,
+		maxMessages:     maxMessages,
+		source:          source,
+		scheduler:       scheduler,
+		loopCh:          make(chan struct{}, 1),
+		messageParser:   messageParser,
+		offsetsToCommit: make(map[int32]int64),
 	}
 
 	msgProvider.SetRebalanceCallback(mc.rebalanceOccurring)
@@ -104,7 +99,7 @@ func (m *MessageConsumer) pollLoop() {
 
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
-			err := m.source.handleMessages(messages, offsetsToCommit, m.scheduler, m.messageParser)
+			err := m.source.handleMessages(messages, m.scheduler, m.messageParser)
 			if err != nil {
 				m.consumerError(err, false)
 				return
@@ -143,31 +138,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 			break
 		}
 		partID := msg.PartInfo.PartitionID
-		var lastOffset int64
-		var ok bool
-		lastOffset, ok = m.startupCommittedOffsets[partID]
-		if !ok {
-			lastOffset = -1
-		} else {
-			// The committed offset is actually one more than the last offset seen. Yes this is weird, but
-			// it's consistent with how you commit offsets in Kafka (you specify 1 + the last offset you processed)
-			// So, to get the last offset actually seen, we subtract 1
-			lastOffset--
-		}
-
 		m.offsetsToCommit[partID] = msg.PartInfo.Offset + 1
-		if msg.PartInfo.Offset <= lastOffset {
-			// We've seen the message before - this can be the case if a node crashed after offset was committed in
-			// Prana but before offset was committed in Kafka.
-			// In this case we log a warning, and ignore the message, the offset will be committed
-			log.Warnf("mc: %p Duplicate message delivery attempted on node %d schema %s source %s topic %s partition %d offset %d"+
-				" Message will be ignored", m, m.source.cluster.GetNodeID(), m.source.sourceInfo.SchemaName, m.source.sourceInfo.Name, m.source.sourceInfo.TopicInfo.TopicName, partID, msg.PartInfo.Offset)
-			if m.source.enableStats {
-				m.source.incrementDuplicateCount()
-			}
-			continue
-		}
-
 		m.msgBatch = append(m.msgBatch, msg)
 		remaining = pollTimeout - time.Now().Sub(start)
 		if remaining <= 0 {

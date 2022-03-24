@@ -22,6 +22,16 @@ func NewMover(cluster cluster.Cluster) *Mover {
 	return &Mover{cluster: cluster}
 }
 
+func (m *Mover) EncodeReceiverForIngestKey(receivingShardID uint64, dedupKey []byte, remoteConsumerID uint64) []byte {
+	buff := table.EncodeTableKeyPrefix(common.ReceiverIngestTableID, receivingShardID, 56)
+	if len(dedupKey) != 24 {
+		panic("dedupTuple must have length 24")
+	}
+	buff = append(buff, dedupKey...)
+	buff = common.AppendUint64ToBufferBE(buff, remoteConsumerID)
+	return buff
+}
+
 func (m *Mover) QueueRowForRemoteSend(remoteShardID uint64, prevRow *common.Row, currRow *common.Row, localShardID uint64, remoteConsumerID uint64, colTypes []common.ColumnType, batch *cluster.WriteBatch) (int, error) {
 	var prevValueBuff []byte
 	if prevRow != nil {
@@ -54,6 +64,14 @@ func (m *Mover) QueueForRemoteSend(remoteShardID uint64, prevValueBuff []byte, c
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteShardID)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, sequence)
 	queueKeyBytes = common.AppendUint64ToBufferBE(queueKeyBytes, remoteConsumerID)
+	buff := m.EncodePrevAndCurrentRow(prevValueBuff, currValueBuff)
+	batch.AddPut(queueKeyBytes, buff)
+	sequence++
+	batch.HasForwards = true
+	return m.updateNextForwardSequence(localShardID, sequence, batch)
+}
+
+func (m *Mover) EncodePrevAndCurrentRow(prevValueBuff []byte, currValueBuff []byte) []byte {
 	lpvb := len(prevValueBuff)
 	lcvb := len(currValueBuff)
 	buff := make([]byte, 0, lpvb+lcvb+8)
@@ -61,10 +79,7 @@ func (m *Mover) QueueForRemoteSend(remoteShardID uint64, prevValueBuff []byte, c
 	buff = append(buff, prevValueBuff...)
 	buff = common.AppendUint32ToBufferLE(buff, uint32(lcvb))
 	buff = append(buff, currValueBuff...)
-	batch.AddPut(queueKeyBytes, buff)
-	sequence++
-	batch.HasForwards = true
-	return m.updateNextForwardSequence(localShardID, sequence, batch)
+	return buff
 }
 
 // TransferData TODO instead of reading from storage, we can pass rows from QueueRowForRemoteSend to here via
@@ -164,6 +179,7 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	}
 	remoteConsumerRows := make(map[uint64][][]byte)
 	receivingSequences := make(map[uint64]uint64)
+
 	for _, kvPair := range kvPairs {
 		sendingShardID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		lastReceivedSeq, ok := receivingSequences[sendingShardID]
@@ -199,6 +215,43 @@ func (m *Mover) HandleReceivedRows(receivingShardID uint64, rawRowHandler RawRow
 	}
 	for sendingShardID, lastReceivedSequence := range receivingSequences {
 		m.updateLastReceivingSequence(receivingShardID, sendingShardID, lastReceivedSequence, batch)
+	}
+	err = m.cluster.WriteBatch(batch)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+	return batch.HasForwards, nil
+}
+
+// HandleReceivedRowsForIngest - is used to receive rows that have been forwarded after ingest
+func (m *Mover) HandleReceivedRowsForIngest(receivingShardID uint64, rawRowHandler RawRowHandler) (bool, error) {
+	batch := cluster.NewWriteBatch(receivingShardID, false)
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverIngestTableID, receivingShardID, 16)
+	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverIngestTableID+1, receivingShardID, 16)
+
+	kvPairs, err := m.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+	remoteConsumerRows := make(map[uint64][][]byte)
+
+	// Format of key is:
+	// shard_id|receiver_ingest_table_id|originator_id|sequence|remote_consumer_id
+	for _, kvPair := range kvPairs {
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 40)
+		rows, ok := remoteConsumerRows[remoteConsumerID]
+		if !ok {
+			rows = make([][]byte, 0)
+		}
+		rows = append(rows, kvPair.Value)
+		remoteConsumerRows[remoteConsumerID] = rows
+		batch.AddDelete(kvPair.Key)
+	}
+	if len(remoteConsumerRows) > 0 {
+		err = rawRowHandler.HandleRawRows(remoteConsumerRows, batch)
+		if err != nil {
+			return false, errors.WithStack(err)
+		}
 	}
 	err = m.cluster.WriteBatch(batch)
 	if err != nil {

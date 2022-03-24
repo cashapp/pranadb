@@ -47,8 +47,7 @@ select * from test_source_1 order by col0;
 -- so they all the messages will be received again but they will be rejected as duplicates;
 -- there should be at least 10 duplicates - there could be more in the case of a rebalance occurring and messages consumed
 -- between reconnecting and rebalance occurring;
---wait for committed test_source_1 10;
---wait for duplicates test_source_1 10;
+--wait for committed test_source_1 20;
 
 -- send some more data;
 --load data dataset_2;

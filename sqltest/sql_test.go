@@ -163,7 +163,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			"localhost:63401",
 		}
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
-		cnf.ScreenDragonLogSpam = true
 		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
@@ -203,6 +202,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
+			cnf.DisableShardPlacementSanityCheck = true
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
@@ -435,8 +435,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeKafkaFail(require, command)
 		} else if strings.HasPrefix(command, "--wait for rows") {
 			st.executeWaitForRows(require, command)
-		} else if strings.HasPrefix(command, "--wait for duplicates") {
-			st.executeWaitForDuplicates(require, command)
 		} else if strings.HasPrefix(command, "--wait for committed") {
 			st.executeWaitForCommitted(require, command)
 		} else if strings.HasPrefix(command, "--enable commit offsets") {
@@ -476,6 +474,10 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	// Now we verify that the test has left the database in a clean state - there should be no user sources
 	// or materialized views and no data in the database and nothing in the remote session caches
 	for _, prana := range st.testSuite.pranaCluster {
+
+		// This ensures no rows in receiver, forwarder tables etc
+		err := prana.GetPushEngine().WaitForProcessingToComplete()
+		require.NoError(err)
 
 		// Script should delete all it's table and MV. Once they are all deleted the schema will automatically
 		// be removed, so should not exist at end of test
@@ -768,7 +770,6 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	require.NoError(err)
 	if !noWait {
 		st.waitForCommitted(require, dataset.rows.RowCount()+initialCommitted, dataset.sourceInfo.ID)
-		st.waitForProcessingToComplete(require)
 	}
 	end := time.Now()
 	dur := end.Sub(start)
@@ -889,39 +890,7 @@ func (st *sqlTest) waitForCommitted(require *require.Assertions, numrows int, so
 	}, 5*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok, fmt.Sprintf("timed out waiting for %d rows to be committed, actual committed %d", numrows, st.getNumCommitted(require, sourceID)))
-}
-
-func (st *sqlTest) executeWaitForDuplicates(require *require.Assertions, command string) {
-	command = command[22:]
-	parts := strings.Split(command, " ")
-	lp := len(parts)
-	require.True(lp == 2, "Invalid wait for duplicates, should be --wait for duplicates source_name num_rows")
-	sourceName := parts[0]
-	sNumRows := parts[1]
-	numrows, err := strconv.ParseInt(sNumRows, 10, 32)
-	require.NoError(err)
-
-	require.NotEmpty(st.currentSchema, "no schema selected")
-	sourceInfo, ok := st.testSuite.pranaCluster[0].GetMetaController().GetSource(st.currentSchema, sourceName)
-	require.True(ok, fmt.Sprintf("no such source %s", sourceName))
-
-	ok, err = commontest.WaitUntilWithError(func() (bool, error) {
-		totDuplicates := 0
-		for _, server := range st.testSuite.pranaCluster {
-			source, err := server.GetPushEngine().GetSource(sourceInfo.ID)
-			require.NoError(err)
-			totDuplicates += int(source.GetDuplicateCount())
-		}
-		// We wait for at least numrows - we can have more than this number in the case that
-		// a rebalance occurred after failure injection stopped so consumer might receive dups then rebalance
-		// then two consumers receive dups again
-		if totDuplicates >= int(numrows) {
-			return true, nil
-		}
-		return false, nil
-	}, 5*time.Second, 100*time.Millisecond)
-	require.NoError(err)
-	require.True(ok, "timed out waiting for duplicates")
+	st.waitForProcessingToComplete(require)
 }
 
 func (st *sqlTest) executeEnableCommitOffsets(require *require.Assertions, command string) {
@@ -992,10 +961,12 @@ func (st *sqlTest) activateFailpoint(require *require.Assertions, cmd string, ac
 }
 
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
+	log.Debug("Waiting for processing to complete")
 	for _, prana := range st.testSuite.pranaCluster {
 		err := prana.GetPushEngine().WaitForProcessingToComplete()
 		require.NoError(err)
 	}
+	log.Debug("Waited for processing to complete")
 }
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {

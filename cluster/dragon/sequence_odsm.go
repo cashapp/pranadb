@@ -28,6 +28,7 @@ func (s *sequenceODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *sequenceODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
+	// FIXME - this MUST be idempotent - same entries can be applied more than once in case of retry after timeout
 	log.Tracef("sequence shard update entries %d", len(entries))
 	batch := s.dragon.pebble.NewBatch()
 	latestSeqVals := make(map[string][]byte)

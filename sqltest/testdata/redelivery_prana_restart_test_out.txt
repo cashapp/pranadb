@@ -57,9 +57,8 @@ select * from test_source_1 order by col0;
 use test;
 0 rows returned
 
---load data dataset_2 no wait;
---wait for duplicates test_source_1 10;
---wait for committed test_source_1 5;
+--load data dataset_2;
+--wait for committed test_source_1 15;
 select * from test_source_1 order by col0;
 |col0|col1|col2|col3|col4|col5|col6|
 |1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|

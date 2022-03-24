@@ -42,9 +42,8 @@ select * from test_source_1 order by col0;
 
 use test;
 
---load data dataset_2 no wait;
---wait for duplicates test_source_1 10;
---wait for committed test_source_1 5;
+--load data dataset_2;
+--wait for committed test_source_1 15;
 select * from test_source_1 order by col0;
 
 drop source test_source_1;
