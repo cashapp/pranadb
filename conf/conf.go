@@ -21,39 +21,40 @@ const (
 )
 
 type Config struct {
-	NodeID                        int
-	ClusterID                     int // All nodes in a Prana cluster must share the same ClusterID
-	RaftAddresses                 []string
-	NotifListenAddresses          []string
-	NumShards                     int
-	ReplicationFactor             int
-	DataDir                       string
-	TestServer                    bool
-	KafkaBrokers                  BrokerConfigs
-	DataSnapshotEntries           int
-	DataCompactionOverhead        int
-	SequenceSnapshotEntries       int
-	SequenceCompactionOverhead    int
-	LocksSnapshotEntries          int
-	LocksCompactionOverhead       int
-	Debug                         bool
-	NotifierHeartbeatInterval     time.Duration
-	EnableAPIServer               bool
-	APIServerListenAddresses      []string
-	APIServerSessionTimeout       time.Duration
-	APIServerSessionCheckInterval time.Duration
-	EnableSourceStats             bool
-	ProtobufDescriptorDir         string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
-	EnableLifecycleEndpoint       bool
-	LifeCycleListenAddress        string
-	StartupEndpointPath           string
-	ReadyEndpointPath             string
-	LiveEndpointPath              string
-	MetricsBind                   string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
-	EnableMetrics                 bool
-	GlobalIngestLimitRowsPerSec   int
-	EnableFailureInjector         bool
-	ScreenDragonLogSpam           bool
+	NodeID                           int
+	ClusterID                        int // All nodes in a Prana cluster must share the same ClusterID
+	RaftAddresses                    []string
+	NotifListenAddresses             []string
+	NumShards                        int
+	ReplicationFactor                int
+	DataDir                          string
+	TestServer                       bool
+	KafkaBrokers                     BrokerConfigs
+	DataSnapshotEntries              int
+	DataCompactionOverhead           int
+	SequenceSnapshotEntries          int
+	SequenceCompactionOverhead       int
+	LocksSnapshotEntries             int
+	LocksCompactionOverhead          int
+	Debug                            bool
+	NotifierHeartbeatInterval        time.Duration
+	EnableAPIServer                  bool
+	APIServerListenAddresses         []string
+	APIServerSessionTimeout          time.Duration
+	APIServerSessionCheckInterval    time.Duration
+	EnableSourceStats                bool
+	ProtobufDescriptorDir            string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
+	EnableLifecycleEndpoint          bool
+	LifeCycleListenAddress           string
+	StartupEndpointPath              string
+	ReadyEndpointPath                string
+	LiveEndpointPath                 string
+	MetricsBind                      string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
+	EnableMetrics                    bool
+	GlobalIngestLimitRowsPerSec      int
+	EnableFailureInjector            bool
+	ScreenDragonLogSpam              bool
+	DisableShardPlacementSanityCheck bool
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo

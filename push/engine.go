@@ -308,23 +308,32 @@ func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	}
 }
 
-func (s *shardListener) RemoteWriteOccurred() {
+func (s *shardListener) RemoteWriteOccurred(ingest bool) {
 	if !s.p.readyToReceive.Get() {
 		return
 	}
-	s.scheduleHandleRemoteBatch()
+	s.scheduleHandleRemoteBatch(ingest)
 }
 
-func (s *shardListener) scheduleHandleRemoteBatch() {
-	s.p.MaybeHandleRemoteBatch(s.sched)
+func (s *shardListener) scheduleHandleRemoteBatch(ingest bool) {
+	s.p.MaybeHandleRemoteBatch(s.sched, ingest)
 }
 
-func (p *Engine) MaybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
+func (p *Engine) MaybeHandleRemoteBatch(scheduler *sched.ShardScheduler, ingest bool) {
 	scheduler.ScheduleActionFireAndForget(func() error {
 		start := time.Now()
-		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
-		if err != nil {
-			return errors.WithStack(err)
+		var hasForwards bool
+		var err error
+		if ingest {
+			hasForwards, err = p.mover.HandleReceivedRowsForIngest(scheduler.ShardID(), p)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+		} else {
+			hasForwards, err = p.mover.HandleReceivedRows(scheduler.ShardID(), p)
+			if err != nil {
+				return errors.WithStack(err)
+			}
 		}
 		durNanos := time.Now().Sub(start).Nanoseconds()
 		p.processBatchTimeHistogram.Observe(float64(durNanos))
@@ -448,7 +457,8 @@ func (p *Engine) checkForPendingData() error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		p.MaybeHandleRemoteBatch(scheduler)
+		p.MaybeHandleRemoteBatch(scheduler, true)
+		p.MaybeHandleRemoteBatch(scheduler, false)
 	}
 	return nil
 }
@@ -469,6 +479,12 @@ func (p *Engine) WaitForProcessingToComplete() error {
 
 	// Wait for no rows in the receiver table
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	// Wait for no rows in the receiver ingest table
+	err = p.waitForNoRowsInTable(common.ReceiverIngestTableID)
 	if err != nil {
 		return errors.WithStack(err)
 	}

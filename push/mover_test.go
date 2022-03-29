@@ -394,7 +394,7 @@ type delegatingShardListener struct {
 	delegate cluster.ShardListener
 }
 
-func (d delegatingShardListener) RemoteWriteOccurred() {
+func (d delegatingShardListener) RemoteWriteOccurred(ingest bool) {
 	// Do nothing - we do not want to trigger remote writes in these tests
 }
 

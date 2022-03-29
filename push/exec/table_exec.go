@@ -444,7 +444,6 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 				}
 				startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
 				numRows += len(kvp)
-				log.Tracef("filled batch of %d", len(kvp))
 			}
 		}()
 	}

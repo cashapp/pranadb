@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync"
 
@@ -26,6 +27,7 @@ type FakeCluster struct {
 	membershipListener           MembershipListener
 	lockslock                    sync.Mutex
 	locks                        map[string]struct{}
+	dedupSequences               map[uint64]map[string]uint64
 }
 
 type snapshot struct {
@@ -73,6 +75,7 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		btree:           btree.New(3),
 		shardListeners:  make(map[uint64]ShardListener),
 		locks:           make(map[string]struct{}),
+		dedupSequences:  make(map[uint64]map[string]uint64),
 	}
 }
 
@@ -165,6 +168,47 @@ func (f *FakeCluster) Stop() error {
 	return nil
 }
 
+func (f *FakeCluster) WriteBatchWithDedup(batch *WriteBatch) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	filteredBatch := NewWriteBatch(batch.ShardID, true)
+	dedupMap, ok := f.dedupSequences[batch.ShardID]
+	if !ok {
+		dedupMap = make(map[string]uint64)
+		f.dedupSequences[batch.ShardID] = dedupMap
+	}
+	if err := batch.ForEachPut(func(key []byte, value []byte) error {
+		if !f.checkDedupKey(key, dedupMap, batch.ShardID) {
+			return nil
+		}
+		filteredBatch.AddPut(key, value)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := batch.ForEachDelete(func(key []byte) error {
+		filteredBatch.AddDelete(key)
+		return nil
+	}); err != nil {
+		return err
+	}
+	return f.writeBatchInternal(filteredBatch, true)
+}
+
+func (f *FakeCluster) checkDedupKey(key []byte, dedupMap map[string]uint64, shardID uint64) bool {
+	seq, _ := common.ReadUint64FromBufferBE(key, 32)
+	soid := string(key[16:32])
+	currSeq, ok := dedupMap[soid]
+	if ok && currSeq >= seq {
+		log.Printf("prev seq is %d", currSeq)
+		log.Debugf("Duplicate forward row detected in shard %d - ignoring it", shardID)
+		return false
+	}
+	dedupMap[soid] = seq
+	return true
+}
+
 func (f *FakeCluster) WriteBatchLocally(batch *WriteBatch) error {
 	return f.WriteBatch(batch)
 }
@@ -172,30 +216,37 @@ func (f *FakeCluster) WriteBatchLocally(batch *WriteBatch) error {
 func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.writeBatchInternal(batch, false); err != nil {
+		return err
+	}
+	return batch.AfterCommit()
+}
+
+func (f *FakeCluster) writeBatchInternal(batch *WriteBatch, ingest bool) error {
 	if batch.ShardID < DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-	for k, v := range batch.Puts.TheMap {
-		kBytes := common.StringToByteSliceZeroCopy(k)
+	if err := batch.ForEachPut(func(k []byte, v []byte) error {
 		f.putInternal(&kvWrapper{
-			key:   kBytes,
+			key:   k,
 			value: v,
 		})
+		return nil
+	}); err != nil {
+		return err
 	}
-	for k := range batch.Deletes.TheMap {
-		kBytes := common.StringToByteSliceZeroCopy(k)
-		err := f.deleteInternal(&kvWrapper{
-			key: kBytes,
+	if err := batch.ForEachDelete(func(key []byte) error {
+		return f.deleteInternal(&kvWrapper{
+			key: key,
 		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	}); err != nil {
+		return err
 	}
 	if batch.NotifyRemote {
 		shardListener := f.shardListeners[batch.ShardID]
-		go shardListener.RemoteWriteOccurred()
+		go shardListener.RemoteWriteOccurred(ingest)
 	}
-	return batch.AfterCommit()
+	return nil
 }
 
 func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {

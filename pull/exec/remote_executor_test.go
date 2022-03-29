@@ -192,6 +192,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) WriteBatchWithDedup(batch *cluster.WriteBatch) error {
+	return nil
+}
+
 func (t *testCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 	return nil
 }

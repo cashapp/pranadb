@@ -35,7 +35,7 @@ func (d *DummyShardListenerFactory) CreateShardListener(shardID uint64) ShardLis
 type dummyShardListener struct {
 }
 
-func (d *dummyShardListener) RemoteWriteOccurred() {
+func (d *dummyShardListener) RemoteWriteOccurred(ingest bool) {
 }
 
 func (d *dummyShardListener) Close() {
