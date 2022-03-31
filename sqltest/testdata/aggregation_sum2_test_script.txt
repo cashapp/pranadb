@@ -1,0 +1,55 @@
+-- we test with some aggregations where we load the data *after* creating the aggregations - this exercises a somewhat;
+-- different code path than loading the data first;
+
+--create topic sensor_readings;
+use test;
+create source latest_sensor_readings(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    reading_2 double,
+    reading_3 decimal(10,2),
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5
+    )
+);
+
+create materialized view test_mv_1 as select sum(reading_1) from latest_sensor_readings;
+
+create materialized view test_mv_2 as select country, sum(reading_1) from latest_sensor_readings group by country;
+
+create materialized view test_mv_3 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city;
+
+create materialized view test_mv_4 as select country, city from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+
+--load data dataset_1;
+
+select * from test_mv_1;
+
+select * from test_mv_2 order by country;
+
+select * from test_mv_3 order by country, city;
+
+select * from test_mv_4 order by country, city;
+
+
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source latest_sensor_readings;
+
+--delete topic sensor_readings;

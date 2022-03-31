@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"net/http" //nolint:stylecheck
 
@@ -40,7 +41,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	var notifClient notifier.Client
 	var notifServer notifier.Server
 	if config.TestServer {
-		clus = cluster.NewFakeCluster(config.NodeID, config.NumShards)
+		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
 		fakeNotifier := notifier.NewFakeNotifier()
 		notifClient = fakeNotifier
 		notifServer = fakeNotifier

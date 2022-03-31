@@ -3,7 +3,6 @@ package exec
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/push/mover"
 )
 
 type PushExecutor interface {
@@ -22,9 +21,30 @@ type PushExecutor interface {
 	ColsVisible() []bool
 }
 
+func NewExecutionContext(writeBatch *cluster.WriteBatch, enableDuplicateDetection bool) *ExecutionContext {
+	return &ExecutionContext{
+		WriteBatch:               writeBatch,
+		EnableDuplicateDetection: enableDuplicateDetection,
+	}
+}
+
 type ExecutionContext struct {
-	WriteBatch *cluster.WriteBatch
-	Mover      *mover.Mover
+	WriteBatch               *cluster.WriteBatch
+	RemoteBatches            map[uint64]*cluster.WriteBatch
+	BatchSequence            uint64
+	EnableDuplicateDetection bool
+}
+
+func (e *ExecutionContext) AddToForwardBatch(shardID uint64, key []byte, value []byte) {
+	if e.RemoteBatches == nil {
+		e.RemoteBatches = make(map[uint64]*cluster.WriteBatch)
+	}
+	remoteBatch, ok := e.RemoteBatches[shardID]
+	if !ok {
+		remoteBatch = cluster.NewWriteBatch(shardID)
+		e.RemoteBatches[shardID] = remoteBatch
+	}
+	remoteBatch.AddPut(key, value)
 }
 
 type pushExecutorBase struct {

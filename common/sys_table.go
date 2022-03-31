@@ -2,20 +2,16 @@ package common
 
 // System table ids
 const (
-	ForwarderTableID            = 1
-	ForwarderSequenceTableID    = 2
-	ReceiverTableID             = 3
-	ReceiverIngestTableID       = 4
-	ReceiverSequenceTableID     = 5
-	SequenceGeneratorTableID    = 6
-	LocksTableID                = 7
-	LastLogIndexReceivedTableID = 8
-	SyncTableID                 = 9
-	SchemaTableID               = 10 // SchemaTableID stores table schemas
-	ProtobufTableID             = 11
-	IndexTableID                = 12
-	ToDeleteTableID             = 13
-	LocalConfigTableID          = 14
-	ForwardDedupTableID         = 15
+	ReceiverTableID             = 1
+	SequenceGeneratorTableID    = 2
+	LocksTableID                = 3
+	LastLogIndexReceivedTableID = 4
+	SyncTableID                 = 5
+	SchemaTableID               = 6 // SchemaTableID stores table schemas
+	ProtobufTableID             = 7
+	IndexTableID                = 8
+	ToDeleteTableID             = 9
+	LocalConfigTableID          = 10
+	ForwardDedupTableID         = 11
 	UserTableIDBase             = 1000
 )

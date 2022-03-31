@@ -151,7 +151,7 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 		return errors.WithStack(err)
 	}
 
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID, false)
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
 	for _, fd := range descriptors.File {
 		if err := table.Upsert(ProtobufTableInfo.TableInfo, encodeDescriptorToRow(fd), wb); err != nil {
 			return errors.WithStack(err)

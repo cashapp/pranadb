@@ -81,7 +81,7 @@ func testProject(t *testing.T, inputRows [][]interface{}, expectedRows [][]inter
 	require.NoError(t, err)
 
 	execCtx := &ExecutionContext{
-		WriteBatch: cluster.NewWriteBatch(1, false),
+		WriteBatch: cluster.NewWriteBatch(1),
 	}
 	rg := &rowGatherer{}
 	proj.SetParent(rg)

@@ -9,17 +9,14 @@ type WriteBatch struct {
 	ShardID            uint64
 	Puts               []byte
 	Deletes            []byte
-	numPuts            int
-	numDeletes         int
-	NotifyRemote       bool
-	HasForwards        bool
+	NumPuts            int
+	NumDeletes         int
 	committedCallbacks []CommittedCallback
 }
 
-func NewWriteBatch(shardID uint64, notifyRemote bool) *WriteBatch {
+func NewWriteBatch(shardID uint64) *WriteBatch {
 	return &WriteBatch{
-		ShardID:      shardID,
-		NotifyRemote: notifyRemote,
+		ShardID: shardID,
 	}
 }
 
@@ -32,12 +29,12 @@ type CommittedCallback func() error
 func (wb *WriteBatch) AddPut(k []byte, v []byte) {
 	wb.Puts = appendBytesWithLength(wb.Puts, k)
 	wb.Puts = appendBytesWithLength(wb.Puts, v)
-	wb.numPuts++
+	wb.NumPuts++
 }
 
 func (wb *WriteBatch) AddDelete(k []byte) {
 	wb.Deletes = appendBytesWithLength(wb.Deletes, k)
-	wb.numDeletes++
+	wb.NumDeletes++
 }
 
 func (wb *WriteBatch) HasWrites() bool {
@@ -45,9 +42,9 @@ func (wb *WriteBatch) HasWrites() bool {
 }
 
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
-	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.numPuts))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
 	buff = append(buff, wb.Puts...)
-	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.numDeletes))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeletes))
 	buff = append(buff, wb.Deletes...)
 	return buff
 }

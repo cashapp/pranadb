@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"testing"
 
@@ -127,7 +128,7 @@ func TestLoader(t *testing.T) {
 	for _, test := range tests {
 		// nolint: scopelint
 		t.Run(test.name, func(t *testing.T) {
-			clus := cluster.NewFakeCluster(1, 1)
+			clus := fake.NewFakeCluster(1, 1)
 			notifier := notifier.NewFakeNotifier()
 			metaController, executor := runServer(t, clus, notifier)
 			expectedSchemas := make(map[string]*common.Schema)

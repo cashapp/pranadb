@@ -18,15 +18,11 @@ const (
 
 type Cluster interface {
 
-	// WriteBatch writes a batch reliability to storage
+	// WriteBatch writes a batch reliably to storage
 	WriteBatch(batch *WriteBatch) error
 
-	// WriteBatchWithDedup writes a batch with duplicate detection at the state machine level. The 24 bytes of the
-	// key of each entry after the [shard_id, table_id] in the batch (i.e. the slice key[16:16+24] must be a
-	// de-duplication key. The first 16 bytes of which must be an originator id and the next 8 bytes a sequence.
-	// Any keys with the same originator id and a sequence less than or equal to the last seen sequence for the same
-	// originator id are considered duplicates and not stored.
-	WriteBatchWithDedup(batch *WriteBatch) error
+	// WriteForwardBatch writes a batch reliably for forwarding to another shard
+	WriteForwardBatch(batch *WriteBatch) error
 
 	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
 	WriteBatchLocally(batch *WriteBatch) error
@@ -253,7 +249,7 @@ type ShardListenerFactory interface {
 }
 
 type ShardListener interface {
-	RemoteWriteOccurred(ingest bool)
+	RemoteWriteOccurred()
 
 	Close()
 }
