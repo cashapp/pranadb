@@ -22,7 +22,7 @@ const (
 
 type Config struct {
 	NodeID                           int
-	ClusterID                        int // All nodes in a Prana cluster must share the same ClusterID
+	ClusterID                        uint64 // All nodes in a Prana cluster must share the same ClusterID
 	RaftAddresses                    []string
 	NotifListenAddresses             []string
 	NumShards                        int
