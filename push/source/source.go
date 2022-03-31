@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/push/util"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,6 @@ import (
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/push/exec"
-	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/sharder"
 )
@@ -52,7 +52,6 @@ type Source struct {
 	tableExecutor           *exec.TableExecutor
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
-	mover                   *mover.Mover
 	protoRegistry           protolib.Resolver
 	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
@@ -73,8 +72,6 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
-
-	totIngested uint64
 }
 
 var (
@@ -101,7 +98,7 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
-	cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config,
+	cluster cluster.Cluster, schedSelector SchedulerSelector, cfg *conf.Config,
 	queryExec common.SimpleQueryExec, registry protolib.Resolver, globalRateLimiter IngestLimiter) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
@@ -153,7 +150,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		tableExecutor:           tableExec,
 		sharder:                 sharder,
 		cluster:                 cluster,
-		mover:                   mover,
 		protoRegistry:           registry,
 		schedSelector:           schedSelector,
 		msgProvFact:             msgProvFact,
@@ -314,7 +310,7 @@ func (s *Source) stop() error {
 func (s *Source) handleMessages(messages []*kafka.Message, scheduler *sched.ShardScheduler,
 	mp *MessageParser) error {
 	errChan := scheduler.ScheduleAction(func() error {
-		return s.ingestMessages(messages, scheduler.ShardID(), mp)
+		return s.ingestMessages(messages, mp)
 	})
 	err, ok := <-errChan
 	if !ok {
@@ -323,7 +319,7 @@ func (s *Source) handleMessages(messages []*kafka.Message, scheduler *sched.Shar
 	return errors.WithStack(err)
 }
 
-func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *MessageParser) error {
+func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) error {
 
 	start := time.Now()
 
@@ -363,19 +359,14 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 
 		forwardBatch, ok := forwardBatches[destShardID]
 		if !ok {
-			forwardBatch = cluster.NewWriteBatch(destShardID, true)
+			forwardBatch = cluster.NewWriteBatch(destShardID)
 			forwardBatches[destShardID] = forwardBatch
 		}
 
 		kMsg := messages[i]
-		dedupKey := make([]byte, 0, 24)
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, tableID)
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.PartitionID))
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.Offset))
-
-		log.Printf("partition id is %d", kMsg.PartInfo.PartitionID)
-
-		receiverKey := s.mover.EncodeReceiverForIngestKey(destShardID, dedupKey, tableID)
+		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
+			uint64(kMsg.PartInfo.Offset), tableID)
+		log.Debugf("source forward key length is %d", len(forwardKey))
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
@@ -384,37 +375,15 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 			return err
 		}
 
-		forwardBatch.AddPut(receiverKey, s.mover.EncodePrevAndCurrentRow(nil, encodedRow))
+		forwardBatch.AddPut(forwardKey, util.EncodePrevAndCurrentRow(nil, encodedRow))
 
 		l := len(valueBuff)
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
 	}
 
-	lb := len(forwardBatches)
-	chs := make([]chan error, 0, lb)
-
-	for _, b := range forwardBatches {
-		ch := make(chan error, 1)
-		chs = append(chs, ch)
-		theBatch := b
-		go func() {
-			err := s.cluster.WriteBatchWithDedup(theBatch)
-			if err != nil {
-				ch <- err
-				return
-			}
-			ch <- nil
-		}()
-	}
-	for i := 0; i < lb; i++ {
-		err, ok := <-chs[i]
-		if !ok {
-			panic("channel closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
+		return err
 	}
 
 	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
@@ -423,13 +392,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
-	err = s.mover.TransferData(shardID, true)
-
-	tot := atomic.AddUint64(&s.totIngested, uint64(len(messages)))
-
-	log.Infof("Source %s.%s ingested batch of %d total ingested %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, len(messages), tot)
-
-	return err
+	return nil
 }
 
 func (s *Source) TableExecutor() *exec.TableExecutor {

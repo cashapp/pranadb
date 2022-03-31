@@ -55,7 +55,7 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	sel.calculateSchema(colTypes, nil)
 	require.NoError(t, err)
 	execCtx := &ExecutionContext{
-		WriteBatch: cluster.NewWriteBatch(1, false),
+		WriteBatch: cluster.NewWriteBatch(1),
 	}
 	rg := &rowGatherer{}
 	sel.SetParent(rg)

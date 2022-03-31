@@ -1,0 +1,87 @@
+-- we test with some aggregations where we load the data *after* creating the aggregations - this exercises a somewhat;
+-- different code path than loading the data first;
+
+--create topic sensor_readings;
+use test;
+0 rows returned
+create source latest_sensor_readings(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    reading_2 double,
+    reading_3 decimal(10,2),
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5
+    )
+);
+0 rows returned
+
+create materialized view test_mv_1 as select sum(reading_1) from latest_sensor_readings;
+0 rows returned
+
+create materialized view test_mv_2 as select country, sum(reading_1) from latest_sensor_readings group by country;
+0 rows returned
+
+create materialized view test_mv_3 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city;
+0 rows returned
+
+create materialized view test_mv_4 as select country, city from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_mv_1;
+|sum(reading_1)|
+|225.000000000000000000000000000000|
+1 rows returned
+
+select * from test_mv_2 order by country;
+|country|sum(reading_1)|
+|au|2535.000000000000000000000000000000|
+|uk|3273.000000000000000000000000000000|
+|usa|-5583.000000000000000000000000000000|
+3 rows returned
+
+select * from test_mv_3 order by country, city;
+|country|city|sum(reading_1)|
+|au|melbourne|0.000000000000000000000000000000|
+|au|sydney|2535.000000000000000000000000000000|
+|uk|bristol|261.000000000000000000000000000000|
+|uk|london|3012.000000000000000000000000000000|
+|usa|new york|-1847.000000000000000000000000000000|
+|usa|san francisco|-3736.000000000000000000000000000000|
+6 rows returned
+
+select * from test_mv_4 order by country, city;
+|country|city|
+|au|sydney|
+|uk|bristol|
+|uk|london|
+3 rows returned
+
+
+drop materialized view test_mv_4;
+0 rows returned
+drop materialized view test_mv_3;
+0 rows returned
+drop materialized view test_mv_2;
+0 rows returned
+drop materialized view test_mv_1;
+0 rows returned
+drop source latest_sensor_readings;
+0 rows returned
+
+--delete topic sensor_readings;
