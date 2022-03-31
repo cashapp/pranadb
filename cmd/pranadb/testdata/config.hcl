@@ -1,5 +1,5 @@
 // This is the clusterid
-cluster-id     = 12345
+cluster-id     = "6112451081796031488"
 /*
   These are the raft addresses
 */

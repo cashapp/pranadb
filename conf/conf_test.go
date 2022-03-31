@@ -20,12 +20,6 @@ func invalidNodeIDConf() Config {
 	return cnf
 }
 
-func invalidClusterIDConf() Config {
-	cnf := confAllFields
-	cnf.ClusterID = -1
-	return cnf
-}
-
 func invalidNumShardsConf() Config {
 	cnf := confAllFields
 	cnf.NumShards = 0
@@ -232,7 +226,6 @@ func invalidGlobalIngestLimitRowsPerNegative() Config {
 
 var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
-	{"PDB0004 - Invalid configuration: ClusterID must be >= 0", invalidClusterIDConf()},
 	{"PDB0004 - Invalid configuration: NumShards must be >= 1", invalidNumShardsConf()},
 	{"PDB0004 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB0004 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},

@@ -448,7 +448,7 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 	return m
 }
 
-func GenerateGroupID(clusterID int, sourceInfo *common.SourceInfo) string {
+func GenerateGroupID(clusterID uint64, sourceInfo *common.SourceInfo) string {
 	return fmt.Sprintf("prana-source-%d-%s-%s-%d", clusterID, sourceInfo.SchemaName, sourceInfo.Name, sourceInfo.ID)
 }
 

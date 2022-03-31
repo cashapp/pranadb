@@ -264,7 +264,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
-		DeploymentID:        uint64(d.cnf.ClusterID),
+		DeploymentID:        d.cnf.ClusterID,
 		WALDir:              dragonBoatDir,
 		NodeHostDir:         dragonBoatDir,
 		RTTMillisecond:      100,
