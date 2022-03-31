@@ -132,15 +132,20 @@ func (ds *LogicalDataSource) buildIndexScan(path *util.AccessPath) LogicalPlan {
 func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
 	scan := ds.buildTableScan()
 	scans = append(scans, scan)
+
 	for _, path := range ds.possibleAccessPaths {
 		if !path.IsIntHandlePath {
 			path.FullIdxCols, path.FullIdxColLens = expression.IndexInfo2Cols(ds.Columns, ds.schema.Columns, path.Index)
 			path.IdxCols, path.IdxColLens = expression.IndexInfo2PrefixCols(ds.Columns, ds.schema.Columns, path.Index)
 			// If index columns can cover all of the needed columns, we can use a IndexGather + IndexScan.
+
+			// TODO figure out why this is not returning true for our index
 			if ds.isCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
 				scans = append(scans, ds.buildIndexScan(path))
+			} else {
+				// TODO need to create an index lookup (new logical relation)
 			}
-			// TODO: If index columns can not cover the schema, use IndexLookUpGather.
+
 		}
 	}
 	return scans
@@ -447,6 +452,9 @@ func (ds *LogicalDataSource) getPKIsHandleCol() *expression.Column {
 }
 
 func (ds *LogicalDataSource) isCoveringIndex(columns, indexColumns []*expression.Column, idxColLens []int, tblInfo *model.TableInfo) bool {
+
+	// TODO this can be radically simplified
+
 	for _, col := range columns {
 		if tblInfo.PKIsHandle && mysql.HasPriKeyFlag(col.RetType.Flag) {
 			continue
