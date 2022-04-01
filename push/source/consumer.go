@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
-	"github.com/squareup/pranadb/push/sched"
 )
 
 type MessageConsumer struct {
@@ -16,15 +15,14 @@ type MessageConsumer struct {
 	maxMessages     int
 	source          *Source
 	loopCh          chan struct{}
-	scheduler       *sched.ShardScheduler
 	running         common.AtomicBool
 	messageParser   *MessageParser
 	msgBatch        []*kafka.Message
 	offsetsToCommit map[int32]int64
 }
 
-func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int, source *Source,
-	scheduler *sched.ShardScheduler) (*MessageConsumer, error) {
+func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Duration, maxMessages int,
+	source *Source) (*MessageConsumer, error) {
 	messageParser, err := NewMessageParser(source.sourceInfo, source.protoRegistry)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -34,7 +32,6 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 		pollTimeout:     pollTimeout,
 		maxMessages:     maxMessages,
 		source:          source,
-		scheduler:       scheduler,
 		loopCh:          make(chan struct{}, 1),
 		messageParser:   messageParser,
 		offsetsToCommit: make(map[int32]int64),
@@ -99,8 +96,7 @@ func (m *MessageConsumer) pollLoop() {
 
 		if len(messages) != 0 {
 			// This blocks until messages were actually ingested
-			err := m.source.handleMessages(messages, m.scheduler, m.messageParser)
-			if err != nil {
+			if err := m.source.ingestMessages(messages, m.messageParser); err != nil {
 				m.consumerError(err, false)
 				return
 			}

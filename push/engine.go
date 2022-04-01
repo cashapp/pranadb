@@ -470,20 +470,6 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	return nil
 }
 
-// ChooseLocalScheduler chooses a local scheduler by hashing the key
-func (p *Engine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
-	p.localShardsLock.RLock()
-	defer p.localShardsLock.RUnlock()
-	if len(p.localLeaderShards) == 0 {
-		return nil, errors.Error("no local leader shards")
-	}
-	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return p.schedulers[shardID], nil
-}
-
 func (p *Engine) checkForPendingData() error {
 	// If the node failed previously or received messages it was unable to handle as it was starting up then
 	// there could be rows in the receiver table
@@ -590,7 +576,6 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		tableExecutor,
 		p.sharder,
 		p.cluster,
-		p,
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
