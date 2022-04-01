@@ -21,7 +21,6 @@ import (
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/push/exec"
-	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/sharder"
 )
 
@@ -39,10 +38,6 @@ const (
 type RowProcessor interface {
 }
 
-type SchedulerSelector interface {
-	ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error)
-}
-
 type IngestLimiter interface {
 	Limit()
 }
@@ -53,7 +48,6 @@ type Source struct {
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
 	protoRegistry           protolib.Resolver
-	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
 	msgConsumers            []*MessageConsumer
 	queryExec               common.SimpleQueryExec
@@ -98,8 +92,8 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
-	cluster cluster.Cluster, schedSelector SchedulerSelector, cfg *conf.Config,
-	queryExec common.SimpleQueryExec, registry protolib.Resolver, globalRateLimiter IngestLimiter) (*Source, error) {
+	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
+	globalRateLimiter IngestLimiter) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.TopicInfo
@@ -151,7 +145,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		sharder:                 sharder,
 		cluster:                 cluster,
 		protoRegistry:           registry,
-		schedSelector:           schedSelector,
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
 		numConsumersPerSource:   numConsumers,
@@ -187,23 +180,8 @@ func (s *Source) Start() error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		// We choose a local scheduler based on the name of the schema, name of source and ordinal of the message consumer
-		// The shard of that scheduler is where ingested rows will be staged, ready to be forwarded to their
-		// destination shards. Having a message consumer pinned to a shard ensures all messages for a particular
-		// Kafka partition are forwarded in order. If different batches used different shards, we couldn't guarantee that.
-		// We can't write ingested rows directly into the target shards as we can't commit offsets atomically that way unless
-		// we write each in a batch with a single row - this is because messages for the same Kafka partition would be hashed
-		// to different target Prana shards.
-		// A particular message consumer will always stage all its messages in the same local shard for the life of the consumer
-		// We can vary the number of consumers to scale the forwarding.
-		sKey := fmt.Sprintf("%s-%s-%d", s.sourceInfo.SchemaName, s.sourceInfo.Name, i)
-		scheduler, err := s.schedSelector.ChooseLocalScheduler([]byte(sKey))
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
 		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
-			s.maxPollMessages, s, scheduler)
+			s.maxPollMessages, s)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -305,18 +283,6 @@ func (s *Source) stop() error {
 	s.msgConsumers = nil
 	s.started = false
 	return nil
-}
-
-func (s *Source) handleMessages(messages []*kafka.Message, scheduler *sched.ShardScheduler,
-	mp *MessageParser) error {
-	errChan := scheduler.ScheduleAction(func() error {
-		return s.ingestMessages(messages, mp)
-	})
-	err, ok := <-errChan
-	if !ok {
-		panic("channel closed")
-	}
-	return errors.WithStack(err)
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) error {
