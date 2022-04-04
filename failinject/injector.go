@@ -102,14 +102,20 @@ func (i *defaultInjector) Stop() error {
 }
 
 func (i *defaultInjector) registerFailpoints() error {
-	_, err := i.RegisterFailpoint("create_mv_1")
-	if err != nil {
+	if _, err := i.RegisterFailpoint("create_mv_1"); err != nil {
 		return err
 	}
-	_, err = i.RegisterFailpoint("create_mv_2")
-	if err != nil {
+	if _, err := i.RegisterFailpoint("create_mv_2"); err != nil {
 		return err
 	}
-	_, err = i.RegisterFailpoint("fill_to_1")
-	return err
+	if _, err := i.RegisterFailpoint("fill_to_1"); err != nil {
+		return err
+	}
+	if _, err := i.RegisterFailpoint("fill_to_1"); err != nil {
+		return err
+	}
+	if _, err := i.RegisterFailpoint("process_batch_before_local_commit"); err != nil {
+		return err
+	}
+	return nil
 }

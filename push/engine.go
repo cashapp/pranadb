@@ -464,6 +464,10 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster); err != nil {
 		return errors.WithStack(err)
 	}
+	// Maybe inject an error after we have forwarded remote batches but before we have committed local batch
+	if err := p.failInject.GetFailpoint("process_batch_before_local_commit").CheckFail(); err != nil {
+		return err
+	}
 	if err := p.cluster.WriteBatch(batch.writeBatch); err != nil {
 		return errors.WithStack(err)
 	}
@@ -471,6 +475,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 }
 
 func (p *Engine) checkForPendingData() error {
+	log.Debug("Checking for data in receiver table")
 	// If the node failed previously or received messages it was unable to handle as it was starting up then
 	// there could be rows in the receiver table
 	// we check and process these, if there are any
