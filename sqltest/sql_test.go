@@ -435,6 +435,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeKafkaFail(require, command)
 		} else if strings.HasPrefix(command, "--wait for rows") {
 			st.executeWaitForRows(require, command)
+		} else if strings.HasPrefix(command, "--wait for schedulers") {
+			st.waitForSchedulers(require)
 		} else if strings.HasPrefix(command, "--wait for committed") {
 			st.executeWaitForCommitted(require, command)
 		} else if strings.HasPrefix(command, "--enable commit offsets") {
@@ -452,6 +454,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 				st.closeClient(require)
 				return 1
 			}
+		} else if strings.HasPrefix(command, "--pause") {
+			st.executePause(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -765,7 +769,10 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	datasetName := command[12:]
 	dataset, encoder := st.loadDataset(require, st.testDataFile, datasetName)
 	fakeKafka := st.testSuite.fakeKafka
-	initialCommitted := st.getNumCommitted(require, dataset.sourceInfo.ID)
+	var initialCommitted int
+	if !noWait {
+		initialCommitted = st.getNumCommitted(require, dataset.sourceInfo.ID)
+	}
 	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.colTypes, dataset.rows, encoder)
 	require.NoError(err)
 	if !noWait {
@@ -960,6 +967,14 @@ func (st *sqlTest) activateFailpoint(require *require.Assertions, cmd string, ac
 	}
 }
 
+func (st *sqlTest) executePause(require *require.Assertions, command string) {
+	command = command[8:]
+	pauseTime, err := strconv.ParseInt(command, 10, 32)
+	log.Debugf("Pausing for %d ms", pauseTime)
+	time.Sleep(time.Duration(pauseTime) * time.Millisecond)
+	require.NoError(err)
+}
+
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 	log.Debug("Waiting for processing to complete")
 	for _, prana := range st.testSuite.pranaCluster {
@@ -967,6 +982,15 @@ func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 		require.NoError(err)
 	}
 	log.Debug("Waited for processing to complete")
+}
+
+func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
+	log.Debug("Waiting for schedulers to complete")
+	for _, prana := range st.testSuite.pranaCluster {
+		err := prana.GetPushEngine().WaitForSchedulers()
+		require.NoError(err)
+	}
+	log.Debug("Waited for schedulers to complete")
 }
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
@@ -984,9 +1008,6 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	if isUse && successful {
 		st.currentSchema = statement[4:]
 	}
-	// In the case of a create mv with an aggregation, rows can be forwarded to other shards so it might not be fully
-	// filled by the time the command returns
-	st.waitForProcessingToComplete(require)
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Infof("Statement execute time ms %d", dur.Milliseconds())
