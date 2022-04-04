@@ -382,7 +382,7 @@ func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	return batch.AfterCommit()
 }
 
-func (d *Dragon) WriteBatchWithDedup(batch *cluster.WriteBatch) error {
+func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch) error {
 	return d.writeBatchInternal(batch, true)
 }
 
@@ -390,17 +390,14 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
 	return d.writeBatchInternal(batch, false)
 }
 
-func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, dedup bool) error {
+func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, forward bool) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-
 	cs := d.nh.GetNoOPSession(batch.ShardID)
 
 	var buff []byte
-	if dedup {
-		buff = append(buff, shardStateMachineCommandForwardWriteWithDedup)
-	} else if batch.NotifyRemote {
+	if forward {
 		buff = append(buff, shardStateMachineCommandForwardWrite)
 	} else {
 		buff = append(buff, shardStateMachineCommandWrite)
@@ -692,40 +689,6 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 		}
 		d.shardAllocs[shardID] = nids
 	}
-}
-
-// We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
-// state machine
-func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, deletes [][]byte) {
-	numPuts, offset := common.ReadUint32FromBufferLE(buff, offset)
-	puts = make([]cluster.KVPair, numPuts)
-	for i := 0; i < int(numPuts); i++ {
-		var kl uint32
-		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		kLen := int(kl)
-		k := buff[offset : offset+kLen]
-		offset += kLen
-		var vl uint32
-		vl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		vLen := int(vl)
-		v := buff[offset : offset+vLen]
-		offset += vLen
-		puts[i] = cluster.KVPair{
-			Key:   k,
-			Value: v,
-		}
-	}
-	numDeletes, offset := common.ReadUint32FromBufferLE(buff, offset)
-	deletes = make([][]byte, numDeletes)
-	for i := 0; i < int(numDeletes); i++ {
-		var kl uint32
-		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		kLen := int(kl)
-		k := buff[offset : offset+kLen]
-		offset += kLen
-		deletes[i] = k
-	}
-	return
 }
 
 // It's expected to get cluster not ready from time to time, we should retry in this case

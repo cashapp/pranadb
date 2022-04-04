@@ -3,14 +3,13 @@ package command
 import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
-	"sync"
-
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
+	"sync"
 )
 
 type CreateMVCommand struct {
@@ -147,6 +146,12 @@ func (c *CreateMVCommand) onPhase1() error {
 func (c *CreateMVCommand) onPhase2() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	// The fill can cause rows to be forwarded - to make sure they're all processed we must wait for all schedulers
+	// on all nodes - this must be done after fill has completed on all nodes
+	if err := c.e.pushEngine.WaitForSchedulers(); err != nil {
+		return err
+	}
 
 	// The MV is now created and filled on all nodes but it isn't currently registered so it can't be used by clients
 	// We register it now

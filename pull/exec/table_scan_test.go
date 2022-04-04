@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"github.com/squareup/pranadb/cluster/fake"
 	"testing"
 
 	"github.com/squareup/pranadb/cluster"
@@ -336,7 +337,7 @@ func stopCluster(t *testing.T, clust cluster.Cluster) {
 func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRange, colTypes []common.ColumnType, pkCols []int) (PullExecutor, cluster.Cluster) {
 	t.Helper()
 
-	clust := cluster.NewFakeCluster(0, 10)
+	clust := fake.NewFakeCluster(0, 10)
 	clust.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
 	clust.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clust.Start()
@@ -384,7 +385,7 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRang
 
 func insertRowsIntoTable(t *testing.T, shardID uint64, tableInfo *common.TableInfo, inpRows *common.Rows, clust cluster.Cluster) {
 	t.Helper()
-	batch := cluster.NewWriteBatch(shardID, false)
+	batch := cluster.NewWriteBatch(shardID)
 	for i := 0; i < inpRows.RowCount(); i++ {
 		row := inpRows.GetRow(i)
 		err := table.Upsert(tableInfo, &row, batch)

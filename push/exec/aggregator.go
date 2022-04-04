@@ -5,6 +5,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
 )
@@ -92,10 +93,11 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			if err := ctx.Mover.QueueForRemoteSend(remoteShardID, stateHolder.initialRowBytes, stateHolder.rowBytes,
-				ctx.WriteBatch.ShardID, a.FullAggTableInfo.ID, ctx.WriteBatch); err != nil {
-				return errors.WithStack(err)
-			}
+
+			forwardKey := util.EncodeKeyForForwardAggregation(ctx.EnableDuplicateDetection, a.PartialAggTableInfo.ID,
+				ctx.WriteBatch.ShardID, ctx.BatchSequence, a.FullAggTableInfo.ID)
+			value := util.EncodePrevAndCurrentRow(stateHolder.initialRowBytes, stateHolder.rowBytes)
+			ctx.AddToForwardBatch(remoteShardID, forwardKey, value)
 		}
 	}
 	return nil

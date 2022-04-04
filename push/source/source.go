@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/push/util"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -20,8 +21,6 @@ import (
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/push/exec"
-	"github.com/squareup/pranadb/push/mover"
-	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/sharder"
 )
 
@@ -39,10 +38,6 @@ const (
 type RowProcessor interface {
 }
 
-type SchedulerSelector interface {
-	ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error)
-}
-
 type IngestLimiter interface {
 	Limit()
 }
@@ -52,9 +47,7 @@ type Source struct {
 	tableExecutor           *exec.TableExecutor
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
-	mover                   *mover.Mover
 	protoRegistry           protolib.Resolver
-	schedSelector           SchedulerSelector
 	msgProvFact             kafka.MessageProviderFactory
 	msgConsumers            []*MessageConsumer
 	queryExec               common.SimpleQueryExec
@@ -73,8 +66,6 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
-
-	totIngested uint64
 }
 
 var (
@@ -101,8 +92,8 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
-	cluster cluster.Cluster, mover *mover.Mover, schedSelector SchedulerSelector, cfg *conf.Config,
-	queryExec common.SimpleQueryExec, registry protolib.Resolver, globalRateLimiter IngestLimiter) (*Source, error) {
+	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
+	globalRateLimiter IngestLimiter) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.TopicInfo
@@ -153,9 +144,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		tableExecutor:           tableExec,
 		sharder:                 sharder,
 		cluster:                 cluster,
-		mover:                   mover,
 		protoRegistry:           registry,
-		schedSelector:           schedSelector,
 		msgProvFact:             msgProvFact,
 		queryExec:               queryExec,
 		numConsumersPerSource:   numConsumers,
@@ -191,23 +180,8 @@ func (s *Source) Start() error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
-		// We choose a local scheduler based on the name of the schema, name of source and ordinal of the message consumer
-		// The shard of that scheduler is where ingested rows will be staged, ready to be forwarded to their
-		// destination shards. Having a message consumer pinned to a shard ensures all messages for a particular
-		// Kafka partition are forwarded in order. If different batches used different shards, we couldn't guarantee that.
-		// We can't write ingested rows directly into the target shards as we can't commit offsets atomically that way unless
-		// we write each in a batch with a single row - this is because messages for the same Kafka partition would be hashed
-		// to different target Prana shards.
-		// A particular message consumer will always stage all its messages in the same local shard for the life of the consumer
-		// We can vary the number of consumers to scale the forwarding.
-		sKey := fmt.Sprintf("%s-%s-%d", s.sourceInfo.SchemaName, s.sourceInfo.Name, i)
-		scheduler, err := s.schedSelector.ChooseLocalScheduler([]byte(sKey))
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
 		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
-			s.maxPollMessages, s, scheduler)
+			s.maxPollMessages, s)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -311,19 +285,7 @@ func (s *Source) stop() error {
 	return nil
 }
 
-func (s *Source) handleMessages(messages []*kafka.Message, scheduler *sched.ShardScheduler,
-	mp *MessageParser) error {
-	errChan := scheduler.ScheduleAction(func() error {
-		return s.ingestMessages(messages, scheduler.ShardID(), mp)
-	})
-	err, ok := <-errChan
-	if !ok {
-		panic("channel closed")
-	}
-	return errors.WithStack(err)
-}
-
-func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *MessageParser) error {
+func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) error {
 
 	start := time.Now()
 
@@ -363,19 +325,14 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 
 		forwardBatch, ok := forwardBatches[destShardID]
 		if !ok {
-			forwardBatch = cluster.NewWriteBatch(destShardID, true)
+			forwardBatch = cluster.NewWriteBatch(destShardID)
 			forwardBatches[destShardID] = forwardBatch
 		}
 
 		kMsg := messages[i]
-		dedupKey := make([]byte, 0, 24)
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, tableID)
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.PartitionID))
-		dedupKey = common.AppendUint64ToBufferBE(dedupKey, uint64(kMsg.PartInfo.Offset))
-
-		log.Printf("partition id is %d", kMsg.PartInfo.PartitionID)
-
-		receiverKey := s.mover.EncodeReceiverForIngestKey(destShardID, dedupKey, tableID)
+		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
+			uint64(kMsg.PartInfo.Offset), tableID)
+		log.Debugf("source forward key length is %d", len(forwardKey))
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
@@ -384,37 +341,15 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 			return err
 		}
 
-		forwardBatch.AddPut(receiverKey, s.mover.EncodePrevAndCurrentRow(nil, encodedRow))
+		forwardBatch.AddPut(forwardKey, util.EncodePrevAndCurrentRow(nil, encodedRow))
 
 		l := len(valueBuff)
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
 	}
 
-	lb := len(forwardBatches)
-	chs := make([]chan error, 0, lb)
-
-	for _, b := range forwardBatches {
-		ch := make(chan error, 1)
-		chs = append(chs, ch)
-		theBatch := b
-		go func() {
-			err := s.cluster.WriteBatchWithDedup(theBatch)
-			if err != nil {
-				ch <- err
-				return
-			}
-			ch <- nil
-		}()
-	}
-	for i := 0; i < lb; i++ {
-		err, ok := <-chs[i]
-		if !ok {
-			panic("channel closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
+		return err
 	}
 
 	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
@@ -423,13 +358,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, shardID uint64, mp *M
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
-	err = s.mover.TransferData(shardID, true)
-
-	tot := atomic.AddUint64(&s.totIngested, uint64(len(messages)))
-
-	log.Infof("Source %s.%s ingested batch of %d total ingested %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, len(messages), tot)
-
-	return err
+	return nil
 }
 
 func (s *Source) TableExecutor() *exec.TableExecutor {
