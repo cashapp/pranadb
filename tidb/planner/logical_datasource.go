@@ -19,6 +19,10 @@ package planner
 
 import (
 	"fmt"
+	"math"
+	"sort"
+	"strings"
+
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
@@ -33,9 +37,6 @@ import (
 	"github.com/squareup/pranadb/tidb/util/logutil"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 	"go.uber.org/zap"
-	"math"
-	"sort"
-	"strings"
 )
 
 // LogicalDataSource represents a tableScan without condition push down.
@@ -627,7 +628,9 @@ func (ds *LogicalDataSource) deriveStatsByFilter(conds expression.CNFExprs, fill
 		selectivity = SelectionFactor
 	}
 	stats := ds.tableStats.Scale(selectivity)
-	stats.HistColl = stats.HistColl.NewHistCollBySelectivity(ds.ctx.GetSessionVars().StmtCtx, nodes)
+	if ds.ctx.GetSessionVars().OptimizerSelectivityLevel >= 1 {
+		stats.HistColl = stats.HistColl.NewHistCollBySelectivity(ds.ctx.GetSessionVars().StmtCtx, nodes)
+	}
 	return stats
 }
 

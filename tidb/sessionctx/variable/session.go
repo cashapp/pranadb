@@ -41,6 +41,7 @@ const (
 	DefTiDBHashAggFinalConcurrency   = ConcurrencyUnset
 	DefEnableVectorizedExpression    = true
 	DefExecutorConcurrency           = 5
+	DefOptimizerSelectivityLevel     = 0
 )
 
 // SessionVars is to handle user-defined or global variables in the current session.
@@ -93,6 +94,9 @@ type SessionVars struct {
 
 	MaxAllowedPacket  uint64
 	DefaultWeekFormat string
+
+	// OptimizerSelectivityLevel defines the level of the selectivity estimation in plan.
+	OptimizerSelectivityLevel int
 }
 
 // PreparedParams contains the parameters of the current prepared statement when executing it.
@@ -123,6 +127,7 @@ func NewSessionVars() *SessionVars {
 		TimeZone:                   timeutil.SystemLocation(),
 		MaxAllowedPacket:           67108864,
 		DefaultWeekFormat:          "0",
+		OptimizerSelectivityLevel:  DefOptimizerSelectivityLevel,
 	}
 	vars.Concurrency = Concurrency{
 		projectionConcurrency:     DefTiDBProjectionConcurrency,
