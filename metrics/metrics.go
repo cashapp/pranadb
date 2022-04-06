@@ -3,6 +3,8 @@ package metrics
 import (
 	"net/http"
 
+	"github.com/lni/dragonboat/v3"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
@@ -29,9 +31,16 @@ type Server struct {
 	httpServer *http.Server
 }
 
+type metricServer struct{}
+
+func (ms *metricServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	promhttp.Handler().ServeHTTP(w, r)
+	dragonboat.WriteHealthMetrics(w)
+}
+
 func NewServer(config conf.Config) *Server {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", &metricServer{})
 	return &Server{
 		config: config,
 		httpServer: &http.Server{

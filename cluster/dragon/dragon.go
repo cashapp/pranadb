@@ -3,12 +3,13 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/lni/dragonboat/v3/logger"
-	"github.com/squareup/pranadb/table"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/lni/dragonboat/v3/logger"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/lni/dragonboat/v3/client"
 	log "github.com/sirupsen/logrus"
@@ -30,13 +31,9 @@ const (
 
 	locksClusterID uint64 = 2
 
-	nodesStartedClusterID uint64 = 3
-
 	sequenceGroupSize = 3
 
 	locksGroupSize = 3
-
-	nodesStartedGroupSize = 3
 
 	retryDelay = 500 * time.Millisecond
 
@@ -51,7 +48,7 @@ func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	return &Dragon{cnf: cnf}, nil
+	return &Dragon{cnf: cnf, shardSMs: make(map[uint64]struct{})}, nil
 }
 
 type Dragon struct {
@@ -66,10 +63,9 @@ type Dragon struct {
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
-	shuttingDown                 bool
 	membershipListener           cluster.MembershipListener
-	sl                           sync.Mutex
-	sms                          []*ShardOnDiskStateMachine
+	shardSMsLock                 sync.Mutex
+	shardSMs                     map[uint64]struct{}
 }
 
 type snapshot struct {
@@ -240,8 +236,6 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		panic("shard listener factory must be set before start")
 	}
 
-	d.shuttingDown = false
-
 	datadir := filepath.Join(d.cnf.DataDir, fmt.Sprintf("node-%d", d.cnf.NodeID))
 	pebbleDir := filepath.Join(datadir, "pebble")
 	d.ingestDir = filepath.Join(datadir, "ingest-snapshots")
@@ -259,6 +253,10 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	log.Debugf("Opened pebble on node %d", d.cnf.NodeID)
 
+	if err := d.checkConstantShards(d.cnf.NumShards); err != nil {
+		return err
+	}
+
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
 	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
@@ -266,15 +264,14 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
 	nhc := config.NodeHostConfig{
-		DeploymentID:        uint64(d.cnf.ClusterID),
+		DeploymentID:        d.cnf.ClusterID,
 		WALDir:              dragonBoatDir,
 		NodeHostDir:         dragonBoatDir,
 		RTTMillisecond:      100,
 		RaftAddress:         nodeAddress,
 		SystemEventListener: d,
+		EnableMetrics:       d.cnf.EnableMetrics,
 	}
-
-	d.checkLogUpdates()
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
@@ -305,11 +302,6 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	log.Debugf("Joined shard groups on node %d", d.cnf.NodeID)
 
-	err = d.joinNodesStartedGroup()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
 	log.Debugf("Joined node started group on node %d", d.cnf.NodeID)
 
 	// Now we make sure all groups are ready by executing lookups against them.
@@ -331,30 +323,11 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	if err := d.ExecutePingLookup(tableSequenceClusterID, nil); err != nil {
 		return errors.WithStack(err)
 	}
-	log.Debug("Checking nodes started shard is alive")
-	if err := d.ExecutePingLookup(nodesStartedClusterID, nil); err != nil {
-		return errors.WithStack(err)
-	}
 
 	d.started = true
 
 	log.Infof("Prana node %d cluster started", d.cnf.NodeID)
 
-	return nil
-}
-
-func (d *Dragon) incNodesStartedSequence() error {
-	currNodeID := uint64(d.cnf.NodeID)
-	cs := d.nh.GetNoOPSession(nodesStartedClusterID)
-	var buff []byte
-	buff = common.AppendUint64ToBufferBE(buff, currNodeID)
-	proposeRes, err := d.proposeWithRetry(cs, buff)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if proposeRes.Value != nodesStartedStateMachineUpdatedOK {
-		return errors.Errorf("unexpected return value from writing to nodes started: %d", proposeRes.Value)
-	}
 	return nil
 }
 
@@ -374,7 +347,6 @@ func (d *Dragon) Stop() error {
 	if !d.started {
 		return nil
 	}
-	d.shuttingDown = true
 	d.nh.Stop()
 	err := d.pebble.Close()
 	if err == nil {
@@ -388,15 +360,21 @@ func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 	pebBatch := d.pebble.NewBatch()
-	for k, v := range batch.Puts.TheMap {
-		if err := pebBatch.Set([]byte(k), v, nil); err != nil {
+	if err := batch.ForEachPut(func(k []byte, v []byte) error {
+		if err := pebBatch.Set(k, v, nil); err != nil {
 			return errors.WithStack(err)
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
-	for k := range batch.Deletes.TheMap {
-		if err := pebBatch.Delete([]byte(k), nil); err != nil {
+	if err := batch.ForEachDelete(func(k []byte) error {
+		if err := pebBatch.Delete(k, nil); err != nil {
 			return errors.WithStack(err)
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	if err := errors.WithStack(d.pebble.Apply(pebBatch, nosyncWriteOptions)); err != nil {
 		return err
@@ -404,36 +382,22 @@ func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	return batch.AfterCommit()
 }
 
+func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch) error {
+	return d.writeBatchInternal(batch, true)
+}
+
 func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
+	return d.writeBatchInternal(batch, false)
+}
+
+func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, forward bool) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-
-	/*
-		Batches are written in two cases:
-		1. A batch that handles some rows which have arrived in the receiver queue for a shard.
-		In this case the batch contains
-		   a) any writes made during processing of the rows
-		   b) update of last received sequence for the rows
-		   c) deletes from the receiver table
-		If the call to write this batch fails, the batch may or may not have been committed reliably to raft.
-		In the case it was not committed then the rows will stil be in the receiver table and last sequence not updated
-		so they will be retried with no adverse effects.
-		In the case they were committed, then last received sequence will have been updated and rows deleted from
-		receiver table so retry won't reprocess them
-		2. A batch that involves writing some rows into the forwarder queue after they have been received by a Kafka consumer
-		(source). In this case if the call to write fails, the batch may actually have been committed and forwarded.
-		If the Kafka offset has not been committed then on recover the same rows can be written again.
-		To avoid this we will implement idempotency at the source level, and keep track, persistently of [partition_id, offset]
-		for each partition received at each shard, and ignore rows if seen before when ingesting.
-
-		So we don't need idempotent client sessions. Moreover, idempotency of client sessions in Raft times out after an hour(?)
-		and does not survive restarts of the whole cluster.
-	*/
 	cs := d.nh.GetNoOPSession(batch.ShardID)
 
 	var buff []byte
-	if batch.NotifyRemote {
+	if forward {
 		buff = append(buff, shardStateMachineCommandForwardWrite)
 	} else {
 		buff = append(buff, shardStateMachineCommandWrite)
@@ -648,7 +612,6 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
 		sm := newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
-		d.addShardSM(sm)
 		return sm
 	}
 
@@ -657,25 +620,6 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 		return
 	}
 	ch <- nil
-}
-
-func (d *Dragon) addShardSM(sm *ShardOnDiskStateMachine) {
-	d.sl.Lock()
-	defer d.sl.Unlock()
-	d.sms = append(d.sms, sm)
-}
-
-func (d *Dragon) checkLogUpdates() {
-	time.AfterFunc(5*time.Second, func() {
-		d.sl.Lock()
-		defer d.sl.Unlock()
-		log.Debug("Checking if data shards updated")
-		for _, sm := range d.sms {
-			sm.LogLastUpdate()
-		}
-		d.checkLogUpdates()
-		log.Debug("Done checking if data shards updated")
-	})
 }
 
 func (d *Dragon) joinSequenceGroup() error {
@@ -722,28 +666,6 @@ func (d *Dragon) joinLockGroup() error {
 	return nil
 }
 
-func (d *Dragon) joinNodesStartedGroup() error {
-	rc := config.Config{
-		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        20,
-		HeartbeatRTT:       2,
-		CheckQuorum:        true,
-		SnapshotEntries:    uint64(d.cnf.LocksSnapshotEntries),
-		CompactionOverhead: uint64(d.cnf.LocksCompactionOverhead),
-		ClusterID:          nodesStartedClusterID,
-	}
-
-	initialMembers := make(map[uint64]string)
-	// Dragonboat nodes must start at 1, zero is not allowed
-	for i := 0; i < nodesStartedGroupSize; i++ {
-		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
-	}
-	if err := d.nh.StartCluster(initialMembers, false, d.newNodesStartedSM, rc); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
-}
-
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
@@ -767,66 +689,6 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 		}
 		d.shardAllocs[shardID] = nids
 	}
-}
-
-// We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
-// state machine
-func deserializeWriteBatch(buff []byte, offset int) (puts []cluster.KVPair, deletes [][]byte) {
-	numPuts, offset := common.ReadUint32FromBufferLE(buff, offset)
-	puts = make([]cluster.KVPair, numPuts)
-	for i := 0; i < int(numPuts); i++ {
-		var kl uint32
-		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		kLen := int(kl)
-		k := buff[offset : offset+kLen]
-		offset += kLen
-		var vl uint32
-		vl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		vLen := int(vl)
-		v := buff[offset : offset+vLen]
-		offset += vLen
-		puts[i] = cluster.KVPair{
-			Key:   k,
-			Value: v,
-		}
-	}
-	numDeletes, offset := common.ReadUint32FromBufferLE(buff, offset)
-	deletes = make([][]byte, numDeletes)
-	for i := 0; i < int(numDeletes); i++ {
-		var kl uint32
-		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
-		kLen := int(kl)
-		k := buff[offset : offset+kLen]
-		offset += kLen
-		deletes[i] = k
-	}
-	return
-}
-
-func (d *Dragon) nodeRemovedFromCluster(nodeID int, shardID uint64) error {
-	if shardID < cluster.DataShardIDBase {
-		// Ignore - these are not writing nodes
-		return nil
-	}
-
-	cs := d.nh.GetNoOPSession(shardID)
-
-	var buff []byte
-	buff = append(buff, shardStateMachineCommandRemoveNode)
-	buff = common.AppendUint32ToBufferLE(buff, uint32(nodeID))
-
-	proposeRes, err := d.proposeWithRetry(cs, buff)
-
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if proposeRes.Value != shardStateMachineResponseOK {
-		return errors.Errorf("unexpected return value from removing node: %d to shard %d", proposeRes.Value, shardID)
-	}
-
-	d.membershipListener.NodeLeft(nodeID)
-
-	return nil
 }
 
 // It's expected to get cluster not ready from time to time, we should retry in this case
@@ -1029,21 +891,66 @@ func (d *Dragon) tableExists(queryExec common.SimpleQueryExec, id uint64) (bool,
 	return rows.RowCount() != 0, nil
 }
 
+// Currently the number of shards in the cluster is fixed. We must make sure the user doesn't change the number of shards
+// in the config after the cluster has been created. So we store the number in the database and check
+func (d *Dragon) checkConstantShards(expectedShards int) error {
+	log.Debugf("Checking constant shards: %d", expectedShards)
+	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
+	propKey := []byte("num-shards")
+	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
+	key = append(key, propKey...)
+	v, err := d.LocalGet(key)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		log.Debug("New cluster - no value for num-shards in storage, persisting it")
+		// New cluster - persist the value
+		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedShards))
+		batch := d.pebble.NewBatch()
+		if err := batch.Set(key, v, nil); err != nil {
+			return errors.WithStack(err)
+		}
+		if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
+			return errors.WithStack(err)
+		}
+	} else {
+		shards, _ := common.ReadUint32FromBufferBE(v, 0)
+		log.Debugf("value for num-shards found in storage: %d", shards)
+		if int(shards) != expectedShards {
+			return errors.Errorf("number of shards in cluster cannot be changed after cluster creation. cluster value %d new value %d", expectedShards, shards)
+		}
+	}
+	return nil
+}
+
+func (d *Dragon) registerShardSM(shardID uint64) {
+	if d.cnf.DisableShardPlacementSanityCheck {
+		return
+	}
+	d.shardSMsLock.Lock()
+	defer d.shardSMsLock.Unlock()
+	if _, ok := d.shardSMs[shardID]; ok {
+		panic(fmt.Sprintf("Shard SM for shard %d already registered on node %d", shardID, d.cnf.NodeID))
+	}
+	d.shardSMs[shardID] = struct{}{}
+}
+
+func (d *Dragon) unregisterShardSM(shardID uint64) {
+	if d.cnf.DisableShardPlacementSanityCheck {
+		return
+	}
+	d.shardSMsLock.Lock()
+	defer d.shardSMsLock.Unlock()
+	delete(d.shardSMs, shardID)
+}
+
 // ISystemEventListener implementation
 
 func (d *Dragon) NodeHostShuttingDown() {
 }
 
 func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
-	if d.shuttingDown {
-		return
-	}
-	go func() {
-		err := d.nodeRemovedFromCluster(int(info.NodeID-1), info.ClusterID)
-		if err != nil {
-			log.Errorf("failed to remove node from cluster %+v", err)
-		}
-	}()
 }
 
 func (d *Dragon) NodeReady(info raftio.NodeInfo) {

@@ -64,6 +64,7 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
+	// FIXME - this MUST be idempotent - same entries can be applied more than once in case of retry after timeout
 	log.Tracef("locks shard update entries %d", len(entries))
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()

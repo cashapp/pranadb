@@ -143,7 +143,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 		kvPairs[i], kvPairs[j] = kvPairs[j], kvPairs[i]
 	})
 
-	wb := cluster.NewWriteBatch(localShard, false)
+	wb := cluster.NewWriteBatch(localShard)
 	for _, kvPair := range kvPairs {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
@@ -330,7 +330,7 @@ func startDragonNode(clus cluster.Cluster, ch chan error) {
 }
 
 func createWriteBatchWithPuts(shardID uint64, puts ...cluster.KVPair) cluster.WriteBatch {
-	wb := cluster.NewWriteBatch(shardID, false)
+	wb := cluster.NewWriteBatch(shardID)
 	for _, kvPair := range puts {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
@@ -338,7 +338,7 @@ func createWriteBatchWithPuts(shardID uint64, puts ...cluster.KVPair) cluster.Wr
 }
 
 func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) cluster.WriteBatch {
-	wb := cluster.NewWriteBatch(shardID, false)
+	wb := cluster.NewWriteBatch(shardID)
 	for _, del := range deletes {
 		wb.AddDelete(del)
 	}

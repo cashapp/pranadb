@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/push/util"
 	"go.uber.org/ratelimit"
 	"math/rand"
 	"sync"
@@ -17,7 +18,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/protolib"
-	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/source"
 
@@ -40,7 +40,6 @@ type Engine struct {
 	sources                   map[uint64]*source.Source
 	materializedViews         map[uint64]*MaterializedView
 	remoteConsumers           sync.Map
-	mover                     *mover.Mover
 	localLeaderShards         []uint64
 	cluster                   cluster.Cluster
 	sharder                   *sharder.Sharder
@@ -91,7 +90,6 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		rl = nil
 	}
 	engine := Engine{
-		mover:                     mover.NewMover(cluster),
 		cluster:                   cluster,
 		sharder:                   sharder,
 		meta:                      meta,
@@ -241,7 +239,7 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.mover, p.failInject); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject); err != nil {
 			return err
 		}
 	} else {
@@ -322,15 +320,11 @@ func (s *shardListener) scheduleHandleRemoteBatch() {
 func (p *Engine) MaybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
 	scheduler.ScheduleActionFireAndForget(func() error {
 		start := time.Now()
-		hasForwards, err := p.mover.HandleReceivedRows(scheduler.ShardID(), p)
-		if err != nil {
+		if err := p.HandleReceivedRows(scheduler.ShardID()); err != nil {
 			return errors.WithStack(err)
 		}
 		durNanos := time.Now().Sub(start).Nanoseconds()
 		p.processBatchTimeHistogram.Observe(float64(durNanos))
-		if hasForwards {
-			return p.mover.TransferData(scheduler.ShardID(), true)
-		}
 		return nil
 	})
 }
@@ -357,9 +351,64 @@ func (p *Engine) removeScheduler(shardID uint64) {
 	delete(p.schedulers, shardID)
 }
 
-func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.WriteBatch) error {
+type receiveBatch struct {
+	batchSequence uint64
+	writeBatch    *cluster.WriteBatch
+	rawRows       map[uint64][][]byte
+}
 
-	for entityID, rawRows := range entityValues {
+// HandleReceivedRows - load batches of rows from the Receiver table and process them
+func (p *Engine) HandleReceivedRows(receivingShardID uint64) error {
+	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
+	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
+
+	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	var receiveBatches []*receiveBatch
+	var currBatch *receiveBatch
+	var prevBatchSequence uint64
+
+	// Format of key is:
+	// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id|
+
+	// We iterate through the pairs and create a receiveBatch for each value of batchSequence
+	for _, kvPair := range kvPairs {
+		batchSequence, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
+		if currBatch == nil || batchSequence != prevBatchSequence {
+			currBatch = &receiveBatch{
+				batchSequence: batchSequence,
+				writeBatch:    cluster.NewWriteBatch(receivingShardID),
+				rawRows:       make(map[uint64][][]byte),
+			}
+			receiveBatches = append(receiveBatches, currBatch)
+			prevBatchSequence = batchSequence
+		}
+
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 32)
+		rows, ok := currBatch.rawRows[remoteConsumerID]
+		if !ok {
+			rows = make([][]byte, 0)
+		}
+		rows = append(rows, kvPair.Value)
+		currBatch.rawRows[remoteConsumerID] = rows
+		currBatch.writeBatch.AddDelete(kvPair.Key)
+	}
+
+	for _, receiveBatch := range receiveBatches {
+		if err := p.processReceiveBatch(receiveBatch); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
+	ctx := exec.NewExecutionContext(batch.writeBatch, true)
+	ctx.BatchSequence = batch.batchSequence
+	for entityID, rawRows := range batch.rawRows {
 		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
 			// Does the entity exist in storage?
@@ -406,48 +455,31 @@ func (p *Engine) HandleRawRows(entityValues map[uint64][][]byte, batch *cluster.
 			}
 			entries[i] = exec.NewRowsEntry(pi, ci)
 		}
-		execContext := &exec.ExecutionContext{
-			WriteBatch: batch,
-			Mover:      p.mover,
-		}
 		rowsBatch := exec.NewRowsBatch(rows, entries)
-		err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, execContext)
-		if err != nil {
+		if err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, ctx); err != nil {
 			return errors.WithStack(err)
 		}
+	}
+	// Now send any remote forward batches - e.g. from aggregations
+	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster); err != nil {
+		return errors.WithStack(err)
+	}
+	// Maybe inject an error after we have forwarded remote batches but before we have committed local batch
+	if err := p.failInject.GetFailpoint("process_batch_before_local_commit").CheckFail(); err != nil {
+		return err
+	}
+	if err := p.cluster.WriteBatch(batch.writeBatch); err != nil {
+		return errors.WithStack(err)
 	}
 	return nil
 }
 
-// ChooseLocalScheduler chooses a local scheduler by hashing the key
-func (p *Engine) ChooseLocalScheduler(key []byte) (*sched.ShardScheduler, error) {
-	p.localShardsLock.RLock()
-	defer p.localShardsLock.RUnlock()
-	if len(p.localLeaderShards) == 0 {
-		return nil, errors.Error("no local leader shards")
-	}
-	shardID, err := p.sharder.CalculateShardWithShardIDs(sharder.ShardTypeHash, key, p.localLeaderShards)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return p.schedulers[shardID], nil
-}
-
 func (p *Engine) checkForPendingData() error {
+	log.Debug("Checking for data in receiver table")
 	// If the node failed previously or received messages it was unable to handle as it was starting up then
-	// there could be rows in the forwarder table that need to be handled or incoming rows in the receiver table
+	// there could be rows in the receiver table
 	// we check and process these, if there are any
 	for _, scheduler := range p.schedulers {
-		ch := scheduler.ScheduleAction(func() error {
-			return p.mover.TransferData(scheduler.ShardID(), true)
-		})
-		err, ok := <-ch
-		if !ok {
-			return errors.Error("channel was closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
 		p.MaybeHandleRemoteBatch(scheduler)
 	}
 	return nil
@@ -456,13 +488,7 @@ func (p *Engine) checkForPendingData() error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *Engine) WaitForProcessingToComplete() error {
 
-	err := p.waitForSchedulers()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	// Wait for no rows in the forwarder table
-	err = p.waitForNoRowsInTable(common.ForwarderTableID)
+	err := p.WaitForSchedulers()
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -476,7 +502,7 @@ func (p *Engine) WaitForProcessingToComplete() error {
 	return nil
 }
 
-func (p *Engine) waitForSchedulers() error {
+func (p *Engine) WaitForSchedulers() error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -555,8 +581,6 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		tableExecutor,
 		p.sharder,
 		p.cluster,
-		p.mover,
-		p,
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
@@ -576,10 +600,6 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 	p.remoteConsumers.Store(sourceInfo.TableInfo.ID, rc)
 	p.sources[sourceInfo.TableInfo.ID] = src
 	return src, nil
-}
-
-func (p *Engine) Mover() *mover.Mover {
-	return p.mover
 }
 
 func (p *Engine) createMaps() {

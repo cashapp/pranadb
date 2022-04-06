@@ -1,25 +1,42 @@
-package cluster
+/*
+ *  Copyright 2022 Square Inc.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package fake
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/cluster"
 	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func startFakeCluster(t *testing.T) Cluster {
+func startFakeCluster(t *testing.T) cluster.Cluster {
 	t.Helper()
 	clust := NewFakeCluster(0, 10)
-	clust.RegisterShardListenerFactory(&DummyShardListenerFactory{})
-	clust.SetRemoteQueryExecutionCallback(&DummyRemoteQueryExecutionCallback{})
+	clust.RegisterShardListenerFactory(&cluster.DummyShardListenerFactory{})
+	clust.SetRemoteQueryExecutionCallback(&cluster.DummyRemoteQueryExecutionCallback{})
 	err := clust.Start()
 	require.NoError(t, err)
 	return clust
 }
 
 // nolint: unparam
-func stopClustFunc(t *testing.T, clust Cluster) {
+func stopClustFunc(t *testing.T, clust cluster.Cluster) {
 	t.Helper()
 	err := clust.Stop()
 	require.NoError(t, err)
@@ -33,7 +50,7 @@ func TestPutGet(t *testing.T) {
 	key := []byte("somekey")
 	value := []byte("somevalue")
 
-	kvPair := KVPair{
+	kvPair := cluster.KVPair{
 		Key:   key,
 		Value: value,
 	}
@@ -60,7 +77,7 @@ func TestPutDelete(t *testing.T) {
 	key := []byte("somekey")
 	value := []byte("somevalue")
 
-	kvPair := KVPair{
+	kvPair := cluster.KVPair{
 		Key:   key,
 		Value: value,
 	}
@@ -102,12 +119,12 @@ func testScan(t *testing.T, limit int, expected int) {
 	clust := startFakeCluster(t)
 	defer stopClustFunc(t, clust)
 
-	var kvPairs []KVPair
+	var kvPairs []cluster.KVPair
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 10; j++ {
 			k := []byte(fmt.Sprintf("foo-%02d/bar-%02d", i, j))
 			v := []byte(fmt.Sprintf("somevalue%02d", j))
-			kvPairs = append(kvPairs, KVPair{Key: k, Value: v})
+			kvPairs = append(kvPairs, cluster.KVPair{Key: k, Value: v})
 		}
 	}
 	rand.Shuffle(len(kvPairs), func(i, j int) {
@@ -115,7 +132,7 @@ func testScan(t *testing.T, limit int, expected int) {
 	})
 	shardID := uint64(123545)
 
-	wb := NewWriteBatch(shardID, false)
+	wb := cluster.NewWriteBatch(shardID)
 	for _, kvPair := range kvPairs {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
@@ -126,7 +143,7 @@ func testScan(t *testing.T, limit int, expected int) {
 	keyStart := []byte("foo-06")
 	keyEnd := []byte("foo-07")
 
-	var res []KVPair
+	var res []cluster.KVPair
 	res, err = clust.LocalScan(keyStart, keyEnd, limit)
 	require.NoError(t, err)
 
@@ -139,16 +156,16 @@ func testScan(t *testing.T, limit int, expected int) {
 	}
 }
 
-func createWriteBatchWithPuts(shardID uint64, puts ...KVPair) WriteBatch {
-	wb := NewWriteBatch(shardID, false)
+func createWriteBatchWithPuts(shardID uint64, puts ...cluster.KVPair) cluster.WriteBatch {
+	wb := cluster.NewWriteBatch(shardID)
 	for _, kvPair := range puts {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 	return *wb
 }
 
-func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) WriteBatch {
-	wb := NewWriteBatch(shardID, false)
+func createWriteBatchWithDeletes(shardID uint64, deletes ...[]byte) cluster.WriteBatch {
+	wb := cluster.NewWriteBatch(shardID)
 	for _, delete := range deletes {
 		wb.AddDelete(delete)
 	}
@@ -163,7 +180,7 @@ func TestRestart(t *testing.T) {
 	key := []byte("somekey")
 	value := []byte("somevalue")
 
-	kvPair := KVPair{
+	kvPair := cluster.KVPair{
 		Key:   key,
 		Value: value,
 	}

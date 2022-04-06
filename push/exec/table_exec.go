@@ -6,8 +6,8 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/failinject"
-	"github.com/squareup/pranadb/push/mover"
 	"github.com/squareup/pranadb/push/sched"
+	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/table"
 	"sync"
 	"time"
@@ -191,7 +191,7 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	} else {
 		nextSeq = ls.(int64) + 1
 	}
-	wb := cluster.NewWriteBatch(shardID, false)
+	wb := cluster.NewWriteBatch(shardID)
 	numRows := rowsBatch.Len()
 	for i := 0; i < numRows; i++ {
 		row := rowsBatch.CurrentRow(i)
@@ -228,7 +228,7 @@ func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint
 // are in sync then the operation completes
 //nolint:gocyclo
 func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID uint64,
-	schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover, failInject failinject.Injector) error {
+	schedulers map[uint64]*sched.ShardScheduler, failInject failinject.Injector) error {
 
 	log.Debug("Starting table executor fill")
 
@@ -259,7 +259,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	t.fillTableID = fillTableID
 
 	// start the fill - this takes a snapshot and fills from there
-	ch, err := t.startReplayFromSnapshot(pe, schedulers, mover)
+	ch, err := t.startReplayFromSnapshot(pe, schedulers)
 	if err != nil {
 		t.lock.Unlock()
 		return errors.WithStack(err)
@@ -331,7 +331,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 
 		// Now we replay those records to that sequence value
 		if rowsToFill != 0 {
-			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID, mover); err != nil {
+			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID); err != nil {
 				if lockAndLoad {
 					t.lock.Unlock()
 				}
@@ -374,22 +374,12 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 		return err
 	}
 
-	log.Trace("Deleted all temp data")
-
-	// The fill may cause forwarding of rows in case of an aggregation - so we need to trigger any transfer of data too
-	for shardID, sched := range schedulers {
-		sid := shardID
-		sched.ScheduleActionFireAndForget(func() error {
-			return mover.TransferData(sid, true)
-		})
-	}
-
 	log.Trace("Table executor fill complete")
 
 	return nil
 }
 
-func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler, mover *mover.Mover) (chan error, error) {
+func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler) (chan error, error) {
 	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
@@ -397,7 +387,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, mover)
+		err := t.performReplayFromSnapshot(snapshot, pe, schedulers)
 		snapshot.Close()
 		ch <- err
 		log.Trace("Replay from snapshot complete")
@@ -406,8 +396,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	return ch, nil
 }
 
-func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
-	mover *mover.Mover) error {
+func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler) error {
 	numRows := 0
 	chans := make([]chan error, 0, len(schedulers))
 
@@ -433,7 +422,7 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 					ch <- nil
 					return
 				}
-				if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, mover); err != nil {
+				if err := t.sendFillBatchFromPairs(pe, theShardID, kvp); err != nil {
 					ch <- err
 					return
 				}
@@ -444,7 +433,6 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 				}
 				startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
 				numRows += len(kvp)
-				log.Tracef("filled batch of %d", len(kvp))
 			}
 		}()
 	}
@@ -460,26 +448,27 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 	return nil
 }
 
-func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair, mover *mover.Mover) error {
+func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair) error {
 	rows := t.RowsFactory().NewRows(len(kvp))
 	for _, kv := range kvp {
 		if err := common.DecodeRow(kv.Value, t.colTypes, rows); err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	wb := cluster.NewWriteBatch(shardID, false)
-	ctx := &ExecutionContext{
-		WriteBatch: wb,
-		Mover:      mover,
-	}
+	wb := cluster.NewWriteBatch(shardID)
+	// We disable duplicate detection for the fill
+	ctx := NewExecutionContext(wb, false)
 	if err := pe.HandleRows(NewCurrentRowsBatch(rows), ctx); err != nil {
 		return errors.WithStack(err)
+	}
+	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
+		return err
 	}
 	return t.store.WriteBatch(wb)
 }
 
 func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,
-	fillTableID uint64, mover *mover.Mover) error {
+	fillTableID uint64) error {
 
 	chans := make([]chan error, 0)
 	for shardID, endSeq := range endSeqs {
@@ -517,7 +506,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 					numRows, len(kvp), startSeq, theEndSeq, common.DumpDataKey(startPrefix), common.DumpDataKey(endPrefix))
 				return
 			}
-			if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, mover); err != nil {
+			if err := t.sendFillBatchFromPairs(pe, theShardID, kvp); err != nil {
 				ch <- err
 				return
 			}

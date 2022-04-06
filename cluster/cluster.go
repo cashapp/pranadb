@@ -18,8 +18,11 @@ const (
 
 type Cluster interface {
 
-	// WriteBatch writes a batch reliability to storage
+	// WriteBatch writes a batch reliably to storage
 	WriteBatch(batch *WriteBatch) error
+
+	// WriteForwardBatch writes a batch reliably for forwarding to another shard
+	WriteForwardBatch(batch *WriteBatch) error
 
 	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
 	WriteBatchLocally(batch *WriteBatch) error

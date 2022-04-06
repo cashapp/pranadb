@@ -1,8 +1,26 @@
-package cluster
+/*
+ *  Copyright 2022 Square Inc.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package fake
 
 import (
 	"bytes"
 	"fmt"
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
 
@@ -17,15 +35,18 @@ type FakeCluster struct {
 	nodeID                       int
 	mu                           sync.RWMutex
 	clusterSequence              uint64
-	remoteQueryExecutionCallback RemoteQueryExecutionCallback
+	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	allShardIds                  []uint64
 	started                      bool
 	btree                        *btree.BTree
-	shardListenerFactory         ShardListenerFactory
-	shardListeners               map[uint64]ShardListener
-	membershipListener           MembershipListener
+	shardListenerFactory         cluster.ShardListenerFactory
+	shardListeners               map[uint64]cluster.ShardListener
+	membershipListener           cluster.MembershipListener
 	lockslock                    sync.Mutex
 	locks                        map[string]struct{}
+	dedupMaps                    map[uint64]map[string]uint64
+	receiverSequences            map[uint64]uint64
+	batchSequences               map[uint64]uint64
 }
 
 type snapshot struct {
@@ -35,7 +56,7 @@ type snapshot struct {
 func (s snapshot) Close() {
 }
 
-func (f *FakeCluster) CreateSnapshot() (Snapshot, error) {
+func (f *FakeCluster) CreateSnapshot() (cluster.Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cloned := f.btree.Clone()
@@ -67,12 +88,15 @@ func (f *FakeCluster) ReleaseLock(prefix string) (bool, error) {
 
 func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 	return &FakeCluster{
-		nodeID:          nodeID,
-		clusterSequence: uint64(common.UserTableIDBase), // First 100 reserved for system tables
-		allShardIds:     genAllShardIds(numShards),
-		btree:           btree.New(3),
-		shardListeners:  make(map[uint64]ShardListener),
-		locks:           make(map[string]struct{}),
+		nodeID:            nodeID,
+		clusterSequence:   uint64(common.UserTableIDBase), // First 100 reserved for system tables
+		allShardIds:       genAllShardIds(numShards),
+		btree:             btree.New(3),
+		shardListeners:    make(map[uint64]cluster.ShardListener),
+		locks:             make(map[string]struct{}),
+		dedupMaps:         make(map[uint64]map[string]uint64),
+		receiverSequences: make(map[uint64]uint64),
+		batchSequences:    make(map[uint64]uint64),
 	}
 }
 
@@ -94,7 +118,7 @@ func (f *FakeCluster) Dump() string {
 	return builder.String()
 }
 
-func (f *FakeCluster) RegisterMembershipListener(listener MembershipListener) {
+func (f *FakeCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.membershipListener != nil {
@@ -103,15 +127,15 @@ func (f *FakeCluster) RegisterMembershipListener(listener MembershipListener) {
 	f.membershipListener = listener
 }
 
-func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 
-func (f *FakeCluster) SetRemoteQueryExecutionCallback(callback RemoteQueryExecutionCallback) {
+func (f *FakeCluster) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
 	f.remoteQueryExecutionCallback = callback
 }
 
-func (f *FakeCluster) RegisterShardListenerFactory(factory ShardListenerFactory) {
+func (f *FakeCluster) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
 	f.shardListenerFactory = factory
 }
 
@@ -160,42 +184,106 @@ func (f *FakeCluster) Stop() error {
 	if !f.started {
 		return nil
 	}
-	f.shardListeners = make(map[uint64]ShardListener)
+	f.shardListeners = make(map[uint64]cluster.ShardListener)
 	f.started = false
 	return nil
 }
 
-func (f *FakeCluster) WriteBatchLocally(batch *WriteBatch) error {
+func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	receiverSequence, ok := f.receiverSequences[batch.ShardID]
+	if !ok {
+		receiverSequence = 0
+	}
+	batchSequence, ok := f.batchSequences[batch.ShardID]
+	if !ok {
+		batchSequence = 0
+	}
+	filteredBatch := cluster.NewWriteBatch(batch.ShardID)
+	dedupMap, ok := f.dedupMaps[batch.ShardID]
+	if !ok {
+		dedupMap = make(map[string]uint64)
+		f.dedupMaps[batch.ShardID] = dedupMap
+	}
+	if err := batch.ForEachPut(func(key []byte, value []byte) error {
+
+		enableDupDetection := key[0] == 1
+
+		dedupKey := key[1:25]           // Next 24 bytes is the dedup key
+		remoteConsumerBytes := key[25:] // The rest is just the remote consumer id
+
+		if enableDupDetection {
+			ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
+			if err != nil {
+				return err
+			}
+			if ignore {
+				return nil
+			}
+		}
+
+		// For a write into the receiver table (forward write) the key is constructed as follows:
+		// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
+		key = table.EncodeTableKeyPrefix(common.ReceiverTableID, batch.ShardID, 40)
+		key = common.AppendUint64ToBufferBE(key, batchSequence)
+		key = common.AppendUint64ToBufferBE(key, receiverSequence)
+		key = append(key, remoteConsumerBytes...)
+
+		receiverSequence++
+		filteredBatch.AddPut(key, value)
+		return nil
+	}); err != nil {
+		return err
+	}
+	f.receiverSequences[batch.ShardID] = receiverSequence
+	batchSequence++
+	f.batchSequences[batch.ShardID] = batchSequence
+	if batch.NumDeletes != 0 {
+		panic("deletes not supported in forward batch")
+	}
+	return f.writeBatchInternal(filteredBatch, true)
+}
+
+func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	return f.WriteBatch(batch)
 }
 
-func (f *FakeCluster) WriteBatch(batch *WriteBatch) error {
+func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if batch.ShardID < DataShardIDBase {
+	if err := f.writeBatchInternal(batch, false); err != nil {
+		return err
+	}
+	return batch.AfterCommit()
+}
+
+func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool) error {
+	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-	for k, v := range batch.Puts.TheMap {
-		kBytes := common.StringToByteSliceZeroCopy(k)
+	if err := batch.ForEachPut(func(k []byte, v []byte) error {
 		f.putInternal(&kvWrapper{
-			key:   kBytes,
+			key:   k,
 			value: v,
 		})
+		return nil
+	}); err != nil {
+		return err
 	}
-	for k := range batch.Deletes.TheMap {
-		kBytes := common.StringToByteSliceZeroCopy(k)
-		err := f.deleteInternal(&kvWrapper{
-			key: kBytes,
+	if err := batch.ForEachDelete(func(key []byte) error {
+		return f.deleteInternal(&kvWrapper{
+			key: key,
 		})
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	}); err != nil {
+		return err
 	}
-	if batch.NotifyRemote {
+	if forward {
 		shardListener := f.shardListeners[batch.ShardID]
 		go shardListener.RemoteWriteOccurred()
 	}
-	return batch.AfterCommit()
+	return nil
 }
 
 func (f *FakeCluster) LocalGet(key []byte) ([]byte, error) {
@@ -245,7 +333,7 @@ func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPr
 	return nil
 }
 
-func (f *FakeCluster) LocalScanWithSnapshot(sn Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeCluster) LocalScanWithSnapshot(sn cluster.Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	s, ok := sn.(*snapshot)
@@ -255,24 +343,24 @@ func (f *FakeCluster) LocalScanWithSnapshot(sn Snapshot, startKeyPrefix []byte, 
 	return f.localScanWithBtree(s.btree, startKeyPrefix, endKeyPrefix, limit)
 }
 
-func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeCluster) LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.localScanWithBtree(f.btree, startKeyPrefix, endKeyPrefix, limit)
 }
 
-func (f *FakeCluster) localScanWithBtree(bt *btree.BTree, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error) {
+func (f *FakeCluster) localScanWithBtree(bt *btree.BTree, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	if startKeyPrefix == nil {
 		panic("startKeyPrefix cannot be nil")
 	}
-	var result []KVPair
+	var result []cluster.KVPair
 	count := 0
 	resFunc := func(i btree.Item) bool {
 		wrapper := i.(*kvWrapper) // nolint: forcetypeassert
 		if endKeyPrefix != nil && bytes.Compare(wrapper.key, endKeyPrefix) >= 0 {
 			return false
 		}
-		result = append(result, KVPair{
+		result = append(result, cluster.KVPair{
 			Key:   wrapper.key,
 			Value: wrapper.value,
 		})
@@ -296,7 +384,7 @@ func (f *FakeCluster) startShardListeners() {
 func genAllShardIds(numShards int) []uint64 {
 	allShards := make([]uint64, numShards)
 	for i := 0; i < numShards; i++ {
-		allShards[i] = uint64(i) + DataShardIDBase
+		allShards[i] = uint64(i) + cluster.DataShardIDBase
 	}
 	return allShards
 }
@@ -335,11 +423,11 @@ func (f *FakeCluster) getInternal(key *kvWrapper) []byte {
 	return nil
 }
 
-func (f *FakeCluster) AddToDeleteBatch(batch *ToDeleteBatch) error {
+func (f *FakeCluster) AddToDeleteBatch(batch *cluster.ToDeleteBatch) error {
 	return nil
 }
 
-func (f *FakeCluster) RemoveToDeleteBatch(batch *ToDeleteBatch) error {
+func (f *FakeCluster) RemoveToDeleteBatch(batch *cluster.ToDeleteBatch) error {
 	return nil
 }
 

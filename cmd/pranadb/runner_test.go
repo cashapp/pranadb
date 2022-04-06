@@ -49,7 +49,7 @@ func removeDataDir(dataDir string) {
 
 func createConfigWithAllFields() conf.Config {
 	return conf.Config{
-		ClusterID:            12345,
+		ClusterID:            6112451081796031488,
 		RaftAddresses:        []string{"addr1", "addr2", "addr3"},
 		NotifListenAddresses: []string{"addr4", "addr5", "addr6"},
 		NumShards:            50,
