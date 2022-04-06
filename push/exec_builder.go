@@ -2,9 +2,8 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/tidb/planner"
-
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/tidb/planner"
 
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/common"
@@ -16,7 +15,7 @@ import (
 // Builds the push DAG but does not register anything in memory
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
-
+	
 	// Build the physical plan
 	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
 	if err != nil {

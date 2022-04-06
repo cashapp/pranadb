@@ -3,6 +3,7 @@ package parplan
 import (
 	"fmt"
 	"github.com/squareup/pranadb/tidb"
+	"log"
 
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
@@ -68,37 +69,37 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo
-		var pkCols []*model.IndexColumn
-		for columnIndex := range tableInfo.PrimaryKeyCols {
-			col := &model.IndexColumn{
-				Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
-				Offset: columnIndex,
-				Length: 0,
-			}
+		//var pkCols []*model.IndexColumn
+		//for _, columnIndex := range tableInfo.PrimaryKeyCols {
+		//	col := &model.IndexColumn{
+		//		Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+		//		Offset: columnIndex,
+		//		Length: -1,
+		//	}
+		//
+		//	pkCols = append(pkCols, col)
+		//}
+		//
+		//pkIndex := &model.IndexInfo{
+		//	ID:        1001,
+		//	Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.Name)),
+		//	Table:     tableName,
+		//	Columns:   pkCols,
+		//	State:     model.StatePublic,
+		//	Comment:   "",
+		//	Tp:        model.IndexTypeBtree,
+		//	Unique:    true,
+		//	Primary:   true,
+		//	Invisible: false,
+		//	Global:    false,
+		//}
 
-			pkCols = append(pkCols, col)
-		}
-
-		pkIndex := &model.IndexInfo{
-			ID:        1001,
-			Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.Name)),
-			Table:     tableName,
-			Columns:   pkCols,
-			State:     model.StatePublic,
-			Comment:   "",
-			Tp:        model.IndexTypeBtree,
-			Unique:    true,
-			Primary:   true,
-			Invisible: false,
-			Global:    false,
-		}
-
-		indexes = append(indexes, pkIndex)
+		//indexes = append(indexes, pkIndex)
 
 		if tableInfo.IndexInfos != nil {
 			for _, indexInfo := range tableInfo.IndexInfos {
 				var indexCols []*model.IndexColumn
-				for columnIndex := range indexInfo.IndexCols {
+				for _, columnIndex := range indexInfo.IndexCols {
 					col := &model.IndexColumn{
 						Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
 						Offset: columnIndex,
@@ -134,6 +135,10 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 		}
 
 		tablesMap[tableInfo.Name] = tab
+
+		if tableInfo.Name == "test_mv_22" {
+			log.Println("foo")
+		}
 
 		tabInfos = append(tabInfos, tab)
 	}

@@ -25,10 +25,9 @@ type Planner struct {
 func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
 	is := schemaToInfoSchema(schema)
 	sessCtx := sessctx.NewSessionContext(is, schema.Name)
-	// TODO different rules for push and pull queries
 	pl := &Planner{
-		pushQueryOptimizer: planner.NewOptimizer(),
-		pullQueryOptimizer: planner.NewOptimizer(),
+		pushQueryOptimizer: planner.NewOptimizer(false),
+		pullQueryOptimizer: planner.NewOptimizer(true),
 		parser:             NewParser(),
 		sessionCtx:         sessCtx,
 		schema:             schema,

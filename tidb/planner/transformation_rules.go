@@ -56,11 +56,15 @@ type Transformation interface {
 // TransformationRuleBatch is a batch of transformation rules.
 type TransformationRuleBatch map[Operand][]Transformation
 
-// DefaultRuleBatches contain all the transformation rules.
-// Each batch will be applied to the memo independently.
-var DefaultRuleBatches = []TransformationRuleBatch{
+var PullQueryRuleBatches = []TransformationRuleBatch{
 	Batch1,
 	Batch2,
+	PostTransformationBatch,
+}
+
+var PushQueryRuleBatches = []TransformationRuleBatch{
+	Batch1,
+	PushQueryBatch2,
 	PostTransformationBatch,
 }
 
@@ -109,8 +113,17 @@ var Batch2 = TransformationRuleBatch{
 		NewRuleDSToScans(),
 	},
 	OperandSelection: {
-		//NewRulePushSelDownTableScan(), // FIXME - commented out - need to investigate why it doesn't work
+		NewRulePushSelDownTableScan(),
 		NewRulePushSelDownIndexScan(),
+		NewRuleMergeAdjacentSelection(),
+	},
+}
+
+var PushQueryBatch2 = TransformationRuleBatch{
+	OperandDataSource: {
+		NewRuleDSToScans(),
+	},
+	OperandSelection: {
 		NewRuleMergeAdjacentSelection(),
 	},
 }

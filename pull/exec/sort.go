@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"sort"
 	"strings"
 
@@ -89,6 +90,11 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 
 //nolint:gocyclo
 func (p *PullSort) sortRows(unsorted *common.Rows) (*common.Rows, error) {
+	log.Debug("Got unsorted rows:")
+	for i := 0; i < unsorted.RowCount(); i++ {
+		r := unsorted.GetRow(i)
+		log.Debug(r.String())
+	}
 	numRows := unsorted.RowCount()
 	indexes := make([]int, numRows)
 	for i := range indexes {
