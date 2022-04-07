@@ -17,7 +17,7 @@ import (
 
 func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool) (queryDAG exec.PullExecutor, err error) {
 
-	if strings.HasPrefix(query, "select * from test_mv_22 order by country, city") {
+	if strings.HasPrefix(query, "select * from customer_balances where customer_token=") {
 		log.Println("foo")
 	}
 
