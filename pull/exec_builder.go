@@ -5,6 +5,8 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/planner"
 	"github.com/squareup/pranadb/tidb/util/ranger"
+	"log"
+	"strings"
 
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
@@ -15,6 +17,11 @@ import (
 )
 
 func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool) (queryDAG exec.PullExecutor, err error) {
+
+	if strings.HasPrefix(query, "select * from customer_balances where customer_token=") {
+		log.Println("foo")
+	}
+
 	ast, err := session.PullPlanner().Parse(query)
 	if err != nil {
 		return nil, errors.WithStack(err)
