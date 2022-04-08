@@ -146,7 +146,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		s = sess.NewSession(queryInfo.SessionID, nil)
 		newSession = true
 	}
-	
+
 	// We lock the session, not because of concurrent access but because we need a memory barrier
 	// as the session is mutated on subsequent calls which can be on different goroutines
 	s.Lock.Lock()
