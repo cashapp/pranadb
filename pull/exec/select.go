@@ -112,3 +112,9 @@ func (p *PullSelect) GetRows(limit int) (rows *common.Rows, err error) {
 
 	return out, nil
 }
+
+func (p *PullSelect) Reset() {
+	// It's a prepared statement and it's being reused
+	p.moreInputRows = true
+	p.pullExecutorBase.Reset()
+}

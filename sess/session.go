@@ -18,8 +18,7 @@ import (
 type Session struct {
 	ID           string
 	Schema       *common.Schema
-	pullPlanner  *parplan.Planner
-	pushPlanner  *parplan.Planner
+	planner      *parplan.Planner
 	PsCache      map[int64]*PreparedStatement
 	stmtSequence int64
 	QueryInfo    *cluster.QueryExecutionInfo
@@ -41,23 +40,15 @@ func NewSession(id string, sessCloser RemoteSessionCloser) *Session {
 func (s *Session) UseSchema(schema *common.Schema) {
 	if s.Schema == nil || s.Schema != schema {
 		s.Schema = schema
-		s.pushPlanner = nil
-		s.pullPlanner = nil
+		s.planner = nil
 	}
 }
 
-func (s *Session) PullPlanner() *parplan.Planner {
-	if s.pullPlanner == nil {
-		s.pullPlanner = parplan.NewPlanner(s.Schema, true)
+func (s *Session) Planner() *parplan.Planner {
+	if s.planner == nil {
+		s.planner = parplan.NewPlanner(s.Schema)
 	}
-	return s.pullPlanner
-}
-
-func (s *Session) PushPlanner() *parplan.Planner {
-	if s.pushPlanner == nil {
-		s.pushPlanner = parplan.NewPlanner(s.Schema, false)
-	}
-	return s.pushPlanner
+	return s.planner
 }
 
 func (s *Session) GeneratePSId() int64 {

@@ -71,7 +71,7 @@ func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.Pu
 	if ast.Select == "" {
 		return nil, errors.Errorf("only sql queries can be prepared %s", sql)
 	}
-	tiAst, err := session.PullPlanner().Parse(sql)
+	tiAst, err := session.Planner().Parse(sql)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -87,7 +87,7 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 		return nil, errors.NewUnknownPreparedStatementError(psID)
 	}
 	// Ps args on the planner are what are used when retrieving ps args when evaluating expressions on the dag
-	session.PullPlanner().SetPSArgs(args)
+	session.Planner().SetPSArgs(args)
 	// We also need to set them on the queryinfo - this is what gets passed remotely to the target node
 	session.QueryInfo.PsArgs = args
 	if ps.Dag == nil {
@@ -146,7 +146,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		s = sess.NewSession(queryInfo.SessionID, nil)
 		newSession = true
 	}
-
+	
 	// We lock the session, not because of concurrent access but because we need a memory barrier
 	// as the session is mutated on subsequent calls which can be on different goroutines
 	s.Lock.Lock()
@@ -154,7 +154,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 	s.UseSchema(schema)
 	if s.CurrentQuery == nil {
 		s.QueryInfo = queryInfo
-		s.PullPlanner().SetPSArgs(queryInfo.PsArgs)
+		s.Planner().SetPSArgs(queryInfo.PsArgs)
 
 		if queryInfo.IsPs {
 			// Prepared Statement

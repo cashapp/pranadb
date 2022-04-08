@@ -18,7 +18,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
-	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false)
+	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false, false)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}

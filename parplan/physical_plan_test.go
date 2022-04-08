@@ -24,8 +24,8 @@ import (
 
 func TestPointGetUsesTableScanWithUnitaryRangeForPullQuery(t *testing.T) {
 	schema := createTestSchema()
-	planner := NewPlanner(schema, true)
-	physi, _, err := planner.QueryToPlan("select col0, col1, col2 from table1 where col0=123", false)
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col0, col1, col2 from table1 where col0=123", false, true)
 	require.NoError(t, err)
 	ts, ok := physi.(*planner2.PhysicalTableScan)
 	require.True(t, ok)
@@ -36,8 +36,8 @@ func TestPointGetUsesTableScanWithUnitaryRangeForPullQuery(t *testing.T) {
 
 func TestPointGetUsesSelectForPushQuery(t *testing.T) {
 	schema := createTestSchema()
-	planner := NewPlanner(schema, false)
-	physi, _, err := planner.QueryToPlan("select col0, col1, col2 from table1 where col0=123", false)
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col0, col1, col2 from table1 where col0=123", false, false)
 	require.NoError(t, err)
 	sel, ok := physi.(*planner2.PhysicalSelection)
 	require.True(t, ok)
