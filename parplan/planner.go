@@ -27,8 +27,8 @@ func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
 	sessCtx := sessctx.NewSessionContext(is, schema.Name)
 	// TODO different rules for push and pull queries
 	pl := &Planner{
-		pushQueryOptimizer: planner.NewOptimizer(),
-		pullQueryOptimizer: planner.NewOptimizer(),
+		pushQueryOptimizer: planner.NewPushQueryOptimizer(),
+		pullQueryOptimizer: planner.NewPullQueryOptimizer(),
 		parser:             NewParser(),
 		sessionCtx:         sessCtx,
 		schema:             schema,
@@ -69,7 +69,7 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (planner.Physi
 		return nil, nil, errors.WithStack(err)
 	}
 
-	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, true)
+	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, !p.pullQuery)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}

@@ -3,12 +3,11 @@ package pull
 import (
 	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/tidb/planner"
-	"github.com/squareup/pranadb/tidb/util/ranger"
-
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
+	"github.com/squareup/pranadb/tidb/planner"
 	"github.com/squareup/pranadb/tidb/planner/util"
+	"github.com/squareup/pranadb/tidb/util/ranger"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/pull/exec"
