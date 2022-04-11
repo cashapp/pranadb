@@ -2,20 +2,20 @@ package pull
 
 import (
 	"github.com/pingcap/parser/model"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/sess"
+	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/tidb/planner"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/util/ranger"
-
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/pull/exec"
 )
 
 func (p *Engine) buildPullDAGWithSort(session *sess.Session, logicalPlan planner.LogicalPlan,
 	physicalPlan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	// Build dag from the plan
-	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, remote)
+	dag, err := p.buildPullDAG(session, physicalPlan, remote)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -44,7 +44,7 @@ func (p *Engine) buildPullDAGWithSort(session *sess.Session, logicalPlan planner
 
 // TODO: extract functions and break apart giant switch
 // nolint: gocyclo
-func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, schema *common.Schema, remote bool) (exec.PullExecutor, error) {
+func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -79,30 +79,40 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalTableScan:
 		if remote {
 			tableName := op.Table.Name.L
-			executor, err = p.createPullTableScan(schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+			executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(session, op, schema, true)
+			remoteDag, err := p.buildPullDAG(session, op, true)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
+			pointGetShardID, err := p.getPointGetShardID(session, op.Ranges, op.Table.Name.L)
+			if err != nil {
+				return nil, err
+			}
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+				pointGetShardID)
 		}
 	case *planner.PhysicalIndexScan:
 		if remote {
 			tableName := op.Table.Name.L
-			executor, err = p.createPullTableScan(schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+			executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(session, op, schema, true)
+			remoteDag, err := p.buildPullDAG(session, op, true)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
+			pointGetShardID, err := p.getPointGetShardID(session, op.Ranges, op.Table.Name.L)
+			if err != nil {
+				return nil, err
+			}
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+				pointGetShardID)
 		}
 	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
@@ -113,7 +123,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(session, child, schema, remote)
+		childExecutor, err := p.buildPullDAG(session, child, remote)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -124,6 +134,40 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	exec.ConnectPullExecutors(childExecutors, executor)
 
 	return executor, nil
+}
+
+func (p *Engine) getPointGetShardID(session *sess.Session, ranges []*ranger.Range, tableName string) (int64, error) {
+	var pointGetShardID int64 = -1
+	if len(ranges) == 1 {
+		rng := ranges[0]
+		if rng.IsPoint(session.Planner().StatementContext()) {
+			if len(rng.LowVal) != 1 {
+				// Composite ranges not supported yet
+				return -1, nil
+			}
+			table, ok := session.Schema.GetTable(tableName)
+			if !ok {
+				return 0, errors.Errorf("cannot find table %s", tableName)
+			}
+			if table.GetTableInfo().ColumnTypes[table.GetTableInfo().PrimaryKeyCols[0]].Type == common.TypeDecimal {
+				// We don't currently support optimised point gets for keys of type Decimal
+				return -1, nil
+			}
+			v := common.TiDBValueToPranaValue(rng.LowVal[0].GetValue())
+			k := []interface{}{v}
+
+			key, err := common.EncodeKey(k, table.GetTableInfo().ColumnTypes, table.GetTableInfo().PrimaryKeyCols, []byte{})
+			if err != nil {
+				return 0, err
+			}
+			pgsid, err := p.shrder.CalculateShard(sharder.ShardTypeHash, key)
+			if err != nil {
+				return 0, err
+			}
+			pointGetShardID = int64(pgsid)
+		}
+	}
+	return pointGetShardID, nil
 }
 
 func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ranges []*ranger.Range, columns []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {

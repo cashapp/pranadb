@@ -25,7 +25,6 @@ type PullExecutor interface {
 	ColNames() []string
 	SimpleColNames() []string
 	ColTypes() []common.ColumnType
-	Reset()
 }
 
 type pullExecutorBase struct {
@@ -68,12 +67,6 @@ func (p *pullExecutorBase) ColTypes() []common.ColumnType {
 
 func (p *pullExecutorBase) SimpleColNames() []string {
 	return p.simpleColNames
-}
-
-func (p *pullExecutorBase) Reset() {
-	for _, child := range p.children {
-		child.Reset()
-	}
 }
 
 func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {

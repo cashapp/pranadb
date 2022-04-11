@@ -91,32 +91,6 @@ func TestRemoteExecutorGetInBatches(t *testing.T) {
 	}
 }
 
-func TestRemoteExecutorResetAndGetAgain(t *testing.T) {
-	numRows := 100
-	rf := common.NewRowsFactory(colTypes)
-	re, allRows, tc := setupRowExecutor(t, numRows, rf, true)
-
-	provided, err := re.GetRows(numRows)
-	require.NoError(t, err)
-	require.NotNil(t, provided)
-	require.Equal(t, numRows, provided.RowCount())
-
-	// Now we try and get them all again - this should work as the executor will reset itself if called again
-	// after being complete
-	tc.reset()
-	re.Reset()
-	provided, err = re.GetRows(numRows)
-	require.NoError(t, err)
-	require.NotNil(t, provided)
-	require.Equal(t, numRows, provided.RowCount())
-	arrRows := commontest.RowsToSlice(provided)
-	commontest.SortRows(arrRows)
-	arrExpectedRows := commontest.RowsToSlice(allRows)
-	for i := 0; i < len(arrRows); i++ {
-		commontest.RowsEqual(t, *arrExpectedRows[i], *arrRows[i], colTypes)
-	}
-}
-
 func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
@@ -124,11 +98,11 @@ func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colNames, colTypes, "sys", tc)
-	require.Len(t, re.clusterGetters, 1)
-	require.Equal(t, re.clusterGetters[0].shardID, cluster.SystemSchemaShardID)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colNames, colTypes, "sys", tc, -1)
+	require.NotNil(t, re.pointGetQueryInfo)
+	require.Equal(t, re.pointGetQueryInfo.ShardID, cluster.SystemSchemaShardID)
 
-	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc)
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc, -1)
 	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
@@ -172,7 +146,7 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool
 		IsPs: ps,
 	}
 
-	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc), allRows, tc
+	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, -1), allRows, tc
 }
 
 func generateRow(t *testing.T, index int, rows *common.Rows) {

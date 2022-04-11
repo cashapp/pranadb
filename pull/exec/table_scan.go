@@ -28,7 +28,8 @@ type ScanRange struct {
 	HighExcl bool
 }
 
-func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64, scanRange *ScanRange) (*PullTableScan, error) {
+func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64,
+	scanRange *ScanRange) (*PullTableScan, error) {
 
 	// The rows that we create for a pull query don't include hidden rows
 	// Also, we don't always select all columns, depending on whether colIndexes has been specified
@@ -94,16 +95,6 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 		includeCols:      includedCols,
 		hasRange:         scanRange != nil,
 	}, nil
-}
-
-func (p *PullTableScan) Reset() {
-	// Sanity check - reset is only called on Prepared statements and PS must not have a range as it won't be changed
-	// when the param is changed
-	if p.hasRange {
-		panic("table scan has a range but reset is called - prepared statements can't use ranges")
-	}
-	p.lastRowPrefix = nil
-	p.pullExecutorBase.Reset()
 }
 
 func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
