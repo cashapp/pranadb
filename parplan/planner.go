@@ -10,7 +10,6 @@ import (
 	"github.com/pingcap/parser/ast"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/tidb/infoschema"
-	"github.com/squareup/pranadb/tidb/sessionctx"
 )
 
 type Planner struct {
@@ -59,24 +58,46 @@ func (p *Planner) QueryToPlan(query string, prepare bool, pullQuery bool) (plann
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
-	return p.BuildPhysicalPlan(ast, prepare, pullQuery)
+	logic, err := p.BuildLogicalPlan(ast, prepare)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	physical, err := p.BuildPhysicalPlan(logic, pullQuery)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	return physical, logic, nil
 }
 
-func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
-
+func (p *Planner) BuildLogicalPlan(stmt AstHandle, prepare bool) (planner.LogicalPlan, error) {
 	if err := p.preprocess(stmt.stmt, prepare); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	logicalPlan, err := p.createLogicalPlan(p.sessionCtx, stmt.stmt, p.is)
+	builder := planner.NewPlanBuilder(p.sessionCtx, p.is)
+	plan, err := builder.Build(stmt.stmt)
 	if err != nil {
-		return nil, nil, errors.WithStack(err)
+		return nil, errors.WithStack(err)
 	}
+	logicalPlan, isLogicalPlan := plan.(planner.LogicalPlan)
+	if !isLogicalPlan {
+		panic("Expected a logical plan")
+	}
+	return logicalPlan, nil
+}
 
-	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, pullQuery)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
+func (p *Planner) BuildPhysicalPlan(logicalPlan planner.LogicalPlan, pullQuery bool) (planner.PhysicalPlan, error) {
+	if !pullQuery {
+		physicalPlan, _, err := p.pushQueryOptimizer.FindBestPlan(p.sessionCtx, logicalPlan)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return physicalPlan, nil
 	}
-	return phys, logicalPlan, nil
+	physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(p.sessionCtx, logicalPlan)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return physicalPlan, nil
 }
 
 func (p *Planner) preprocess(stmt ast.Node, prepare bool) error {
@@ -90,32 +111,4 @@ func (p *Planner) preprocess(stmt ast.Node, prepare bool) error {
 		return errors.WithStack(err)
 	}
 	return nil
-}
-
-func (p *Planner) createLogicalPlan(sessionContext sessionctx.Context, node ast.Node, is infoschema.InfoSchema) (planner.LogicalPlan, error) {
-	builder := planner.NewPlanBuilder(sessionContext, is)
-	plan, err := builder.Build(node)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	logicalPlan, isLogicalPlan := plan.(planner.LogicalPlan)
-	if !isLogicalPlan {
-		panic("Expected a logical plan")
-	}
-	return logicalPlan, nil
-}
-
-func (p *Planner) createPhysicalPlan(sessionContext sessionctx.Context, logicalPlan planner.LogicalPlan, pullQuery bool) (planner.PhysicalPlan, error) {
-	if !pullQuery {
-		physicalPlan, _, err := p.pushQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		return physicalPlan, nil
-	}
-	physicalPlan, _, err := p.pullQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return physicalPlan, nil
 }

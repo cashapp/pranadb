@@ -59,10 +59,10 @@ func (p *Engine) Stop() error {
 
 // PrepareSQLStatement prepares a SQL statement
 // When a statement is prepared we parse it to get the AST and create a PreparedStatement struct which we cache
-// in the session.
-// When the statement is executed the first time, a execution DAG will be built from the AST and the arguments
-// We can't build the DAG before seeing real arguments as the planner needs the types.
-// We then cache the DAG so the second time it is executed we reuse the same DAG.
+// in the session. When we execute it the first time we build the logical plan and cache it - we can't build the
+// logical plan in the prepare stage as we need to know the types of the arguments to build the plan.
+// We don't cache the physical plan - we build it every time as it can depend on the args - e.g. for a point get
+// we push the sel to the table scan as a unitary range - this would be different depending on the args.
 func (p *Engine) PrepareSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
@@ -90,13 +90,11 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 	session.Planner().SetPSArgs(args)
 	// We also need to set them on the queryinfo - this is what gets passed remotely to the target node
 	session.QueryInfo.PsArgs = args
-	if ps.Dag == nil {
+
+	if ps.LogicalPlan == nil {
 		qi := session.QueryInfo
 		qi.PsArgs = args
-		// TODO unfortunately args are always passed as strings so this always results in type varchar
-		// We should find someone way of finding out the expected col types of the args so
-		// we can convert them appropriately.
-		// It works with varchar as TiDB will cast them at runtime but that's probably less efficient
+		// TODO pass properlym typed arguments via gRPC API
 		qi.PsArgTypes = make([]common.ColumnType, len(args))
 		for i := 0; i < len(args); i++ {
 			qi.PsArgTypes[i] = common.InferColumnType(args[i])
@@ -106,16 +104,17 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 		qi.Query = ps.Query
 		qi.PsID = ps.ID
 		qi.IsPs = true
-		dag, err := p.buildPullQueryExecutionFromAst(session, ps.Ast, true)
+		logic, err := session.Planner().BuildLogicalPlan(ps.Ast, true)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		ps.Dag = dag
-	} else {
-		// We're reusing the dag so we need to reset it - PullExecutors are stateful like cursors
-		ps.Dag.Reset()
+		ps.LogicalPlan = logic
 	}
-	return ps.Dag, nil
+	physicalPlan, err := session.Planner().BuildPhysicalPlan(ps.LogicalPlan, true)
+	if err != nil {
+		return nil, err
+	}
+	return p.buildPullDAGWithSort(session, ps.LogicalPlan, physicalPlan, false)
 }
 
 func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullExecutor, error) {
@@ -124,9 +123,23 @@ func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullE
 	qi.SchemaName = session.Schema.Name
 	qi.Query = query
 	qi.IsPs = false
-	return p.buildPullQueryExecutionFromQuery(session, query, false)
+	ast, err := session.Planner().Parse(query)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	logicalPlan, err := session.Planner().BuildLogicalPlan(ast, false)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	physicalPlan, err := session.Planner().BuildPhysicalPlan(logicalPlan, true)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return p.buildPullDAGWithSort(session, logicalPlan, physicalPlan, false)
 }
 
+// ExecuteRemotePullQuery - executes a pull query received from another node
+//nolint:gocyclo
 func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
 
 	p.lock.Lock()
@@ -160,27 +173,46 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 			// Prepared Statement
 			ps, ok := s.PsCache[queryInfo.PsID]
 			if !ok {
-				// Not already prepared
-				dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, true)
+				ast, err := s.Planner().Parse(queryInfo.Query)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
-				remExecutor := p.findRemoteExecutor(dag)
-				if remExecutor == nil {
-					return nil, errors.Error("cannot find remote executor")
+				logic, err := s.Planner().BuildLogicalPlan(ast, true)
+				if err != nil {
+					return nil, errors.WithStack(err)
 				}
-				s.CurrentQuery = remExecutor.RemoteDag
 				ps = s.CreateRemotePreparedStatement(queryInfo.PsID, queryInfo.Query)
-				ps.Dag = CurrentQuery(s)
+				ps.LogicalPlan = logic
 				s.PsCache[queryInfo.PsID] = ps
-			} else {
-				// Already prepared
-				s.CurrentQuery = ps.Dag
-				// We're reusing it so it needs to be reset
-				CurrentQuery(s).Reset()
 			}
+			// We build the physical plan each time
+			physicalPlan, err := s.Planner().BuildPhysicalPlan(ps.LogicalPlan, true)
+			if err != nil {
+				return nil, err
+			}
+			dag, err := p.buildPullDAG(s, physicalPlan, s.Schema, false)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			remExecutor := p.findRemoteExecutor(dag)
+			if remExecutor == nil {
+				return nil, errors.Error("cannot find remote executor")
+			}
+			s.CurrentQuery = remExecutor.RemoteDag
 		} else {
-			dag, err := p.buildPullQueryExecutionFromQuery(s, queryInfo.Query, false)
+			ast, err := s.Planner().Parse(queryInfo.Query)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			logic, err := s.Planner().BuildLogicalPlan(ast, true)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			physicalPlan, err := s.Planner().BuildPhysicalPlan(logic, true)
+			if err != nil {
+				return nil, err
+			}
+			dag, err := p.buildPullDAG(s, physicalPlan, s.Schema, false)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}

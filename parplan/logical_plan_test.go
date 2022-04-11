@@ -180,7 +180,7 @@ func testLogicalPlan(t *testing.T, query string, expectedPlan string) {
 	require.NoError(t, err)
 	err = planner.preprocess(ast.stmt, false)
 	require.NoError(t, err)
-	logicalPlan, err := planner.createLogicalPlan(planner.sessionCtx, ast.stmt, planner.is)
+	logicalPlan, err := planner.BuildLogicalPlan(ast, false)
 	require.NoError(t, err)
 	planString := logicalPlan.Dump()
 	println(planString)
