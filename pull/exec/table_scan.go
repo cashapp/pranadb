@@ -15,8 +15,8 @@ type PullTableScan struct {
 	lastRowPrefix []byte
 	rangeStart    []byte
 	rangeEnd      []byte
-
-	includeCols []bool
+	includeCols   []bool
+	hasRange      bool
 }
 
 var _ PullExecutor = &PullTableScan{}
@@ -92,10 +92,16 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 		rangeStart:       rangeStart,
 		rangeEnd:         rangeEnd,
 		includeCols:      includedCols,
+		hasRange:         scanRange != nil,
 	}, nil
 }
 
 func (p *PullTableScan) Reset() {
+	// Sanity check - reset is only called on Prepared statements and PS must not have a range as it won't be changed
+	// when the param is changed
+	if p.hasRange {
+		panic("table scan has a range but reset is called - prepared statements can't use ranges")
+	}
 	p.lastRowPrefix = nil
 	p.pullExecutorBase.Reset()
 }

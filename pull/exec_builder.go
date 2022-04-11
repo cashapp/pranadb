@@ -14,7 +14,7 @@ import (
 )
 
 func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool) (queryDAG exec.PullExecutor, err error) {
-	ast, err := session.PullPlanner().Parse(query)
+	ast, err := session.Planner().Parse(query)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -24,7 +24,7 @@ func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query s
 func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool) (queryDAG exec.PullExecutor, err error) {
 
 	// Build the physical plan
-	physicalPlan, logicalPlan, err := session.PullPlanner().BuildPhysicalPlan(ast, prepare)
+	physicalPlan, logicalPlan, err := session.Planner().BuildPhysicalPlan(ast, prepare, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -102,7 +102,6 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			// TODO should be done in transformation rule, not here!
 			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
 		}
 	case *planner.PhysicalIndexScan:
@@ -117,7 +116,6 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			// TODO should be done in transformation rule, not here!
 			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, schema.Name, p.cluster)
 		}
 	case *planner.PhysicalSort:

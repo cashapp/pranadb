@@ -98,11 +98,11 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 
 	switch {
 	case ast.Select != "":
-		session.PullPlanner().RefreshInfoSchema()
+		session.Planner().RefreshInfoSchema()
 		dag, err := e.pullEngine.BuildPullQuery(session, sql)
 		return dag, errors.WithStack(err)
 	case ast.Prepare != "":
-		session.PullPlanner().RefreshInfoSchema()
+		session.Planner().RefreshInfoSchema()
 		ex, err := e.execPrepare(session, ast.Prepare)
 		return ex, errors.WithStack(err)
 	case ast.Execute != nil:
@@ -124,7 +124,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateMVCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
+		command := NewOriginatingCreateMVCommand(e, session.Planner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -135,7 +135,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateIndexCommand(e, session.PushPlanner(), session.Schema, sql, sequences, ast.Create.Index)
+		command := NewOriginatingCreateIndexCommand(e, session.Planner(), session.Schema, sql, sequences, ast.Create.Index)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -225,7 +225,7 @@ func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExec
 }
 
 func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (exec.PullExecutor, error) {
-	session.PullPlanner().RefreshInfoSchema()
+	session.Planner().RefreshInfoSchema()
 	args := make([]interface{}, len(execute.Args))
 	for i := range args {
 		args[i] = execute.Args[i]

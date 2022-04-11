@@ -3,6 +3,7 @@ package parplan
 import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/planner"
+	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 
 	"github.com/squareup/pranadb/sessctx"
 
@@ -19,10 +20,9 @@ type Planner struct {
 	sessionCtx         *sessctx.SessCtx
 	schema             *common.Schema
 	is                 infoschema.InfoSchema
-	pullQuery          bool
 }
 
-func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
+func NewPlanner(schema *common.Schema) *Planner {
 	is := schemaToInfoSchema(schema)
 	sessCtx := sessctx.NewSessionContext(is, schema.Name)
 	// TODO different rules for push and pull queries
@@ -33,9 +33,12 @@ func NewPlanner(schema *common.Schema, pullQuery bool) *Planner {
 		sessionCtx:         sessCtx,
 		schema:             schema,
 		is:                 is,
-		pullQuery:          pullQuery,
 	}
 	return pl
+}
+
+func (p *Planner) StatementContext() *stmtctx.StatementContext {
+	return p.sessionCtx.GetSessionVars().StmtCtx
 }
 
 func (p *Planner) SetPSArgs(args []interface{}) {
@@ -51,15 +54,15 @@ func (p *Planner) Parse(query string) (AstHandle, error) {
 	return p.parser.Parse(query)
 }
 
-func (p *Planner) QueryToPlan(query string, prepare bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
+func (p *Planner) QueryToPlan(query string, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
 	ast, err := p.Parse(query)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
-	return p.BuildPhysicalPlan(ast, prepare)
+	return p.BuildPhysicalPlan(ast, prepare, pullQuery)
 }
 
-func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
+func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
 
 	if err := p.preprocess(stmt.stmt, prepare); err != nil {
 		return nil, nil, err
@@ -69,7 +72,7 @@ func (p *Planner) BuildPhysicalPlan(stmt AstHandle, prepare bool) (planner.Physi
 		return nil, nil, errors.WithStack(err)
 	}
 
-	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, !p.pullQuery)
+	phys, err := p.createPhysicalPlan(p.sessionCtx, logicalPlan, pullQuery)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -102,9 +105,8 @@ func (p *Planner) createLogicalPlan(sessionContext sessionctx.Context, node ast.
 	return logicalPlan, nil
 }
 
-func (p *Planner) createPhysicalPlan(sessionContext sessionctx.Context, logicalPlan planner.LogicalPlan, isPushQuery bool) (planner.PhysicalPlan, error) {
-	// Use the new cost based optimizer
-	if isPushQuery {
+func (p *Planner) createPhysicalPlan(sessionContext sessionctx.Context, logicalPlan planner.LogicalPlan, pullQuery bool) (planner.PhysicalPlan, error) {
+	if !pullQuery {
 		physicalPlan, _, err := p.pushQueryOptimizer.FindBestPlan(sessionContext, logicalPlan)
 		if err != nil {
 			return nil, errors.WithStack(err)

@@ -175,7 +175,7 @@ Schema: Columns: [test.table1.col0,test.table1.col1,test.table1.col2]
 func testLogicalPlan(t *testing.T, query string, expectedPlan string) {
 	t.Helper()
 	schema := createTestSchema()
-	planner := NewPlanner(schema, false)
+	planner := NewPlanner(schema)
 	ast, err := planner.parser.Parse(query)
 	require.NoError(t, err)
 	err = planner.preprocess(ast.stmt, false)

@@ -58,7 +58,7 @@ func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *com
 
 func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tableSequences []uint64) *CreateMVCommand {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
-	pl := parplan.NewPlanner(schema, false)
+	pl := parplan.NewPlanner(schema)
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
