@@ -56,7 +56,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
-	pullEngine := pull.NewPullEngine(clus, metaController)
+	pullEngine := pull.NewPullEngine(clus, metaController, shardr)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)

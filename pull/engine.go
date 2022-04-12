@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/sharder"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,13 +25,15 @@ type Engine struct {
 	cluster            cluster.Cluster
 	metaController     *meta.Controller
 	nodeID             int
+	shrder             *sharder.Sharder
 }
 
-func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller) *Engine {
+func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller, shrder *sharder.Sharder) *Engine {
 	engine := Engine{
 		cluster:        cluster,
 		metaController: metaController,
 		nodeID:         cluster.GetNodeID(),
+		shrder:         shrder,
 	}
 	engine.remoteSessionCache.Store(new(sync.Map))
 	return &engine
@@ -190,7 +193,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 			if err != nil {
 				return nil, err
 			}
-			dag, err := p.buildPullDAG(s, physicalPlan, s.Schema, false)
+			dag, err := p.buildPullDAG(s, physicalPlan, false)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -212,7 +215,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 			if err != nil {
 				return nil, err
 			}
-			dag, err := p.buildPullDAG(s, physicalPlan, s.Schema, false)
+			dag, err := p.buildPullDAG(s, physicalPlan, false)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}

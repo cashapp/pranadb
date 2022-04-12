@@ -2,12 +2,11 @@ package exec
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/meta"
 	"strings"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/errors"
-
-	"github.com/squareup/pranadb/meta"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -15,16 +14,18 @@ import (
 
 type RemoteExecutor struct {
 	pullExecutorBase
-	clusterGetters []*clusterGetter
-	schemaName     string
-	cluster        cluster.Cluster
-	completeCount  int
-	queryInfo      *cluster.QueryExecutionInfo
-	RemoteDag      PullExecutor
-	ShardIDs       []uint64
+	clusterGetters    []*clusterGetter
+	schemaName        string
+	cluster           cluster.Cluster
+	completeCount     int
+	queryInfo         *cluster.QueryExecutionInfo
+	RemoteDag         PullExecutor
+	ShardIDs          []uint64
+	pointGetQueryInfo *cluster.QueryExecutionInfo
 }
 
-func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecutionInfo, colNames []string, colTypes []common.ColumnType, schemaName string, cluster cluster.Cluster) *RemoteExecutor {
+func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecutionInfo, colNames []string,
+	colTypes []common.ColumnType, schemaName string, clust cluster.Cluster, pointGetShardID int64) *RemoteExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:       colNames,
@@ -35,12 +36,28 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 	re := RemoteExecutor{
 		pullExecutorBase: base,
 		schemaName:       schemaName,
-		cluster:          cluster,
+		cluster:          clust,
 		queryInfo:        queryInfo,
 		RemoteDag:        remoteDAG,
-		ShardIDs:         cluster.GetAllShardIDs(),
+		ShardIDs:         clust.GetAllShardIDs(),
 	}
-	re.createGetters()
+	// The tables table is a special case and always gets stored in a single shard cluster.SystemSchemaShardID
+	// We do this because we need to guarantee deterministic updates across the cluster for all of tables table
+	if re.schemaName == meta.SystemSchemaName {
+		lq := strings.ToLower(re.queryInfo.Query)
+		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
+			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {
+			re.pointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, cluster.SystemSchemaShardID)
+			return &re
+		}
+	}
+	if pointGetShardID != -1 {
+		// It's a point get
+		re.pointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, uint64(pointGetShardID))
+	} else {
+		// Not a point get
+		re.createGetters()
+	}
 	return &re
 }
 
@@ -48,7 +65,7 @@ type clusterGetter struct {
 	shardID       uint64
 	re            *RemoteExecutor
 	complete      atomic.Value
-	queryExecInfo cluster.QueryExecutionInfo
+	queryExecInfo *cluster.QueryExecutionInfo
 }
 
 func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryResult) {
@@ -57,7 +74,7 @@ func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryR
 		var rows *common.Rows
 		var err error
 		c.queryExecInfo.Limit = uint32(limit)
-		rows, err = c.re.cluster.ExecuteRemotePullQuery(&c.queryExecInfo, c.re.rowsFactory)
+		rows, err = c.re.cluster.ExecuteRemotePullQuery(c.queryExecInfo, c.re.rowsFactory)
 		if err == nil {
 			c.complete.Store(rows.RowCount() < limit)
 		}
@@ -77,20 +94,15 @@ func (c *clusterGetter) isComplete() bool {
 	return complete
 }
 
-func (re *RemoteExecutor) Reset() {
-	// It's a prepared statement and it's being reused
-	// Sanity check
-	if !re.queryInfo.IsPs {
-		panic("only prepared statements can be reused")
-	}
-	re.createGetters()
-	re.completeCount = 0
-	re.pullExecutorBase.Reset()
-}
-
 func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
 		return nil, errors.Errorf("invalid limit %d", limit)
+	}
+
+	if re.pointGetQueryInfo != nil {
+		// It's a point get so we only talk to one shard
+		re.pointGetQueryInfo.Limit = uint32(limit)
+		return re.cluster.ExecuteRemotePullQuery(re.pointGetQueryInfo, re.rowsFactory)
 	}
 
 	numGetters := len(re.clusterGetters)
@@ -152,28 +164,27 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 func (re *RemoteExecutor) createGetters() {
 	shardIDs := re.ShardIDs
-	if re.schemaName == meta.SystemSchemaName {
-		// It's only the index/tables sys tables that don't require fanout, others do, e.g. offsets
-		lq := strings.ToLower(re.queryInfo.Query)
-		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
-			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {
-			shardIDs = []uint64{cluster.SystemSchemaShardID}
-		}
-	}
 	re.clusterGetters = make([]*clusterGetter, len(shardIDs))
 	for i, shardID := range shardIDs {
-		// Make a copy of the query exec info as they need different shard ids, session id and limit (later)
-		qei := *re.queryInfo
-		// We append the shard id to the session id - as on each remote node we need to maintain a different
-		// session for each shard, as each shard wil have an independent current query running and needs an
-		// independent planner as they're not thread-safe
-		qei.SessionID = fmt.Sprintf("%s-%d", re.queryInfo.SessionID, shardID)
-		qei.ShardID = shardID
-		re.clusterGetters[i] = &clusterGetter{
+		qei := re.createGetterQueryExecInfo(re.queryInfo, shardID)
+		cg := &clusterGetter{
 			shardID:       shardID,
 			re:            re,
 			queryExecInfo: qei,
 		}
-		re.clusterGetters[i].complete.Store(false)
+		cg.complete.Store(false)
+		re.clusterGetters[i] = cg
 	}
+}
+
+func (re *RemoteExecutor) createGetterQueryExecInfo(qei *cluster.QueryExecutionInfo, shardID uint64) *cluster.QueryExecutionInfo {
+	// Note we create a copy of the query info as each instance has its own shard id etc
+	qeiCopy := *qei
+
+	// We append the shard id to the session id - as on each remote node we need to maintain a different
+	// session for each shard, as each shard wil have an independent current query running and needs an
+	// independent planner as they're not thread-safe
+	qeiCopy.SessionID = fmt.Sprintf("%s-%d", re.queryInfo.SessionID, shardID)
+	qeiCopy.ShardID = shardID
+	return &qeiCopy
 }
