@@ -112,10 +112,10 @@ func (ds *LogicalDataSource) buildTableScan() LogicalPlan {
 	return ts
 }
 
-func (ds *LogicalDataSource) buildIndexScan(path *util.AccessPath) LogicalPlan {
+func (ds *LogicalDataSource) buildIndexScan(path *util.AccessPath, isDoubleRead bool) LogicalPlan {
 	is := LogicalIndexScan{
 		Source:         ds,
-		IsDoubleRead:   false,
+		IsDoubleRead:   isDoubleRead,
 		Index:          path.Index,
 		FullIdxCols:    path.FullIdxCols,
 		FullIdxColLens: path.FullIdxColLens,
@@ -139,9 +139,15 @@ func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
 			path.IdxCols, path.IdxColLens = expression.IndexInfo2PrefixCols(ds.Columns, ds.schema.Columns, path.Index)
 			// If index columns can cover all of the needed columns, we can use a IndexGather + IndexScan.
 			if ds.isCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
-				scans = append(scans, ds.buildIndexScan(path))
+				scans = append(scans, ds.buildIndexScan(path, false))
 			}
-			// TODO: If index columns can not cover the schema, use IndexLookUpGather.
+			// Commenting this out for now since having a PhysicalIndexScan with a partial index results in the executor
+			// not having all required columns for PullTableScan that's currently a placeholder for IndexScan, which
+			// will be implemented later
+
+			//if ds.isPartiallyCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
+			//	scans = append(scans, ds.buildIndexScan(path, true))
+			//}
 		}
 	}
 	return scans
@@ -468,6 +474,21 @@ func (ds *LogicalDataSource) isCoveringIndex(columns, indexColumns []*expression
 		}
 	}
 	return true
+}
+
+func (ds *LogicalDataSource) isPartiallyCoveringIndex(columns, indexColumns []*expression.Column, idxColLens []int, tblInfo *model.TableInfo) bool {
+	for _, col := range columns {
+		if tblInfo.PKIsHandle && mysql.HasPriKeyFlag(col.RetType.Flag) {
+			continue
+		}
+		if col.ID == model.ExtraHandleID {
+			continue
+		}
+		if indexColumns[0] != nil && col.Equal(nil, indexColumns[0]) {
+			return true
+		}
+	}
+	return false
 }
 
 func indexCoveringCol(col *expression.Column, indexCols []*expression.Column, idxColLens []int) bool {
