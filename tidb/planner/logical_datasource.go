@@ -643,7 +643,7 @@ func (ds *LogicalDataSource) initStats(colGroups [][]*expression.Column) {
 }
 
 func (ds *LogicalDataSource) deriveStatsByFilter(conds expression.CNFExprs, filledPaths []*util.AccessPath) *property.StatsInfo {
-	selectivity, _, err := ds.tableStats.HistColl.Selectivity(ds.ctx, conds, filledPaths)
+	selectivity, nodes, err := ds.tableStats.HistColl.Selectivity(ds.ctx, conds, filledPaths)
 	if err != nil {
 		logutil.BgLogger().Debug("something wrong happened, use the default selectivity", zap.Error(err))
 		selectivity = SelectionFactor
