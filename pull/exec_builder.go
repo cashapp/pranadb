@@ -3,7 +3,6 @@ package pull
 import (
 	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/tidb/planner"
 	"github.com/squareup/pranadb/tidb/planner/util"
@@ -13,23 +12,10 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 )
 
-func (p *Engine) buildPullQueryExecutionFromQuery(session *sess.Session, query string, prepare bool) (queryDAG exec.PullExecutor, err error) {
-	ast, err := session.Planner().Parse(query)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return p.buildPullQueryExecutionFromAst(session, ast, prepare)
-}
-
-func (p *Engine) buildPullQueryExecutionFromAst(session *sess.Session, ast parplan.AstHandle, prepare bool) (queryDAG exec.PullExecutor, err error) {
-
-	// Build the physical plan
-	physicalPlan, logicalPlan, err := session.Planner().BuildPhysicalPlan(ast, prepare, true)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	// Build initial dag from the plan
-	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, false)
+func (p *Engine) buildPullDAGWithSort(session *sess.Session, logicalPlan planner.LogicalPlan,
+	physicalPlan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
+	// Build dag from the plan
+	dag, err := p.buildPullDAG(session, physicalPlan, session.Schema, remote)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

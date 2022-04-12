@@ -1,13 +1,13 @@
 package sess
 
 import (
+	"github.com/squareup/pranadb/tidb/planner"
 	"sync"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/pull/exec"
 )
 
 // Session represents a user's session with Prana
@@ -73,10 +73,10 @@ func (s *Session) CreateRemotePreparedStatement(id int64, query string) *Prepare
 }
 
 type PreparedStatement struct {
-	ID    int64
-	Query string
-	Dag   exec.PullExecutor
-	Ast   parplan.AstHandle
+	ID          int64
+	Query       string
+	LogicalPlan planner.LogicalPlan
+	Ast         parplan.AstHandle
 }
 
 // Abort should be invoked if the session might have running queries
