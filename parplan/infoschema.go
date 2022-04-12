@@ -80,22 +80,6 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 			pkCols = append(pkCols, col)
 		}
 
-		pkIndex := &model.IndexInfo{
-			ID:        1001,
-			Name:      model.NewCIStr(fmt.Sprintf("PK_%s", tableInfo.Name)),
-			Table:     tableName,
-			Columns:   pkCols,
-			State:     model.StatePublic,
-			Comment:   "",
-			Tp:        model.IndexTypeBtree,
-			Unique:    true,
-			Primary:   true,
-			Invisible: false,
-			Global:    false,
-		}
-
-		indexes = append(indexes, pkIndex)
-
 		if tableInfo.IndexInfos != nil {
 			for _, indexInfo := range tableInfo.IndexInfos {
 				var indexCols []*model.IndexColumn

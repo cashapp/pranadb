@@ -54,8 +54,9 @@ use test;
 -- MV shouldn't exist;
 select * from test_mv_1;
 
--- trigger a failure after MV has been filled and persisted to storage but before to_delete rows have been removed
--- at the end of the create MV process. In this case the MV should exist after restart;
+-- trigger a failure after MV has been filled and persisted to storage but before to_delete rows have been removed;
+-- at the end of the create MV process. In this case the MV should exist after restart with all it's data as we don't delete from the;
+-- to_delete table if the table with that id exists in the tables table;
 
 --activate failpoint create_mv_2 -1;
 
@@ -67,12 +68,12 @@ create materialized view test_mv_2 as select * from test_source_1;
 use test;
 
 -- MV should exist;
-select * from test_mv_2;
+select * from test_mv_2 order by col0;
 
 drop materialized view test_mv_2;
 
 -- trigger a failure when an MV been fill has been mainly processed but the temporary row used in tableExecutor.FillTo();
--- haven't been deleted from the to_delete table yet;
+-- haven't been deleted from the to_delete table yet - the MV shouldn't exist on restart and all the data should be deleted;
 
 --activate failpoint fill_to_1 2;
 

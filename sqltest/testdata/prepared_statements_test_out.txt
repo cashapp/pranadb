@@ -140,12 +140,38 @@ execute 7 6 800;
 |10|1000|10000|10234.4321|93345678.99|str10|
 2 rows returned
 
--- ps with params for all cols;
-prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
+-- reuse the prepared statement;
+prepare select * from test_source_1 where col0 = ?;
 |PS_ID|
 |8|
 1 rows returned
-execute 8 6 600 6000 6234.4321 62345678.99 "str6";
+execute 8 1;
+|col0|col1|col2|col3|col4|col5|
+|1|100|1000|1234.4321|12345678.99|str1|
+1 rows returned
+execute 8 2;
+|col0|col1|col2|col3|col4|col5|
+|2|200|2000|2234.4321|22345678.99|str2|
+1 rows returned
+execute 8 3;
+|col0|col1|col2|col3|col4|col5|
+|3|300|3000|3234.4321|32345678.99|str3|
+1 rows returned
+execute 8 4;
+|col0|col1|col2|col3|col4|col5|
+|4|400|4000|4234.4321|42345678.99|str4|
+1 rows returned
+execute 8 5;
+|col0|col1|col2|col3|col4|col5|
+|5|500|5000|5234.4321|52345678.99|str5|
+1 rows returned
+
+-- ps with params for all cols;
+prepare select * from test_source_1 where col0 = ? and col1 = ? and col2 = ? and col3 = ? and col4 = ? and col5 = ? order by col0;
+|PS_ID|
+|9|
+1 rows returned
+execute 9 6 600 6000 6234.4321 62345678.99 "str6";
 |col0|col1|col2|col3|col4|col5|
 |6|600|6000|6234.4321|62345678.99|str6|
 1 rows returned
@@ -154,8 +180,8 @@ execute 8 6 600 6000 6234.4321 62345678.99 "str6";
 use test;
 0 rows returned
 -- ps should now be closed as session was closed;
-execute 8 6 600 6000 6234.4321 62345678.99 "str6";
-Failed to execute statement: PDB0007 - Unknown prepared statement, id: 8
+execute 9 6 600 6000 6234.4321 62345678.99 "str6";
+Failed to execute statement: PDB0007 - Unknown prepared statement, id: 9
 
 drop source test_source_1;
 0 rows returned

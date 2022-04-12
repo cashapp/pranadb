@@ -56,7 +56,7 @@ func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *
 
 func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string, tableSequences []uint64) *CreateIndexCommand {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
-	pl := parplan.NewPlanner(schema, false)
+	pl := parplan.NewPlanner(schema)
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,

@@ -103,7 +103,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 		mvID := seqGen.GenerateSequence()
 		mv, err := push.CreateMaterializedView(
 			l.pushEngine,
-			parplan.NewPlanner(schema, false),
+			parplan.NewPlanner(schema),
 			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvID,
 			seqGen)
 		if err != nil {

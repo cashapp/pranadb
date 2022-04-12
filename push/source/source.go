@@ -318,6 +318,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		if err != nil {
 			return errors.WithStack(err)
 		}
+
 		destShardID, err := s.sharder.CalculateShard(sharder.ShardTypeHash, key)
 		if err != nil {
 			return errors.WithStack(err)

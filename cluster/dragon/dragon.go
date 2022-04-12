@@ -851,7 +851,7 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 				return err
 			}
 			if !exists {
-				log.Debugf("Table does not exist, there are %d prefixes", len(batch.Prefixes))
+				log.Debugf("Conditional table with id %d does not exist, there are %d prefixes", batch.ConditionalTableID, len(batch.Prefixes))
 				for _, prefix := range batch.Prefixes {
 					log.Debugf("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
 					endPrefix := common.IncrementBytesBigEndian(prefix)

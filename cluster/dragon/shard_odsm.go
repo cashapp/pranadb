@@ -57,7 +57,6 @@ type ShardOnDiskStateMachine struct {
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	log.Debugf("Opening shard state machine with shard id %d", s.shardID)
 	s.dragon.registerShardSM(s.shardID)
 	if err := s.loadDedupCache(); err != nil {
 		return 0, err
@@ -384,7 +383,6 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 }
 
 func (s *ShardOnDiskStateMachine) Close() error {
-	log.Debugf("Closing shard state machine with shard id %d", s.shardID)
 	s.dragon.unregisterShardSM(s.shardID)
 	return nil
 }

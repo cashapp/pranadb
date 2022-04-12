@@ -33,11 +33,16 @@ type Optimizer struct {
 	implementationRuleMap     map[Operand][]ImplementationRule
 }
 
-// NewOptimizer returns a cascades optimizer with default transformation
-// rules and implementation rules.
-func NewOptimizer() *Optimizer {
+func NewPullQueryOptimizer() *Optimizer {
 	return &Optimizer{
-		transformationRuleBatches: DefaultRuleBatches,
+		transformationRuleBatches: PullQueryBatch,
+		implementationRuleMap:     defaultImplementationMap,
+	}
+}
+
+func NewPushQueryOptimizer() *Optimizer {
+	return &Optimizer{
+		transformationRuleBatches: PushQueryBatch,
 		implementationRuleMap:     defaultImplementationMap,
 	}
 }

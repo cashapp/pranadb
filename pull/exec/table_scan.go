@@ -15,8 +15,8 @@ type PullTableScan struct {
 	lastRowPrefix []byte
 	rangeStart    []byte
 	rangeEnd      []byte
-
-	includeCols []bool
+	includeCols   []bool
+	hasRange      bool
 }
 
 var _ PullExecutor = &PullTableScan{}
@@ -28,7 +28,8 @@ type ScanRange struct {
 	HighExcl bool
 }
 
-func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64, scanRange *ScanRange) (*PullTableScan, error) {
+func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64,
+	scanRange *ScanRange) (*PullTableScan, error) {
 
 	// The rows that we create for a pull query don't include hidden rows
 	// Also, we don't always select all columns, depending on whether colIndexes has been specified
@@ -92,12 +93,8 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 		rangeStart:       rangeStart,
 		rangeEnd:         rangeEnd,
 		includeCols:      includedCols,
+		hasRange:         scanRange != nil,
 	}, nil
-}
-
-func (p *PullTableScan) Reset() {
-	p.lastRowPrefix = nil
-	p.pullExecutorBase.Reset()
 }
 
 func (p *PullTableScan) GetRows(limit int) (rows *common.Rows, err error) {
