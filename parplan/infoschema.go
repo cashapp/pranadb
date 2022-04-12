@@ -69,16 +69,6 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo
-		var pkCols []*model.IndexColumn
-		for columnIndex := range tableInfo.PrimaryKeyCols {
-			col := &model.IndexColumn{
-				Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
-				Offset: columnIndex,
-				Length: -1,
-			}
-
-			pkCols = append(pkCols, col)
-		}
 
 		if tableInfo.IndexInfos != nil {
 			for _, indexInfo := range tableInfo.IndexInfos {
