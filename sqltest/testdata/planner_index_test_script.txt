@@ -24,6 +24,7 @@ create index index1 on transactions (customer_id);
 
 --test with source;
 
+-- IndexScan isn't yet implemented, so we don't expect any data;
 select customer_id from transactions where customer_id = 600;
 
 drop index index1 on transactions;
