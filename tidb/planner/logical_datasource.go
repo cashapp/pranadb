@@ -141,13 +141,6 @@ func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
 			if ds.isCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
 				scans = append(scans, ds.buildIndexScan(path, false))
 			}
-			// Commenting this out for now since having a PhysicalIndexScan with a partial index results in the executor
-			// not having all required columns for PullTableScan that's currently a placeholder for IndexScan, which
-			// will be implemented later
-
-			//if ds.isPartiallyCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
-			//	scans = append(scans, ds.buildIndexScan(path, true))
-			//}
 		}
 	}
 	return scans
