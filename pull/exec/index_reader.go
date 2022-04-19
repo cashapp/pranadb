@@ -17,9 +17,7 @@ type PullIndexReader struct {
 	rangeStart    []byte
 	rangeEnd      []byte
 	includeCols   []int
-	hasRange      bool
 	covers        bool
-	indexKeyLen   int
 }
 
 var _ PullExecutor = &PullIndexReader{}
