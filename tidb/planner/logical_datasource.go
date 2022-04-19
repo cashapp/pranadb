@@ -643,16 +643,12 @@ func (ds *LogicalDataSource) initStats(colGroups [][]*expression.Column) {
 }
 
 func (ds *LogicalDataSource) deriveStatsByFilter(conds expression.CNFExprs, filledPaths []*util.AccessPath) *property.StatsInfo {
-	selectivity, nodes, err := ds.tableStats.HistColl.Selectivity(ds.ctx, conds, filledPaths)
+	selectivity, _, err := ds.tableStats.HistColl.Selectivity(ds.ctx, conds, filledPaths)
 	if err != nil {
 		logutil.BgLogger().Debug("something wrong happened, use the default selectivity", zap.Error(err))
 		selectivity = SelectionFactor
 	}
-	stats := ds.tableStats.Scale(selectivity)
-	if ds.ctx.GetSessionVars().OptimizerSelectivityLevel >= 1 {
-		stats.HistColl = stats.HistColl.NewHistCollBySelectivity(ds.ctx.GetSessionVars().StmtCtx, nodes)
-	}
-	return stats
+	return ds.tableStats.Scale(selectivity)
 }
 
 // DeriveStats implement LogicalPlan DeriveStats interface.

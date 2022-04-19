@@ -1,6 +1,8 @@
 package pull
 
 import (
+	"strings"
+
 	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -98,21 +100,18 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalIndexScan:
 		if remote {
 			tableName := op.Table.Name.L
-			executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+			indexName := op.Index.Name.L
+			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID, op.Covers)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 		} else {
 			remoteDag, err := p.buildPullDAG(session, op, true)
 			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			pointGetShardID, err := p.getPointGetShardID(session, op.Ranges, op.Table.Name.L)
-			if err != nil {
 				return nil, err
 			}
 			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
-				pointGetShardID)
+				-1)
 		}
 	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
@@ -200,6 +199,38 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 		colIndexes = append(colIndexes, col.Offset)
 	}
 	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRange)
+}
+
+func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range, columns []*model.ColumnInfo, shardID uint64, covers bool) (exec.PullExecutor, error) {
+	tbl, ok := schema.GetTable(tableName)
+	if !ok {
+		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
+	}
+	idx, ok := tbl.GetTableInfo().IndexInfos[strings.Replace(indexName, tableName+"_", "", 1)]
+	if !ok {
+		return nil, errors.Errorf("unknown index %s", indexName)
+	}
+	var scanRanges []*exec.ScanRange
+	for _, rng := range ranges {
+		if !rng.IsFullRange() {
+			if len(rng.LowVal) != 1 {
+				return nil, errors.Error("composite ranges not supported")
+			}
+			lowD := rng.LowVal[0]
+			highD := rng.HighVal[0]
+			scanRanges = append(scanRanges, &exec.ScanRange{
+				LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
+				HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
+				LowExcl:  rng.LowExclude,
+				HighExcl: rng.HighExclude,
+			})
+		}
+	}
+	var colIndexes []int
+	for _, col := range columns {
+		colIndexes = append(colIndexes, col.Offset)
+	}
+	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges, covers)
 }
 
 func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {
