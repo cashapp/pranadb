@@ -63,6 +63,7 @@ func (t *Type) String() string {
 		return "varchar"
 	case TypeTimestamp:
 		return "timestamp"
+	case TypeUnknown:
 	}
 	return "unknown"
 }
