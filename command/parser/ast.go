@@ -160,9 +160,10 @@ type AST struct {
 	Select  string // Unaltered SELECT statement, if any.
 	Prepare string // Unaltered PREPARE statement, if any.
 
-	Use     string   `(  "USE" @Ident`
-	Execute *Execute ` | "EXECUTE" @@`
-	Drop    *Drop    ` | "DROP" @@ `
-	Create  *Create  ` | "CREATE" @@ `
-	Show    *Show    ` | "SHOW" @@ ) ";"?`
+	Use      string   `(  "USE" @Ident`
+	Execute  *Execute ` | "EXECUTE" @@`
+	Drop     *Drop    ` | "DROP" @@`
+	Create   *Create  ` | "CREATE" @@`
+	Show     *Show    ` | "SHOW" @@`
+	Describe string   ` | "DESCRIBE" @Ident ) ";"?`
 }

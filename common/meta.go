@@ -46,6 +46,27 @@ func (t *Type) Capture(tokens []string) error {
 	return nil
 }
 
+func (t *Type) String() string {
+	// TODO: consider using Go's stringer tool to generate this mapping.
+	switch *t {
+	case TypeTinyInt:
+		return "tinyint"
+	case TypeInt:
+		return "int"
+	case TypeBigInt:
+		return "bigint"
+	case TypeDouble:
+		return "double"
+	case TypeDecimal:
+		return "decimal"
+	case TypeVarchar:
+		return "varchar"
+	case TypeTimestamp:
+		return "timestamp"
+	}
+	return "unknown"
+}
+
 var (
 	TinyIntColumnType   = ColumnType{Type: TypeTinyInt}
 	IntColumnType       = ColumnType{Type: TypeInt}
@@ -128,6 +149,15 @@ func (i *TableInfo) GetTableInfo() *TableInfo { return i }
 
 func (i *TableInfo) String() string {
 	return fmt.Sprintf("table[name=%s.%s,id=%d]", i.SchemaName, i.Name, i.ID)
+}
+
+func (i *TableInfo) IsPrimaryKey(colIndex int) bool {
+	for _, pkColIdx := range i.PrimaryKeyCols {
+		if pkColIdx == colIndex {
+			return true
+		}
+	}
+	return false
 }
 
 type IndexInfo struct {
