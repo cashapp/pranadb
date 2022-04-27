@@ -1,0 +1,622 @@
+-- We test various different ways of encoding kafka messages with keys, values, headers JSON and binary etc;
+
+-- TEST1 - string encoded key, top level JSON encoded value;
+
+--create topic testtopic;
+
+use test;
+0 rows returned
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col5)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        meta("key"),
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST2 - int64BE encoded key, top level JSON encoded value;
+------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int64be",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key"),
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_2;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST3 - int32BE encoded key, top level JSON encoded value;
+------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int32be",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        meta("key"),
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_3;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST4 - float64BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "float64be",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        meta("key"),
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_4;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST5 - float32BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col3)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "float32be",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        meta("key"),
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_5;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.43212890625|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.43212890625|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.43212890625|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.43212890625|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.43212890625|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.43212890625|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.43212890625|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.431640625|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.431640625|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.431640625|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST6 - int16BE encoded key, top level JSON encoded value;
+--------------------------------------------------------------;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "int16be",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        meta("key"),
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_6;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST7 - top level JSON encoded key, top level JSON encoded value;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_7;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST8 - nested JSON encoded key, nested JSON encoded value;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").n0.k0,
+        n1.v1,
+        n2.v2,
+        n3.v3,
+        n4.v4,
+        n5.v5,
+        n6.v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_8;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST9 - key and value encoded as message headers in JSON!;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("header").key.k0,
+        meta("header").val.v1,
+        meta("header").val.v2,
+        meta("header").val.v3,
+        meta("header").val.v4,
+        meta("header").val.v5,
+        meta("header").val.v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_9;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|-4|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|-3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|-2|400|4000|4234.4321|42345678.99|str4|2020-01-04 01:00:00.123000|
+|-1|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|0|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|1|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|2|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+|3|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|4|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST10 - timestamp column value coming from timestamp of Kafka message;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        meta("timestamp")
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_10;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|-5|100|1000|1234.4321|12345678.99|str1|2021-04-12 09:00:00.000000|
+|-4|200|2000|2234.4321|22345678.99|str2|2021-04-12 09:00:01.000000|
+|-3|300|3000|3234.4321|32345678.99|str3|2021-04-12 09:00:02.000000|
+|-2|400|4000|4234.4321|42345678.99|str4|2021-04-12 09:00:03.000000|
+|-1|500|5000|5234.4321|52345678.99|str5|2021-04-12 09:00:04.000000|
+|0|600|6000|6234.4321|62345678.99|str6|2021-04-12 09:00:05.000000|
+|1|700|7000|7234.4321|72345678.99|str7|2021-04-12 09:00:06.000000|
+|2|800|8000|8234.4321|82345678.99|str8|2021-04-12 09:00:07.000000|
+|3|900|9000|9234.4321|92345678.99|str9|2021-04-12 09:00:08.000000|
+|4|1000|10000|10234.4321|93345678.99|str10|2021-04-12 09:00:09.000000|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+
+-- TEST11 - protobuf message;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 double,
+    col1 double,
+    col2 int,
+    col3 bigint,
+    col4 int,
+    col5 bigint,
+    col6 tinyint,
+    col7 varchar,
+    col8 int,
+    col9 varchar,
+    primary key (col7)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "stringbytes",
+    valueencoding = "protobuf:squareup.cash.pranadb.testproto.v1.TestTypes",
+    columnselectors = (
+        double_field,
+        float_field,
+        int32_field,
+        int64_field,
+        uint32_field,
+        uint64_field,
+        bool_field,
+        meta("key"),
+        enum_field,
+        enum_field
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_11;
+
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|col9|
+|1234.4321|123.32099914550781|100|1000|10000|100000|1|str1|0|COUNT_UNSPECIFIED|
+|2234.4321|223.3209991455078|200|2000|20000|200000|0|str2|1|COUNT_ONE|
+|3234.4321|323.3210144042969|300|3000|30000|300000|1|str3|2|COUNT_TWO|
+|4234.4321|423.3210144042969|400|4000|40000|400000|0|str4|0|COUNT_UNSPECIFIED|
+|5234.4321|523.3209838867188|500|5000|50000|500000|1|str5|1|COUNT_ONE|
+|6234.4321|623.3209838867188|600|6000|60000|600000|0|str6|2|COUNT_TWO|
+|7234.4321|723.3209838867188|700|7000|70000|700000|1|str7|0|COUNT_UNSPECIFIED|
+|8234.4321|823.3209838867188|800|8000|80000|800000|0|str8|1|COUNT_ONE|
+|9234.4321|923.3209838867188|900|9000|90000|900000|1|str9|2|COUNT_TWO|
+|10234.4321|1023.3209838867188|1000|10000|100000|1000000|0|str10|0|COUNT_UNSPECIFIED|
+10 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
+;

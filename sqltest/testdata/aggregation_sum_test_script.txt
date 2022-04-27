@@ -1,0 +1,140 @@
+--create topic sensor_readings;
+use test;
+create source latest_sensor_readings(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    reading_2 double,
+    reading_3 decimal(10,2),
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5
+    )
+);
+
+--load data dataset_1;
+
+select * from latest_sensor_readings order by sensor_id;
+
+-- SUM;
+-- ===;
+
+-- No group by;
+
+create materialized view test_mv_1 as select sum(reading_1) from latest_sensor_readings;
+select * from test_mv_1;
+
+create materialized view test_mv_2 as select round(sum(reading_2), 3) from latest_sensor_readings;
+select * from test_mv_2;
+
+create materialized view test_mv_3 as select sum(reading_3) from latest_sensor_readings;
+select * from test_mv_3;
+
+create materialized view test_mv_4 as select sum(reading_1) from latest_sensor_readings having sum(reading_1) < 0;
+select * from test_mv_4;
+
+create materialized view test_mv_5 as select round(sum(reading_2), 3) from latest_sensor_readings having sum(reading_2) < 0;
+select * from test_mv_5;
+
+create materialized view test_mv_6 as select sum(reading_3) from latest_sensor_readings having sum(reading_3) < 0;
+select * from test_mv_6;
+
+create materialized view test_mv_7 as select sum(reading_1) from latest_sensor_readings having sum(reading_1) > 0;
+select * from test_mv_7;
+
+create materialized view test_mv_8 as select round(sum(reading_2), 3) from latest_sensor_readings having sum(reading_2) > 0;
+select * from test_mv_8;
+
+create materialized view test_mv_9 as select sum(reading_3) from latest_sensor_readings having sum(reading_3) > 0;
+select * from test_mv_9;
+
+-- Group by one column;
+
+create materialized view test_mv_10 as select country, sum(reading_1) from latest_sensor_readings group by country;
+select * from test_mv_10 order by country;
+
+create materialized view test_mv_11 as select country, round(sum(reading_2), 3) from latest_sensor_readings group by country;
+select * from test_mv_11 order by country;
+
+create materialized view test_mv_12 as select country, sum(reading_3) from latest_sensor_readings group by country;
+select * from test_mv_12 order by country;
+
+create materialized view test_mv_13 as select country, sum(reading_1) from latest_sensor_readings group by country having sum(reading_1) > 0;
+select * from test_mv_13 order by country;
+
+create materialized view test_mv_14 as select country, round(sum(reading_2), 3) from latest_sensor_readings group by country having sum(reading_2) > 0;
+select * from test_mv_14 order by country;
+
+create materialized view test_mv_15 as select country, sum(reading_3) from latest_sensor_readings group by country having sum(reading_3) > 0;
+select * from test_mv_15 order by country;
+
+-- Group by two columns;
+
+create materialized view test_mv_16 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city;
+select * from test_mv_16 order by country, city;
+
+create materialized view test_mv_17 as select country, city, round(sum(reading_2), 3) from latest_sensor_readings group by country, city;
+select * from test_mv_17 order by country, city;
+
+create materialized view test_mv_18 as select country, city, sum(reading_3) from latest_sensor_readings group by country, city;
+select * from test_mv_18 order by country, city;
+
+create materialized view test_mv_19 as select country, city, sum(reading_1) from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+select * from test_mv_19 order by country, city;
+
+create materialized view test_mv_20 as select country, city, round(sum(reading_2), 3) from latest_sensor_readings group by country, city having sum(reading_2) > 0;
+select * from test_mv_20 order by country, city;
+
+create materialized view test_mv_21 as select country, city, sum(reading_3) from latest_sensor_readings group by country, city having sum(reading_3) > 0;
+select * from test_mv_21 order by country, city;
+
+-- without aggregate in projection;
+
+create materialized view test_mv_22 as select country, city from latest_sensor_readings group by country, city having sum(reading_1) > 0;
+select * from test_mv_22 order by country, city;
+
+create materialized view test_mv_23 as select country, city from latest_sensor_readings group by country, city having sum(reading_2) > 0;
+select * from test_mv_23 order by country, city;
+
+create materialized view test_mv_24 as select country, city from latest_sensor_readings group by country, city having sum(reading_3) > 0;
+select * from test_mv_24 order by country, city;
+
+drop materialized view test_mv_24;
+drop materialized view test_mv_23;
+drop materialized view test_mv_22;
+drop materialized view test_mv_21;
+drop materialized view test_mv_20;
+drop materialized view test_mv_19;
+drop materialized view test_mv_18;
+drop materialized view test_mv_17;
+drop materialized view test_mv_16;
+drop materialized view test_mv_15;
+drop materialized view test_mv_14;
+drop materialized view test_mv_13;
+drop materialized view test_mv_12;
+drop materialized view test_mv_11;
+drop materialized view test_mv_10;
+drop materialized view test_mv_9;
+drop materialized view test_mv_8;
+drop materialized view test_mv_7;
+drop materialized view test_mv_6;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source latest_sensor_readings;
+
+--delete topic sensor_readings;

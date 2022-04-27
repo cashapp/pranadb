@@ -1,0 +1,35 @@
+name: "Pull Request"
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go
+          restore-keys: |
+            ${{ runner.os }}-go
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Init Hermit
+        run: |
+          ./bin/hermit env --raw >> $GITHUB_ENV
+          ./bin/hermit install
+      - name: Build
+        run: go build ./...
+      - name: Go lint
+        run: golangci-lint run
+      - name: Proto lint
+        run: make -C protos lint
+      - name: Test
+        run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags integration ./...

@@ -1,0 +1,45 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+select * from test_source_1 order by col0;
+|col0|col1|
+0 rows returned
+
+--load data dataset_1;
+select * from test_source_1 order by col0;
+|col0|col1|
+|1|2020-01-01 01:01:01.123000|
+|2|2020-02-03 02:02:02.223000|
+|3|2020-03-04 03:03:03.323000|
+|4|2020-04-04 04:04:04.423000|
+|5|2021-05-05 15:15:15.153000|
+|6|2021-06-16 16:16:16.163000|
+|7|2022-07-17 17:17:17.173000|
+|8|2023-08-18 18:18:18.183000|
+|9|2024-09-19 19:19:19.193000|
+|10|2025-10-20 20:20:20.200000|
+|11|2026-11-21 21:21:21.211000|
+|12|2027-12-22 22:23:24.200000|
+12 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;

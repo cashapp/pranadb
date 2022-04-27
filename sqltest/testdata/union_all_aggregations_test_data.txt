@@ -1,0 +1,30 @@
+dataset:dataset_1 latest_sensor_readings1
+1,uk,london,1000
+2,usa,new york,-1501
+3,au,sydney,372
+4,uk,london,2012
+5,uk,bristol,-192
+6,usa,new york,-346
+7,au,melbourne,0
+8,uk,bristol,-17
+9,usa,san francisco,631
+10,au,sydney,2163
+dataset:dataset_2 latest_sensor_readings2
+1,uk,london,261
+2,in,delhi,764
+3,au,sydney,12
+4,uk,birmingham,832
+5,uk,bristol,-567
+6,usa,new york,14
+7,au,melbourne,57
+8,uk,bristol,453
+9,usa,los angeles,987
+10,au,sydney,123
+dataset:dataset_3 latest_sensor_readings1
+11,uk,birmingham,-1001
+12,usa,los angeles,-300
+13,uk,london,100
+dataset:dataset_4 latest_sensor_readings2
+14,au,melbourne,700
+15,uk,bristol,1200
+3,au,sydney,500

@@ -1,0 +1,166 @@
+--create topic sensor_readings1;
+--create topic sensor_readings2;
+use test;
+0 rows returned
+create source latest_sensor_readings1(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3
+    )
+);
+0 rows returned
+
+create source latest_sensor_readings2(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+--load data dataset_2;
+
+select * from latest_sensor_readings1 order by sensor_id;
+|sensor_id|country|city|reading_1|
+|1|uk|london|1000|
+|2|usa|new york|-1501|
+|3|au|sydney|372|
+|4|uk|london|2012|
+|5|uk|bristol|-192|
+|6|usa|new york|-346|
+|7|au|melbourne|0|
+|8|uk|bristol|-17|
+|9|usa|san francisco|631|
+|10|au|sydney|2163|
+10 rows returned
+select * from latest_sensor_readings2 order by sensor_id;
+|sensor_id|country|city|reading_1|
+|1|uk|london|261|
+|2|in|delhi|764|
+|3|au|sydney|12|
+|4|uk|birmingham|832|
+|5|uk|bristol|-567|
+|6|usa|new york|14|
+|7|au|melbourne|57|
+|8|uk|bristol|453|
+|9|usa|los angeles|987|
+|10|au|sydney|123|
+10 rows returned
+
+create materialized view combined_readings as
+select sensor_id, country, city, reading_1 from latest_sensor_readings1
+union all
+select sensor_id, country, city, reading_1 from latest_sensor_readings2;
+0 rows returned
+
+select * from combined_readings order by sensor_id, country, city, reading_1;
+|sensor_id|country|city|reading_1|
+|1|uk|london|261|
+|1|uk|london|1000|
+|2|in|delhi|764|
+|2|usa|new york|-1501|
+|3|au|sydney|12|
+|3|au|sydney|372|
+|4|uk|birmingham|832|
+|4|uk|london|2012|
+|5|uk|bristol|-567|
+|5|uk|bristol|-192|
+|6|usa|new york|-346|
+|6|usa|new york|14|
+|7|au|melbourne|0|
+|7|au|melbourne|57|
+|8|uk|bristol|-17|
+|8|uk|bristol|453|
+|9|usa|los angeles|987|
+|9|usa|san francisco|631|
+|10|au|sydney|123|
+|10|au|sydney|2163|
+20 rows returned
+
+create materialized view agg_readings as
+select country, city, sum(reading_1), count(reading_1) from combined_readings group by country, city;
+0 rows returned
+
+select * from agg_readings order by country, city;
+|country|city|sum(reading_1)|count(reading_1)|
+|au|melbourne|57.000000000000000000000000000000|2|
+|au|sydney|2670.000000000000000000000000000000|4|
+|in|delhi|764.000000000000000000000000000000|1|
+|uk|birmingham|832.000000000000000000000000000000|1|
+|uk|bristol|-323.000000000000000000000000000000|4|
+|uk|london|3273.000000000000000000000000000000|3|
+|usa|los angeles|987.000000000000000000000000000000|1|
+|usa|new york|-1833.000000000000000000000000000000|3|
+|usa|san francisco|631.000000000000000000000000000000|1|
+9 rows returned
+
+-- create another mv including only those [country, city] which have a sum reading_1 > 750;
+create materialized view high_agg_readings as
+select country, city, sum(reading_1), count(reading_1) from combined_readings group by country, city
+having sum(reading_1) > 750;
+0 rows returned
+
+select * from high_agg_readings order by country, city;
+|country|city|sum(reading_1)|count(reading_1)|
+|au|sydney|2670.000000000000000000000000000000|4|
+|in|delhi|764.000000000000000000000000000000|1|
+|uk|birmingham|832.000000000000000000000000000000|1|
+|uk|london|3273.000000000000000000000000000000|3|
+|usa|los angeles|987.000000000000000000000000000000|1|
+5 rows returned
+
+-- now we add some more data such that some of the included [country, city] disappear - this is a deletion;
+-- and some previous not included appear (addition);
+
+--load data dataset_3;
+--load data dataset_4;
+
+select * from high_agg_readings order by country, city;
+|country|city|sum(reading_1)|count(reading_1)|
+|au|melbourne|757.000000000000000000000000000000|3|
+|au|sydney|3158.000000000000000000000000000000|4|
+|in|delhi|764.000000000000000000000000000000|1|
+|uk|bristol|877.000000000000000000000000000000|5|
+|uk|london|3373.000000000000000000000000000000|4|
+5 rows returned
+
+drop materialized view high_agg_readings;
+0 rows returned
+drop materialized view agg_readings;
+0 rows returned
+drop materialized view combined_readings;
+0 rows returned
+drop source latest_sensor_readings1;
+0 rows returned
+drop source latest_sensor_readings2;
+0 rows returned
+
+--delete topic sensor_readings2;
+--delete topic sensor_readings1;

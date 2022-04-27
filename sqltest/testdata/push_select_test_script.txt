@@ -1,0 +1,63 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_1;
+
+create materialized view test_mv_1 as select * from test_source_1 where col0 = 1;
+select * from test_mv_1;
+
+create materialized view test_mv_2 as select * from test_source_1 where col1 = 100;
+select * from test_mv_2;
+
+create materialized view test_mv_3 as select * from test_source_1 where col2 = 1000;
+select * from test_mv_3;
+
+create materialized view test_mv_4 as select * from test_source_1 where col3 = 6234.4321;
+select * from test_mv_4;
+
+create materialized view test_mv_5 as select * from test_source_1 where col4 = 42345678.99;
+select * from test_mv_5;
+
+create materialized view test_mv_6 as select * from test_source_1 where col5 = 'str8';
+select * from test_mv_6;
+
+create materialized view test_mv_7 as select * from test_source_1 where col6 > '2020-01-09 01:00:00.123456';
+select * from test_mv_7;
+
+-- TODO test with different types of expressions;
+
+drop materialized view test_mv_7;
+drop materialized view test_mv_6;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+--delete topic testtopic;

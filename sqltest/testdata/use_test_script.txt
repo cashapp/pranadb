@@ -1,0 +1,186 @@
+--create topic testtopic1;
+--create topic testtopic2;
+--create topic testtopic3;
+--create topic testtopic4;
+
+use test1;
+
+-- this source name is also used in schema test2;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+-- this mv name is also used in schema test2;
+create materialized view test_mv_1 as select * from test_source_1;
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+
+-- this source name is only used in schema test1;
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+-- this mv name is only used in schema test1;
+create materialized view test_mv_2 as select * from test_source_2;
+--load data dataset_2;
+
+select * from test_source_2 order by col0;
+select * from test_mv_2 order by col0;
+
+use test2;
+
+-- source with same name as in test1;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+-- mv with same name as in test1;
+create materialized view test_mv_1 as select * from test_source_1;
+--load data dataset_3;
+
+-- should have different data;
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+
+-- this source only exists in test2;
+create source test_source_3(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic4",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+create materialized view test_mv_3 as select * from test_source_3;
+--load data dataset_4;
+
+select * from test_source_3 order by col0;
+select * from test_mv_3 order by col0;
+
+--should fail;
+select * from test_source_2 order by col0;
+select * from test_mv_2 order by col0;
+drop materialized view test_source_2;
+
+use test1;
+
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+
+--should fail;
+select * from test_source_3 order by col0;
+select * from test_mv_3 order by col0;
+drop materialized view test_mv_3;
+
+use test2;
+
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+select * from test_source_3 order by col0;
+select * from test_mv_3 order by col0;
+
+--should fail;
+select * from test_source_2 order by col0;
+select * from test_mv_2 order by col0;
+
+drop materialized view test_mv_3;
+drop source test_source_3;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+use test1;
+
+select * from test_source_1 order by col0;
+select * from test_mv_1 order by col0;
+
+drop materialized view test_mv_1;
+drop source test_source_1;
+drop materialized view test_mv_2;
+drop source test_source_2;
+
+--delete topic testtopic4;
+--delete topic testtopic3;
+--delete topic testtopic2;
+--delete topic testtopic1;

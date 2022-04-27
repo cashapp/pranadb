@@ -1,0 +1,57 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+-- this will disable committing of offsets in Kafka, but they will be committed in Prana;
+--disable commit offsets test_source_1;
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+-- simulate failure of Kafka - this will cause consumers to be closed and restarted until they reconnect after 1 second;
+--kafka fail testtopic test_source_1 1000;
+
+-- re-enable committing of offsets;
+--enable commit offsets test_source_1;
+
+-- when the consumers reconnect they will consume again from the last committed offset, since we disabled committing offsets earlier;
+-- so they all the messages will be received again but they will be rejected as duplicates;
+-- there should be at least 10 duplicates - there could be more in the case of a rebalance occurring and messages consumed
+-- between reconnecting and rebalance occurring;
+--wait for committed test_source_1 20;
+
+-- send some more data;
+--load data dataset_2;
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+--delete topic testtopic;

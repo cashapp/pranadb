@@ -1,0 +1,88 @@
+--create topic testtopic;
+
+-- TEST1 - correct registration;
+------------------------------------------------------------;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+-- TEST2 - invalid syntax trailing comma;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+    )
+);
+Failed to execute statement: PDB0002 - 13:11: unexpected token "," (expected ")")
+
+-- TEST3 - invalid meta key on column selector;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("notvalid").k0,
+        v1
+    )
+);
+Failed to execute statement: PDB0018 - invalid metadata key in column selector "meta(\"notvalid\").k0". Valid values are "header", "key", "timestamp".
+
+-- TEST4 - protobuf not registered;
+------------------------------------------------------------;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "protobuf:foo.bar.MissingType",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+Failed to execute statement: PDB0016 - proto message "foo.bar.MissingType" not registered
+
+--delete topic testtopic;
+;

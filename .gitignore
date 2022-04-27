@@ -1,0 +1,15 @@
+.DS_Store
+.gradle
+**/out/
+.idea
+build/
+*.iml
+*.swp
+polyrepo-settings.gradle
+dev/
+docker-sources/
+polyrepo-settings.gradle.kts
+vendor
+.hermit/
+kafkaserver/
+prana-data/

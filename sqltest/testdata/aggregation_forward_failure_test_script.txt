@@ -1,0 +1,73 @@
+--cluster only;
+-- this script tests failures in forwarding of data for partial aggregations and verifies the state gets resolved;
+-- on recovery;
+
+--create topic sensor_readings;
+use test;
+create source latest_sensor_readings(
+    sensor_id bigint,
+    country varchar,
+    city varchar,
+    reading_1 bigint,
+    reading_2 double,
+    reading_3 decimal(10,2),
+    primary key (sensor_id)
+) with (
+    brokername = "testbroker",
+    topicname = "sensor_readings",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5
+    )
+);
+
+
+create materialized view test_mv_1 as select country, sum(reading_1) from latest_sensor_readings group by country;
+
+--activate failpoint process_batch_before_local_commit 0;
+--activate failpoint process_batch_before_local_commit 1;
+--activate failpoint process_batch_before_local_commit 2;
+
+--load data dataset_1 no wait;
+
+--pause 2000;
+--wait for schedulers;
+-- should be no data;
+select * from latest_sensor_readings;
+select * from test_mv_1;
+
+--deactivate failpoint process_batch_before_local_commit 0;
+--deactivate failpoint process_batch_before_local_commit 1;
+--deactivate failpoint process_batch_before_local_commit 2;
+
+--restart cluster;
+
+--wait for schedulers;
+
+-- state should be resolved;
+
+use test;
+
+select * from test_mv_1 order by country;
+
+select * from latest_sensor_readings order by sensor_id;
+
+-- now load some more data;
+
+--load data dataset_2;
+
+select * from test_mv_1 order by country;
+
+select * from latest_sensor_readings order by sensor_id;
+
+drop materialized view test_mv_1;
+drop source latest_sensor_readings;
+
+--delete topic sensor_readings;

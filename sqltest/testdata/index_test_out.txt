@@ -1,0 +1,108 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+-- create index on source;
+create index index1 on test_source_1 (col1);
+0 rows returned
+
+-- create index with same name but on different table - this is ok, index names are scoped to the table;
+create index index1 on test_mv_1 (col1);
+0 rows returned
+
+-- try and create index with same name on same tables - this should fail;
+create index index1 on test_source_1 (col1);
+Failed to execute statement: PDB0021 - Index index1 already exists on test.test_source_1
+create index index1 on test_mv_1 (col1);
+Failed to execute statement: PDB0021 - Index index1 already exists on test.test_mv_1
+
+-- create a couple more indexes;
+create index index2 on test_source_1 (col1);
+0 rows returned
+create index index2 on test_mv_1 (col1);
+0 rows returned
+
+-- drop the indexes;
+drop index index1 on test_source_1;
+0 rows returned
+drop index index1 on test_mv_1;
+0 rows returned
+drop index index2 on test_source_1;
+0 rows returned
+drop index index2 on test_mv_1;
+0 rows returned
+
+-- try and drop some non existent indexes - should fail;
+drop index indexx on test_source_1;
+Failed to execute statement: PDB0005 - Unknown index: test.test_source_1.indexx
+drop index indexx on test_mv_1;
+Failed to execute statement: PDB0005 - Unknown index: test.test_mv_1.indexx
+
+-- recreate indexes with same name;
+create index index1 on test_source_1 (col1);
+0 rows returned
+create index index1 on test_mv_1 (col1);
+0 rows returned
+create index index2 on test_source_1 (col1);
+0 rows returned
+create index index2 on test_mv_1 (col1);
+0 rows returned
+
+--drop index1;
+drop index index1 on test_source_1;
+0 rows returned
+drop index index1 on test_mv_1;
+0 rows returned
+
+-- drop the source and mv - should fail as index2 needs to be explicitly deleted;
+drop materialized view test_mv_1;
+Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_1 it has the following children test.test_mv_1.index2
+drop source test_source_1;
+Failed to execute statement: PDB0010 - Cannot drop source test.test_source_1 it has the following children test.test_mv_1, test.test_source_1.index2
+
+drop index index2 on test_source_1;
+0 rows returned
+drop index index2 on test_mv_1;
+0 rows returned
+
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;

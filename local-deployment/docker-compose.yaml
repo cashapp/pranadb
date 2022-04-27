@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+  broker:
+    image: confluentinc/cp-kafka:7.0.1
+    hostname: broker
+    container_name: broker
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+  pranadb0:
+    image: pranadb:latest
+    hostname: pranadb-0
+    container_name: pranadb0
+    command:
+      - "pranadb"
+      - "--config"
+      - "/etc/pranadb-config/pranadb.conf"
+      - "--node-id"
+      - "0"
+    ports:
+      - "63201:63201"
+      - "63301:63301"
+      - "6585:6584"
+      - "9103:9102"
+    volumes:
+      - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
+      - ./prana-data
+  pranadb1:
+    image: pranadb:latest
+    hostname: pranadb-1
+    container_name: pranadb1
+    command:
+      - "pranadb"
+      - "--config"
+      - "/etc/pranadb-config/pranadb.conf"
+      - "--node-id"
+      - "1"
+    ports:
+      - "63202:63201"
+      - "63302:63301"
+      - "6586:6584"
+      - "9104:9102"
+    volumes:
+      - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
+      - ./prana-data
+  pranadb2:
+    image: pranadb:latest
+    hostname: pranadb-2
+    container_name: pranadb2
+    command:
+      - "pranadb"
+      - "--config"
+      - "/etc/pranadb-config/pranadb.conf"
+      - "--node-id"
+      - "2"
+    ports:
+      - "63203:63201"
+      - "63303:63301"
+      - "6587:6584"
+      - "9105:9102"
+    volumes:
+      - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
+      - ./prana-data
+  nginx:
+    image: nginx:latest
+    hostname: pranadb-api
+    container_name: nginx
+    volumes:
+      - ${PWD}/local-deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - pranadb0
+      - pranadb1
+      - pranadb2
+    ports:
+      - "6584:8080"

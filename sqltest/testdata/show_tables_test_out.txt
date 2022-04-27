@@ -1,0 +1,64 @@
+use test;
+0 rows returned
+show tables;
+0 rows returned
+--create topic testtopic;
+use test0;
+0 rows returned
+create source test_source_0(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0)
+);
+0 rows returned
+--load data dataset_0;
+create materialized view test_mv_0 as select * from test_source_0;
+0 rows returned
+show tables;
+|table|kind|
+|test_mv_0|materialized_view|
+|test_source_0|source|
+2 rows returned
+
+use test1;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0)
+);
+0 rows returned
+show tables;
+|table|kind|
+|test_source_1|source|
+1 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+show tables;
+0 rows returned
+
+use test0;
+0 rows returned
+drop materialized view test_mv_0;
+0 rows returned
+drop source test_source_0;
+0 rows returned
+
+show tables;
+0 rows returned
+
+--delete topic testtopic;

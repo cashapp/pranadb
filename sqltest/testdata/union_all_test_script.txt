@@ -1,0 +1,195 @@
+--create topic testtopic1;
+--create topic testtopic2;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_1;
+--load data dataset_2;
+
+-- test with explicit columns;
+create materialized view test_mv_1 as
+select col0, col1, col2, col3, col4, col5, col6 from test_source_1
+union all
+select col0, col1, col2, col3, col4, col5, col6 from test_source_2;
+
+select * from test_mv_1 order by col0;
+select col0, col1, col2, col3, col4, col5, col6 from test_mv_1 order by col0;
+
+-- test with wildcard select;
+create materialized view test_mv_2 as
+select * from test_source_1
+union all
+select * from test_source_2;
+
+select * from test_mv_2 order by col0;
+select col0, col1, col2, col3, col4, col5, col6 from test_mv_2 order by col0;
+
+-- we test most of the combinations of casting between column types - the planner finds a common type that that both columns
+-- can be cast into, e.g. if col1=double and col2=int then result=double
+
+-- bigint and varchar cast;
+create materialized view test_mv_3 as
+select col0, col5 from test_source_1
+union all
+select col5, col0 from test_source_2;
+
+select * from test_mv_3 order by col0;
+select col0, col5 from test_mv_3 order by col0;
+
+-- bigint and decimal cast;
+create materialized view test_mv_4 as
+select col0, col4 from test_source_1
+union all
+select col4, col0 from test_source_2;
+
+select * from test_mv_4 order by col0;
+select col0, col4 from test_mv_4 order by col0;
+
+-- bigint and timestamp cast;
+create materialized view test_mv_5 as
+select col0, col6 from test_source_1
+union all
+select col6, col0 from test_source_2;
+
+select * from test_mv_5 order by col0;
+select col0, col6 from test_mv_5 order by col0;
+
+-- double and bigint cast;
+create materialized view test_mv_6 as
+select col3, col0 from test_source_1
+union all
+select col0, col3 from test_source_2;
+
+select * from test_mv_6 order by col3;
+select col3, col0 from test_mv_6 order by col3;
+
+-- double and varchar cast;
+create materialized view test_mv_7 as
+select col3, col5 from test_source_1
+union all
+select col5, col3 from test_source_2;
+
+select * from test_mv_7 order by col3;
+select col3, col5 from test_mv_7 order by col3;
+
+-- double and decimal cast;
+create materialized view test_mv_8 as
+select col3, col4 from test_source_1
+union all
+select col4, col3 from test_source_2;
+
+select * from test_mv_8 order by col3;
+select col3, col4 from test_mv_8 order by col3;
+
+-- double and timestamp cast;
+create materialized view test_mv_9 as
+select col3, col6 from test_source_1
+union all
+select col6, col3 from test_source_2;
+
+select * from test_mv_9 order by col3;
+select col3, col6 from test_mv_9 order by col3;
+
+-- varchar and decimal cast;
+create materialized view test_mv_10 as
+select col5, col4 from test_source_1
+union all
+select col4, col5 from test_source_2;
+
+select * from test_mv_10 order by col5;
+select col5, col4 from test_mv_10 order by col5;
+
+-- varchar and timestamp cast;
+create materialized view test_mv_11 as
+select col5, col6 from test_source_1
+union all
+select col6, col5 from test_source_2;
+
+select * from test_mv_11 order by col5;
+select col5, col6 from test_mv_11 order by col5;
+
+-- decimal and timestamp cast;
+create materialized view test_mv_12 as
+select col4, col6 from test_source_1
+union all
+select col6, col4 from test_source_2;
+
+select * from test_mv_12 order by col4;
+select col4, col6 from test_mv_12 order by col4;
+
+-- bigint and double cast;
+create materialized view test_mv_13 as
+select col0, col3 from test_source_1
+union all
+select col3, col0 from test_source_2;
+
+select * from test_mv_13 order by col0;
+select col0, col3 from test_mv_13 order by col0;
+
+drop materialized view test_mv_13;
+drop materialized view test_mv_12;
+drop materialized view test_mv_11;
+drop materialized view test_mv_10;
+drop materialized view test_mv_9;
+drop materialized view test_mv_8;
+drop materialized view test_mv_7;
+drop materialized view test_mv_6;
+drop materialized view test_mv_5;
+drop materialized view test_mv_4;
+drop materialized view test_mv_3;
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_2;
+drop source test_source_1;
+
+--delete topic testtopic2;
+--delete topic testtopic1;
