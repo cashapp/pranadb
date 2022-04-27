@@ -1,6 +1,6 @@
 # PranaDB
 
-PranaDB is a distributed streaming database, designed from the outset to be horizontally scalabl.
+PranaDB is a distributed streaming database, designed from the outset to be horizontally scalable.
 
 Do you like relational databases? Do you like Apache Kafka? PranaDB lives at the intersection of the two.
 
