@@ -205,12 +205,12 @@ pranadb> select * from big_btc_payments;
 
 Just the big BTC payments as we wanted.
 
-What happens when more data arrives on the topic? Let's add another 10000 messages starting at id 1000. This time we're
+What happens when more data arrives on the topic? Let's add another 1000 messages starting at id 1000. This time we're
 going to introduce a delay of 10ms between each message send, so you can execute the queries and see how the records in
 the source and the two materialized views change over time.
 
 ```
-go run cmd/msggen/main.go --generator-name payments --topic-name payments --partitions 25 --delay 10ms --num-messages 10000 --index-start 1000 --kafka-properties "bootstrap.servers"="localhost:9092"
+go run cmd/msggen/main.go --generator-name payments --topic-name payments --partitions 25 --delay 10ms --num-messages 1000 --index-start 1000 --kafka-properties "bootstrap.servers"="localhost:9092"
 ```
 
 Now try executing the queries again to see what happens. You can use the up and down cursor keys to select a previous
