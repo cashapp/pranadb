@@ -1,0 +1,33 @@
+--create topic testtopic;
+use test;
+create source transactions(
+    id bigint,
+    customer_id tinyint,
+    col2 varchar,
+    primary key (id)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2
+    )
+);
+
+create index index1 on transactions (customer_id);
+
+--load data dataset_1;
+
+--test with source;
+
+select customer_id from transactions where customer_id = 600;
+
+drop index index1 on transactions;
+
+drop source transactions;
+
+--delete topic testtopic;
