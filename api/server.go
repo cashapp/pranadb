@@ -72,8 +72,8 @@ func (s *Server) startServer(list net.Listener) {
 	err := s.gsrv.Serve(list) //nolint:ifshort
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.started = false
 	if err != nil {
+		s.started = false
 		log.Errorf("grpc server listen failed: %v", err)
 	}
 }
