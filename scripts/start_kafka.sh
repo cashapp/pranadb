@@ -7,12 +7,12 @@ rm -rf /tmp/zookeeper/*
 
 kafkadir="kafkaserver"
 kafka_version="2.8.1"
-kafka_archive=${kafkadir}/kafka-"${kafka-version}".tgz
+kafka_archive=${kafkadir}/kafka-"${kafka_version}".tgz
 mkdir -p ${kafkadir}
 
 if [ ! -f "${kafka_archive}" ]; then
   echo "downloading and installing kafka"
-  curl https://www.mirrorservice.org/sites/ftp.apache.org/kafka/${kafka_version}/kafka_2.13-${kafka_version}.tgz --output "${kafka_archive}"
+  curl https://archive.apache.org/dist/kafka/${kafka_version}/kafka_2.13-${kafka_version}.tgz --output "${kafka_archive}"
   tar -xf ${kafka_archive} -C ${kafkadir}
 fi
 
