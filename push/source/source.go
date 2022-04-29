@@ -333,7 +333,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		kMsg := messages[i]
 		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
 			uint64(kMsg.PartInfo.Offset), tableID)
-		log.Debugf("source forward key length is %d", len(forwardKey))
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
