@@ -1,0 +1,51 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source transactions(
+    id bigint,
+    customer_id tinyint,
+    col2 varchar,
+    primary key (id)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+create index index1 on transactions (customer_id);
+0 rows returned
+
+--load data dataset_1;
+
+--test with index;
+
+select customer_id from transactions where customer_id = 600;
+|customer_id|
+|600|
+|600|
+2 rows returned
+
+select customer_id from transactions where customer_id is null;
+|customer_id|
+|null|
+1 rows returned
+
+select customer_id from transactions where customer_id = 1000000;
+|customer_id|
+0 rows returned
+
+drop index index1 on transactions;
+0 rows returned
+
+drop source transactions;
+0 rows returned
+
+--delete topic testtopic;

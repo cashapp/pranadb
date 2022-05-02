@@ -52,48 +52,57 @@ func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
 func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byte) ([]byte, error) {
 	for i, value := range key {
 		colType := colTypes[keyColIndexes[i]]
-		switch colType.Type {
-		case TypeTinyInt, TypeInt, TypeBigInt:
-			valInt64, ok := value.(int64)
-			if !ok {
-				return nil, errors.Errorf("expected %v to be int64", value)
-			}
-			buffer = KeyEncodeInt64(buffer, valInt64)
-		case TypeDecimal:
-			valDec, ok := value.(Decimal)
-			if !ok {
-				return nil, errors.Errorf("expected %v to be Decimal", value)
-			}
-			var err error
-			buffer, err = KeyEncodeDecimal(buffer, valDec, colType.DecPrecision, colType.DecScale)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-		case TypeDouble:
-			valFloat64, ok := value.(float64)
-			if !ok {
-				return nil, errors.Errorf("expected %v to be float64", value)
-			}
-			buffer = KeyEncodeFloat64(buffer, valFloat64)
-		case TypeVarchar:
-			valString, ok := value.(string)
-			if !ok {
-				return nil, errors.Errorf("expected %v to be string", value)
-			}
-			buffer = KeyEncodeString(buffer, valString)
-		case TypeTimestamp:
-			valTime, ok := value.(Timestamp)
-			if !ok {
-				return nil, errors.Errorf("expected %v to be Timestamp", value)
-			}
-			var err error
-			buffer, err = KeyEncodeTimestamp(buffer, valTime)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-		default:
-			return nil, errors.Errorf("unexpected column type %d", colType)
+		var err error
+		buffer, err = EncodeKeyElement(value, colType, buffer)
+		if err != nil {
+			return nil, err
 		}
+	}
+	return buffer, nil
+}
+
+func EncodeKeyElement(value interface{}, colType ColumnType, buffer []byte) ([]byte, error) {
+	switch colType.Type {
+	case TypeTinyInt, TypeInt, TypeBigInt:
+		valInt64, ok := value.(int64)
+		if !ok {
+			return nil, errors.Errorf("expected %v to be int64", value)
+		}
+		buffer = KeyEncodeInt64(buffer, valInt64)
+	case TypeDecimal:
+		valDec, ok := value.(Decimal)
+		if !ok {
+			return nil, errors.Errorf("expected %v to be Decimal", value)
+		}
+		var err error
+		buffer, err = KeyEncodeDecimal(buffer, valDec, colType.DecPrecision, colType.DecScale)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	case TypeDouble:
+		valFloat64, ok := value.(float64)
+		if !ok {
+			return nil, errors.Errorf("expected %v to be float64", value)
+		}
+		buffer = KeyEncodeFloat64(buffer, valFloat64)
+	case TypeVarchar:
+		valString, ok := value.(string)
+		if !ok {
+			return nil, errors.Errorf("expected %v to be string", value)
+		}
+		buffer = KeyEncodeString(buffer, valString)
+	case TypeTimestamp:
+		valTime, ok := value.(Timestamp)
+		if !ok {
+			return nil, errors.Errorf("expected %v to be Timestamp", value)
+		}
+		var err error
+		buffer, err = KeyEncodeTimestamp(buffer, valTime)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	default:
+		return nil, errors.Errorf("unexpected column type %d", colType)
 	}
 	return buffer, nil
 }
@@ -105,6 +114,23 @@ func EncodeKeyCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []b
 		buffer, err = EncodeKeyCol(row, colIndex, colType, buffer)
 		if err != nil {
 			return nil, errors.WithStack(err)
+		}
+	}
+	return buffer, nil
+}
+
+func EncodeIndexKeyCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+	for _, colIndex := range colIndexes {
+		colType := colTypes[colIndex]
+		var err error
+		if row.IsNull(colIndex) {
+			buffer = append(buffer, 0)
+		} else {
+			buffer = append(buffer, 1)
+			buffer, err = EncodeKeyCol(row, colIndex, colType, buffer)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
 		}
 	}
 	return buffer, nil
@@ -141,4 +167,80 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 		return nil, errors.Errorf("unexpected column type %d", colType)
 	}
 	return buffer, nil
+}
+
+func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCols []int, indexCols []int, rows *Rows) error {
+	_, offset := ReadUint64FromBufferBE(buffer, 0)
+	_, offset = ReadUint64FromBufferBE(buffer, offset)
+	colIndex := 0
+	for _, indexCol := range indexCols {
+		colType := colTypes[indexCol]
+		include := includeCols == nil || contains(includeCols, indexCol)
+		if buffer[offset] == 0 {
+			offset++
+			if include {
+				rows.AppendNullToColumn(colIndex)
+			}
+		} else {
+			offset++
+			switch colType.Type {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				var u uint64
+				u, offset = ReadUint64FromBufferBE(buffer, offset)
+				if include {
+					decoded := u ^ SignBitMask
+					rows.AppendInt64ToColumn(colIndex, int64(decoded))
+				}
+			case TypeDecimal:
+				var val Decimal
+				var err error
+				val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if include {
+					rows.AppendDecimalToColumn(colIndex, val)
+				}
+			case TypeDouble:
+				var val float64
+				val, offset = ReadFloat64FromBufferLE(buffer, offset)
+				if include {
+					rows.AppendFloat64ToColumn(colIndex, val)
+				}
+			case TypeVarchar:
+				var val string
+				val, offset = ReadStringFromBufferLE(buffer, offset)
+				if include {
+					rows.AppendStringToColumn(colIndex, val)
+				}
+			case TypeTimestamp:
+				var (
+					val Timestamp
+					err error
+				)
+				val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if include {
+					rows.AppendTimestampToColumn(colIndex, val)
+				}
+			default:
+				return errors.Errorf("unexpected column type %d", colType)
+			}
+		}
+		if include {
+			colIndex++
+		}
+	}
+	return nil
+}
+
+func contains(indexes []int, index int) bool {
+	for _, idx := range indexes {
+		if idx == index {
+			return true
+		}
+	}
+	return false
 }

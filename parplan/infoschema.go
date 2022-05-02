@@ -2,6 +2,7 @@ package parplan
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/tidb"
 
 	"github.com/pingcap/parser/model"
@@ -68,25 +69,15 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo
-		var pkCols []*model.IndexColumn
-		for columnIndex := range tableInfo.PrimaryKeyCols {
-			col := &model.IndexColumn{
-				Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
-				Offset: columnIndex,
-				Length: 0,
-			}
-
-			pkCols = append(pkCols, col)
-		}
 
 		if tableInfo.IndexInfos != nil {
 			for _, indexInfo := range tableInfo.IndexInfos {
 				var indexCols []*model.IndexColumn
-				for columnIndex := range indexInfo.IndexCols {
+				for _, columnIndex := range indexInfo.IndexCols {
 					col := &model.IndexColumn{
 						Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
 						Offset: columnIndex,
-						Length: 0,
+						Length: -1,
 					}
 
 					indexCols = append(indexCols, col)
