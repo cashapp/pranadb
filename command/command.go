@@ -2,10 +2,11 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/failinject"
-	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/table"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/squareup/pranadb/cluster"
@@ -170,6 +171,12 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
+	case ast.Describe != "":
+		rows, err := e.execDescribe(session, ast.Describe)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return rows, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
@@ -248,6 +255,62 @@ func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, err
 
 	staticRows, err := exec.NewStaticRows([]string{"table", "kind"}, rows)
 	return staticRows, errors.WithStack(err)
+}
+
+var describeRowsFactory = common.NewRowsFactory(
+	[]common.ColumnType{
+		{Type: common.TypeVarchar}, // field
+		{Type: common.TypeVarchar}, // type
+		{Type: common.TypeVarchar}, // key
+	},
+)
+
+func describeRows(tableInfo *common.TableInfo) (exec.PullExecutor, error) {
+	resultRows := describeRowsFactory.NewRows(len(tableInfo.ColumnNames))
+	for columnIndex, columnName := range tableInfo.ColumnNames {
+		if tableInfo.ColsVisible != nil && !tableInfo.ColsVisible[columnIndex] {
+			continue
+		}
+		resultRows.AppendStringToColumn(0, columnName)
+		resultRows.AppendStringToColumn(1, tableInfo.ColumnTypes[columnIndex].String())
+		if tableInfo.IsPrimaryKey(columnIndex) {
+			resultRows.AppendStringToColumn(2, "pk")
+		} else {
+			resultRows.AppendStringToColumn(2, "")
+		}
+	}
+	staticRows, err := exec.NewStaticRows([]string{"field", "type", "key"}, resultRows)
+	return staticRows, errors.WithStack(err)
+}
+
+func (e *Executor) execDescribe(session *sess.Session, tableName string) (exec.PullExecutor, error) {
+	// NB: We select a specific set of columns because the Decode*Row() methods expect a row with *_info columns on certain predefined positions.
+	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select id, kind, schema_name, name, table_info, topic_info, query, mv_name from tables where schema_name='%s' and name='%s'", session.Schema.Name, tableName))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if rows.RowCount() == 0 {
+		return nil, errors.NewUnknownSourceOrMaterializedViewError(session.Schema.Name, tableName)
+	}
+	if rows.RowCount() != 1 {
+		panic(fmt.Sprintf("multiple matches for table: '%s.%s'", session.Schema.Name, tableName))
+	}
+	tableRow := rows.GetRow(0)
+	var tableInfo *common.TableInfo
+	kind := tableRow.GetString(1)
+	switch kind {
+	case meta.TableKindSource:
+		tableInfo = meta.DecodeSourceInfoRow(&tableRow).TableInfo
+	case meta.TableKindMaterializedView:
+		tableInfo = meta.DecodeMaterializedViewInfoRow(&tableRow).TableInfo
+	case meta.TableKindInternal:
+		// NB: This case is for completness as sys.table doesn't know about internal tables.
+		tableInfo = meta.DecodeInternalTableInfoRow(&tableRow).TableInfo
+	}
+	if tableInfo == nil {
+		panic(fmt.Sprintf("unknown table kind: '%s'", kind))
+	}
+	return describeRows(tableInfo)
 }
 
 func (e *Executor) RunningCommands() int {

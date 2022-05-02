@@ -1,0 +1,43 @@
+use test;
+
+describe foo;
+
+--create topic testtopic;
+
+create source test_source(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+describe test_source;
+
+create materialized view test_mv as select * from test_source;
+describe test_mv;
+
+drop materialized view test_mv;
+describe test_mv;
+
+drop source test_source;
+describe test_source;
+
+--delete topic testtopic;

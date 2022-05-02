@@ -107,6 +107,10 @@ func TestParse(t *testing.T) {
 			"ExecutePreparedStatementNoArgs", `EXECUTE 8`,
 			&AST{Execute: &Execute{PsID: 8}}, "",
 		},
+		{
+			"Describe", `DESCRIBE foo`,
+			&AST{Describe: "foo"}, "",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
