@@ -119,6 +119,23 @@ func EncodeKeyCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []b
 	return buffer, nil
 }
 
+func EncodeIndexKeyCols(row *Row, colIndexes []int, colTypes []ColumnType, buffer []byte) ([]byte, error) {
+	for _, colIndex := range colIndexes {
+		colType := colTypes[colIndex]
+		var err error
+		if row.IsNull(colIndex) {
+			buffer = append(buffer, 0)
+		} else {
+			buffer = append(buffer, 1)
+			buffer, err = EncodeKeyCol(row, colIndex, colType, buffer)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+		}
+	}
+	return buffer, nil
+}
+
 func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]byte, error) {
 	// Key columns must be stored in big-endian so whole key can be compared byte-wise
 	switch colType.Type {
@@ -159,50 +176,58 @@ func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, include
 	for _, indexCol := range indexCols {
 		colType := colTypes[indexCol]
 		include := includeCols == nil || contains(includeCols, indexCol)
-		switch colType.Type {
-		case TypeTinyInt, TypeInt, TypeBigInt:
-			var u uint64
-			u, offset = ReadUint64FromBufferBE(buffer, offset)
+		if buffer[offset] == 0 {
+			offset++
 			if include {
-				decoded := u ^ SignBitMask
-				rows.AppendInt64ToColumn(colIndex, int64(decoded))
+				rows.AppendNullToColumn(colIndex)
 			}
-		case TypeDecimal:
-			var val Decimal
-			var err error
-			val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
-			if err != nil {
-				return errors.WithStack(err)
+		} else {
+			offset++
+			switch colType.Type {
+			case TypeTinyInt, TypeInt, TypeBigInt:
+				var u uint64
+				u, offset = ReadUint64FromBufferBE(buffer, offset)
+				if include {
+					decoded := u ^ SignBitMask
+					rows.AppendInt64ToColumn(colIndex, int64(decoded))
+				}
+			case TypeDecimal:
+				var val Decimal
+				var err error
+				val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if include {
+					rows.AppendDecimalToColumn(colIndex, val)
+				}
+			case TypeDouble:
+				var val float64
+				val, offset = ReadFloat64FromBufferLE(buffer, offset)
+				if include {
+					rows.AppendFloat64ToColumn(colIndex, val)
+				}
+			case TypeVarchar:
+				var val string
+				val, offset = ReadStringFromBufferLE(buffer, offset)
+				if include {
+					rows.AppendStringToColumn(colIndex, val)
+				}
+			case TypeTimestamp:
+				var (
+					val Timestamp
+					err error
+				)
+				val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if include {
+					rows.AppendTimestampToColumn(colIndex, val)
+				}
+			default:
+				return errors.Errorf("unexpected column type %d", colType)
 			}
-			if include {
-				rows.AppendDecimalToColumn(colIndex, val)
-			}
-		case TypeDouble:
-			var val float64
-			val, offset = ReadFloat64FromBufferLE(buffer, offset)
-			if include {
-				rows.AppendFloat64ToColumn(colIndex, val)
-			}
-		case TypeVarchar:
-			var val string
-			val, offset = ReadStringFromBufferLE(buffer, offset)
-			if include {
-				rows.AppendStringToColumn(colIndex, val)
-			}
-		case TypeTimestamp:
-			var (
-				val Timestamp
-				err error
-			)
-			val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			if include {
-				rows.AppendTimestampToColumn(colIndex, val)
-			}
-		default:
-			return errors.Errorf("unexpected column type %d", colType)
 		}
 		if include {
 			colIndex++

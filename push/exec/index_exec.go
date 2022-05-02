@@ -55,7 +55,7 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 
 func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, error) {
 	keyBuff := table.EncodeTableKeyPrefix(t.IndexInfo.ID, shardID, 32)
-	keyBuff, err := common.EncodeKeyCols(row, t.IndexInfo.IndexCols, t.TableInfo.ColumnTypes, keyBuff)
+	keyBuff, err := common.EncodeIndexKeyCols(row, t.IndexInfo.IndexCols, t.TableInfo.ColumnTypes, keyBuff)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

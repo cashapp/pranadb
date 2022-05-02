@@ -62,16 +62,31 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 		rangeStart = append(rangeStart, indexShardPrefix...)
 		rangeEnd = append(rangeEnd, indexShardPrefix...)
 		for i, scanRange := range scanRanges {
-			rangeStart, err = common.EncodeKeyElement(scanRange.LowVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
-			if err != nil {
-				return nil, err
+			// if range vals are nil, doing a point get with nil as the index PK value
+			if scanRange.LowVal == nil {
+				rangeStart = append(rangeStart, 0)
+			} else {
+				rangeStart = append(rangeStart, 1)
+				rangeStart, err = common.EncodeKeyElement(scanRange.LowVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
+				if err != nil {
+					return nil, err
+				}
+				if scanRange.LowExcl {
+					rangeStart = common.IncrementBytesBigEndian(rangeStart)
+				}
 			}
-			if scanRange.LowExcl {
-				rangeStart = common.IncrementBytesBigEndian(rangeStart)
-			}
-			rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
-			if err != nil {
-				return nil, err
+			if scanRange.HighVal == nil {
+				rangeEnd = append(rangeEnd, 0)
+			} else {
+				rangeEnd = append(rangeEnd, 1)
+				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
+				if err != nil {
+					return nil, err
+				}
+
+				if err != nil {
+					return nil, err
+				}
 			}
 			if !scanRange.HighExcl {
 				if !allBitsSet(rangeEnd) {
