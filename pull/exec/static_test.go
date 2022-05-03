@@ -45,7 +45,7 @@ func TestStaticRows_GetRows(t *testing.T) {
 				got := gotRows.GetRow(i)
 				want := wantRows.GetRow(i)
 				if got.GetInt64(0) != want.GetInt64(0) {
-					t.Errorf("rows do not match position = %v, got = %v, want %v", i, got, want)
+					t.Errorf("rows do not match position = %v, got = %v, want = %v", i, got, want)
 				}
 			}
 		})
