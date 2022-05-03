@@ -10,7 +10,8 @@ var Empty = &StaticRows{rows: common.NewRows(nil, 0)}
 
 type StaticRows struct {
 	pullExecutorBase
-	rows *common.Rows
+	rows   *common.Rows
+	cursor int
 }
 
 var _ PullExecutor = &StaticRows{}
@@ -52,5 +53,14 @@ func NewStaticRows(colNames []string, rows *common.Rows) (*StaticRows, error) {
 }
 
 func (s *StaticRows) GetRows(limit int) (rows *common.Rows, err error) {
-	return s.rows, nil
+	pageEnd := s.cursor + limit
+	if pageEnd > s.rows.RowCount() {
+		pageEnd = s.rows.RowCount()
+	}
+	buffer := common.NewRows(s.rows.ColumnTypes(), pageEnd-s.cursor)
+	for i := s.cursor; i < pageEnd; i++ {
+		buffer.AppendRow(s.rows.GetRow(i))
+	}
+	s.cursor = pageEnd
+	return buffer, nil
 }
