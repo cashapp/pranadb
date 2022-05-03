@@ -1,0 +1,69 @@
+use test;
+0 rows returned
+
+describe foo;
+Failed to execute statement: PDB0019 - Unknown source or materialized view: test.foo
+
+--create topic testtopic;
+
+create source test_source(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+describe test_source;
+|field|type|key|
+|col0|bigint|pk|
+|col1|tinyint||
+|col2|int||
+|col3|double||
+|col4|decimal(10, 2)||
+|col5|varchar||
+|col6|timestamp(6)||
+7 rows returned
+
+create materialized view test_mv as select * from test_source;
+0 rows returned
+describe test_mv;
+|field|type|key|
+|col0|bigint|pk|
+|col1|tinyint||
+|col2|int||
+|col3|double||
+|col4|decimal(10, 2)||
+|col5|varchar||
+|col6|timestamp(6)||
+7 rows returned
+
+drop materialized view test_mv;
+0 rows returned
+describe test_mv;
+Failed to execute statement: PDB0019 - Unknown source or materialized view: test.test_mv
+
+drop source test_source;
+0 rows returned
+describe test_source;
+Failed to execute statement: PDB0019 - Unknown source or materialized view: test.test_source
+
+--delete topic testtopic;
