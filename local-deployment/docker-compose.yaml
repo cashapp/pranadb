@@ -48,7 +48,7 @@ services:
       - "9103:9102"
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
-      - ./prana-data
+      - ${PWD}/prana-data
   pranadb1:
     image: pranadb:latest
     hostname: pranadb-1
@@ -66,7 +66,7 @@ services:
       - "9104:9102"
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
-      - ./prana-data
+      - ${PWD}/prana-data
   pranadb2:
     image: pranadb:latest
     hostname: pranadb-2
@@ -84,7 +84,7 @@ services:
       - "9105:9102"
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
-      - ./prana-data
+      - ${PWD}/prana-data
   nginx:
     image: nginx:latest
     hostname: pranadb-api

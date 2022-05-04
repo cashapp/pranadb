@@ -188,7 +188,7 @@ going to introduce a delay of 10ms between each message send, so you can execute
 the source and the two materialized views change over time.
 
 ```
-go run cmd/msggen/main.go --generator-name payments --topic-name payments --partitions 25 --delay 10ms --num-messages 10000 --index-start 1000 --kafka-properties "bootstrap.servers"="localhost:9092"
+go run cmd/msggen/main.go --generator-name payments --topic-name payments --partitions 25 --delay 10ms --num-messages 1000 --index-start 1000 --kafka-properties "bootstrap.servers"="localhost:9092"
 ```
 
 Now try executing the queries again to see what happens. You can use the up and down cursor keys to select a previous
@@ -251,7 +251,7 @@ As you can see the count and sum are broken down by payment type.
 Let's add some more payments to the topic
 
 ````
-make publish-payments num_messages=2000 index_start=1000
+make publish-payments num_messages=2000 index_start=2000
 ````
 
 The aggregate materialized view has now been updated
