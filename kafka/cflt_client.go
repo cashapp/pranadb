@@ -1,6 +1,3 @@
-//go:build !segmentio
-// +build !segmentio
-
 package kafka
 
 import (
@@ -13,14 +10,6 @@ import (
 )
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
-
-// func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
-// 	return &ConfluentMessageProviderFactory{
-// 		topicName: topicName,
-// 		props:     props,
-// 		groupID:   groupID,
-// 	}
-// }
 
 type ConfluentMessageProviderFactory struct {
 	topicName string
