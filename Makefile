@@ -12,7 +12,7 @@ clean:
 
 .PHONY: test
 test: protos
-	go test -short -timeout 30s ./...
+	go test -short -timeout 30s ./... -tags dynamic
 
 docker-image:
 	docker build -f docker/Dockerfile -t pranadb:latest .

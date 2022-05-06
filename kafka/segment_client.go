@@ -1,15 +1,13 @@
-//go:build segmentio
-// +build segmentio
-
 package kafka
 
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/squareup/pranadb/errors"
@@ -25,13 +23,13 @@ import (
 // DO NOT USE this client in production. We leave it here for use during development as it's easier to build on newer
 // Macbooks than the Confluent client.
 
-func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
-	return &SegmentMessageProviderFactory{
-		topicName: topicName,
-		props:     props,
-		groupID:   groupID,
-	}
-}
+// func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+// 	return &SegmentMessageProviderFactory{
+// 		topicName: topicName,
+// 		props:     props,
+// 		groupID:   groupID,
+// 	}
+// }
 
 type SegmentMessageProviderFactory struct {
 	topicName string
