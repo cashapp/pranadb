@@ -20,6 +20,14 @@ Think:
 PranaDB is currently a work in progress and is some of the features are currently available a a tech preview. We aim to get most of the feature complete
 later this year.
 
+# Contributing
+
+Please take a look at the outstanding issues, and chat with us in our Gitter community.
+
+In order to contribute please sign the [block CLA](http://squ.re/sign-the-cla)
+
+# Docs
+
 [User manual](docs/usermanual.md)
 
 [Try the demo](docs/demo.md)
