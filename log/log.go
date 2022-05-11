@@ -14,6 +14,8 @@ type Config struct {
 	File   string `help:"File to direct logs to. If left blank, or '-', logs will go to stdout" default:"-"`
 }
 
+const TimestampFormat = "2006-01-02 15:04:05.99999"
+
 // Configure the global logger
 func (cfg *Config) Configure() error {
 	if cfg.File != "" && cfg.File != "-" {
@@ -32,10 +34,9 @@ func (cfg *Config) Configure() error {
 	}
 	switch cfg.Format {
 	case "text":
-		// default, do nothing
-		break
+		log.SetFormatter(&log.TextFormatter{TimestampFormat: TimestampFormat, FullTimestamp: true})
 	case "json":
-		log.SetFormatter(&log.JSONFormatter{})
+		log.SetFormatter(&log.JSONFormatter{TimestampFormat: TimestampFormat})
 	default:
 		return errors.NewInvalidConfigurationError("log format must be either text or json")
 	}
