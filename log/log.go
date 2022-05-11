@@ -14,7 +14,7 @@ type Config struct {
 	File   string `help:"File to direct logs to. If left blank, or '-', logs will go to stdout" default:"-"`
 }
 
-const TimestampFormat = "2006-01-02 15:04:05.99999"
+const TimestampFormat = "2006-01-02 15:04:05.999999"
 
 // Configure the global logger
 func (cfg *Config) Configure() error {
