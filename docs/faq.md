@@ -19,3 +19,7 @@ Unlike other systems which have some similarities, PranaDB:
 ## What language is PranaDB written in?
 
 Go
+
+# Why the name PranaDB?
+
+It comes from the Sanskrit word [Prana](https://en.wikipedia.org/wiki/Prana)
