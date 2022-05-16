@@ -1,0 +1,18 @@
+use test;
+0 rows returned
+
+show schemas;
+|schema|
+|sys|
+|test|
+2 rows returned
+
+use test0;
+0 rows returned
+
+show schemas;
+|schema|
+|sys|
+|test|
+|test0|
+3 rows returned

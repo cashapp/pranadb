@@ -1,0 +1,7 @@
+use test;
+
+show schemas;
+
+use test0;
+
+show schemas;
