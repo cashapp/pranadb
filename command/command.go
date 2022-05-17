@@ -172,7 +172,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		}
 		return rows, nil
 	case ast.Show != nil && ast.Show.Schemas != "":
-		rows, err := e.execShowSchemas(session)
+		rows, err := e.execShowSchemas()
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -263,7 +263,7 @@ func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, err
 	return staticRows, errors.WithStack(err)
 }
 
-func (e *Executor) execShowSchemas(session *sess.Session) (exec.PullExecutor, error) {
+func (e *Executor) execShowSchemas() (exec.PullExecutor, error) {
 	schemaNames := e.metaController.GetSchemaNames()
 	rowsFactory := common.NewRowsFactory(
 		[]common.ColumnType{common.VarcharColumnType},
