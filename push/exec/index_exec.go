@@ -59,5 +59,9 @@ func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, 
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	keyBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 	return keyBuff, nil
 }

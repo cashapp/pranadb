@@ -169,13 +169,13 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	return buffer, nil
 }
 
-func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCols []int, indexCols []int, rows *Rows) error {
+func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, includeCols []int, indexCols []int, rows *Rows) (int, error) {
 	_, offset := ReadUint64FromBufferBE(buffer, 0)
 	_, offset = ReadUint64FromBufferBE(buffer, offset)
 	colIndex := 0
 	for _, indexCol := range indexCols {
 		colType := colTypes[indexCol]
-		include := includeCols == nil || contains(includeCols, indexCol)
+		include := includeCols == nil || Contains(includeCols, indexCol)
 		if buffer[offset] == 0 {
 			offset++
 			if include {
@@ -196,7 +196,7 @@ func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, include
 				var err error
 				val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
 				if err != nil {
-					return errors.WithStack(err)
+					return 0, errors.WithStack(err)
 				}
 				if include {
 					rows.AppendDecimalToColumn(colIndex, val)
@@ -220,23 +220,23 @@ func DecodeIndexKeyWithIgnoredCols(buffer []byte, colTypes []ColumnType, include
 				)
 				val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
 				if err != nil {
-					return errors.WithStack(err)
+					return 0, errors.WithStack(err)
 				}
 				if include {
 					rows.AppendTimestampToColumn(colIndex, val)
 				}
 			default:
-				return errors.Errorf("unexpected column type %d", colType)
+				return 0, errors.Errorf("unexpected column type %d", colType)
 			}
 		}
 		if include {
 			colIndex++
 		}
 	}
-	return nil
+	return offset, nil
 }
 
-func contains(indexes []int, index int) bool {
+func Contains(indexes []int, index int) bool {
 	for _, idx := range indexes {
 		if idx == index {
 			return true

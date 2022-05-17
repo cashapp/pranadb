@@ -26,6 +26,10 @@ create index index1 on transactions (customer_id);
 
 select customer_id from transactions where customer_id = 600;
 
+--test with partially-covering index;
+
+select customer_id, col2 from transactions where customer_id = 600;
+
 select customer_id from transactions where customer_id is null;
 
 select customer_id from transactions where customer_id = 1000000;

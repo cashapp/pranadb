@@ -33,6 +33,14 @@ select customer_id from transactions where customer_id = 600;
 |600|
 2 rows returned
 
+--test with partially-covering index;
+
+select customer_id, col2 from transactions where customer_id = 600;
+|customer_id|col2|
+|600|abc|
+|600|abc|
+2 rows returned
+
 select customer_id from transactions where customer_id is null;
 |customer_id|
 |null|

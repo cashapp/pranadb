@@ -150,14 +150,38 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
-		if p.covers {
-			//Just construct row from key
-			if err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows); err != nil {
+		offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if !p.covers {
+			// Find cols returned that are not in the index
+			var includeCol []bool
+			includeColCount := 0
+			for i := range p.colTypes {
+				included := common.Contains(p.includeCols, i) && !common.Contains(p.indexInfo.IndexCols, i)
+				includeCol = append(includeCol, included)
+				if included {
+					includeColCount++
+				}
+			}
+			tableAddress := append(table.EncodeTableKeyPrefix(p.tableInfo.ID, p.shardID, 32), kvPair.Key[offset:]...)
+			value, err := p.storage.LocalGet(tableAddress)
+			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-		} else {
-			// Lookup row in table
-			// TODO
+			startCol := len(p.includeCols) - includeColCount
+			offset := 0
+			for i, colIncluded := range includeCol {
+				offset, err = common.DecodeRowCol(value, offset, rows, p.tableInfo.ColumnTypes[i], startCol, colIncluded)
+				if err != nil {
+					return nil, errors.WithStack(err)
+				}
+				if colIncluded {
+					startCol++
+				}
+			}
+
 		}
 	}
 	return rows, nil

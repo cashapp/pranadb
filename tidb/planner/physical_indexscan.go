@@ -99,7 +99,7 @@ func (is *PhysicalIndexScan) initSchema(idxExprCols []*expression.Column, isDoub
 			indexCols = append(indexCols, idxExprCols[i])
 		}
 	}
-	setHandle := false
+	//setHandle := false
 	// TODO - for some reason was adding the PK col again (resulting in same col twice) when the index was on the PK
 	// Commenting out seems to fix - need to investigate more
 	//setHandle := len(indexCols) > len(is.Index.Columns)
@@ -114,17 +114,34 @@ func (is *PhysicalIndexScan) initSchema(idxExprCols []*expression.Column, isDoub
 	//}
 
 	if isDoubleRead {
-		// If it's double read case, the first index must return handle. So we should add extra handle column
-		// if there isn't a handle column.
-		if !setHandle {
-			if !is.Table.IsCommonHandle {
+		// If it's a double read, we need to add the queried columns that are not already in the index.
+		for _, queryCol := range is.Columns {
+			setQueryCol := true
+			for _, idxCol := range is.IdxCols {
+				if queryCol.ID == idxCol.ID {
+					setQueryCol = false
+				}
+			}
+			if setQueryCol {
 				indexCols = append(indexCols, &expression.Column{
-					RetType:  types.NewFieldType(mysql.TypeLonglong),
-					ID:       model.ExtraHandleID,
-					UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
+					RetType:  types.NewFieldType(queryCol.FieldType.Tp),
+					ID:       queryCol.ID,
+					UniqueID: queryCol.ID,
+					OrigName: is.DBName.L + "." + is.Table.Name.L + "." + queryCol.Name.L,
 				})
 			}
 		}
+		// If it's double read case, the first index must return handle. So we should add extra handle column
+		// if there isn't a handle column.
+		//if !setHandle {
+		//	if !is.Table.IsCommonHandle {
+		//		indexCols = append(indexCols, &expression.Column{
+		//			RetType:  types.NewFieldType(mysql.TypeLonglong),
+		//			ID:       model.ExtraHandleID,
+		//			UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
+		//		})
+		//	}
+		//}
 		// If index is global, we should add extra column for pid.
 		if is.Index.Global {
 			indexCols = append(indexCols, &expression.Column{
