@@ -89,20 +89,24 @@ func (u *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *Exec
 
 func (u *UnionAll) appendRow(index int, inRow *common.Row, out *common.Rows) error {
 	for i := 0; i < len(u.colTypes)-1; i++ {
-		colType := u.colTypes[i]
-		switch colType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			out.AppendInt64ToColumn(i, inRow.GetInt64(i))
-		case common.TypeDouble:
-			out.AppendFloat64ToColumn(i, inRow.GetFloat64(i))
-		case common.TypeVarchar:
-			out.AppendStringToColumn(i, inRow.GetString(i))
-		case common.TypeTimestamp:
-			out.AppendTimestampToColumn(i, inRow.GetTimestamp(i))
-		case common.TypeDecimal:
-			out.AppendDecimalToColumn(i, inRow.GetDecimal(i))
-		default:
-			panic("unexpected column type")
+		if inRow.IsNull(i) {
+			out.AppendNullToColumn(i)
+		} else {
+			colType := u.colTypes[i]
+			switch colType.Type {
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+				out.AppendInt64ToColumn(i, inRow.GetInt64(i))
+			case common.TypeDouble:
+				out.AppendFloat64ToColumn(i, inRow.GetFloat64(i))
+			case common.TypeVarchar:
+				out.AppendStringToColumn(i, inRow.GetString(i))
+			case common.TypeTimestamp:
+				out.AppendTimestampToColumn(i, inRow.GetTimestamp(i))
+			case common.TypeDecimal:
+				out.AppendDecimalToColumn(i, inRow.GetDecimal(i))
+			default:
+				panic("unexpected column type")
+			}
 		}
 	}
 	id, err := u.generateID(inRow, index)
