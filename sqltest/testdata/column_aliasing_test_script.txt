@@ -38,11 +38,11 @@ select col0_2, col1_2 as col1_3, col2_2, col3_2 as col3_3, col4_2, col5_2 as col
 
 --load data dataset_1;
 
-select * from test_mv_1;
+select * from test_mv_1 order by col0_2;
 
 describe test_mv_1;
 
-select * from test_mv_2;
+select * from test_mv_2 order by col0_2;
 
 describe test_mv_2;
 
