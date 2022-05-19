@@ -175,6 +175,16 @@ select col3, col0 from test_source_2;
 select * from test_mv_13 order by col0;
 select col0, col3 from test_mv_13 order by col0;
 
+-- union with column aliasing - the columns should be taken from the first select;
+create materialized view test_mv_14 as
+select col0 as a, col1, col2 as c, col3, col4 as e, col5, col6 as g from test_source_1
+union all
+select col0 as aa, col1, col2 as cc, col3, col4 as ee, col5, col6 as gg from test_source_2;
+
+select * from test_mv_14 order by a;
+describe test_mv_14;
+
+drop materialized view test_mv_14;
 drop materialized view test_mv_13;
 drop materialized view test_mv_12;
 drop materialized view test_mv_11;
