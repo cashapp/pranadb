@@ -1,5 +1,5 @@
 
-û
+º
 :squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -14,4 +14,15 @@ schemaName
 SessionClosedMessage
 
 session_id (	R	sessionId"
-ReloadProtobufBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3
+ReloadProtobuf"U
+ClusterProposeRequest
+shard_id (RshardId!
+request_body (RrequestBody"V
+ClusterProposeResponse
+ret_val (RretVal#
+response_body (RresponseBody"R
+ClusterReadRequest
+shard_id (RshardId!
+request_body (RrequestBody":
+ClusterReadResponse#
+response_body (RresponseBodyBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

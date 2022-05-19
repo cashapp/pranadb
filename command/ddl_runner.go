@@ -8,8 +8,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/remoting"
 )
 
 const (
@@ -93,7 +93,7 @@ func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint6
 	return string(key)
 }
 
-func (d *DDLCommandRunner) HandleNotification(notification notifier.Notification) error {
+func (d *DDLCommandRunner) HandleNotification(notification remoting.ClusterMessage) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 

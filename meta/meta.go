@@ -17,6 +17,7 @@ const (
 	// TableDefTableName is the name of the table that holds all table definitions.
 	TableDefTableName = "tables"
 	IndexDefTableName = "indexes"
+	ProtobufTableName = "protos"
 )
 
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
@@ -48,6 +49,19 @@ var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
+		common.VarcharColumnType,
+		common.VarcharColumnType,
+	},
+}}
+
+// ProtobufTableInfo is a static definition of the table schema for the table schema table.
+var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
+	ID:             common.ProtobufTableID,
+	SchemaName:     SystemSchemaName,
+	Name:           ProtobufTableName,
+	PrimaryKeyCols: []int{0},
+	ColumnNames:    []string{"path", "fd"},
+	ColumnTypes: []common.ColumnType{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 	},
@@ -425,6 +439,7 @@ func (c *Controller) registerSystemSchema() {
 	schema := c.getOrCreateSchema("sys")
 	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
 	schema.PutTable(IndexDefTableInfo.Name, IndexDefTableInfo)
+	schema.PutTable(ProtobufTableInfo.Name, ProtobufTableInfo)
 }
 
 // DeleteSchemaIfEmpty - Schema are removed once they have no more tables

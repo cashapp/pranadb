@@ -200,6 +200,218 @@ func (*ReloadProtobuf) Descriptor() ([]byte, []int) {
 	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{2}
 }
 
+type ClusterProposeRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ShardId     int64  `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+	RequestBody []byte `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+}
+
+func (x *ClusterProposeRequest) Reset() {
+	*x = ClusterProposeRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterProposeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterProposeRequest) ProtoMessage() {}
+
+func (x *ClusterProposeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterProposeRequest.ProtoReflect.Descriptor instead.
+func (*ClusterProposeRequest) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ClusterProposeRequest) GetShardId() int64 {
+	if x != nil {
+		return x.ShardId
+	}
+	return 0
+}
+
+func (x *ClusterProposeRequest) GetRequestBody() []byte {
+	if x != nil {
+		return x.RequestBody
+	}
+	return nil
+}
+
+type ClusterProposeResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	RetVal       int64  `protobuf:"varint,1,opt,name=ret_val,json=retVal,proto3" json:"ret_val,omitempty"`
+	ResponseBody []byte `protobuf:"bytes,2,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+}
+
+func (x *ClusterProposeResponse) Reset() {
+	*x = ClusterProposeResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterProposeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterProposeResponse) ProtoMessage() {}
+
+func (x *ClusterProposeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterProposeResponse.ProtoReflect.Descriptor instead.
+func (*ClusterProposeResponse) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ClusterProposeResponse) GetRetVal() int64 {
+	if x != nil {
+		return x.RetVal
+	}
+	return 0
+}
+
+func (x *ClusterProposeResponse) GetResponseBody() []byte {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return nil
+}
+
+type ClusterReadRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ShardId     int64  `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+	RequestBody []byte `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+}
+
+func (x *ClusterReadRequest) Reset() {
+	*x = ClusterReadRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterReadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterReadRequest) ProtoMessage() {}
+
+func (x *ClusterReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterReadRequest.ProtoReflect.Descriptor instead.
+func (*ClusterReadRequest) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ClusterReadRequest) GetShardId() int64 {
+	if x != nil {
+		return x.ShardId
+	}
+	return 0
+}
+
+func (x *ClusterReadRequest) GetRequestBody() []byte {
+	if x != nil {
+		return x.RequestBody
+	}
+	return nil
+}
+
+type ClusterReadResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ResponseBody []byte `protobuf:"bytes,1,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+}
+
+func (x *ClusterReadResponse) Reset() {
+	*x = ClusterReadResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterReadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterReadResponse) ProtoMessage() {}
+
+func (x *ClusterReadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterReadResponse.ProtoReflect.Descriptor instead.
+func (*ClusterReadResponse) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ClusterReadResponse) GetResponseBody() []byte {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return nil
+}
+
 var File_squareup_cash_pranadb_notifications_v1_notifications_proto protoreflect.FileDescriptor
 
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDesc = []byte{
@@ -229,12 +441,32 @@ var file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDesc = []
 	0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x73, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e,
 	0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x73, 0x65, 0x73, 0x73, 0x69,
 	0x6f, 0x6e, 0x49, 0x64, 0x22, 0x10, 0x0a, 0x0e, 0x52, 0x65, 0x6c, 0x6f, 0x61, 0x64, 0x50, 0x72,
-	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x42, 0x4b, 0x5a, 0x49, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72,
-	0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75,
-	0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61,
-	0x64, 0x62, 0x2f, 0x76, 0x31, 0x2f, 0x6e, 0x6f, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x22, 0x55, 0x0a, 0x15, 0x43, 0x6c, 0x75, 0x73, 0x74, 0x65,
+	0x72, 0x50, 0x72, 0x6f, 0x70, 0x6f, 0x73, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12,
+	0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x03, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x72, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c,
+	0x52, 0x0b, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x56, 0x0a,
+	0x16, 0x43, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x50, 0x72, 0x6f, 0x70, 0x6f, 0x73, 0x65, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x17, 0x0a, 0x07, 0x72, 0x65, 0x74, 0x5f, 0x76,
+	0x61, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x72, 0x65, 0x74, 0x56, 0x61, 0x6c,
+	0x12, 0x23, 0x0a, 0x0d, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x62, 0x6f, 0x64,
+	0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0c, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x52, 0x0a, 0x12, 0x43, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72,
+	0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73,
+	0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x07, 0x73,
+	0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0b, 0x72, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x3a, 0x0a, 0x13, 0x43, 0x6c, 0x75,
+	0x73, 0x74, 0x65, 0x72, 0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x23, 0x0a, 0x0d, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x62, 0x6f, 0x64,
+	0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0c, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x42, 0x6f, 0x64, 0x79, 0x42, 0x4b, 0x5a, 0x49, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61,
+	0x6e, 0x61, 0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61,
+	0x72, 0x65, 0x75, 0x70, 0x2f, 0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64,
+	0x62, 0x2f, 0x76, 0x31, 0x2f, 0x6e, 0x6f, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -249,11 +481,15 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP
 	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescData
 }
 
-var file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_goTypes = []interface{}{
-	(*DDLStatementInfo)(nil),     // 0: squareup.cash.pranadb.notifications.v1.DDLStatementInfo
-	(*SessionClosedMessage)(nil), // 1: squareup.cash.pranadb.notifications.v1.SessionClosedMessage
-	(*ReloadProtobuf)(nil),       // 2: squareup.cash.pranadb.notifications.v1.ReloadProtobuf
+	(*DDLStatementInfo)(nil),       // 0: squareup.cash.pranadb.notifications.v1.DDLStatementInfo
+	(*SessionClosedMessage)(nil),   // 1: squareup.cash.pranadb.notifications.v1.SessionClosedMessage
+	(*ReloadProtobuf)(nil),         // 2: squareup.cash.pranadb.notifications.v1.ReloadProtobuf
+	(*ClusterProposeRequest)(nil),  // 3: squareup.cash.pranadb.notifications.v1.ClusterProposeRequest
+	(*ClusterProposeResponse)(nil), // 4: squareup.cash.pranadb.notifications.v1.ClusterProposeResponse
+	(*ClusterReadRequest)(nil),     // 5: squareup.cash.pranadb.notifications.v1.ClusterReadRequest
+	(*ClusterReadResponse)(nil),    // 6: squareup.cash.pranadb.notifications.v1.ClusterReadResponse
 }
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -305,6 +541,54 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 				return nil
 			}
 		}
+		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ClusterProposeRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ClusterProposeResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ClusterReadRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ClusterReadResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -312,7 +596,7 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -11,8 +11,8 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -38,22 +38,7 @@ func (e emptyRegistry) FindDescriptorByName(name protoreflect.FullName) (protore
 
 var _ Resolver = &emptyRegistry{}
 
-const ProtobufTableName = "protos"
-
-// ProtobufTableInfo is a static definition of the table schema for the table schema table.
-var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.ProtobufTableID,
-	SchemaName:     meta.SystemSchemaName,
-	Name:           ProtobufTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"path", "fd"},
-	ColumnTypes: []common.ColumnType{
-		common.VarcharColumnType,
-		common.VarcharColumnType,
-	},
-}}
-
-var descriptorRowsFactory = common.NewRowsFactory(ProtobufTableInfo.ColumnTypes)
+var descriptorRowsFactory = common.NewRowsFactory(meta.ProtobufTableInfo.ColumnTypes)
 
 // ProtoRegistry contains all protobuf file descriptors registered with Prana. It first attempts to look up
 // file descriptors registered in the cluster storage. If not found, then tries to look up in the directory
@@ -68,7 +53,7 @@ type ProtoRegistry struct {
 	meta        *meta.Controller
 	cluster     cluster.Cluster
 	queryExec   common.SimpleQueryExec
-	notify      func(message notifier.Notification) error
+	notify      func(message remoting.ClusterMessage) error
 }
 
 // NewProtoRegistry initializes a new file descriptor store. "loadDir" is an optional directory
@@ -85,8 +70,6 @@ func NewProtoRegistry(metaController *meta.Controller, clus cluster.Cluster, que
 
 // Start the ProtoRegistry, loading descriptors from disk if configured.
 func (s *ProtoRegistry) Start() error {
-	schema := s.meta.GetOrCreateSchema("sys")
-	schema.PutTable(ProtobufTableInfo.Name, ProtobufTableInfo)
 
 	if s.loadDir != "" {
 		r, err := NewDirBackedRegistry(s.loadDir)
@@ -153,7 +136,7 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
 	for _, fd := range descriptors.File {
-		if err := table.Upsert(ProtobufTableInfo.TableInfo, encodeDescriptorToRow(fd), wb); err != nil {
+		if err := table.Upsert(meta.ProtobufTableInfo.TableInfo, encodeDescriptorToRow(fd), wb); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -168,12 +151,12 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 	return nil
 }
 
-func (s *ProtoRegistry) SetNotifier(notify func(message notifier.Notification) error) {
+func (s *ProtoRegistry) SetNotifier(notify func(message remoting.ClusterMessage) error) {
 	s.notify = notify
 }
 
-func (s *ProtoRegistry) HandleNotification(n notifier.Notification) error {
-	return s.reloadProtobufsFromTable()
+func (s *ProtoRegistry) HandleMessage(n remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, s.reloadProtobufsFromTable()
 }
 
 func encodeDescriptorToRow(fd *descriptorpb.FileDescriptorProto) *common.Row {
@@ -190,7 +173,7 @@ func encodeDescriptorToRow(fd *descriptorpb.FileDescriptorProto) *common.Row {
 
 func (s *ProtoRegistry) loadFromTable() (map[string]*descriptorpb.FileDescriptorProto, error) {
 	rows, err := s.queryExec.ExecuteQuery(meta.SystemSchemaName,
-		"select path, fd from "+ProtobufTableName)
+		"select path, fd from "+meta.ProtobufTableName)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

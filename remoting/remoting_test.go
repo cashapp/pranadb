@@ -1,13 +1,13 @@
-package notifier
+package remoting
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
@@ -182,7 +182,7 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 	for i := 0; i < numClients; i++ {
 		client := clients[i]
 		for j := 0; j < numNotifications; j++ {
-			notif := fmt.Sprintf("notif%d", j)
+			notif := fmt.Sprintf("requestMessage%d", j)
 			notifs = append(notifs, notif)
 			err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
 			require.NoError(t, err)
@@ -221,7 +221,7 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 	require.NoError(t, err)
 	defer stopClient(t, client)
 
-	notifs := make([]Notification, len(notifsToSend))
+	notifs := make([]ClusterMessage, len(notifsToSend))
 
 	for i, str := range notifsToSend {
 		notifs[i] = &notifications.SessionClosedMessage{
@@ -244,8 +244,8 @@ func TestMultipleNotificationTypes(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterNotificationListener(NotificationTypeDDLStatement, notifListener1)
-	server.RegisterNotificationListener(NotificationTypeCloseSession, notifListener2)
+	server.RegisterMessageHandler(ClusterMessageDDLStatement, notifListener1, false)
+	server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener2, false)
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -298,12 +298,14 @@ func TestSyncBroadcast(t *testing.T) {
 	defer stopClient(t, client)
 
 	for i := 0; i < 10; i++ {
-		str := fmt.Sprintf("notif%d", i)
+		str := fmt.Sprintf("requestMessage%d", i)
 		notif := &notifications.SessionClosedMessage{
 			SessionId: str,
 		}
+		log.Infof("sending broadcast %d", i)
 		err := client.BroadcastSync(notif)
 		require.NoError(t, err)
+		log.Infof("sent broadcast %d", i)
 
 		for j := 0; j < numServers; j++ {
 			list := listeners[j]
@@ -376,23 +378,208 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	defer stopClient(t, client)
 
 	notif := &notifications.SessionClosedMessage{
-		SessionId: "notif",
+		SessionId: "requestMessage",
 	}
 
-	listeners[1].returnFail.Set(true)
+	listeners[1].SetReturnErrMsg("some error")
 
 	err = client.BroadcastSync(notif)
 	require.Error(t, err)
+	require.Equal(t, "some error", err.Error())
 
-	listeners[1].returnFail.Set(false)
+	listeners[1].SetReturnErrMsg("")
 	err = client.BroadcastSync(notif)
 	require.NoError(t, err)
 
 	for i := 0; i < numServers; i++ {
-		listeners[i].returnFail.Set(true)
+		listeners[i].SetReturnErrMsg("some other error")
 	}
 	err = client.BroadcastSync(notif)
 	require.Error(t, err)
+	require.Equal(t, "some other error", err.Error())
+}
+
+func TestSendRequest(t *testing.T) {
+	t.Helper()
+
+	nListener := &notifListener{}
+
+	server := newServer("localhost:7888")
+	defer stopServers(t, server)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+
+	respBody := []byte("some response")
+	retVal := &notifications.ClusterProposeResponse{
+		RetVal:       777,
+		ResponseBody: respBody,
+	}
+	nListener.SetReturnVal(retVal)
+
+	err := server.Start()
+	require.NoError(t, err)
+
+	client := newClient(heartbeatInterval, "localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	reqBody := []byte("some body")
+	req := &notifications.ClusterProposeRequest{
+		ShardId:     1234,
+		RequestBody: reqBody,
+	}
+	resp, err := client.SendRequest(req, 10*time.Second)
+	require.NoError(t, err)
+
+	waitForNotifications(t, []*notifListener{nListener}, 1)
+	receivedReq := nListener.notifs[0].(*notifications.ClusterProposeRequest) //nolint:forcetypeassert
+	require.Equal(t, receivedReq.ShardId, req.ShardId)
+	require.Equal(t, string(receivedReq.RequestBody), string(req.RequestBody))
+
+	clustResp := resp.(*notifications.ClusterProposeResponse) //nolint:forcetypeassert
+	require.Equal(t, retVal.RetVal, clustResp.RetVal)
+	require.Equal(t, string(retVal.ResponseBody), string(clustResp.ResponseBody))
+}
+
+func TestSendMultipleRequests(t *testing.T) {
+	t.Helper()
+
+	nListener := &notifListener{}
+
+	server := newServer("localhost:7888")
+	defer stopServers(t, server)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+
+	err := server.Start()
+	require.NoError(t, err)
+
+	client := newClient(heartbeatInterval, "localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	numRequests := 100
+	for i := 0; i < numRequests; i++ {
+		respBody := []byte(fmt.Sprintf("some response %d", i))
+		retVal := &notifications.ClusterProposeResponse{
+			RetVal:       777 + int64(i),
+			ResponseBody: respBody,
+		}
+		nListener.SetReturnVal(retVal)
+
+		reqBody := []byte(fmt.Sprintf("some body %d", i))
+		req := &notifications.ClusterProposeRequest{
+			ShardId:     1000 + int64(i),
+			RequestBody: reqBody,
+		}
+		resp, err := client.SendRequest(req, 10*time.Second)
+		require.NoError(t, err)
+
+		clustResp := resp.(*notifications.ClusterProposeResponse) //nolint:forcetypeassert
+		require.Equal(t, retVal.RetVal, clustResp.RetVal)
+		require.Equal(t, string(retVal.ResponseBody), string(clustResp.ResponseBody))
+	}
+
+	waitForNotifications(t, []*notifListener{nListener}, numRequests)
+	for i := 0; i < numRequests; i++ {
+		receivedReq := nListener.notifs[i].(*notifications.ClusterProposeRequest) //nolint:forcetypeassert
+		require.Equal(t, receivedReq.ShardId, 1000+int64(i))
+		require.Equal(t, string(receivedReq.RequestBody), fmt.Sprintf("some body %d", i))
+	}
+}
+
+func TestSendRequestServerNotAvailable(t *testing.T) {
+	t.Helper()
+
+	client := newClient(heartbeatInterval, "localhost:7888")
+	err := client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	reqBody := []byte("some body")
+	req := &notifications.ClusterProposeRequest{
+		ShardId:     1234,
+		RequestBody: reqBody,
+	}
+	timeout := 1 * time.Second
+	start := time.Now()
+	_, err = client.SendRequest(req, timeout)
+	dur := time.Now().Sub(start)
+	require.Error(t, err)
+	require.Equal(t, "failed to send cluster request - no servers available", err.Error())
+	require.Greater(t, dur, timeout)
+}
+
+func TestSendRequestOneServerNotAvailable(t *testing.T) {
+	t.Helper()
+
+	nListener := &notifListener{}
+
+	server := newServer("localhost:7888")
+	defer stopServers(t, server)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+
+	respBody := []byte("some response")
+	retVal := &notifications.ClusterProposeResponse{
+		RetVal:       777,
+		ResponseBody: respBody,
+	}
+	nListener.SetReturnVal(retVal)
+
+	err := server.Start()
+	require.NoError(t, err)
+
+	client := newClient(heartbeatInterval, "localhost:7889", "localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	reqBody := []byte("some body")
+	req := &notifications.ClusterProposeRequest{
+		ShardId:     1234,
+		RequestBody: reqBody,
+	}
+	resp, err := client.SendRequest(req, 10*time.Second)
+	require.NoError(t, err)
+
+	waitForNotifications(t, []*notifListener{nListener}, 1)
+	receivedReq := nListener.notifs[0].(*notifications.ClusterProposeRequest) //nolint:forcetypeassert
+	require.Equal(t, receivedReq.ShardId, req.ShardId)
+	require.Equal(t, string(receivedReq.RequestBody), string(req.RequestBody))
+
+	clustResp := resp.(*notifications.ClusterProposeResponse) //nolint:forcetypeassert
+	require.Equal(t, retVal.RetVal, clustResp.RetVal)
+	require.Equal(t, string(retVal.ResponseBody), string(clustResp.ResponseBody))
+}
+
+func TestSendRequestWithError(t *testing.T) {
+	t.Helper()
+
+	nListener := &notifListener{}
+
+	server := newServer("localhost:7888")
+	defer stopServers(t, server)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+
+	nListener.SetReturnErrMsg("some request error")
+
+	err := server.Start()
+	require.NoError(t, err)
+
+	client := newClient(heartbeatInterval, "localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	reqBody := []byte("some body")
+	req := &notifications.ClusterProposeRequest{
+		ShardId:     1234,
+		RequestBody: reqBody,
+	}
+	_, err = client.SendRequest(req, 10*time.Second)
+	require.Error(t, err)
+
+	require.Equal(t, "some request error", err.Error())
 }
 
 func waitForNotifications(t *testing.T, notifListeners []*notifListener, numNotificatiuons int) {
@@ -437,7 +624,7 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 		listenAddress := fmt.Sprintf("localhost:%d", listenPort)
 		server := newServer(listenAddress)
 		notifListener := &notifListener{}
-		server.RegisterNotificationListener(NotificationTypeCloseSession, notifListener)
+		server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener, false)
 		notifListeners[i] = notifListener
 		err := server.Start()
 		require.NoError(t, err)
@@ -447,22 +634,38 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 }
 
 type notifListener struct {
-	returnFail common.AtomicBool
-	notifs     []Notification
-	lock       sync.Mutex
+	returnVal    ClusterMessage
+	returnErrMsg string
+	notifs       []ClusterMessage
+	lock         sync.Mutex
 }
 
-func (n *notifListener) HandleNotification(notification Notification) error {
+func (n *notifListener) SetReturnErrMsg(errMsg string) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	n.returnErrMsg = errMsg
+}
+
+func (n *notifListener) SetReturnVal(retVal ClusterMessage) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	n.returnVal = retVal
+}
+
+func (n *notifListener) HandleMessage(notification ClusterMessage) (ClusterMessage, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	n.notifs = append(n.notifs, notification)
-	if n.returnFail.Get() {
-		return errors.Error("notification failure")
+	if n.returnErrMsg != "" {
+		return nil, errors.New(n.returnErrMsg)
 	}
-	return nil
+	if n.returnVal != nil {
+		return n.returnVal, nil
+	}
+	return nil, nil
 }
 
-func (n *notifListener) Notifications() []Notification {
+func (n *notifListener) Notifications() []ClusterMessage {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	return n.notifs

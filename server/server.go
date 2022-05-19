@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/remoting"
 	"net/http" //nolint:stylecheck
 
 	"github.com/squareup/pranadb/lifecycle"
@@ -26,7 +27,6 @@ import (
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/meta/schema"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
@@ -38,21 +38,24 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
-	var notifClient notifier.Client
-	var notifServer notifier.Server
+	var notifClient remoting.Client
+	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
-		fakeNotifier := notifier.NewFakeNotifier()
+		fakeNotifier := remoting.NewFakeServer()
 		notifClient = fakeNotifier
-		notifServer = fakeNotifier
+		remotingServer = fakeNotifier
 	} else {
 		var err error
-		clus, err = dragon.NewDragon(config)
+		drag, err := dragon.NewDragon(config)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = notifier.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
+		clus = drag
+		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
+		notifClient = remoting.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler(), false)
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler(), false)
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -71,17 +74,17 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
 		protoRegistry, failureInjector)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor, false)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine, false)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry, false)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
 
 	services := []service{
 		lifeCycleMgr,
-		notifServer,
 		metaController,
+		remotingServer,
 		clus,
 		shardr,
 		commandExecutor,
@@ -89,8 +92,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine,
 		protoRegistry,
 		schemaLoader,
-		apiServer,
 		theMetrics,
+		apiServer,
 		failureInjector,
 	}
 
@@ -105,7 +108,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
-		notifServer:     notifServer,
+		notifServer:     remotingServer,
 		notifClient:     notifClient,
 		apiServer:       apiServer,
 		services:        services,
@@ -126,8 +129,8 @@ type Server struct {
 	pullEngine      *pull.Engine
 	commandExecutor *command.Executor
 	schemaLoader    *schema.Loader
-	notifServer     notifier.Server
-	notifClient     notifier.Client
+	notifServer     remoting.Server
+	notifClient     remoting.Client
 	apiServer       *api.Server
 	services        []service
 	started         bool
@@ -174,6 +177,9 @@ func (s *Server) Start() error {
 	if err := s.pushEngine.Ready(); err != nil {
 		return errors.WithStack(err)
 	}
+
+	// FIXME - clean this up so it's similar to push engine ready above or whatever
+	s.pullEngine.SetAvailable()
 
 	s.lifeCycleMgr.SetActive(true)
 
@@ -229,11 +235,11 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
 }
 
-func (s *Server) GetNotificationsClient() notifier.Client {
+func (s *Server) GetNotificationsClient() remoting.Client {
 	return s.notifClient
 }
 
-func (s *Server) GetNotificationsServer() notifier.Server {
+func (s *Server) GetNotificationsServer() remoting.Server {
 	return s.notifServer
 }
 

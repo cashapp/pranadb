@@ -3,6 +3,9 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/cznic/mathutil"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/remoting"
 	"os"
 	"path/filepath"
 	"sync"
@@ -19,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -31,10 +33,6 @@ const (
 
 	locksClusterID uint64 = 2
 
-	sequenceGroupSize = 3
-
-	locksGroupSize = 3
-
 	retryDelay = 500 * time.Millisecond
 
 	retryTimeout = 10 * time.Minute
@@ -42,13 +40,20 @@ const (
 	callTimeout = 5 * time.Second
 
 	toDeleteShardID uint64 = 4
+
+	requestClientMaxPoolSize = 100
 )
 
 func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	return &Dragon{cnf: cnf, shardSMs: make(map[uint64]struct{})}, nil
+	requestClientMaxPoolSize := mathutil.Min(requestClientMaxPoolSize, cnf.NumShards)
+	return &Dragon{
+		cnf:               cnf,
+		shardSMs:          make(map[uint64]struct{}),
+		requestClientPool: make([]remoting.Client, requestClientMaxPoolSize, requestClientMaxPoolSize),
+	}, nil
 }
 
 type Dragon struct {
@@ -58,14 +63,20 @@ type Dragon struct {
 	pebble                       *pebble.DB
 	nh                           *dragonboat.NodeHost
 	shardAllocs                  map[uint64][]int
-	allShards                    []uint64
-	localShards                  []uint64
+	allDataShards                []uint64
+	localDataShards              []uint64
+	localShardsMap               map[uint64]struct{}
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	membershipListener           cluster.MembershipListener
 	shardSMsLock                 sync.Mutex
 	shardSMs                     map[uint64]struct{}
+	requestClientMap             sync.Map
+	requestClientPool            []remoting.Client
+	requestClientPoolLock        sync.Mutex
+	nodeHostAvailableLock        sync.RWMutex
+	nodeHostStarted              bool
 }
 
 type snapshot struct {
@@ -98,20 +109,17 @@ func (d *Dragon) GetNodeID() int {
 }
 
 func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
-	cs := d.nh.GetNoOPSession(tableSequenceClusterID)
-
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, sequenceName)
 
-	proposeRes, err := d.proposeWithRetry(cs, buff)
+	retVal, respBody, err := d.sendPropose(tableSequenceClusterID, buff)
 	if err != nil {
 		return 0, errors.WithStack(err)
 	}
-	if proposeRes.Value != seqStateMachineUpdatedOK {
-		return 0, errors.Errorf("unexpected return value from writing sequence: %d", proposeRes.Value)
+	if retVal != seqStateMachineUpdatedOK {
+		return 0, errors.Errorf("unexpected return value from writing sequence: %d", retVal)
 	}
-	seqBuff := proposeRes.Data
-	seqVal, _ := common.ReadUint64FromBufferLE(seqBuff, 0)
+	seqVal, _ := common.ReadUint64FromBufferLE(respBody, 0)
 	return seqVal, nil
 }
 
@@ -124,20 +132,17 @@ func (d *Dragon) ReleaseLock(prefix string) (bool, error) {
 }
 
 func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
-	cs := d.nh.GetNoOPSession(locksClusterID)
-
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, command)
 	buff = common.AppendStringToBufferLE(buff, prefix)
 
-	proposeRes, err := d.proposeWithRetry(cs, buff)
+	retVal, resBuff, err := d.sendPropose(locksClusterID, buff)
 	if err != nil {
 		return false, errors.WithStack(err)
 	}
-	if proposeRes.Value != locksStateMachineUpdatedOK {
-		return false, errors.Errorf("unexpected return value from lock request: %d", proposeRes.Value)
+	if retVal != locksStateMachineUpdatedOK {
+		return false, errors.Errorf("unexpected return value from lock request: %d", retVal)
 	}
-	resBuff := proposeRes.Data
 	var bRes bool
 	if res := resBuff[0]; res == LockSMResultTrue {
 		bRes = true
@@ -152,50 +157,51 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 func (d *Dragon) GetAllShardIDs() []uint64 {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	return d.allShards
+	return d.allDataShards
 }
 
 func (d *Dragon) GetLocalShardIDs() []uint64 {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	return d.localShards
+	return d.localDataShards
 }
 
-// ExecuteRemotePullQuery For now we are executing pull queries through raft. however going ahead we should probably fanout ourselves
-// rather than going through raft as going through raft will prevent any writes in same shard at the same time
-// and we don't need linearizability for pull queries
 func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
 	if queryInfo.ShardID < cluster.DataShardIDBase {
 		panic("invalid shard cluster id")
 	}
 
-	var buff []byte
-	buff = append(buff, shardStateMachineLookupQuery)
-	queryRequest, err := queryInfo.Serialize(buff)
-	if err != nil {
-		return nil, errors.WithStack(err)
+	start := time.Now()
+	var bytes []byte
+	for {
+		var buff []byte
+		buff = append(buff, shardStateMachineLookupQuery)
+		queryRequest, err := queryInfo.Serialize(buff)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		bytes, err = d.executeRead(queryInfo.ShardID, queryRequest)
+
+		if err != nil {
+			err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
+			return nil, errors.WithStack(err)
+		}
+
+		if bytes[0] == 0 {
+			if time.Now().Sub(start) > 10*time.Second {
+				msg := string(bytes[1:])
+				return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
+			}
+			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
+			// initialised until after the cluster is active
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			break
+		}
 	}
 
-	res, err := d.executeWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
-		res, err := d.nh.SyncRead(ctx, queryInfo.ShardID, queryRequest)
-		cancel()
-		return res, errors.WithStack(err)
-	}, retryTimeout)
-
-	if err != nil {
-		err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
-		return nil, errors.WithStack(err)
-	}
-	bytes, ok := res.([]byte)
-	if !ok {
-		panic("expected []byte")
-	}
-	if bytes[0] == 0 {
-		msg := string(bytes[1:])
-		return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
-	}
 	rows := rowsFactory.NewRows(1)
 	rows.Deserialize(bytes[1:])
 	return rows, nil
@@ -259,25 +265,9 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
-	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
-
-	dragonBoatDir := filepath.Join(datadir, "dragon")
-
-	nhc := config.NodeHostConfig{
-		DeploymentID:        d.cnf.ClusterID,
-		WALDir:              dragonBoatDir,
-		NodeHostDir:         dragonBoatDir,
-		RTTMillisecond:      100,
-		RaftAddress:         nodeAddress,
-		SystemEventListener: d,
-		EnableMetrics:       d.cnf.EnableMetrics,
+	if err := d.startNodeHost(datadir); err != nil {
+		return err
 	}
-
-	nh, err := dragonboat.NewNodeHost(nhc)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	d.nh = nh
 
 	log.Debugf("Joining groups on node %d", d.cnf.NodeID)
 
@@ -306,11 +296,11 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	// Now we make sure all groups are ready by executing lookups against them.
 
-	log.Infof("Prana node %d waiting for cluster to start", d.cnf.NodeID)
+	log.Debugf("Prana node %d waiting for cluster to start", d.cnf.NodeID)
 
-	log.Debug("Checking all data shards are alive")
+	log.Debugf("Prana node %d Checking all data shards are alive", d.cnf.NodeID)
 	req := []byte{shardStateMachineLookupPing}
-	for _, shardID := range d.allShards {
+	for _, shardID := range d.allDataShards {
 		if err := d.ExecutePingLookup(shardID, req); err != nil {
 			return errors.WithStack(err)
 		}
@@ -326,32 +316,89 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	d.started = true
 
-	log.Infof("Prana node %d cluster started", d.cnf.NodeID)
+	log.Debugf("Prana node %d cluster started", d.cnf.NodeID)
 
 	return nil
 }
 
+func (d *Dragon) startNodeHost(datadir string) error {
+	// We protect access with its own lock - remote read and write requests can come in before the Start() method is fully
+	// complete
+	d.nodeHostAvailableLock.Lock()
+	defer d.nodeHostAvailableLock.Unlock()
+
+	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
+
+	dragonBoatDir := filepath.Join(datadir, "dragon")
+
+	nhc := config.NodeHostConfig{
+		DeploymentID:   d.cnf.ClusterID,
+		WALDir:         dragonBoatDir,
+		NodeHostDir:    dragonBoatDir,
+		RTTMillisecond: 100,
+		RaftAddress:    nodeAddress,
+		EnableMetrics:  d.cnf.EnableMetrics,
+	}
+
+	nh, err := dragonboat.NewNodeHost(nhc)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	d.nh = nh
+	d.nodeHostStarted = true
+	return err
+}
+
 func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
-	_, err := d.executeWithRetry(func() (interface{}, error) {
+	_, err := d.executeRead(shardID, request)
+	return err
+}
+
+func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byte, error) {
+	res, err := d.executeWithRetry(func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		res, err := d.nh.SyncRead(ctx, shardID, request)
 		cancel()
 		return res, errors.WithStack(err)
 	}, retryTimeout)
-	return errors.WithStack(err)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, nil
+	}
+	bytes, ok := res.([]byte)
+	if !ok {
+		panic("not a []byte")
+	}
+	return bytes, nil
 }
 
 func (d *Dragon) Stop() error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
+	d.nodeHostAvailableLock.Lock()
+	defer d.nodeHostAvailableLock.Unlock()
 	if !d.started {
 		return nil
 	}
 	d.nh.Stop()
+	d.nh = nil
+	d.nodeHostStarted = false
 	err := d.pebble.Close()
 	if err == nil {
 		d.started = false
 	}
+	d.requestClientPoolLock.Lock()
+	defer d.requestClientPoolLock.Unlock()
+	for _, cl := range d.requestClientPool {
+		if cl != nil {
+			if err := cl.Stop(); err != nil {
+				// Ignore
+			}
+		}
+	}
+	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
 	return errors.WithStack(err)
 }
 
@@ -394,8 +441,6 @@ func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, forward bool) err
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
-	cs := d.nh.GetNoOPSession(batch.ShardID)
-
 	var buff []byte
 	if forward {
 		buff = append(buff, shardStateMachineCommandForwardWrite)
@@ -404,14 +449,13 @@ func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, forward bool) err
 	}
 	buff = batch.Serialize(buff)
 
-	proposeRes, err := d.proposeWithRetry(cs, buff)
+	retval, _, err := d.sendPropose(batch.ShardID, buff)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if proposeRes.Value != shardStateMachineResponseOK {
-		return errors.Errorf("unexpected return value from writing batch: %d to shard %d %d", proposeRes.Value, batch.ShardID, proposeRes.Value)
+	if retval != shardStateMachineResponseOK {
+		return errors.Errorf("unexpected return value from writing batch: %d to shard %d", retval, batch.ShardID)
 	}
-
 	return batch.AfterCommit()
 }
 
@@ -514,8 +558,6 @@ func (d *Dragon) deleteAllDataInRangeForShard(theShardID uint64, startPrefix []b
 }
 
 func (d *Dragon) deleteAllDataInRangeForShardFullPrefix(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
-	cs := d.nh.GetNoOPSession(theShardID)
-
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
 
@@ -524,20 +566,20 @@ func (d *Dragon) deleteAllDataInRangeForShardFullPrefix(theShardID uint64, start
 	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefix)))
 	buff = append(buff, endPrefix...)
 
-	proposeRes, err := d.proposeWithRetry(cs, buff)
+	retVal, _, err := d.sendPropose(theShardID, buff)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if proposeRes.Value != shardStateMachineResponseOK {
-		return errors.Errorf("unexpected return value %d from request to delete range to shard %d", proposeRes.Value, theShardID)
+	if retVal != shardStateMachineResponseOK {
+		return errors.Errorf("unexpected return value %d from request to delete range to shard %d", retVal, theShardID)
 	}
 	return nil
 }
 
 func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
 
-	chans := make([]chan error, len(d.allShards))
-	for i, shardID := range d.allShards {
+	chans := make([]chan error, len(d.allDataShards))
+	for i, shardID := range d.allDataShards {
 		ch := make(chan error, 1)
 		chans[i] = ch
 		theShardID := shardID
@@ -573,9 +615,13 @@ func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
 }
 
 func (d *Dragon) joinShardGroups() error {
-	chans := make([]chan error, len(d.shardAllocs))
+	chans := make([]chan error, len(d.localDataShards))
 	index := 0
-	for shardID, nodeIDs := range d.shardAllocs {
+	for _, shardID := range d.localDataShards {
+		nodeIDs, ok := d.shardAllocs[shardID]
+		if !ok {
+			panic("cannot find shard alloc")
+		}
 		ch := make(chan error)
 		// We join them in parallel - not that it makes much difference to time
 		go d.joinShardGroup(shardID, nodeIDs, ch)
@@ -595,6 +641,7 @@ func (d *Dragon) joinShardGroups() error {
 }
 
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
+
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
 		ElectionRTT:        20,
@@ -633,13 +680,23 @@ func (d *Dragon) joinSequenceGroup() error {
 		ClusterID:          tableSequenceClusterID,
 	}
 
-	initialMembers := make(map[uint64]string)
-	// Dragonboat nodes must start at 1, zero is not allowed
-	for i := 0; i < sequenceGroupSize; i++ {
-		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
+	nodeIDs, ok := d.shardAllocs[tableSequenceClusterID]
+	if !ok {
+		panic("can't find table sequence shard allocs")
 	}
-	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
-		return errors.WithStack(err)
+	initialMembers := make(map[uint64]string)
+	thisNode := false
+	for _, nodeID := range nodeIDs {
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
+		if nodeID == d.cnf.NodeID {
+			thisNode = true
+		}
+	}
+
+	if thisNode {
+		if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newSequenceODStateMachine, rc); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 	return nil
 }
@@ -655,13 +712,23 @@ func (d *Dragon) joinLockGroup() error {
 		ClusterID:          locksClusterID,
 	}
 
-	initialMembers := make(map[uint64]string)
-	// Dragonboat nodes must start at 1, zero is not allowed
-	for i := 0; i < locksGroupSize; i++ {
-		initialMembers[uint64(i+1)] = d.cnf.RaftAddresses[i]
+	nodeIDs, ok := d.shardAllocs[locksClusterID]
+	if !ok {
+		panic("can't find locks shard allocs")
 	}
-	if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
-		return errors.WithStack(err)
+	initialMembers := make(map[uint64]string)
+	thisNode := false
+	for _, nodeID := range nodeIDs {
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
+		if nodeID == d.cnf.NodeID {
+			thisNode = true
+		}
+	}
+
+	if thisNode {
+		if err := d.nh.StartOnDiskCluster(initialMembers, false, d.newLocksODStateMachine, rc); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 	return nil
 }
@@ -674,21 +741,32 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 	for i := 0; i < numNodes; i++ {
 		allNodes[i] = i
 	}
-	d.localShards = make([]uint64, 0)
-	d.allShards = make([]uint64, numShards)
+	d.localDataShards = make([]uint64, 0)
+	d.localShardsMap = map[uint64]struct{}{}
+	d.allDataShards = make([]uint64, numShards)
 	d.shardAllocs = make(map[uint64][]int)
 	for i := 0; i < numShards; i++ {
 		shardID := cluster.DataShardIDBase + uint64(i)
-		d.allShards[i] = shardID
-		nids := make([]int, replicationFactor)
-		for j := 0; j < replicationFactor; j++ {
-			nids[j] = allNodes[(i+j)%numNodes]
-			if nids[j] == d.cnf.NodeID {
-				d.localShards = append(d.localShards, shardID)
-			}
-		}
-		d.shardAllocs[shardID] = nids
+		d.allDataShards[i] = shardID
+		d.generateReplicas(shardID, replicationFactor, true)
 	}
+	d.generateReplicas(tableSequenceClusterID, replicationFactor, false)
+	d.generateReplicas(locksClusterID, replicationFactor, false)
+}
+
+func (d *Dragon) generateReplicas(shardID uint64, replicationFactor int, dataShard bool) {
+	numNodes := len(d.cnf.RaftAddresses)
+	nids := make([]int, replicationFactor)
+	for j := 0; j < replicationFactor; j++ {
+		nids[j] = (int(shardID + uint64(j))) % numNodes
+		if nids[j] == d.cnf.NodeID {
+			if dataShard {
+				d.localDataShards = append(d.localDataShards, shardID)
+			}
+			d.localShardsMap[shardID] = struct{}{}
+		}
+	}
+	d.shardAllocs[shardID] = nids
 }
 
 // It's expected to get cluster not ready from time to time, we should retry in this case
@@ -700,7 +778,8 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		if err == nil {
 			return res, nil
 		}
-		if !errors.Is(err, dragonboat.ErrClusterNotReady) && !errors.Is(err, dragonboat.ErrTimeout) {
+		if !errors.Is(err, dragonboat.ErrClusterNotReady) && !errors.Is(err, dragonboat.ErrTimeout) &&
+			!errors.Is(err, dragonboat.ErrClusterNotFound) {
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {
@@ -945,49 +1024,204 @@ func (d *Dragon) unregisterShardSM(shardID uint64) {
 	delete(d.shardSMs, shardID)
 }
 
-// ISystemEventListener implementation
+// Cluster requests
 
-func (d *Dragon) NodeHostShuttingDown() {
+func (d *Dragon) sendPropose(shardID uint64, request []byte) (uint64, []byte, error) {
+
+	// Does the local node have this shard?
+	_, ok := d.localShardsMap[shardID]
+	if ok {
+		// We handle this directly
+		cs := d.nh.GetNoOPSession(shardID)
+		res, err := d.proposeWithRetry(cs, request)
+		return res.Value, res.Data, err
+	}
+
+	requestClient, err := d.getRequestClient(shardID)
+	if err != nil {
+		return 0, nil, err
+	}
+	clusterRequest := &notifications.ClusterProposeRequest{
+		ShardId:     int64(shardID),
+		RequestBody: request,
+	}
+	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Second)
+	if err != nil {
+		return 0, nil, err
+	}
+	clusterResp, ok := resp.(*notifications.ClusterProposeResponse)
+	if !ok {
+		panic("not a notifications.ClusterReadResponse")
+	}
+
+	return uint64(clusterResp.RetVal), clusterResp.GetResponseBody(), nil
 }
 
-func (d *Dragon) NodeUnloaded(info raftio.NodeInfo) {
+func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
+	nids, ok := d.shardAllocs[shardID]
+	if !ok {
+		panic("can't find shard allocs")
+	}
+	// TODO sort with leader first - this could give better perf - currently we don't know the leader
+	ln := len(nids)
+	serverAddresses := make([]string, ln, ln)
+	for i, nid := range nids {
+		serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+	}
+	return serverAddresses
 }
 
-func (d *Dragon) NodeReady(info raftio.NodeInfo) {
+func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
+
+	// Does the local node have this shard?
+	_, ok := d.localShardsMap[shardID]
+	if ok {
+		// We handle this directly
+		return d.executeSyncReadWithRetry(shardID, request)
+	}
+
+	requestClient, err := d.getRequestClient(shardID)
+	if err != nil {
+		return nil, err
+	}
+	clusterRequest := &notifications.ClusterReadRequest{
+		ShardId:     int64(shardID),
+		RequestBody: request,
+	}
+	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	clusterResp, ok := resp.(*notifications.ClusterReadResponse)
+	if !ok {
+		panic("not a notifications.ClusterReadResponse")
+	}
+	return clusterResp.ResponseBody, nil
 }
 
-func (d *Dragon) MembershipChanged(info raftio.NodeInfo) {
+func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
+	client := d.doGetRequestClient(shardID)
+	if client != nil {
+		return client, nil
+	}
+	return d.getOrCreateRequestClient(shardID)
 }
 
-func (d *Dragon) ConnectionEstablished(info raftio.ConnectionInfo) {
+func (d *Dragon) doGetRequestClient(shardID uint64) remoting.Client {
+	c, ok := d.requestClientMap.Load(shardID)
+	if ok {
+		client, ok := c.(remoting.Client)
+		if !ok {
+			panic("not a notifier.Client")
+		}
+		return client
+	}
+	return nil
 }
 
-func (d *Dragon) ConnectionFailed(info raftio.ConnectionInfo) {
+func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, error) {
+	d.requestClientPoolLock.Lock()
+	defer d.requestClientPoolLock.Unlock()
+	client := d.doGetRequestClient(shardID)
+	if client != nil {
+		return client, nil
+	}
+	index := int(shardID % uint64(len(d.requestClientPool)))
+	client = d.requestClientPool[index]
+	if client == nil {
+		serverAddresses := d.getServerAddressesForShard(shardID)
+		client = remoting.NewClient(d.cnf.NotifierHeartbeatInterval, serverAddresses...)
+		if err := client.Start(); err != nil {
+			return nil, err
+		}
+		d.requestClientPool[index] = client
+	}
+	d.requestClientMap.Store(shardID, client)
+	return client, nil
 }
 
-func (d *Dragon) SendSnapshotStarted(info raftio.SnapshotInfo) {
+func (d *Dragon) GetRemoteProposeHandler() remoting.ClusterMessageHandler {
+	return &proposeHandler{d: d}
 }
 
-func (d *Dragon) SendSnapshotCompleted(info raftio.SnapshotInfo) {
+type proposeHandler struct {
+	d *Dragon
 }
 
-func (d *Dragon) SendSnapshotAborted(info raftio.SnapshotInfo) {
+func (p *proposeHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := notification.(*notifications.ClusterProposeRequest)
+	if !ok {
+		panic(fmt.Sprintf("not a *notifications.ClusterProposeRequest %v", req))
+	}
+	return p.d.handleRemoteProposeRequest(req)
 }
 
-func (d *Dragon) SnapshotReceived(info raftio.SnapshotInfo) {
+func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
+	return &readHandler{d: d}
 }
 
-func (d *Dragon) SnapshotRecovered(info raftio.SnapshotInfo) {
+func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
+
+	d.nodeHostAvailableLock.RLock()
+	defer d.nodeHostAvailableLock.RUnlock()
+	if err := d.ensureNodeHostAvailable(); err != nil {
+		return nil, err
+	}
+
+	cs := d.nh.GetNoOPSession(uint64(request.ShardId))
+	res, err := d.proposeWithRetry(cs, request.RequestBody)
+	if err != nil {
+		return nil, err
+	}
+	resp := &notifications.ClusterProposeResponse{
+		RetVal:       int64(res.Value),
+		ResponseBody: res.Data,
+	}
+	return resp, nil
 }
 
-func (d *Dragon) SnapshotCreated(info raftio.SnapshotInfo) {
+type readHandler struct {
+	d *Dragon
 }
 
-func (d *Dragon) SnapshotCompacted(info raftio.SnapshotInfo) {
+func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := notification.(*notifications.ClusterReadRequest)
+	if !ok {
+		panic("not a *notifications.ClusterReadRequest")
+	}
+	return p.d.handleRemoteReadRequest(req)
 }
 
-func (d *Dragon) LogCompacted(info raftio.EntryInfo) {
+func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
+
+	d.nodeHostAvailableLock.RLock()
+	defer d.nodeHostAvailableLock.RUnlock()
+	if err := d.ensureNodeHostAvailable(); err != nil {
+		return nil, err
+	}
+
+	respBody, err := d.executeSyncReadWithRetry(uint64(request.ShardId), request.RequestBody)
+	if err != nil {
+		return nil, err
+	}
+	resp := &notifications.ClusterReadResponse{
+		ResponseBody: respBody,
+	}
+	return resp, nil
 }
 
-func (d *Dragon) LogDBCompacted(info raftio.EntryInfo) {
+func (d *Dragon) ensureNodeHostAvailable() error {
+	if !d.nodeHostStarted {
+		start := time.Now()
+		for {
+			time.Sleep(100 * time.Millisecond)
+			if time.Now().Sub(start) > 10*time.Second {
+				return errors.New("timed out waiting for nodehost to start")
+			}
+			if d.nodeHostStarted {
+				break
+			}
+		}
+	}
+	return nil
 }

@@ -59,27 +59,42 @@ const (
 )
 
 func TestSQLFakeCluster(t *testing.T) {
-	testSQL(t, true, 1)
+	testSQL(t, true, 1, 0)
 }
 
-func TestSQLClustered(t *testing.T) {
+func TestSQLClusteredThreeNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	testSQL(t, false, 3)
+	testSQL(t, false, 3, 3)
+}
+
+func TestSQLClusteredFiveNodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
+	testSQL(t, false, 5, 3)
+}
+
+func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
+	testSQL(t, false, 7, 5)
 }
 
 type sqlTestsuite struct {
-	fakeCluster  bool
-	numNodes     int
-	fakeKafka    *kafka.FakeKafka
-	pranaCluster []*server.Server
-	suite        suite.Suite
-	tests        map[string]*sqlTest
-	t            *testing.T
-	dataDir      string
-	lock         sync.Mutex
-	encoders     map[string]encoderFactory
+	fakeCluster       bool
+	numNodes          int
+	replicationFactor int
+	fakeKafka         *kafka.FakeKafka
+	pranaCluster      []*server.Server
+	suite             suite.Suite
+	tests             map[string]*sqlTest
+	t                 *testing.T
+	dataDir           string
+	lock              sync.Mutex
+	encoders          map[string]encoderFactory
 }
 
 type encoderFactory func(options string) (kafka.MessageEncoder, error)
@@ -99,7 +114,7 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 	w.suite.SetT(t)
 }
 
-func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
+func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int) {
 	t.Helper()
 
 	log.SetFormatter(&log.TextFormatter{
@@ -114,7 +129,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int) {
 	defer lock.Unlock()
 
 	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]encoderFactory)}
-	ts.setup(fakeCluster, numNodes)
+	ts.setup(fakeCluster, numNodes, replicationFactor)
 	defer ts.teardown()
 
 	suite.Run(t, ts)
@@ -169,20 +184,13 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		}
 		w.pranaCluster[0] = s
 	} else {
-		raftAddresses := []string{
-			"localhost:63201",
-			"localhost:63202",
-			"localhost:63203",
-		}
-		notifAddresses := []string{
-			"localhost:63301",
-			"localhost:63302",
-			"localhost:63303",
-		}
-		apiServerListenAddresses := []string{
-			"localhost:63401",
-			"localhost:63402",
-			"localhost:63403",
+		var raftAddresses []string
+		var notifAddresses []string
+		var apiServerListenAddresses []string
+		for i := 0; i < w.numNodes; i++ {
+			raftAddresses = append(raftAddresses, fmt.Sprintf("localhost:%d", i+63201))
+			notifAddresses = append(notifAddresses, fmt.Sprintf("localhost:%d", i+63301))
+			apiServerListenAddresses = append(apiServerListenAddresses, fmt.Sprintf("localhost:%d", i+63401))
 		}
 		for i := 0; i < w.numNodes; i++ {
 			cnf := conf.NewDefaultConfig()
@@ -190,7 +198,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ClusterID = TestClusterID
 			cnf.RaftAddresses = raftAddresses
 			cnf.NumShards = 30
-			cnf.ReplicationFactor = 3
+			cnf.ReplicationFactor = w.replicationFactor
 			cnf.DataDir = w.dataDir
 			cnf.TestServer = false
 			cnf.KafkaBrokers = brokerConfigs
@@ -222,9 +230,10 @@ func (w *sqlTestsuite) setupPranaCluster() {
 	w.startCluster()
 }
 
-func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int) {
+func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
+	w.replicationFactor = replicationFactor
 	protoRegistry, err := protolib.NewDirBackedRegistry(ProtoDescriptorDir)
 	require.NoError(w.t, err)
 	w.registerEncoders(protoRegistry)
@@ -368,7 +377,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.TraceLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
@@ -801,7 +810,7 @@ func (st *sqlTest) executeCreateTopic(require *require.Assertions, command strin
 	lp := len(parts)
 	require.True(lp == 3 || lp == 4, "Invalid create topic, should be --create topic topic_name [partitions]")
 	topicName := parts[2]
-	var partitions int64 = 10
+	var partitions int64 = 20
 	if len(parts) > 3 {
 		var err error
 		partitions, err = strconv.ParseInt(parts[3], 10, 64)
@@ -949,6 +958,10 @@ func (st *sqlTest) activateFailpoint(require *require.Assertions, cmd string, ac
 	nodeID, err := strconv.ParseInt(sNodeID, 10, 64)
 	require.NoError(err)
 	var prana *server.Server
+	if int(nodeID) >= st.testSuite.numNodes {
+		// Ignore - this is so we can write a test that runs with multiple number of nodes
+		return
+	}
 	if nodeID == -1 {
 		// This represents choose the node the client is currently connected to - this will be the originating node
 		// for the DDL command
