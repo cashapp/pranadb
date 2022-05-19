@@ -57,8 +57,6 @@ type Cluster interface {
 
 	DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
-	RegisterMembershipListener(listener MembershipListener)
-
 	GetLock(prefix string) (bool, error)
 
 	ReleaseLock(prefix string) (bool, error)
@@ -85,15 +83,16 @@ type Snapshot interface {
 }
 
 type QueryExecutionInfo struct {
-	SessionID  string
-	SchemaName string
-	Query      string
-	PsID       int64
-	PsArgs     []interface{}
-	PsArgTypes []common.ColumnType
-	Limit      uint32
-	ShardID    uint64
-	IsPs       bool
+	SessionID   string
+	SchemaName  string
+	Query       string
+	PsID        int64
+	PsArgs      []interface{}
+	PsArgTypes  []common.ColumnType
+	Limit       uint32
+	ShardID     uint64
+	IsPs        bool
+	SystemQuery bool
 }
 
 func (q *QueryExecutionInfo) GetArgs() []interface{} {
@@ -197,6 +196,12 @@ func (q *QueryExecutionInfo) Serialize(buff []byte) ([]byte, error) {
 		b = 0
 	}
 	buff = append(buff, b)
+	if q.SystemQuery {
+		b = 1
+	} else {
+		b = 0
+	}
+	buff = append(buff, b)
 	return buff, nil
 }
 
@@ -214,6 +219,8 @@ func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	q.Limit, offset = common.ReadUint32FromBufferLE(buff, offset)
 	q.ShardID, offset = common.ReadUint64FromBufferLE(buff, offset)
 	q.IsPs = buff[offset] == 1
+	offset++
+	q.SystemQuery = buff[offset] == 1
 	return nil
 }
 
@@ -252,10 +259,4 @@ type ShardListener interface {
 	RemoteWriteOccurred()
 
 	Close()
-}
-
-type MembershipListener interface {
-	NodeJoined(nodeID int)
-
-	NodeLeft(nodeID int)
 }

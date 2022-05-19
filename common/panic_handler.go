@@ -1,10 +1,9 @@
 package common
 
 import (
+	"fmt"
 	"os"
 	"runtime/debug"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func PanicHandler() {
@@ -13,7 +12,7 @@ func PanicHandler() {
 		return // no panic underway
 	}
 
-	log.Errorf("Panic occurred in Prana %v\n", r)
+	fmt.Printf("Panic occurred in Prana %v\n", r)
 
 	// print debug stack
 	debug.PrintStack()

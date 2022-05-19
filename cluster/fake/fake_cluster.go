@@ -41,7 +41,6 @@ type FakeCluster struct {
 	btree                        *btree.BTree
 	shardListenerFactory         cluster.ShardListenerFactory
 	shardListeners               map[uint64]cluster.ShardListener
-	membershipListener           cluster.MembershipListener
 	lockslock                    sync.Mutex
 	locks                        map[string]struct{}
 	dedupMaps                    map[uint64]map[string]uint64
@@ -116,15 +115,6 @@ func (f *FakeCluster) Dump() string {
 		return true
 	})
 	return builder.String()
-}
-
-func (f *FakeCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.membershipListener != nil {
-		panic("membership listener already registered")
-	}
-	f.membershipListener = listener
 }
 
 func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {

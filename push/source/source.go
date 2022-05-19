@@ -302,8 +302,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	colTypes := info.ColumnTypes
 	tableID := info.ID
 
-	log.Debugf("Ingesting batch of %d", len(messages))
-
 	forwardBatches := make(map[uint64]*cluster.WriteBatch)
 
 	totBatchSizeBytes := 0
@@ -349,6 +347,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	}
 
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
+		log.Errorf("failed to send ingest forward batches %+v", err)
 		return err
 	}
 

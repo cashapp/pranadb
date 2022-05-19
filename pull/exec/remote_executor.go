@@ -41,9 +41,11 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 		RemoteDag:        remoteDAG,
 		ShardIDs:         clust.GetAllShardIDs(),
 	}
+
 	// The tables table is a special case and always gets stored in a single shard cluster.SystemSchemaShardID
 	// We do this because we need to guarantee deterministic updates across the cluster for all of tables table
 	if re.schemaName == meta.SystemSchemaName {
+		re.queryInfo.SystemQuery = true
 		lq := strings.ToLower(re.queryInfo.Query)
 		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
 			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {

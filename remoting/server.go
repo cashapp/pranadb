@@ -1,13 +1,12 @@
-package notifier
+package remoting
 
 import (
 	"fmt"
-	"net"
-	"sync"
-
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"net"
+	"sync"
 )
 
 const (
@@ -21,7 +20,7 @@ type Server interface {
 
 	Stop() error
 
-	RegisterNotificationListener(notificationType NotificationType, listener NotificationListener)
+	RegisterMessageHandler(messageType ClusterMessageType, listener ClusterMessageHandler)
 }
 
 func NewServer(listenAddress string) Server {
@@ -42,7 +41,7 @@ type server struct {
 	lock              sync.RWMutex
 	acceptLoopCh      chan struct{}
 	connections       sync.Map
-	notifListeners    sync.Map
+	messageHandlers   sync.Map
 	responsesDisabled common.AtomicBool
 }
 
@@ -59,6 +58,7 @@ func (s *server) Start() error {
 	s.listener = list
 	s.started = true
 	go s.acceptLoop()
+	log.Infof("started remoting server on %s", s.listenAddress)
 	return nil
 }
 
@@ -91,35 +91,35 @@ func (s *server) Stop() error {
 		panic("channel was closed")
 	}
 	// Now close connections
-	var e error
 	s.connections.Range(func(conn, _ interface{}) bool {
 		if err := conn.(*connection).stop(); err != nil {
-			e = err
-			return false
+			// Log, but continue! We must close all the connections to avoid leaks
+			log.Warnf("failed to close connection %v", err)
 		}
 		return true
 	})
 	s.started = false
-	return e
+	log.Infof("stopped remoting server on %s", s.listenAddress)
+	return nil
 }
 
 func (s *server) ListenAddress() string {
 	return s.listenAddress
 }
 
-func (s *server) RegisterNotificationListener(notificationType NotificationType, listener NotificationListener) {
-	_, ok := s.notifListeners.Load(notificationType)
+func (s *server) RegisterMessageHandler(messageType ClusterMessageType, handler ClusterMessageHandler) {
+	_, ok := s.messageHandlers.Load(messageType)
 	if ok {
-		panic(fmt.Sprintf("notification listener with type %d already registered", notificationType))
+		panic(fmt.Sprintf("message handler with type %d already registered", messageType))
 	}
-	s.notifListeners.Store(notificationType, listener)
+	s.messageHandlers.Store(messageType, handler)
 }
-func (s *server) lookupNotificationListener(notification Notification) NotificationListener {
-	l, ok := s.notifListeners.Load(TypeForNotification(notification))
+func (s *server) lookupMessageHandler(clusterMessage ClusterMessage) ClusterMessageHandler {
+	l, ok := s.messageHandlers.Load(TypeForClusterMessage(clusterMessage))
 	if !ok {
-		panic(fmt.Sprintf("no notification listener for type %d", TypeForNotification(notification)))
+		panic(fmt.Sprintf("no message handler for type %d", TypeForClusterMessage(clusterMessage)))
 	}
-	return l.(NotificationListener)
+	return l.(ClusterMessageHandler)
 }
 
 func (s *server) removeConnection(conn *connection) {
@@ -135,17 +135,17 @@ func (s *server) newConnection(conn net.Conn) *connection {
 	return &connection{
 		s:              s,
 		conn:           conn,
-		handleMsgCh:    make(chan []byte, maxConcurrentMsgsPerConnection),
+		asyncMsgCh:     make(chan []byte, maxConcurrentMsgsPerConnection),
 		readLoopExitCh: make(chan error, 1),
 	}
 }
 
 type connection struct {
-	s              *server
-	conn           net.Conn
-	readLoopExitCh chan error
-	handleMsgCh    chan []byte
-	msgsInProgress sync.WaitGroup
+	s                   *server
+	conn                net.Conn
+	readLoopExitCh      chan error
+	asyncMsgCh          chan []byte
+	asyncMsgsInProgress sync.WaitGroup
 }
 
 func (c *connection) start() {
@@ -153,69 +153,87 @@ func (c *connection) start() {
 	go c.handleMessageLoop()
 }
 
-// We execute all messages (other than heartbeat) on a different goroutine, and we use a channel to limit the number
-// concurrently executing
+func (c *connection) readLoop() {
+	readMessage(c.handleMessage, c.readLoopExitCh, c.conn, func() {
+		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
+		if err := c.conn.Close(); err != nil {
+			// Ignore
+		}
+		// And close the async msg channel
+		close(c.asyncMsgCh)
+	})
+	c.s.removeConnection(c)
+}
+
+// We execute messages (other than heartbeat) on a different goroutine as we need to be able to answer heartbeats even
+// when we are processing other messages.
 func (c *connection) handleMessageLoop() {
 	for {
-		msg, ok := <-c.handleMsgCh
+		exec, ok := <-c.asyncMsgCh
 		if !ok {
 			// channel was closed
 			return
 		}
-		go c.handleMessageAsync(msg)
+		go c.handleMessageAsync(exec)
 	}
 }
 
-func (c *connection) readLoop() {
-	readMessage(c.handleMessage, c.readLoopExitCh, c.conn)
-	c.s.removeConnection(c)
-}
-
-func (c *connection) handleMessage(msgType messageType, msg []byte) {
+func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	if msgType == heartbeatMessageType {
 		if !c.s.responsesDisabled.Get() {
 			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
 				log.Errorf("failed to write heartbeat %+v", err)
 			}
 		}
-		return
+		return nil
 	}
-	c.msgsInProgress.Add(1)
-	c.handleMsgCh <- msg
+
+	// Handle async
+	c.asyncMsgsInProgress.Add(1)
+	c.asyncMsgCh <- msg
+
+	return nil
 }
 
 func (c *connection) handleMessageAsync(msg []byte) {
-	c.doHandleMessageAsync(msg)
-	c.msgsInProgress.Done()
+	c.handleMessageAsync0(msg)
+	c.asyncMsgsInProgress.Done()
 }
 
-func (c *connection) doHandleMessageAsync(msg []byte) {
-	nf := &NotificationMessage{}
-	if err := nf.deserialize(msg); err != nil {
-		log.Errorf("Failed to deserialize notification %+v", err)
+func (c *connection) handleMessageAsync0(msg []byte) {
+	request := &ClusterRequest{}
+	if err := request.deserialize(msg); err != nil {
+		log.Errorf("failed to deserialize message %+v", err)
 		return
 	}
-	listener := c.s.lookupNotificationListener(nf.notif)
-	err := listener.HandleNotification(nf.notif)
-	ok := true
-	if err != nil {
-		log.Errorf("Failed to handle notification %+v", err)
-		ok = false
+	handler := c.s.lookupMessageHandler(request.requestMessage)
+	respMsg, respErr := handler.HandleMessage(request.requestMessage)
+	if respErr != nil {
+		log.Errorf("Failed to handle cluster message %+v", respErr)
 	}
-	if nf.requiresResponse && !c.s.responsesDisabled.Get() {
-		if err := c.sendResponse(nf, ok); err != nil {
+	if request.requiresResponse && !c.s.responsesDisabled.Get() {
+		if err := c.sendResponse(request, respMsg, respErr); err != nil {
 			log.Errorf("failed to send response %+v", err)
 		}
 	}
 }
 
-func (c *connection) sendResponse(nf *NotificationMessage, ok bool) error {
-	resp := &NotificationResponse{
-		sequence: nf.sequence,
-		ok:       ok,
+func (c *connection) sendResponse(nf *ClusterRequest, respMsg ClusterMessage, respErr error) error {
+	resp := &ClusterResponse{
+		sequence:        nf.sequence,
+		responseMessage: respMsg,
 	}
-	buff := resp.serialize(nil)
-	err := writeMessage(notificationResponseMessageType, buff, c.conn)
+	if respErr == nil {
+		resp.ok = true
+	} else {
+		resp.ok = false
+		resp.errMsg = respErr.Error()
+	}
+	buff, err := resp.serialize(nil)
+	if err != nil {
+		return err
+	}
+	err = writeMessage(responseMessageType, buff, c.conn)
 	return errors.WithStack(err)
 }
 
@@ -225,9 +243,8 @@ func (c *connection) stop() error {
 	}
 	err, ok := <-c.readLoopExitCh
 	if !ok {
-		return errors.WithStack(errors.Error("connection channel was closed"))
+		panic("channel was closed")
 	}
-	c.msgsInProgress.Wait() // Wait for all messages to be processed
-	close(c.handleMsgCh)
+	c.asyncMsgsInProgress.Wait() // Wait for all async messages to be processed
 	return errors.WithStack(err)
 }

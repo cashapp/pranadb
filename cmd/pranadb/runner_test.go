@@ -70,8 +70,8 @@ func createConfigWithAllFields() conf.Config {
 		SequenceCompactionOverhead:    1001,
 		LocksSnapshotEntries:          101,
 		LocksCompactionOverhead:       51,
-		Debug:                         true,
-		NotifierHeartbeatInterval:     76 * time.Second,
+		RemotingHeartbeatInterval:     76 * time.Second,
+		RemotingHeartbeatTimeout:      5 * time.Second,
 		EnableAPIServer:               true,
 		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,
@@ -79,5 +79,8 @@ func createConfigWithAllFields() conf.Config {
 		MetricsBind:                   "localhost:9102",
 		EnableMetrics:                 false,
 		GlobalIngestLimitRowsPerSec:   5000,
+		RaftRTTMs:                     100,
+		RaftElectionRTT:               300,
+		RaftHeartbeatRTT:              30,
 	}
 }

@@ -3,13 +3,12 @@ package schema
 import (
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/remoting"
 	"testing"
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/protolib"
-
-	"github.com/squareup/pranadb/notifier"
 
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/command"
@@ -129,7 +128,7 @@ func TestLoader(t *testing.T) {
 		// nolint: scopelint
 		t.Run(test.name, func(t *testing.T) {
 			clus := fake.NewFakeCluster(1, 1)
-			notifier := notifier.NewFakeNotifier()
+			notifier := remoting.NewFakeServer()
 			metaController, executor := runServer(t, clus, notifier)
 			expectedSchemas := make(map[string]*common.Schema)
 			for _, ddl := range test.ddl {
@@ -165,7 +164,7 @@ func TestLoader(t *testing.T) {
 	}
 }
 
-func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier) (*meta.Controller, *command.Executor) {
+func runServer(t *testing.T, clus cluster.Cluster, notif *remoting.FakeServer) (*meta.Controller, *command.Executor) {
 	t.Helper()
 	fakeKafka := kafka.NewFakeKafka()
 	_, err := fakeKafka.CreateTopic("testtopic", 10)
@@ -176,8 +175,8 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *notifier.FakeNotifier)
 	config := conf.NewTestConfig(fakeKafka.ID)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry, failinject.NewDummyInjector())
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, protolib.EmptyRegistry, failinject.NewDummyInjector())
-	notif.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, ce)
-	notif.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
+	notif.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, ce)
+	notif.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
 	err = clus.Start()

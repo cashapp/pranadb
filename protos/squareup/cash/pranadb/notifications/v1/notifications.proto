@@ -19,5 +19,23 @@ message SessionClosedMessage {
 }
 
 message ReloadProtobuf {
+}
 
+message ClusterProposeRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}
+
+message ClusterProposeResponse {
+  int64 ret_val = 1;
+  bytes response_body = 2;
+}
+
+message ClusterReadRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}
+
+message ClusterReadResponse {
+  bytes response_body = 1;
 }

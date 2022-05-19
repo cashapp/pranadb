@@ -12,9 +12,9 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull/exec"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/sess"
 )
 
@@ -26,6 +26,7 @@ type Engine struct {
 	metaController     *meta.Controller
 	nodeID             int
 	shrder             *sharder.Sharder
+	available          common.AtomicBool
 }
 
 func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller, shrder *sharder.Sharder) *Engine {
@@ -56,8 +57,13 @@ func (p *Engine) Stop() error {
 		return nil
 	}
 	p.remoteSessionCache.Store(new(sync.Map)) // Clear the internal state
+	p.available.Set(false)
 	p.started = false
 	return nil
+}
+
+func (p *Engine) SetAvailable() {
+	p.available.Set(true)
 }
 
 // PrepareSQLStatement prepares a SQL statement
@@ -145,11 +151,13 @@ func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullE
 //nolint:gocyclo
 func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (*common.Rows, error) {
 
-	p.lock.Lock()
-	if !p.started {
-		panic("push engine not started")
+	// We need to prevent queries being executed before the schemas have been loaded, however queries from the
+	// system schema don't need schema to be loaded as that schema is hardcoded in the meta controller
+	// In order to actually load other schemas we need to execute queries from the system query so we need a way
+	// of executing system queries during the startup process
+	if !queryInfo.SystemQuery && !p.available.Get() {
+		return nil, errors.New("pull engine not available")
 	}
-	p.lock.Unlock()
 
 	if queryInfo.SessionID == "" {
 		panic("empty session id")
@@ -297,10 +305,10 @@ func (p *Engine) NumCachedSessions() (int, error) {
 	return numEntries, nil
 }
 
-func (p *Engine) HandleNotification(notification notifier.Notification) error {
+func (p *Engine) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
 	sessCloseMsg := notification.(*notifications.SessionClosedMessage) // nolint: forcetypeassert
 	p.sessionCache().Delete(sessCloseMsg.GetSessionId())
-	return nil
+	return nil, nil
 }
 
 func CurrentQuery(session *sess.Session) exec.PullExecutor {
