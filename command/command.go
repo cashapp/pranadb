@@ -88,11 +88,11 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return nil, errors.WithStack(err)
 	}
 
-	if session.Schema == nil && ast.Use == "" {
+	if session.Schema == nil && isSchemaNeeded(ast) {
 		return nil, errors.NewSchemaNotInUseError()
 	}
 
-	if session.Schema != nil && session.Schema.IsDeleted() {
+	if session.Schema != nil && session.Schema.IsDeleted() && isSchemaNeeded(ast) {
 		schema := e.metaController.GetOrCreateSchema(session.Schema.Name)
 		session.UseSchema(schema)
 	}
@@ -187,6 +187,17 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
 
+// checks if it's necessary to use a schema namespace to run the SQL statement
+func isSchemaNeeded(ast *parser.AST) bool {
+	switch {
+	case ast.Use != "":
+		return false
+	case ast.Show != nil && ast.Show.Schemas != "":
+		return false
+	}
+	return true
+}
+
 func (e *Executor) CreateSession() *sess.Session {
 	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
 	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
@@ -248,8 +259,13 @@ func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (
 
 func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {
 	// TODO auth checks
+	previousSchema := session.Schema
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	session.UseSchema(schema)
+	// delete previousSchema if its empty after switching to new schema
+	if previousSchema != nil && !previousSchema.IsDeleted() && previousSchema.Name != schemaName {
+		e.metaController.MaybeDeleteSchema(previousSchema)
+	}
 	return exec.Empty, nil
 }
 

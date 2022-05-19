@@ -1,18 +1,62 @@
+show schemas;
+|schema|
+|sys|
+1 rows returned
+
 use test;
 0 rows returned
-
 show schemas;
 |schema|
 |sys|
 |test|
 2 rows returned
 
+-- now use another schema - test should disappear as it is empty;
 use test0;
 0 rows returned
-
 show schemas;
 |schema|
 |sys|
-|test|
 |test0|
+2 rows returned
+
+--now create a source in this schema;
+--create topic payments;
+create source payments (
+    payment_id varchar,
+    customer_id bigint,
+    amount decimal(10, 2)
+) with (
+    brokername = "testbroker",
+    topicname = "payments",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json"
+);
+0 rows returned
+
+--now go to another schema - test0 should still exist as it's not empty;
+use test1;
+0 rows returned
+show schemas;
+|schema|
+|sys|
+|test0|
+|test1|
 3 rows returned
+
+--now go back to test0 and drop the source, then back to test1 - test0 should have disappeared;
+use test0;
+0 rows returned
+drop source payments;
+0 rows returned
+
+use test1;
+0 rows returned
+show schemas;
+|schema|
+|sys|
+|test1|
+2 rows returned
+
+--delete topic payments;
