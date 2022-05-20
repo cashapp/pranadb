@@ -1,6 +1,7 @@
 package pull
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/pingcap/parser/model"
@@ -244,4 +245,42 @@ func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool
 		sortByExprs[i] = common.NewExpression(byitem.Expr)
 	}
 	return desc, sortByExprs
+}
+
+func dumpPhysicalPlan(plan planner.PhysicalPlan) string {
+	builder := &strings.Builder{}
+	dumpPhysicalPlan_(plan, 0, builder)
+	return builder.String()
+}
+
+func dumpPhysicalPlan_(plan planner.PhysicalPlan, level int, builder *strings.Builder) {
+	for i := 0; i < level-1; i++ {
+		builder.WriteString("   |")
+	}
+	if level > 0 {
+		builder.WriteString("   > ")
+	}
+	builder.WriteString(fmt.Sprintf("%T\n", plan))
+	for _, child := range plan.Children() {
+		dumpPhysicalPlan_(child, level+1, builder)
+	}
+}
+
+func dumpPullDAG(pullDAG exec.PullExecutor) string {
+	builder := &strings.Builder{}
+	dumpPullDAG_(pullDAG, 0, builder)
+	return builder.String()
+}
+
+func dumpPullDAG_(pullDAG exec.PullExecutor, level int, builder *strings.Builder) {
+	for i := 0; i < level-1; i++ {
+		builder.WriteString("   |")
+	}
+	if level > 0 {
+		builder.WriteString("   > ")
+	}
+	builder.WriteString(fmt.Sprintf("%T\n", pullDAG))
+	for _, child := range pullDAG.GetChildren() {
+		dumpPullDAG_(child, level+1, builder)
+	}
 }
