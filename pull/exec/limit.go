@@ -43,7 +43,7 @@ func (l *PullLimit) GetRows(limit int) (*common.Rows, error) {
 	if l.count > math.MaxInt32 {
 		return nil, errors.Errorf("limit count %d cannot be larger than %d", l.count, math.MaxInt32)
 	}
-	offsetAndCount := int(l.offset + l.count)
+	offsetAndCount := l.offset + l.count
 	if offsetAndCount > math.MaxInt32 {
 		return nil, errors.Errorf("limit offset and count cannot be larger than %d", math.MaxInt32)
 	}
@@ -52,7 +52,7 @@ func (l *PullLimit) GetRows(limit int) (*common.Rows, error) {
 	}
 	if l.rows == nil {
 		var err error
-		l.rows, err = l.GetChildren()[0].GetRows(offsetAndCount)
+		l.rows, err = l.GetChildren()[0].GetRows(int(offsetAndCount))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
