@@ -346,7 +346,7 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	}
 	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(sourceName)
-	c.MaybeDeleteSchema(schema)
+	c.maybeDeleteSchema(schema)
 	return nil
 }
 
@@ -393,7 +393,7 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)
 	}
-	c.MaybeDeleteSchema(schema)
+	c.maybeDeleteSchema(schema)
 	return nil
 }
 
@@ -427,8 +427,18 @@ func (c *Controller) registerSystemSchema() {
 	schema.PutTable(IndexDefTableInfo.Name, IndexDefTableInfo)
 }
 
-// MaybeDeleteSchema - Schema are removed once they have no more tables
-func (c *Controller) MaybeDeleteSchema(schema *common.Schema) {
+// DeleteEmptySchemasExcept - deletes empty schemas except the schema given as argument
+func (c *Controller) DeleteEmptySchemasExcept(schema *common.Schema) {
+	for name, s := range c.schemas {
+		if schema != nil && name == schema.Name {
+			continue
+		}
+		c.maybeDeleteSchema(s)
+	}
+}
+
+// Schema are removed once they have no more tables
+func (c *Controller) maybeDeleteSchema(schema *common.Schema) {
 	if schema.LenTables() == 0 {
 		delete(c.schemas, schema.Name)
 		schema.SetDeleted()

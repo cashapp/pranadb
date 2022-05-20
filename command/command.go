@@ -172,7 +172,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		}
 		return rows, nil
 	case ast.Show != nil && ast.Show.Schemas != "":
-		rows, err := e.execShowSchemas()
+		rows, err := e.execShowSchemas(session)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -259,13 +259,9 @@ func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (
 
 func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {
 	// TODO auth checks
-	previousSchema := session.Schema
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	session.UseSchema(schema)
-	// delete previousSchema if its empty after switching to new schema
-	if previousSchema != nil && !previousSchema.IsDeleted() && previousSchema.Name != schemaName {
-		e.metaController.MaybeDeleteSchema(previousSchema)
-	}
+	e.metaController.DeleteEmptySchemasExcept(schema)
 	return exec.Empty, nil
 }
 
@@ -279,7 +275,8 @@ func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, err
 	return staticRows, errors.WithStack(err)
 }
 
-func (e *Executor) execShowSchemas() (exec.PullExecutor, error) {
+func (e *Executor) execShowSchemas(session *sess.Session) (exec.PullExecutor, error) {
+	e.metaController.DeleteEmptySchemasExcept(session.Schema)
 	schemaNames := e.metaController.GetSchemaNames()
 	rowsFactory := common.NewRowsFactory(
 		[]common.ColumnType{common.VarcharColumnType},
