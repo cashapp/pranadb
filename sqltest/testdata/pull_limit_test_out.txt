@@ -1,0 +1,451 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+0 rows returned
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+--load data dataset_1;
+
+--test with source;
+
+select * from test_source_1 limit 300;
+|col0|
+|30|
+|33|
+|34|
+|62|
+|63|
+|17|
+|19|
+|22|
+|41|
+|49|
+|52|
+|56|
+|58|
+|60|
+|74|
+|77|
+|7|
+|24|
+|29|
+|38|
+|66|
+|78|
+|79|
+|76|
+|9|
+|14|
+|23|
+|26|
+|35|
+|42|
+|43|
+|44|
+|50|
+|53|
+|69|
+|12|
+|18|
+|21|
+|57|
+|59|
+|64|
+|67|
+|2|
+|3|
+|4|
+|5|
+|54|
+|75|
+|1|
+|8|
+|13|
+|16|
+|32|
+|39|
+|47|
+|48|
+|55|
+|68|
+|6|
+|10|
+|11|
+|15|
+|20|
+|25|
+|27|
+|37|
+|40|
+|46|
+|61|
+|65|
+|73|
+|80|
+|28|
+|31|
+|36|
+|45|
+|51|
+|70|
+|71|
+|72|
+80 rows returned
+select * from test_source_1 limit 1;
+|col0|
+|30|
+1 rows returned
+select * from test_source_1 limit 5;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+5 rows returned
+select * from test_source_1 limit 10;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+|12|
+|2|
+|1|
+|6|
+|28|
+10 rows returned
+select * from test_source_1 limit 20;
+|col0|
+|30|
+|33|
+|17|
+|19|
+|7|
+|24|
+|76|
+|9|
+|14|
+|12|
+|18|
+|2|
+|3|
+|1|
+|8|
+|6|
+|10|
+|28|
+|31|
+|34|
+20 rows returned
+select * from test_source_1 limit 40;
+|col0|
+|30|
+|33|
+|34|
+|62|
+|17|
+|19|
+|22|
+|41|
+|7|
+|24|
+|29|
+|38|
+|76|
+|9|
+|14|
+|23|
+|26|
+|12|
+|18|
+|21|
+|57|
+|2|
+|3|
+|4|
+|5|
+|1|
+|8|
+|13|
+|16|
+|6|
+|10|
+|11|
+|15|
+|28|
+|31|
+|36|
+|45|
+|63|
+|49|
+|66|
+40 rows returned
+
+select * from test_source_1 limit 0, 10;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+|12|
+|2|
+|1|
+|6|
+|28|
+10 rows returned
+select * from test_source_1 limit 5, 5;
+|col0|
+|12|
+|2|
+|1|
+|6|
+|28|
+5 rows returned
+select * from test_source_1 limit 5 offset 5;
+|col0|
+|12|
+|2|
+|1|
+|6|
+|28|
+5 rows returned
+select * from test_source_1 limit 300, 5;
+|col0|
+0 rows returned
+
+--test with mv;
+
+select * from test_mv_1 limit 300;
+|col0|
+|30|
+|33|
+|34|
+|62|
+|63|
+|17|
+|19|
+|22|
+|41|
+|49|
+|52|
+|56|
+|58|
+|60|
+|74|
+|77|
+|7|
+|24|
+|29|
+|38|
+|66|
+|78|
+|79|
+|76|
+|9|
+|14|
+|23|
+|26|
+|35|
+|42|
+|43|
+|44|
+|50|
+|53|
+|69|
+|12|
+|18|
+|21|
+|57|
+|59|
+|64|
+|67|
+|2|
+|3|
+|4|
+|5|
+|54|
+|75|
+|1|
+|8|
+|13|
+|16|
+|32|
+|39|
+|47|
+|48|
+|55|
+|68|
+|6|
+|10|
+|11|
+|15|
+|20|
+|25|
+|27|
+|37|
+|40|
+|46|
+|61|
+|65|
+|73|
+|80|
+|28|
+|31|
+|36|
+|45|
+|51|
+|70|
+|71|
+|72|
+80 rows returned
+select * from test_mv_1 limit 1;
+|col0|
+|30|
+1 rows returned
+select * from test_mv_1 limit 5;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+5 rows returned
+select * from test_mv_1 limit 10;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+|12|
+|2|
+|1|
+|6|
+|28|
+10 rows returned
+select * from test_mv_1 limit 20;
+|col0|
+|30|
+|33|
+|17|
+|19|
+|7|
+|24|
+|76|
+|9|
+|14|
+|12|
+|18|
+|2|
+|3|
+|1|
+|8|
+|6|
+|10|
+|28|
+|31|
+|34|
+20 rows returned
+select * from test_mv_1 limit 40;
+|col0|
+|30|
+|33|
+|34|
+|62|
+|17|
+|19|
+|22|
+|41|
+|7|
+|24|
+|29|
+|38|
+|76|
+|9|
+|14|
+|23|
+|26|
+|12|
+|18|
+|21|
+|57|
+|2|
+|3|
+|4|
+|5|
+|1|
+|8|
+|13|
+|16|
+|6|
+|10|
+|11|
+|15|
+|28|
+|31|
+|36|
+|45|
+|63|
+|49|
+|66|
+40 rows returned
+
+select * from test_mv_1 limit 0, 10;
+|col0|
+|30|
+|17|
+|7|
+|76|
+|9|
+|12|
+|2|
+|1|
+|6|
+|28|
+10 rows returned
+select * from test_mv_1 limit 5, 5;
+|col0|
+|12|
+|2|
+|1|
+|6|
+|28|
+5 rows returned
+select * from test_mv_1 limit 5 offset 5;
+|col0|
+|12|
+|2|
+|1|
+|6|
+|28|
+5 rows returned
+select * from test_mv_1 limit 300, 5;
+|col0|
+0 rows returned
+
+
+drop materialized view test_mv_1;
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
