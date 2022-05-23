@@ -78,7 +78,11 @@ func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 	if startIndex == 0 && endIndex >= l.rows.RowCount() {
 		return l.rows, nil
 	}
-	result := l.rowsFactory.NewRows(endIndex - startIndex)
+	capacity := endIndex - startIndex
+	if capacity < 0 {
+		capacity = 0
+	}
+	result := l.rowsFactory.NewRows(capacity)
 	for i := startIndex; i < endIndex; i++ {
 		result.AppendRow(l.rows.GetRow(i))
 	}

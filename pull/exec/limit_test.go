@@ -157,6 +157,20 @@ func TestPullLimit_GetRows(t *testing.T) {
 			want:    nil,
 			wantErr: false,
 		},
+		{
+			name: "cursor exceeded",
+			fields: fields{
+				pullExecutorBase: makeBase(),
+				rows:             existingRows,
+				count:            50,
+				cursor:           20,
+			},
+			args: args{
+				maxRowsToReturn: 100,
+			},
+			want:    nil,
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
