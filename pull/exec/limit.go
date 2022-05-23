@@ -69,9 +69,6 @@ func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 			}
 		}
 	}
-	if l.cursor > l.rows.RowCount() {
-		return l.rowsFactory.NewRows(0), nil
-	}
 	startIndex := l.cursor
 	endIndex := startIndex + maxRowsToReturn
 	if endIndex > l.rows.RowCount() {

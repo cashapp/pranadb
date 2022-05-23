@@ -41,7 +41,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
-		want    int
+		want    []int64
 		wantErr bool
 	}{
 		{
@@ -54,7 +54,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 100,
 			},
-			want:    0,
+			want:    nil,
 			wantErr: true,
 		},
 		{
@@ -66,7 +66,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 100,
 			},
-			want:    0,
+			want:    nil,
 			wantErr: true,
 		},
 		{
@@ -78,7 +78,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 100,
 			},
-			want:    0,
+			want:    nil,
 			wantErr: false,
 		},
 		{
@@ -90,7 +90,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 100,
 			},
-			want:    1,
+			want:    []int64{0},
 			wantErr: false,
 		},
 		{
@@ -102,7 +102,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 100,
 			},
-			want:    10,
+			want:    []int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			wantErr: false,
 		},
 		{
@@ -114,7 +114,47 @@ func TestPullLimit_GetRows(t *testing.T) {
 			args: args{
 				maxRowsToReturn: 5,
 			},
-			want:    5,
+			want:    []int64{0, 1, 2, 3, 4},
+			wantErr: false,
+		},
+		{
+			name: "limit 5 max rows 5",
+			fields: fields{
+				pullExecutorBase: makeBase(),
+				count:            5,
+			},
+			args: args{
+				maxRowsToReturn: 5,
+			},
+			want:    []int64{0, 1, 2, 3, 4},
+			wantErr: false,
+		},
+		{
+			name: "cursor advanced",
+			fields: fields{
+				pullExecutorBase: makeBase(),
+				rows:             existingRows,
+				count:            50,
+				cursor:           5,
+			},
+			args: args{
+				maxRowsToReturn: 100,
+			},
+			want:    []int64{5, 6, 7, 8, 9},
+			wantErr: false,
+		},
+		{
+			name: "cursor exhausted",
+			fields: fields{
+				pullExecutorBase: makeBase(),
+				rows:             existingRows,
+				count:            50,
+				cursor:           10,
+			},
+			args: args{
+				maxRowsToReturn: 100,
+			},
+			want:    nil,
 			wantErr: false,
 		},
 	}
@@ -133,9 +173,14 @@ func TestPullLimit_GetRows(t *testing.T) {
 				t.Errorf("PullLimit.GetRows() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			for i := 0; i < tt.want; i++ {
+			if !tt.wantErr {
+				if got.RowCount() != len(tt.want) {
+					t.Errorf("expected %d rows but got %d", tt.want, got.RowCount())
+				}
+			}
+			for i := 0; i < len(tt.want); i++ {
 				row := got.GetRow(i)
-				if row.GetInt64(0) != int64(i) {
+				if row.GetInt64(0) != tt.want[i] {
 					t.Errorf("row %d does not match %d", i, row.GetInt64(0))
 				}
 			}
