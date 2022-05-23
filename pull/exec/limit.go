@@ -1,7 +1,7 @@
 package exec
 
 import (
-	"math"
+	"fmt"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -31,33 +31,36 @@ func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset
 	}
 }
 
-func (l *PullLimit) GetRows(limit int) (*common.Rows, error) {
-	if limit < 1 {
-		return nil, errors.Errorf("invalid limit %d", limit)
+func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
+	if maxRowsToReturn < 1 {
+		return nil, errors.Errorf("invalid limit %d", maxRowsToReturn)
 	}
-	// Offset and count are parsed as uint64s, we must check if their sum fits an int.
-	if l.offset > math.MaxInt32 {
-		return nil, errors.Errorf("limit offset %d cannot be larger than %d", l.offset, math.MaxInt32)
+	// OFFSET is unsupported for now.
+	if l.offset != 0 {
+		return nil, errors.NewInvalidStatementError("offset must be zero")
 	}
-	offset := int(l.offset)
-	if l.count > math.MaxInt32 {
-		return nil, errors.Errorf("limit count %d cannot be larger than %d", l.count, math.MaxInt32)
-	}
-	offsetAndCount := l.offset + l.count
-	if offsetAndCount > math.MaxInt32 {
-		return nil, errors.Errorf("limit offset and count cannot be larger than %d", math.MaxInt32)
+	// Because LIMIT is often used together with ORDER BY which is limited to orderByMaxRows rows,
+	// we impose the same max on LIMIT.
+	if l.count > orderByMaxRows {
+		return nil, errors.NewInvalidStatementError(
+			fmt.Sprintf("limit count cannot be larger than %d", orderByMaxRows),
+		)
 	}
 	if l.count == 0 {
 		return l.rowsFactory.NewRows(0), nil
 	}
 	if l.rows == nil {
+		child := l.GetChildren()[0]
 		var err error
-		l.rows, err = l.GetChildren()[0].GetRows(int(offsetAndCount))
+		l.rows, err = child.GetRows(int(l.count))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		for { // Drain all rows so that the current session query is cleared.
-			rows, err := l.GetChildren()[0].GetRows(batchSize)
+		for {
+			// Drain all rows so that the current session query is cleared.
+			// TODO: Add a method to stop PullExecutor early
+			// https://github.com/cashapp/pranadb/issues/361
+			rows, err := child.GetRows(batchSize)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -66,15 +69,15 @@ func (l *PullLimit) GetRows(limit int) (*common.Rows, error) {
 			}
 		}
 	}
-	startIndex := offset + l.cursor
-	if startIndex >= l.rows.RowCount() {
+	if l.cursor > l.rows.RowCount() {
 		return l.rowsFactory.NewRows(0), nil
 	}
-	endIndex := startIndex + limit
+	startIndex := l.cursor
+	endIndex := startIndex + maxRowsToReturn
 	if endIndex > l.rows.RowCount() {
 		endIndex = l.rows.RowCount()
 	}
-	l.cursor += limit
+	l.cursor = endIndex
 	if startIndex == 0 && endIndex >= l.rows.RowCount() {
 		return l.rows, nil
 	}

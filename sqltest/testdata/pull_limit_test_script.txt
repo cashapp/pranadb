@@ -2,6 +2,7 @@
 use test;
 create source test_source_1(
     col0 bigint,
+    col1 bigint,
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -10,7 +11,8 @@ create source test_source_1(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        meta("key").k0
+        meta("key").k0,
+        v1
     )
 );
 
@@ -20,32 +22,37 @@ create materialized view test_mv_1 as select * from test_source_1;
 
 --test with source;
 
-select * from test_source_1 limit 300;
-select * from test_source_1 limit 1;
-select * from test_source_1 limit 5;
-select * from test_source_1 limit 10;
-select * from test_source_1 limit 20;
-select * from test_source_1 limit 40;
+select col1 from test_source_1 limit 1;
+select col1 from test_source_1 limit 5;
+select col1 from test_source_1 limit 41;
+select col1 from test_source_1 limit 100;
 
-select * from test_source_1 limit 0, 10;
-select * from test_source_1 limit 5, 5;
-select * from test_source_1 limit 5 offset 5;
-select * from test_source_1 limit 300, 5;
+-- over limit;
+select col1 from test_source_1 limit 999999999;
+
+-- explicit zero offset;
+select col1 from test_source_1 limit 0, 1;
+select col1 from test_source_1 limit 1 offset 0;
+
+-- nonzero offset;
+select col1 from test_source_1 limit 1 offset 10;
 
 --test with mv;
 
-select * from test_mv_1 limit 300;
-select * from test_mv_1 limit 1;
-select * from test_mv_1 limit 5;
-select * from test_mv_1 limit 10;
-select * from test_mv_1 limit 20;
-select * from test_mv_1 limit 40;
+select col1 from test_mv_1 limit 1;
+select col1 from test_mv_1 limit 5;
+select col1 from test_mv_1 limit 41;
+select col1 from test_mv_1 limit 100;
 
-select * from test_mv_1 limit 0, 10;
-select * from test_mv_1 limit 5, 5;
-select * from test_mv_1 limit 5 offset 5;
-select * from test_mv_1 limit 300, 5;
+-- over limit;
+select col1 from test_mv_1 limit 999999999;
 
+-- explicit zero offset;
+select col1 from test_mv_1 limit 0, 1;
+select col1 from test_mv_1 limit 1 offset 0;
+
+-- nonzero offset;
+select col1 from test_mv_1 limit 1 offset 10;
 
 drop materialized view test_mv_1;
 
