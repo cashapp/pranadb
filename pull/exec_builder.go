@@ -75,10 +75,6 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 			exprs = append(exprs, common.NewExpression(expr))
 		}
 		executor = exec.NewPullSelect(colNames, colTypes, exprs)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
 	case *planner.PhysicalTableScan:
 		if remote {
 			tableName := op.Table.Name.L
