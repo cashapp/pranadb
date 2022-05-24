@@ -84,10 +84,21 @@ func (is *PhysicalIndexScan) initSchema(idxExprCols []*expression.Column, isDoub
 			indexCols = append(indexCols, idxExprCols[i])
 		} else {
 			// TODO: try to reuse the col generated when building the LogicalDataSource.
+			colInfo := is.Table.Columns[is.Index.Columns[i].Offset]
+			fieldName := &types.FieldName{
+				DBName:            is.DBName,
+				TblName:           is.Table.Name,
+				ColName:           colInfo.Name,
+				OrigTblName:       is.Table.Name,
+				OrigColName:       colInfo.Name,
+				Hidden:            colInfo.Hidden,
+				NotExplicitUsable: colInfo.State != model.StatePublic,
+			}
 			indexCols = append(indexCols, &expression.Column{
-				ID:       is.Table.Columns[is.Index.Columns[i].Offset].ID,
-				RetType:  &is.Table.Columns[is.Index.Columns[i].Offset].FieldType,
+				ID:       colInfo.ID,
+				RetType:  &colInfo.FieldType,
 				UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
+				OrigName: fieldName.String(),
 			})
 		}
 	}

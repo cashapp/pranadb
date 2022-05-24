@@ -33,14 +33,6 @@ select customer_id from transactions where customer_id = 600;
 |600|
 2 rows returned
 
---test with partially-covering index;
-
-select customer_id, col2 from transactions where customer_id = 600;
-|customer_id|col2|
-|600|abc|
-|600|abc|
-2 rows returned
-
 select customer_id from transactions where customer_id is null;
 |customer_id|
 |null|
@@ -50,7 +42,46 @@ select customer_id from transactions where customer_id = 1000000;
 |customer_id|
 0 rows returned
 
+--test partially-covering index;
+
+select * from transactions where customer_id = 600;
+|id|customer_id|col2|
+|7|600|abc|
+|6|600|abc|
+2 rows returned
+
 drop index index1 on transactions;
+0 rows returned
+
+--test multi-col index;
+
+create index index2 on transactions (customer_id, col2);
+0 rows returned
+
+select * from transactions where customer_id = 600;
+|id|customer_id|col2|
+|7|600|abc|
+|6|600|abc|
+2 rows returned
+
+select col2 from transactions where col2 = 'abc';
+|col2|
+|abc|
+|abc|
+|abc|
+|abc|
+|abc|
+|abc|
+|abc|
+7 rows returned
+
+select col2, customer_id from transactions where customer_id = 600;
+|col2|customer_id|
+|abc|600|
+|abc|600|
+2 rows returned
+
+drop index index2 on transactions;
 0 rows returned
 
 drop source transactions;

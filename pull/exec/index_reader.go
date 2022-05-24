@@ -39,10 +39,15 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	for _, colIndex := range includedCols {
 		resultColTypes = append(resultColTypes, tableInfo.ColumnTypes[colIndex])
 	}
+	var resultColNames []string
+	for _, colIndex := range includedCols {
+		resultColNames = append(resultColNames, tableInfo.ColumnNames[colIndex])
+	}
 
 	rf := common.NewRowsFactory(resultColTypes)
 	base := pullExecutorBase{
-		colTypes:    tableInfo.ColumnTypes,
+		colNames:    resultColNames,
+		colTypes:    resultColTypes,
 		rowsFactory: rf,
 		keyCols:     tableInfo.PrimaryKeyCols,
 	}
@@ -150,12 +155,25 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
-		offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows)
+		// Need to add PK cols if selected
+		var includedPkCols []int
+		for _, keyCol := range p.keyCols {
+			if common.Contains(p.includeCols, keyCol) {
+				includedPkCols = append(includedPkCols, keyCol)
+			}
+		}
+		_, offset := common.ReadUint64FromBufferBE(kvPair.Key, 0)
+		_, offset = common.ReadUint64FromBufferBE(kvPair.Key, offset)
+		offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, len(includedPkCols), rows)
+		for _, pkCol := range includedPkCols {
+			colType := p.tableInfo.ColumnTypes[pkCol]
+			_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, pkCol, true, rows)
+		}
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		if !p.covers {
-			// Find cols returned that are not in the index
+			// Find cols selected that are not in the index
 			var includeCol []bool
 			includeColCount := 0
 			for i := range p.colTypes {

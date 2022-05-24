@@ -110,7 +110,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 			if err != nil {
 				return nil, err
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, remoteDag.ColNames(), remoteDag.ColTypes(), session.Schema.Name, p.cluster,
 				-1)
 		}
 	case *planner.PhysicalSort:
