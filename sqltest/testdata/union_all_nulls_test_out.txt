@@ -1,0 +1,96 @@
+-- Tests union all with null values in columns;
+
+--create topic testtopic1;
+--create topic testtopic2;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+--load data dataset_2;
+
+-- test with explicit columns;
+create materialized view test_mv_1 as
+select col0, col1, col2, col3, col4, col5, col6 from test_source_1
+union all
+select col0, col1, col2, col3, col4, col5, col6 from test_source_2;
+0 rows returned
+
+select * from test_mv_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|2|null|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|3|300|null|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|4|400|4000|null|42345678.99|str4|2020-01-04 01:00:00.123000|
+|5|500|5000|5234.4321|null|str5|2020-01-05 01:00:00.123000|
+|6|600|6000|6234.4321|62345678.99|null|2020-01-06 01:00:00.123000|
+|7|700|7000|7234.4321|72345678.99|str7|null|
+|11|110|1100|1334.4321|12445678.99|str11|2020-01-11 01:00:00.123000|
+|12|null|2100|2334.4321|22445678.99|str21|2020-01-12 01:00:00.123000|
+|13|310|null|3334.4321|32445678.99|str31|2020-01-13 01:00:00.123000|
+|14|410|4100|null|42445678.99|str41|2020-01-14 01:00:00.123000|
+|15|510|5100|5334.4321|null|str51|2020-01-15 01:00:00.123000|
+|16|610|6100|6334.4321|62445678.99|null|2020-01-16 01:00:00.123000|
+|17|710|7100|7334.4321|72445678.99|str71|null|
+14 rows returned
+
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_2;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic2;
+--delete topic testtopic1;

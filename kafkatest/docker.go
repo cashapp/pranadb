@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	redpandVersion = "v21.7.6"
+	redpandVersion = "v22.1.3"
 
 	kafkaAPIPort  = "9092"
 	zookeeperPort = "2181"
