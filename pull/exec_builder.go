@@ -119,6 +119,11 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	case *planner.PhysicalLimit:
 		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
+	case *planner.PhysicalTopN:
+		limit := exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
+		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
+		executor = exec.NewPullChain(limit, sort)
 	default:
 		return nil, errors.Errorf("unexpected plan type %T", plan)
 	}

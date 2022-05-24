@@ -3,6 +3,7 @@ use test;
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    col2 bigint,
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -12,7 +13,8 @@ create source test_source_1(
     valueencoding = "json",
     columnselectors = (
         meta("key").k0,
-        v1
+        v1,
+        v2
     )
 );
 
@@ -22,37 +24,55 @@ create materialized view test_mv_1 as select * from test_source_1;
 
 --test with source;
 
-select col1 from test_source_1 limit 1;
-select col1 from test_source_1 limit 5;
-select col1 from test_source_1 limit 41;
-select col1 from test_source_1 limit 100;
+select col2 from test_source_1 limit 1;
+select col1 from test_source_1 order by col1 limit 1;
+select col2 from test_source_1 limit 5;
+select col1 from test_source_1 order by col1 limit 5;
+select col2 from test_source_1 limit 21;
+select col1 from test_source_1 order by col1 limit 21;
+select col2 from test_source_1 limit 100;
+select col1 from test_source_1 order by col1 limit 100;
 
 -- over limit;
-select col1 from test_source_1 limit 999999999;
+select col2 from test_source_1 limit 999999999;
+select col1 from test_source_1 order by col1 limit 999999999;
 
 -- explicit zero offset;
-select col1 from test_source_1 limit 0, 1;
-select col1 from test_source_1 limit 1 offset 0;
+select col2 from test_source_1 limit 0, 1;
+select col1 from test_source_1 order by col1 limit 0, 1;
+select col2 from test_source_1 limit 1 offset 0;
+select col1 from test_source_1 order by col1 limit 1 offset 0;
 
 -- nonzero offset;
-select col1 from test_source_1 limit 1 offset 10;
+select col2 from test_source_1 limit 1 offset 10;
+select col1 from test_source_1 order by col1 limit 1 offset 10;
 
 --test with mv;
 
-select col1 from test_mv_1 limit 1;
-select col1 from test_mv_1 limit 5;
-select col1 from test_mv_1 limit 41;
-select col1 from test_mv_1 limit 100;
+select col1 from test_mv_1 order by col1;
+
+select col2 from test_mv_1 limit 1;
+select col1 from test_mv_1 order by col1 limit 1;
+select col2 from test_mv_1 limit 5;
+select col1 from test_mv_1 order by col1 limit 5;
+select col2 from test_mv_1 limit 21;
+select col1 from test_mv_1 order by col1 limit 21;
+select col2 from test_mv_1 limit 100;
+select col1 from test_mv_1 order by col1 limit 100;
 
 -- over limit;
-select col1 from test_mv_1 limit 999999999;
+select col2 from test_mv_1 limit 999999999;
+select col1 from test_mv_1 order by col1 limit 999999999;
 
 -- explicit zero offset;
-select col1 from test_mv_1 limit 0, 1;
-select col1 from test_mv_1 limit 1 offset 0;
+select col2 from test_mv_1 limit 0, 1;
+select col1 from test_mv_1 order by col1 limit 0, 1;
+select col2 from test_mv_1 limit 1 offset 0;
+select col1 from test_mv_1 order by col1 limit 1 offset 0;
 
 -- nonzero offset;
-select col1 from test_mv_1 limit 1 offset 10;
+select col2 from test_mv_1 limit 1 offset 10;
+select col1 from test_mv_1 order by col1 limit 1 offset 10;
 
 drop materialized view test_mv_1;
 
