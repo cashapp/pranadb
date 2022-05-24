@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/squareup/pranadb/meta"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -37,10 +38,12 @@ type Server struct {
 	expSessCheckInterval time.Duration
 	sessTimeout          time.Duration
 	protoRegistry        *protolib.ProtoRegistry
+	metaController       *meta.Controller
 }
 
-func NewAPIServer(ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
+func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
 	return &Server{
+		metaController:       metaController,
 		ce:                   ce,
 		protoRegistry:        protobufs,
 		serverAddress:        cfg.APIServerListenAddresses[cfg.NodeID],
@@ -114,7 +117,7 @@ func (s *Server) CloseSession(ctx context.Context, request *service.CloseSession
 		return nil, errors.WithStack(err)
 	}
 	s.sessions.Delete(request.GetSessionId())
-	if err := sessEntry.session.Close(); err != nil {
+	if err := sessEntry.session.Close(s.metaController); err != nil {
 		log.Errorf("failed to close session %+v", err)
 	}
 	return &emptypb.Empty{}, nil
@@ -296,7 +299,7 @@ func (s *Server) checkExpiredSessions() {
 		if now.Sub(*lat) > s.sessTimeout {
 			log.Debugf("Deleting expired session %v", key)
 			s.sessions.Delete(key)
-			if err := se.session.Close(); err != nil {
+			if err := se.session.Close(s.metaController); err != nil {
 				log.Errorf("failed to close session %+v", err)
 			}
 		}

@@ -76,7 +76,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	clus.RegisterMembershipListener(pullEngine)
-	apiServer := api.NewAPIServer(commandExecutor, protoRegistry, config)
+	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
 
 	services := []service{
 		lifeCycleMgr,

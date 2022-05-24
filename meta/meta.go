@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/squareup/pranadb/errors"
@@ -151,6 +152,7 @@ func (c *Controller) GetSchemaNames() []string {
 	for name := range c.schemas {
 		schemaNames = append(schemaNames, name)
 	}
+	sort.Strings(schemaNames)
 	return schemaNames
 }
 
@@ -344,7 +346,7 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	}
 	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(sourceName)
-	c.maybeDeleteSchema(schema)
+	c.DeleteSchemaIfEmpty(schema)
 	return nil
 }
 
@@ -391,7 +393,7 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)
 	}
-	c.maybeDeleteSchema(schema)
+	c.DeleteSchemaIfEmpty(schema)
 	return nil
 }
 
@@ -425,9 +427,9 @@ func (c *Controller) registerSystemSchema() {
 	schema.PutTable(IndexDefTableInfo.Name, IndexDefTableInfo)
 }
 
-// Schema are removed once they have no more tables
-func (c *Controller) maybeDeleteSchema(schema *common.Schema) {
-	if schema.LenTables() == 0 {
+// DeleteSchemaIfEmpty - Schema are removed once they have no more tables
+func (c *Controller) DeleteSchemaIfEmpty(schema *common.Schema) {
+	if schema != nil && schema.LenTables() == 0 {
 		delete(c.schemas, schema.Name)
 		schema.SetDeleted()
 	}

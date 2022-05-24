@@ -152,7 +152,8 @@ type Execute struct {
 
 // Show statement
 type Show struct {
-	Tables string `  @"TABLES"`
+	Tables  string `  @"TABLES"`
+	Schemas string `| @"SCHEMAS"`
 }
 
 // AST root.
