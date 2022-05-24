@@ -52,6 +52,7 @@ func TestPointGetUsesSelectForPushQuery(t *testing.T) {
 func TestPointGetUsesIndexScanForPullQuery(t *testing.T) {
 	schema := createTestSchema()
 	schema, err := attachIndexToSchema(schema)
+	require.NoError(t, err)
 	planner := NewPlanner(schema)
 	physi, _, err := planner.QueryToPlan("select col1 from table1 where col1='abc'", false, true)
 	require.NoError(t, err)
