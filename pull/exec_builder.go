@@ -1,6 +1,7 @@
 package pull
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/pingcap/parser/model"
@@ -116,6 +117,8 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
+	case *planner.PhysicalLimit:
+		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
 	default:
 		return nil, errors.Errorf("unexpected plan type %T", plan)
 	}
@@ -242,4 +245,42 @@ func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool
 		sortByExprs[i] = common.NewExpression(byitem.Expr)
 	}
 	return desc, sortByExprs
+}
+
+func dumpPhysicalPlan(plan planner.PhysicalPlan) string { // nolint: deadcode
+	builder := &strings.Builder{}
+	dumpPhysicalPlanRec(plan, 0, builder)
+	return builder.String()
+}
+
+func dumpPhysicalPlanRec(plan planner.PhysicalPlan, level int, builder *strings.Builder) {
+	for i := 0; i < level-1; i++ {
+		builder.WriteString("   |")
+	}
+	if level > 0 {
+		builder.WriteString("   > ")
+	}
+	builder.WriteString(fmt.Sprintf("%T\n", plan))
+	for _, child := range plan.Children() {
+		dumpPhysicalPlanRec(child, level+1, builder)
+	}
+}
+
+func dumpPullDAG(pullDAG exec.PullExecutor) string { // nolint: deadcode
+	builder := &strings.Builder{}
+	dumpPullDAGRec(pullDAG, 0, builder)
+	return builder.String()
+}
+
+func dumpPullDAGRec(pullDAG exec.PullExecutor, level int, builder *strings.Builder) {
+	for i := 0; i < level-1; i++ {
+		builder.WriteString("   |")
+	}
+	if level > 0 {
+		builder.WriteString("   > ")
+	}
+	builder.WriteString(fmt.Sprintf("%T\n", pullDAG))
+	for _, child := range pullDAG.GetChildren() {
+		dumpPullDAGRec(child, level+1, builder)
+	}
 }

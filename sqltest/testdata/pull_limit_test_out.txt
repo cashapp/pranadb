@@ -1,0 +1,298 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+--load data dataset_1;
+
+--test with source;
+
+select col1 from test_source_1 limit 1;
+|col1|
+|42|
+1 rows returned
+select col1 from test_source_1 limit 5;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+5 rows returned
+select col1 from test_source_1 limit 41;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+41 rows returned
+select col1 from test_source_1 limit 100;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+51 rows returned
+
+-- over limit;
+select col1 from test_source_1 limit 999999999;
+|col1|
+Failed to execute statement: PDB0002 - limit count cannot be larger than 50000
+
+-- explicit zero offset;
+select col1 from test_source_1 limit 0, 1;
+|col1|
+|42|
+1 rows returned
+select col1 from test_source_1 limit 1 offset 0;
+|col1|
+|42|
+1 rows returned
+
+-- nonzero offset;
+select col1 from test_source_1 limit 1 offset 10;
+|col1|
+Failed to execute statement: PDB0002 - offset must be zero
+
+--test with mv;
+
+select col1 from test_mv_1 limit 1;
+|col1|
+|42|
+1 rows returned
+select col1 from test_mv_1 limit 5;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+5 rows returned
+select col1 from test_mv_1 limit 41;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+41 rows returned
+select col1 from test_mv_1 limit 100;
+|col1|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+|42|
+51 rows returned
+
+-- over limit;
+select col1 from test_mv_1 limit 999999999;
+|col1|
+Failed to execute statement: PDB0002 - limit count cannot be larger than 50000
+
+-- explicit zero offset;
+select col1 from test_mv_1 limit 0, 1;
+|col1|
+|42|
+1 rows returned
+select col1 from test_mv_1 limit 1 offset 0;
+|col1|
+|42|
+1 rows returned
+
+-- nonzero offset;
+select col1 from test_mv_1 limit 1 offset 10;
+|col1|
+Failed to execute statement: PDB0002 - offset must be zero
+
+drop materialized view test_mv_1;
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;
