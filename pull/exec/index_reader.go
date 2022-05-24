@@ -122,6 +122,7 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	}, nil
 }
 
+//nolint:gocyclo
 func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
 	if limit < 1 {
 		return nil, errors.Errorf("invalid limit %d", limit)
