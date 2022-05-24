@@ -88,11 +88,11 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return nil, errors.WithStack(err)
 	}
 
-	if session.Schema == nil && ast.Use == "" {
+	if session.Schema == nil && isSchemaNeeded(ast) {
 		return nil, errors.NewSchemaNotInUseError()
 	}
 
-	if session.Schema != nil && session.Schema.IsDeleted() {
+	if session.Schema != nil && session.Schema.IsDeleted() && isSchemaNeeded(ast) {
 		schema := e.metaController.GetOrCreateSchema(session.Schema.Name)
 		session.UseSchema(schema)
 	}
@@ -171,6 +171,12 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
+	case ast.Show != nil && ast.Show.Schemas != "":
+		rows, err := e.execShowSchemas()
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return rows, nil
 	case ast.Describe != "":
 		rows, err := e.execDescribe(session, ast.Describe)
 		if err != nil {
@@ -179,6 +185,17 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return rows, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
+}
+
+// checks if it's necessary to use a schema namespace to run the SQL statement
+func isSchemaNeeded(ast *parser.AST) bool {
+	switch {
+	case ast.Use != "":
+		return false
+	case ast.Show != nil && ast.Show.Schemas != "":
+		return false
+	}
+	return true
 }
 
 func (e *Executor) CreateSession() *sess.Session {
@@ -242,8 +259,13 @@ func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (
 
 func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {
 	// TODO auth checks
+	previousSchema := session.Schema
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	session.UseSchema(schema)
+	// delete previousSchema if empty after switching to new schema
+	if previousSchema != nil && previousSchema.Name != schemaName {
+		e.metaController.DeleteSchemaIfEmpty(previousSchema)
+	}
 	return exec.Empty, nil
 }
 
@@ -254,6 +276,19 @@ func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, err
 	}
 
 	staticRows, err := exec.NewStaticRows([]string{"table", "kind"}, rows)
+	return staticRows, errors.WithStack(err)
+}
+
+func (e *Executor) execShowSchemas() (exec.PullExecutor, error) {
+	schemaNames := e.metaController.GetSchemaNames()
+	rowsFactory := common.NewRowsFactory(
+		[]common.ColumnType{common.VarcharColumnType},
+	)
+	rows := rowsFactory.NewRows(len(schemaNames))
+	for _, schemaName := range schemaNames {
+		rows.AppendStringToColumn(0, schemaName)
+	}
+	staticRows, err := exec.NewStaticRows([]string{"schema"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 

@@ -85,7 +85,10 @@ func (s *Session) Abort() error {
 }
 
 // Close must only be invoked if no queries are running
-func (s *Session) Close() error {
+func (s *Session) Close(handler SchemasHandler) error {
+	s.Lock.Lock()
+	handler.DeleteSchemaIfEmpty(s.Schema)
+	s.Lock.Unlock()
 	if len(s.PsCache) != 0 {
 		// We will only have remote sessions if we have prepared statements so we don't need to broadcast session
 		// close otherwise
@@ -96,4 +99,8 @@ func (s *Session) Close() error {
 
 type RemoteSessionCloser interface {
 	CloseRemoteSessions(sessionID string) error
+}
+
+type SchemasHandler interface {
+	DeleteSchemaIfEmpty(schema *common.Schema)
 }

@@ -111,6 +111,14 @@ func TestParse(t *testing.T) {
 			"Describe", `DESCRIBE foo`,
 			&AST{Describe: "foo"}, "",
 		},
+		{
+			"ShowTables", `SHOW TABLES`,
+			&AST{Show: &Show{Tables: "TABLES"}}, "",
+		},
+		{
+			"ShowSchemas", `SHOW SCHEMAS`,
+			&AST{Show: &Show{Schemas: "SCHEMAS"}}, "",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

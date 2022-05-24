@@ -1,0 +1,35 @@
+show schemas;
+
+use test;
+show schemas;
+
+-- now use another schema - test should disappear as it is empty;
+use test0;
+show schemas;
+
+--now create a source in this schema;
+--create topic payments;
+create source payments (
+    payment_id varchar,
+    customer_id bigint,
+    amount decimal(10, 2)
+) with (
+    brokername = "testbroker",
+    topicname = "payments",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json"
+);
+
+--now go to another schema - test0 should still exist as it's not empty;
+use test1;
+show schemas;
+
+--now go back to test0 and drop the source, then back to test1 - test0 should have disappeared;
+use test0;
+drop source payments;
+
+use test1;
+show schemas;
+
+--delete topic payments;
