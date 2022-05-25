@@ -58,9 +58,8 @@ func (s *StaticRows) GetRows(limit int) (rows *common.Rows, err error) {
 		pageEnd = s.rows.RowCount()
 	}
 	buffer := common.NewRows(s.rows.ColumnTypes(), pageEnd-s.cursor)
-	for i := s.cursor; i < pageEnd; i++ {
-		buffer.AppendRow(s.rows.GetRow(i))
+	for ; s.cursor < pageEnd; s.cursor++ {
+		buffer.AppendRow(s.rows.GetRow(s.cursor))
 	}
-	s.cursor = pageEnd
 	return buffer, nil
 }
