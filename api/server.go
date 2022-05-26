@@ -22,7 +22,7 @@ import (
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"github.com/squareup/pranadb/sess"
 	"google.golang.org/grpc"
-	_ "google.golang.org/grpc/encoding/gzip"
+	_ "google.golang.org/grpc/encoding/gzip" // Registers gzip (de)-compressor
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
