@@ -6,11 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/squareup/pranadb/meta"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/squareup/pranadb/meta"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/command"
@@ -21,6 +22,7 @@ import (
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"github.com/squareup/pranadb/sess"
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/encoding/gzip" // Registers gzip (de)-compressor
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
