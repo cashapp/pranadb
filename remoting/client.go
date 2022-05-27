@@ -414,20 +414,17 @@ func (cc *clientConnection) start() {
 }
 
 func (cc *clientConnection) Stop() {
-	cc.stop(true)
+	cc.stop()
 }
 
-func (cc *clientConnection) stop(lock bool) {
-	if lock {
-		cc.lock.Lock()
-	}
+func (cc *clientConnection) stop() {
+	cc.lock.Lock()
 	cc.started = false
 	if cc.hbTimer != nil {
 		cc.hbTimer.Stop()
 	}
-	if lock {
-		cc.lock.Unlock()
-	}
+	cc.lock.Unlock()
+	// We need to execute this and the wait on channel outside the lock to prevent deadlock
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed (e.g. from client)
 		log.Errorf("Failed to close connection %+v", err)
@@ -448,18 +445,24 @@ func (cc *clientConnection) sendHeartbeat() {
 }
 
 func (cc *clientConnection) heartTimerFired() {
+	failed := false //nolint:ifshort
 	cc.lock.Lock()
 	if cc.hbReceived {
 		cc.sendHeartbeat()
 	} else if cc.started {
-		cc.heartbeatFailed()
+		failed = true
 	}
 	cc.lock.Unlock()
+	if failed {
+		// We must execute this outside the lock to prevent a deadlock situation where a heartbeat arrives at the
+		// same time this fires
+		cc.heartbeatFailed()
+	}
 }
 
 func (cc *clientConnection) heartbeatFailed() {
 	log.Warnf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
-	cc.stop(false)
+	cc.stop()
 	cc.client.makeUnavailableWithLock(cc.serverAddress)
 	cc.client.connectionClosed(cc)
 }
