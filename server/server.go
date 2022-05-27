@@ -78,7 +78,6 @@ func NewServer(config conf.Config) (*Server, error) {
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine, false)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry, false)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
-	clus.RegisterMembershipListener(pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
 
 	services := []service{

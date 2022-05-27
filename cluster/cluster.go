@@ -57,8 +57,6 @@ type Cluster interface {
 
 	DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
-	RegisterMembershipListener(listener MembershipListener)
-
 	GetLock(prefix string) (bool, error)
 
 	ReleaseLock(prefix string) (bool, error)
@@ -261,10 +259,4 @@ type ShardListener interface {
 	RemoteWriteOccurred()
 
 	Close()
-}
-
-type MembershipListener interface {
-	NodeJoined(nodeID int)
-
-	NodeLeft(nodeID int)
 }

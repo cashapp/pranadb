@@ -42,6 +42,8 @@ const (
 	toDeleteShardID uint64 = 4
 
 	requestClientMaxPoolSize = 100
+
+	nodeHostStartTimeout = 10 * time.Second
 )
 
 func NewDragon(cnf conf.Config) (*Dragon, error) {
@@ -57,6 +59,8 @@ func NewDragon(cnf conf.Config) (*Dragon, error) {
 }
 
 type Dragon struct {
+	startStopLock                sync.Mutex
+	nodeHostStarted              bool
 	lock                         sync.RWMutex
 	cnf                          conf.Config
 	ingestDir                    string
@@ -69,14 +73,11 @@ type Dragon struct {
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
-	membershipListener           cluster.MembershipListener
 	shardSMsLock                 sync.Mutex
 	shardSMs                     map[uint64]struct{}
 	requestClientMap             sync.Map
 	requestClientPool            []remoting.Client
 	requestClientPoolLock        sync.Mutex
-	nodeHostAvailableLock        sync.RWMutex
-	nodeHostStarted              bool
 }
 
 type snapshot struct {
@@ -87,15 +88,6 @@ func (s *snapshot) Close() {
 	if err := s.pebbleSnapshot.Close(); err != nil {
 		log.Errorf("failed to close snapshot %+v", err)
 	}
-}
-
-func (d *Dragon) RegisterMembershipListener(listener cluster.MembershipListener) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if d.membershipListener != nil {
-		panic("membership listener already registered")
-	}
-	d.membershipListener = listener
 }
 
 func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFactory) {
@@ -211,12 +203,13 @@ func (d *Dragon) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExe
 	d.remoteQueryExecutionCallback = callback
 }
 
-func (d *Dragon) Start() error { // nolint:gocyclo
+// This encapsulates the first stage of start-up - after this point other nodes can contact the node, but groups may
+// not have been joined yet
+func (d *Dragon) start0() error {
+	// We protect access with its own lock - remote read and write requests can come in before the Start() method is fully
+	// complete
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	if d.started {
-		return nil
-	}
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
 	if d.cnf.ScreenDragonLogSpam {
@@ -265,13 +258,43 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
-	if err := d.startNodeHost(datadir); err != nil {
+	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
+
+	dragonBoatDir := filepath.Join(datadir, "dragon")
+
+	nhc := config.NodeHostConfig{
+		DeploymentID:   d.cnf.ClusterID,
+		WALDir:         dragonBoatDir,
+		NodeHostDir:    dragonBoatDir,
+		RTTMillisecond: 100,
+		RaftAddress:    nodeAddress,
+		EnableMetrics:  d.cnf.EnableMetrics,
+	}
+
+	nh, err := dragonboat.NewNodeHost(nhc)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	d.nh = nh
+	d.nodeHostStarted = true
+	return err
+}
+
+func (d *Dragon) Start() error { // nolint:gocyclo
+	d.startStopLock.Lock()
+	defer d.startStopLock.Unlock()
+
+	if d.started {
+		return nil
+	}
+
+	if err := d.start0(); err != nil {
 		return err
 	}
 
 	log.Debugf("Joining groups on node %d", d.cnf.NodeID)
 
-	err = d.joinSequenceGroup()
+	err := d.joinSequenceGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -321,34 +344,6 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	return nil
 }
 
-func (d *Dragon) startNodeHost(datadir string) error {
-	// We protect access with its own lock - remote read and write requests can come in before the Start() method is fully
-	// complete
-	d.nodeHostAvailableLock.Lock()
-	defer d.nodeHostAvailableLock.Unlock()
-
-	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
-
-	dragonBoatDir := filepath.Join(datadir, "dragon")
-
-	nhc := config.NodeHostConfig{
-		DeploymentID:   d.cnf.ClusterID,
-		WALDir:         dragonBoatDir,
-		NodeHostDir:    dragonBoatDir,
-		RTTMillisecond: 100,
-		RaftAddress:    nodeAddress,
-		EnableMetrics:  d.cnf.EnableMetrics,
-	}
-
-	nh, err := dragonboat.NewNodeHost(nhc)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	d.nh = nh
-	d.nodeHostStarted = true
-	return err
-}
-
 func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
 	_, err := d.executeRead(shardID, request)
 	return err
@@ -375,10 +370,10 @@ func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byt
 }
 
 func (d *Dragon) Stop() error {
+	d.startStopLock.Lock()
+	defer d.startStopLock.Unlock()
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	d.nodeHostAvailableLock.Lock()
-	defer d.nodeHostAvailableLock.Unlock()
 	if !d.started {
 		return nil
 	}
@@ -1161,13 +1156,11 @@ func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
 }
 
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
-
-	d.nodeHostAvailableLock.RLock()
-	defer d.nodeHostAvailableLock.RUnlock()
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
 		return nil, err
 	}
-
 	cs := d.nh.GetNoOPSession(uint64(request.ShardId))
 	res, err := d.proposeWithRetry(cs, request.RequestBody)
 	if err != nil {
@@ -1193,13 +1186,11 @@ func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remot
 }
 
 func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
-
-	d.nodeHostAvailableLock.RLock()
-	defer d.nodeHostAvailableLock.RUnlock()
+	d.lock.RLock()
+	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
 		return nil, err
 	}
-
 	respBody, err := d.executeSyncReadWithRetry(uint64(request.ShardId), request.RequestBody)
 	if err != nil {
 		return nil, err
@@ -1210,18 +1201,23 @@ func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadReque
 	return resp, nil
 }
 
+// Waits until the node host is available - is called with the lock RLock held and always returns with it held
 func (d *Dragon) ensureNodeHostAvailable() error {
-	if !d.nodeHostStarted {
-		start := time.Now()
-		for {
-			time.Sleep(100 * time.Millisecond)
-			if time.Now().Sub(start) > 10*time.Second {
-				return errors.New("timed out waiting for nodehost to start")
-			}
-			if d.nodeHostStarted {
-				break
-			}
+	if d.nodeHostStarted {
+		return nil
+	}
+	d.lock.RUnlock()
+	start := time.Now()
+	for {
+		time.Sleep(100 * time.Millisecond)
+		d.lock.RLock()
+		if time.Now().Sub(start) > nodeHostStartTimeout {
+			return errors.New("timed out waiting for nodehost to start")
 		}
+		if d.nodeHostStarted {
+			break
+		}
+		d.lock.RUnlock()
 	}
 	return nil
 }

@@ -206,9 +206,6 @@ func (t *testCluster) ReleaseLock(prefix string) (bool, error) {
 	return false, nil
 }
 
-func (t *testCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
-}
-
 func (t *testCluster) reset() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
