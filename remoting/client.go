@@ -97,29 +97,26 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 		c.responseChannels.Store(nf.sequence, ri)
 		sent := c.doSendRequest(messageBytes, ri, c.serverAddresses...)
 		if sent {
-			break
+			resp, ok := <-respChan
+			if !ok {
+				return nil, errors.Error("channel was closed")
+			}
+			if resp != nil {
+				c.responseChannels.Delete(nf.sequence)
+				if !resp.ok {
+					// An error was signalled from the other end
+					return nil, errors.New(resp.errMsg)
+				}
+				return resp.responseMessage, nil
+			}
 		}
-		c.responseChannels.Delete(nf.sequence)
 		if time.Now().Sub(start) >= timeout {
+			c.responseChannels.Delete(nf.sequence)
 			return nil, errors.New("failed to send cluster request - no servers available")
 		}
 		time.Sleep(1 * time.Second)
 		log.Info("retrying")
 	}
-
-	resp, ok := <-respChan
-	if !ok {
-		return nil, errors.Error("channel was closed")
-	}
-	if resp == nil {
-		return nil, errors.Error("connection was closed")
-	}
-	c.responseChannels.Delete(nf.sequence)
-	if !resp.ok {
-		// An error was signalled from the other end
-		return nil, errors.New(resp.errMsg)
-	}
-	return resp.responseMessage, nil
 }
 
 func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo, serverAddresses ...string) bool {
@@ -136,7 +133,6 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo, serverAddr
 
 // BroadcastSync broadcasts a notification to all nodes and waits until all nodes have responded before returning
 func (c *client) BroadcastSync(notificationMessage ClusterMessage) error {
-
 	nf := c.createRequest(notificationMessage, true)
 	messageBytes, err := nf.serialize(nil)
 	if err != nil {
@@ -391,6 +387,9 @@ func (r *responseInfo) connClosed(conn *clientConnection) {
 	}
 	delete(r.conns, conn)
 	r.addToConnCount(-1)
+	if r.rpc {
+		r.rpcRespChan <- nil
+	}
 }
 
 type clientConnection struct {
