@@ -88,7 +88,7 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 	var respChan chan *ClusterResponse
 	start := time.Now()
 	for {
-		respChan = make(chan *ClusterResponse, 1)
+		respChan = make(chan *ClusterResponse, len(c.serverAddresses))
 		ri := &responseInfo{
 			rpcRespChan: respChan,
 			conns:       make(map[*clientConnection]struct{}),

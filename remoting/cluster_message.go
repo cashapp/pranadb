@@ -183,6 +183,9 @@ func (n *ClusterResponse) deserialize(buff []byte) error {
 }
 
 func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
+	if msgType == 0 {
+		panic("message type written is zero")
+	}
 	bytes := make([]byte, 0, messageHeaderSize+len(msg))
 	bytes = append(bytes, byte(msgType))
 	bytes = common.AppendUint32ToBufferLE(bytes, uint32(len(msg)))
