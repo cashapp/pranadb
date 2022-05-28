@@ -378,6 +378,9 @@ func (r *responseInfo) addConn(conn *clientConnection) {
 func (r *responseInfo) connClosed(conn *clientConnection) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+	if r.rpc {
+		r.rpcRespChan <- nil
+	}
 	if atomic.LoadInt32(&r.connCount) == 0 {
 		return
 	}
@@ -387,9 +390,6 @@ func (r *responseInfo) connClosed(conn *clientConnection) {
 	}
 	delete(r.conns, conn)
 	r.addToConnCount(-1)
-	if r.rpc {
-		r.rpcRespChan <- nil
-	}
 }
 
 type clientConnection struct {
