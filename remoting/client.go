@@ -404,12 +404,22 @@ type clientConnection struct {
 }
 
 func (cc *clientConnection) start() {
+	if ok := cc.doStart(); !ok {
+		// Must be outside the lock
+		cc.heartbeatFailed()
+	}
+}
+
+func (cc *clientConnection) doStart() bool {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
 	cc.loopCh = make(chan error, 10)
 	go readMessage(cc.handleMessage, cc.loopCh, cc.conn)
-	cc.sendHeartbeat()
-	cc.started = true
+	ok := cc.sendHeartbeat()
+	if ok {
+		cc.started = true
+	}
+	return ok
 }
 
 func (cc *clientConnection) Stop() {
@@ -432,22 +442,22 @@ func (cc *clientConnection) stop() {
 	cc.client.connectionClosed(cc)
 }
 
-func (cc *clientConnection) sendHeartbeat() {
+func (cc *clientConnection) sendHeartbeat() bool {
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
 		log.Errorf("failed to send heartbeat %+v", err)
-		cc.heartbeatFailed()
-		return
+		return false
 	}
 	cc.hbReceived = false
 	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
 	cc.hbTimer = t
+	return true
 }
 
 func (cc *clientConnection) heartTimerFired() {
 	failed := false //nolint:ifshort
 	cc.lock.Lock()
 	if cc.hbReceived {
-		cc.sendHeartbeat()
+		failed = !cc.sendHeartbeat()
 	} else if cc.started {
 		failed = true
 	}
