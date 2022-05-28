@@ -156,6 +156,7 @@ type connection struct {
 	asyncMsgCh          chan *asyncMsgExec
 	asyncMsgsInProgress sync.WaitGroup
 	asyncMsgLoopStarted bool
+	respLock            sync.Mutex
 }
 
 func (c *connection) start() {
@@ -197,8 +198,7 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	holder := c.s.lookupMessageHandler(clusterRequest.requestMessage)
 	if holder.direct {
 		// We process the message directly
-		// FIXME - error handling?
-		c.processRequest(clusterRequest, holder.handler)
+		c.processRequest(clusterRequest, holder.handler, false)
 	} else {
 
 		// Start the async message loop if necessary
@@ -225,16 +225,20 @@ type asyncMsgExec struct {
 }
 
 func (c *connection) handleMessageAsync(exec *asyncMsgExec) {
-	c.processRequest(exec.request, exec.handler)
+	c.processRequest(exec.request, exec.handler, true)
 	c.asyncMsgsInProgress.Done()
 }
 
-func (c *connection) processRequest(request *ClusterRequest, handler ClusterMessageHandler) {
+func (c *connection) processRequest(request *ClusterRequest, handler ClusterMessageHandler, async bool) {
 	respMsg, respErr := handler.HandleMessage(request.requestMessage)
 	if respErr != nil {
 		log.Errorf("Failed to handle cluster message %+v", respErr)
 	}
 	if request.requiresResponse && !c.s.responsesDisabled.Get() {
+		if async {
+			c.respLock.Lock()
+			defer c.respLock.Unlock()
+		}
 		if err := c.sendResponse(request, respMsg, respErr); err != nil {
 			log.Errorf("failed to send response %+v", err)
 		}

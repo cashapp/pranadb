@@ -486,5 +486,5 @@ func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error
 		cc.client.responseReceived(cc, resp)
 		return nil
 	}
-	panic(fmt.Sprintf("unexpected message type %d", msgType))
+	panic(fmt.Sprintf("unexpected message type %d msg %v", msgType, msg))
 }
