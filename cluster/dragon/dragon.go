@@ -25,6 +25,8 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+
+	"github.com/twinj/uuid"
 )
 
 const (
@@ -127,6 +129,10 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, command)
 	buff = common.AppendStringToBufferLE(buff, prefix)
+	// We generate a unique locker string - propose requests can be retried and the locks state machine must be
+	// idempotent - if same lock request is retried it must succeed if current locker already has the lock
+	locker := uuid.NewV4().String()
+	buff = common.AppendStringToBufferLE(buff, locker)
 
 	retVal, resBuff, err := d.sendPropose(locksClusterID, buff)
 	if err != nil {

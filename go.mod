@@ -42,6 +42,7 @@ require (
 	github.com/sergi/go-diff v1.1.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
+	github.com/twinj/uuid v1.0.0 // indirect
 	github.com/twmb/murmur3 v1.1.6
 	github.com/uber-go/atomic v0.0.0-00010101000000-000000000000
 	go.uber.org/ratelimit v0.2.0
