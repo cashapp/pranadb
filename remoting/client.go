@@ -123,7 +123,6 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo, serverAddr
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.maybeMakeUnavailableAvailable()
-	ri.addToConnCount(1)
 	for _, serverAddress := range serverAddresses {
 		if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
 			return true
