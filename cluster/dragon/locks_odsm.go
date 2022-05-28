@@ -80,6 +80,7 @@ outer:
 				// If one is a prefix of the other, they can't be held together
 				if strings.HasPrefix(k, prefix) || strings.HasPrefix(prefix, k) {
 					// Lock already held
+					log.Debugf("lock already held! %s", prefix)
 					s.setResult(false, entries, i)
 					continue outer
 				}

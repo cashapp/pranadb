@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	schemaLockAttemptTimeout = 2 * time.Minute
+	schemaLockAttemptTimeout = 30 * time.Second
 	schemaLockRetryDelay     = 1 * time.Second
 )
 
