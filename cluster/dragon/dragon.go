@@ -1040,7 +1040,7 @@ func (d *Dragon) sendPropose(shardID uint64, request []byte) (uint64, []byte, er
 		ShardId:     int64(shardID),
 		RequestBody: request,
 	}
-	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Second)
+	resp, err := requestClient.SendRequest(clusterRequest, 1*time.Minute)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1083,7 +1083,7 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 		ShardId:     int64(shardID),
 		RequestBody: request,
 	}
-	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Second)
+	resp, err := requestClient.SendRequest(clusterRequest, 1*time.Minute)
 	if err != nil {
 		return nil, err
 	}
