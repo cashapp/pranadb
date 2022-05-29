@@ -78,6 +78,7 @@ func (r *runner) waitForShutdown() {
 		} else {
 			logger.Info("Prana server stopped")
 		}
+		wg.Done()
 	}()
 	wg.Wait()
 }
