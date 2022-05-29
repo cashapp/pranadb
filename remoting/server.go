@@ -22,7 +22,7 @@ type Server interface {
 
 	Stop() error
 
-	RegisterMessageHandler(messageType ClusterMessageType, listener ClusterMessageHandler, directHandle bool)
+	RegisterMessageHandler(messageType ClusterMessageType, listener ClusterMessageHandler)
 }
 
 func NewServer(listenAddress string) Server {
@@ -34,11 +34,6 @@ func newServer(listenAddress string) *server {
 		listenAddress: listenAddress,
 		acceptLoopCh:  make(chan struct{}, 1),
 	}
-}
-
-type messageHandlerHolder struct {
-	handler ClusterMessageHandler
-	direct  bool
 }
 
 type server struct {
@@ -114,23 +109,19 @@ func (s *server) ListenAddress() string {
 	return s.listenAddress
 }
 
-func (s *server) RegisterMessageHandler(messageType ClusterMessageType, handler ClusterMessageHandler, directHandle bool) {
+func (s *server) RegisterMessageHandler(messageType ClusterMessageType, handler ClusterMessageHandler) {
 	_, ok := s.messageHandlers.Load(messageType)
 	if ok {
 		panic(fmt.Sprintf("message handler with type %d already registered", messageType))
 	}
-	holder := &messageHandlerHolder{
-		handler: handler,
-		direct:  directHandle,
-	}
-	s.messageHandlers.Store(messageType, holder)
+	s.messageHandlers.Store(messageType, handler)
 }
-func (s *server) lookupMessageHandler(clusterMessage ClusterMessage) *messageHandlerHolder {
+func (s *server) lookupMessageHandler(clusterMessage ClusterMessage) ClusterMessageHandler {
 	l, ok := s.messageHandlers.Load(TypeForClusterMessage(clusterMessage))
 	if !ok {
 		panic(fmt.Sprintf("no message handler for type %d", TypeForClusterMessage(clusterMessage)))
 	}
-	return l.(*messageHandlerHolder)
+	return l.(ClusterMessageHandler)
 }
 
 func (s *server) removeConnection(conn *connection) {
@@ -148,7 +139,7 @@ func (s *server) newConnection(conn net.Conn) *connection {
 	return &connection{
 		s:              s,
 		conn:           conn,
-		asyncMsgCh:     make(chan *asyncMsgExec, maxConcurrentMsgsPerConnection),
+		asyncMsgCh:     make(chan []byte, maxConcurrentMsgsPerConnection),
 		readLoopExitCh: make(chan error, 1),
 	}
 }
@@ -157,14 +148,13 @@ type connection struct {
 	s                   *server
 	conn                net.Conn
 	readLoopExitCh      chan error
-	asyncMsgCh          chan *asyncMsgExec
+	asyncMsgCh          chan []byte
 	asyncMsgsInProgress sync.WaitGroup
-	asyncMsgLoopStarted bool
-	respLock            sync.Mutex
 }
 
 func (c *connection) start() {
 	go c.readLoop()
+	go c.handleMessageLoop()
 }
 
 func (c *connection) readLoop() {
@@ -172,8 +162,8 @@ func (c *connection) readLoop() {
 	c.s.removeConnection(c)
 }
 
-// We execute some messages (other than heartbeat) on a different goroutine, and we use a channel to limit the number
-// concurrently executing
+// We execute messages (other than heartbeat) on a different goroutine as we need to be able to answer heartbeats even
+// when we are processing other messages.
 func (c *connection) handleMessageLoop() {
 	for {
 		exec, ok := <-c.asyncMsgCh
@@ -198,55 +188,30 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 		return nil
 	}
 
-	clusterRequest := &ClusterRequest{}
-	if err := clusterRequest.deserialize(msg); err != nil {
-		return err
-	}
-	holder := c.s.lookupMessageHandler(clusterRequest.requestMessage)
-	//if holder.direct {
-	//	// We process the message directly
-	//	c.processRequest(clusterRequest, holder.handler, false)
-	//} else {
-
-	// Start the async message loop if necessary
-	if !c.asyncMsgLoopStarted {
-		c.asyncMsgLoopStarted = true
-		go c.handleMessageLoop()
-	}
-
 	// Handle async
 	c.asyncMsgsInProgress.Add(1)
+	c.asyncMsgCh <- msg
 
-	// FIXME - move the decoding back into the
-	// TODO
-	c.asyncMsgCh <- &asyncMsgExec{
-		request: clusterRequest,
-		handler: holder.handler,
-	}
-	//}
 	return nil
 }
 
-type asyncMsgExec struct {
-	request *ClusterRequest
-	handler ClusterMessageHandler
-}
-
-func (c *connection) handleMessageAsync(exec *asyncMsgExec) {
-	c.processRequest(exec.request, exec.handler, true)
+func (c *connection) handleMessageAsync(msg []byte) {
+	c.handleMessageAsync0(msg)
 	c.asyncMsgsInProgress.Done()
 }
 
-func (c *connection) processRequest(request *ClusterRequest, handler ClusterMessageHandler, async bool) {
+func (c *connection) handleMessageAsync0(msg []byte) {
+	request := &ClusterRequest{}
+	if err := request.deserialize(msg); err != nil {
+		log.Errorf("failed to deserialize message %+v", err)
+		return
+	}
+	handler := c.s.lookupMessageHandler(request.requestMessage)
 	respMsg, respErr := handler.HandleMessage(request.requestMessage)
 	if respErr != nil {
 		log.Errorf("Failed to handle cluster message %+v", respErr)
 	}
 	if request.requiresResponse && !c.s.responsesDisabled.Get() {
-		if async {
-			c.respLock.Lock()
-			defer c.respLock.Unlock()
-		}
 		if err := c.sendResponse(request, respMsg, respErr); err != nil {
 			log.Errorf("failed to send response %+v", err)
 		}

@@ -24,7 +24,7 @@ func (f *FakeServer) Stop() error {
 	return nil
 }
 
-func (f *FakeServer) RegisterMessageHandler(notificationType ClusterMessageType, listener ClusterMessageHandler, direct bool) {
+func (f *FakeServer) RegisterMessageHandler(notificationType ClusterMessageType, listener ClusterMessageHandler) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	f.messageHandlers[notificationType] = listener

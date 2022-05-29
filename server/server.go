@@ -54,8 +54,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
 		notifClient = remoting.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
-		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler(), false)
-		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler(), false)
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -74,9 +74,9 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
 		protoRegistry, failureInjector)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor, false)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine, false)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry, false)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
 

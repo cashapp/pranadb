@@ -244,8 +244,8 @@ func TestMultipleNotificationTypes(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterMessageHandler(ClusterMessageDDLStatement, notifListener1, false)
-	server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener2, false)
+	server.RegisterMessageHandler(ClusterMessageDDLStatement, notifListener1)
+	server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener2)
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -406,7 +406,7 @@ func TestSendRequest(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
 	respBody := []byte("some response")
 	retVal := &notifications.ClusterProposeResponse{
@@ -448,7 +448,7 @@ func TestSendMultipleRequests(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -517,7 +517,7 @@ func TestSendRequestOneServerNotAvailable(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
 	respBody := []byte("some response")
 	retVal := &notifications.ClusterProposeResponse{
@@ -559,7 +559,7 @@ func TestSendRequestWithError(t *testing.T) {
 
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
-	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener, true)
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
 	nListener.SetReturnErrMsg("some request error")
 
@@ -624,7 +624,7 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 		listenAddress := fmt.Sprintf("localhost:%d", listenPort)
 		server := newServer(listenAddress)
 		notifListener := &notifListener{}
-		server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener, false)
+		server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener)
 		notifListeners[i] = notifListener
 		err := server.Start()
 		require.NoError(t, err)
