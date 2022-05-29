@@ -774,7 +774,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			return res, nil
 		}
 		if !errors.Is(err, dragonboat.ErrClusterNotReady) && !errors.Is(err, dragonboat.ErrTimeout) &&
-			!errors.Is(err, dragonboat.ErrClusterNotFound) {
+			!errors.Is(err, dragonboat.ErrClusterNotFound) && !errors.Is(err, dragonboat.ErrInvalidDeadline) {
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= timeout {

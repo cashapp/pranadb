@@ -39,6 +39,7 @@ func newClient(heartbeatInterval time.Duration, serverAddresses ...string) *clie
 }
 
 type client struct {
+	ccIDSeq            int64
 	started            bool
 	serverAddresses    []string
 	connections        map[string]*clientConnection
@@ -200,6 +201,7 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			return err
 		}
 		clientConn = &clientConnection{
+			id:            atomic.AddInt64(&c.ccIDSeq, 1),
 			client:        c,
 			serverAddress: serverAddress,
 			conn:          nc,
@@ -393,6 +395,7 @@ func (r *responseInfo) connClosed(conn *clientConnection) {
 }
 
 type clientConnection struct {
+	id            int64
 	lock          sync.Mutex
 	client        *client
 	serverAddress string
@@ -449,23 +452,23 @@ func (cc *clientConnection) sendHeartbeat() bool {
 		return false
 	}
 	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
-	log.Tracef("scheduled heartbeat to fire after %d ms on %s from %s", cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
+	log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
 		cc.conn.RemoteAddr().String())
 	cc.hbTimer = t
 	return true
 }
 
 func (cc *clientConnection) heartTimerFired() {
-	failed := false //nolint:ifshort
+	failed := true //nolint:ifshort
 	cc.lock.Lock()
 	if !cc.started {
 		return
 	}
-	log.Tracef("heart timer fired on %s from %s, hb.received is %t", cc.conn.LocalAddr().String(),
+	log.Tracef("%d heart timer fired on %s from %s, hb.received is %t", cc.id, cc.conn.LocalAddr().String(),
 		cc.conn.RemoteAddr().String(), cc.hbReceived)
 	if cc.hbReceived {
 		failed = !cc.sendHeartbeat()
-		log.Tracef("heart timer fired then sending another hb on %s from %s, failed %t", cc.conn.LocalAddr().String(),
+		log.Tracef("%d heart timer fired then sent another hb on %s from %s, failed %t", cc.id, cc.conn.LocalAddr().String(),
 			cc.conn.RemoteAddr().String(), failed)
 	}
 	cc.lock.Unlock()
