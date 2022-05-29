@@ -458,10 +458,10 @@ func (cc *clientConnection) sendHeartbeat() bool {
 		log.Errorf("failed to send heartbeat %+v", err)
 		return false
 	}
-	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
-	log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
-		cc.conn.RemoteAddr().String())
-	cc.hbTimer = t
+	//t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
+	//log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
+	//	cc.conn.RemoteAddr().String())
+	//cc.hbTimer = t
 	return true
 }
 
