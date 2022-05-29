@@ -97,8 +97,6 @@ func (d *Dragon) RegisterShardListenerFactory(factory cluster.ShardListenerFacto
 }
 
 func (d *Dragon) GetNodeID() int {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
 	return d.cnf.NodeID
 }
 
@@ -153,14 +151,10 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 }
 
 func (d *Dragon) GetAllShardIDs() []uint64 {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
 	return d.allDataShards
 }
 
 func (d *Dragon) GetLocalShardIDs() []uint64 {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
 	return d.localDataShards
 }
 

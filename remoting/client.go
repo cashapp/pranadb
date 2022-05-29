@@ -443,11 +443,11 @@ func (cc *clientConnection) stop() {
 }
 
 func (cc *clientConnection) sendHeartbeat() bool {
+	cc.hbReceived = false
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
 		log.Errorf("failed to send heartbeat %+v", err)
 		return false
 	}
-	cc.hbReceived = false
 	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
 	log.Tracef("scheduled heartbeat to fire after %d ms on %s from %s", cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
 		cc.conn.RemoteAddr().String())
@@ -458,14 +458,15 @@ func (cc *clientConnection) sendHeartbeat() bool {
 func (cc *clientConnection) heartTimerFired() {
 	failed := false //nolint:ifshort
 	cc.lock.Lock()
+	if !cc.started {
+		return
+	}
 	log.Tracef("heart timer fired on %s from %s, hb.received is %t", cc.conn.LocalAddr().String(),
 		cc.conn.RemoteAddr().String(), cc.hbReceived)
 	if cc.hbReceived {
 		failed = !cc.sendHeartbeat()
 		log.Tracef("heart timer fired then sending another hb on %s from %s, failed %t", cc.conn.LocalAddr().String(),
 			cc.conn.RemoteAddr().String(), failed)
-	} else if cc.started {
-		failed = true
 	}
 	cc.lock.Unlock()
 	if failed {
