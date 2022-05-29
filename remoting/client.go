@@ -88,7 +88,7 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 	var respChan chan *ClusterResponse
 	start := time.Now()
 	for {
-		respChan = make(chan *ClusterResponse, len(c.serverAddresses))
+		respChan = make(chan *ClusterResponse, 10000)
 		ri := &responseInfo{
 			rpcRespChan: respChan,
 			conns:       make(map[*clientConnection]struct{}),
@@ -138,7 +138,7 @@ func (c *client) BroadcastSync(notificationMessage ClusterMessage) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	respChan := make(chan error, len(c.serverAddresses))
+	respChan := make(chan error, 10000)
 	ri := &responseInfo{broadcastRespChan: respChan, conns: make(map[*clientConnection]struct{})}
 	c.responseChannels.Store(nf.sequence, ri)
 	if err := c.broadcast(messageBytes, ri); err != nil {
@@ -343,19 +343,19 @@ type responseInfo struct {
 }
 
 func (r *responseInfo) responseReceived(conn *clientConnection, resp *ClusterResponse) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	delete(r.conns, conn)
 	if r.rpc {
 		r.rpcRespChan <- resp
 	} else {
 		if !resp.ok {
 			// The server received the cluster message but sent back an error response
 			r.broadcastRespChan <- errors.Error(resp.errMsg)
-			return
+		} else {
+			r.addToConnCount(-1)
 		}
-		r.addToConnCount(-1)
 	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.conns, conn)
 }
 
 func (r *responseInfo) addToConnCount(val int32) {
@@ -406,7 +406,7 @@ type clientConnection struct {
 func (cc *clientConnection) start() {
 	if ok := cc.doStart(); !ok {
 		// Must be outside the lock
-		cc.heartbeatFailed()
+		cc.heartbeatFailed(true)
 	}
 }
 
@@ -465,21 +465,26 @@ func (cc *clientConnection) heartTimerFired() {
 	if failed {
 		// We must execute this outside the lock to prevent a deadlock situation where a heartbeat arrives at the
 		// same time this fires
-		cc.heartbeatFailed()
+		cc.heartbeatFailed(false)
 	}
 }
 
-func (cc *clientConnection) heartbeatFailed() {
-	log.Warnf("response heartbeat not received within %f seconds", cc.client.heartbeatInterval.Seconds())
+func (cc *clientConnection) heartbeatFailed(atStart bool) {
+	log.Warnf("response heartbeat not received within %f seconds on %s from %s at start %t",
+		cc.client.heartbeatInterval.Seconds(), cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String(), atStart)
 	cc.stop()
 	cc.client.makeUnavailableWithLock(cc.serverAddress)
 	cc.client.connectionClosed(cc)
 }
 
 func (cc *clientConnection) heartbeatReceived() {
+	log.Tracef("response heartbeat response on client %s from %s",
+		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())
 	cc.lock.Lock()
 	cc.hbReceived = true
 	cc.lock.Unlock()
+	log.Tracef("response heartbeat response on client %s from %s - updated status",
+		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())
 }
 
 func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error {
