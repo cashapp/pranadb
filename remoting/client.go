@@ -407,6 +407,7 @@ type clientConnection struct {
 	hbTimer       *time.Timer
 	hbReceived    bool
 	started       bool
+	hbSentTime    time.Time
 }
 
 func (cc *clientConnection) start() {
@@ -452,6 +453,7 @@ func (cc *clientConnection) stop() {
 
 func (cc *clientConnection) sendHeartbeat() bool {
 	cc.hbReceived = false
+	cc.hbSentTime = time.Now()
 	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
 		log.Errorf("failed to send heartbeat %+v", err)
 		return false
@@ -497,6 +499,8 @@ func (cc *clientConnection) heartbeatReceived() {
 		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())
 	cc.lock.Lock()
 	cc.hbReceived = true
+	hbDur := time.Now().Sub(cc.hbSentTime)
+	log.Tracef("heartbeat took %d ms to round trip", hbDur.Milliseconds())
 	cc.lock.Unlock()
 	log.Tracef("response heartbeat response on client %s from %s - updated status",
 		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())

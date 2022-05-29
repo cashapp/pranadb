@@ -217,6 +217,7 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	// Handle async
 	c.asyncMsgsInProgress.Add(1)
 
+	// FIXME - move the decoding back into the
 	// TODO
 	c.asyncMsgCh <- &asyncMsgExec{
 		request: clusterRequest,

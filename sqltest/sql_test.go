@@ -212,6 +212,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.NotifierHeartbeatInterval = 30 * time.Second
+			cnf.APIServerSessionTimeout = 5 * time.Minute // FIXME - temporarily increased this to stop test suite failing as long running statements
+			// really we should be sending heartbeats even though statements are executing
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
