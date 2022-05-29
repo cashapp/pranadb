@@ -449,6 +449,8 @@ func (cc *clientConnection) sendHeartbeat() bool {
 	}
 	cc.hbReceived = false
 	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
+	log.Tracef("scheduled heartbeat to fire after %d ms on %s from %s", cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
+		cc.conn.RemoteAddr().String())
 	cc.hbTimer = t
 	return true
 }
