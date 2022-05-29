@@ -30,6 +30,7 @@ type Client struct {
 	currentStatement      string
 	sessionIDs            sync.Map
 	heartbeatTimer        *time.Timer
+	heartbeatLock         sync.Mutex
 	heartbeatSendInterval time.Duration
 	pageSize              int
 }
@@ -67,6 +68,8 @@ func (c *Client) Stop() error {
 		return nil
 	}
 	c.started = false
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	if c.heartbeatTimer != nil {
 		c.heartbeatTimer.Stop()
 	}
@@ -265,6 +268,8 @@ func (c *Client) sendHeartbeats() {
 }
 
 func (c *Client) scheduleHeartbeats() {
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	c.heartbeatTimer = time.AfterFunc(c.heartbeatSendInterval, c.sendHeartbeats)
 }
 
@@ -284,6 +289,8 @@ func stripgRPCPrefix(err error) error {
 func (c *Client) disableHeartbeats() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	c.heartbeatSendInterval = math.MaxInt64
 	if c.heartbeatTimer != nil {
 		c.heartbeatTimer.Stop()
