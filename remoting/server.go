@@ -13,7 +13,7 @@ import (
 const (
 	readBuffSize                   = 8 * 1024
 	messageHeaderSize              = 5 // 1 byte message type, 4 bytes length
-	maxConcurrentMsgsPerConnection = 10
+	maxConcurrentMsgsPerConnection = 100000
 )
 
 type Server interface {
@@ -183,9 +183,12 @@ func (c *connection) handleMessageLoop() {
 
 func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	if msgType == heartbeatMessageType {
+		log.Tracef("Received heartbeat on server from %s to %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		if !c.s.responsesDisabled.Get() {
 			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
 				log.Errorf("failed to write heartbeat %+v", err)
+			} else {
+				log.Tracef("Wrote heartbeat response on server from %s to %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 			}
 		}
 		return nil
@@ -196,26 +199,26 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 		return err
 	}
 	holder := c.s.lookupMessageHandler(clusterRequest.requestMessage)
-	if holder.direct {
-		// We process the message directly
-		c.processRequest(clusterRequest, holder.handler, false)
-	} else {
+	//if holder.direct {
+	//	// We process the message directly
+	//	c.processRequest(clusterRequest, holder.handler, false)
+	//} else {
 
-		// Start the async message loop if necessary
-		if !c.asyncMsgLoopStarted {
-			c.asyncMsgLoopStarted = true
-			go c.handleMessageLoop()
-		}
-
-		// Handle async
-		c.asyncMsgsInProgress.Add(1)
-
-		// TODO
-		c.asyncMsgCh <- &asyncMsgExec{
-			request: clusterRequest,
-			handler: holder.handler,
-		}
+	// Start the async message loop if necessary
+	if !c.asyncMsgLoopStarted {
+		c.asyncMsgLoopStarted = true
+		go c.handleMessageLoop()
 	}
+
+	// Handle async
+	c.asyncMsgsInProgress.Add(1)
+
+	// TODO
+	c.asyncMsgCh <- &asyncMsgExec{
+		request: clusterRequest,
+		handler: holder.handler,
+	}
+	//}
 	return nil
 }
 

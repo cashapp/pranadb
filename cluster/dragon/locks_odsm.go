@@ -69,7 +69,6 @@ func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachi
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	batch := s.dragon.pebble.NewBatch()
-outer:
 	for i, entry := range entries {
 		offset := 0
 		var command string
@@ -77,6 +76,7 @@ outer:
 		prefix, offset := common.ReadStringFromBufferLE(entry.Cmd, offset)
 		locker, _ := common.ReadStringFromBufferLE(entry.Cmd, offset)
 		if command == GetLockCommand {
+			held := false
 			for k, currLocker := range s.locks {
 				// If one is a prefix of the other, they can't be held together
 				if strings.HasPrefix(k, prefix) || strings.HasPrefix(prefix, k) {
@@ -89,15 +89,17 @@ outer:
 						log.Debugf("lock already held! %s", prefix)
 						s.setResult(false, entries, i)
 					}
-					continue outer
+					held = true
 				}
 			}
-			s.locks[prefix] = locker
-			keyBuff := s.encodeLocksKey(prefix)
-			if err := batch.Set(keyBuff, []byte(locker), &pebble.WriteOptions{Sync: false}); err != nil {
-				return nil, errors.WithStack(err)
+			if !held {
+				s.locks[prefix] = locker
+				keyBuff := s.encodeLocksKey(prefix)
+				if err := batch.Set(keyBuff, []byte(locker), &pebble.WriteOptions{Sync: false}); err != nil {
+					return nil, errors.WithStack(err)
+				}
+				s.setResult(true, entries, i)
 			}
-			s.setResult(true, entries, i)
 		} else if command == ReleaseLockCommand {
 			_, ok := s.locks[prefix]
 			if !ok {
