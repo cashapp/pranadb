@@ -49,6 +49,7 @@ type client struct {
 	responseChannels   sync.Map
 	msgSeq             int64
 	heartbeatInterval  time.Duration
+	clientConnCount    int64
 }
 
 func (c *client) connectionClosed(conn *clientConnection) {
@@ -206,6 +207,8 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			serverAddress: serverAddress,
 			conn:          nc,
 		}
+		cc := atomic.AddInt64(&c.clientConnCount, 1)
+		log.Tracef("client conn count is now %d", cc)
 		clientConn.start()
 		c.connections[serverAddress] = clientConn
 	}
@@ -443,6 +446,8 @@ func (cc *clientConnection) stop() {
 	}
 	<-cc.loopCh
 	cc.client.connectionClosed(cc)
+	ccc := atomic.AddInt64(&cc.client.clientConnCount, -1)
+	log.Tracef("client conn count is now %d", ccc)
 }
 
 func (cc *clientConnection) sendHeartbeat() bool {

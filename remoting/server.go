@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
@@ -49,6 +50,7 @@ type server struct {
 	connections       sync.Map
 	messageHandlers   sync.Map
 	responsesDisabled common.AtomicBool
+	connCount         int64
 }
 
 func (s *server) Start() error {
@@ -141,6 +143,8 @@ func (s *server) DisableResponses() {
 }
 
 func (s *server) newConnection(conn net.Conn) *connection {
+	cc := atomic.AddInt64(&s.connCount, 1)
+	log.Tracef("server conn count is now %d", cc)
 	return &connection{
 		s:              s,
 		conn:           conn,
@@ -277,5 +281,7 @@ func (c *connection) stop() error {
 	}
 	c.asyncMsgsInProgress.Wait() // Wait for all async messages to be processed
 	close(c.asyncMsgCh)
+	ccc := atomic.AddInt64(&c.s.connCount, -1)
+	log.Tracef("server conn count is now %d", ccc)
 	return errors.WithStack(err)
 }
