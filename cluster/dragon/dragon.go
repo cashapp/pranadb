@@ -778,7 +778,6 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			!errors.Is(err, dragonboat.ErrClusterNotFound) && !errors.Is(err, dragonboat.ErrInvalidDeadline) {
 			return nil, errors.WithStack(err)
 		}
-		log.Tracef("got dragon error %v, retrying", err)
 		if time.Now().Sub(start) >= timeout {
 			// If we timeout, then something is seriously wrong - we should just exit
 			log.Errorf("timeout in making dragonboat calls, exiting %+v", err)
