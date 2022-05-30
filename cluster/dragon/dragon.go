@@ -39,7 +39,8 @@ const (
 
 	retryTimeout = 10 * time.Minute
 
-	callTimeout = 5 * time.Second
+	// TODO maybe try exponential increasing timeout???
+	callTimeout = 30 * time.Second
 
 	toDeleteShardID uint64 = 4
 
