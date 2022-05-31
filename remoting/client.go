@@ -138,14 +138,20 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	if !c.started {
+		panic("not started")
+	}
 	for _, serverAddress := range c.serverAddresses {
 		_, ok := c.availableServers[serverAddress]
 		if ok {
 			if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
 				return true
+			} else {
+				log.Warnf("failed to send request %v", err)
 			}
 		}
 	}
+	log.Debug("no available servers")
 	return false
 }
 
@@ -294,6 +300,7 @@ func (c *client) Stop() error {
 	}
 	c.connections = make(map[string]*clientConnection)
 	c.unavailableServers = make(map[string]struct{})
+	c.availableServers = make(map[string]struct{})
 	c.started = false
 	return nil
 }

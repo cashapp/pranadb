@@ -374,6 +374,7 @@ func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byt
 }
 
 func (d *Dragon) Stop() error {
+	log.Debugf("stopping dragon on node %d", d.cnf.NodeID)
 	d.startStopLock.Lock()
 	defer d.startStopLock.Unlock()
 	d.lock.Lock()
@@ -382,6 +383,7 @@ func (d *Dragon) Stop() error {
 		return nil
 	}
 	d.healthChecker.Stop()
+	log.Tracef("Stopped health-checker on node %s", d.cnf.NodeID)
 	d.nh.Stop()
 	d.nh = nil
 	d.nodeHostStarted = false
@@ -391,13 +393,16 @@ func (d *Dragon) Stop() error {
 	}
 	d.requestClientPoolLock.Lock()
 	defer d.requestClientPoolLock.Unlock()
-	for _, cl := range d.requestClientPool {
-		if cl != nil {
-			if err := cl.Stop(); err != nil {
-				// Ignore
+	for i, cl := range d.requestClientPool {
+		cli := cl
+		d.requestClientPool[i] = nil
+		if cli != nil {
+			if err := cli.Stop(); err != nil {
+				log.Errorf("failed to stop client %v", err)
 			}
 		}
 	}
+	d.requestClientMap = sync.Map{} // clear the cache
 	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
 	return errors.WithStack(err)
 }

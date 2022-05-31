@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	TestPrefix         = "cluster_restart" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -323,6 +323,7 @@ func (w *sqlTestsuite) registerEncoderFactory(factory encoderFactory, typ kafka.
 }
 
 func (w *sqlTestsuite) stopCluster() {
+	log.Debug("**** stopping cluster")
 	for _, prana := range w.pranaCluster {
 		err := prana.Stop()
 		if err != nil {

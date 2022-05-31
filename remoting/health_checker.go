@@ -30,6 +30,7 @@ type HealthChecker struct {
 	hbInterval      time.Duration
 	timer           *time.Timer
 	lock            sync.Mutex
+	beenStarted bool
 }
 
 func (h *HealthChecker) AddAvailabilityListener(listener AvailabilityListener) {
@@ -45,6 +46,10 @@ func (h *HealthChecker) Start() {
 		return
 	}
 	h.started = true
+	if h.beenStarted {
+		panic("hc already started")
+	}
+	h.beenStarted = true
 	h.checkConnections()
 }
 
