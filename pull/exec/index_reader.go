@@ -17,7 +17,6 @@ type PullIndexReader struct {
 	rangeStart    []byte
 	rangeEnd      []byte
 	includeCols   []int
-	covers        bool
 }
 
 var _ PullExecutor = &PullIndexReader{}
@@ -31,8 +30,7 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	includedCols []int, // Col indexes in the table that are being returned
 	storage cluster.Cluster,
 	shardID uint64,
-	scanRanges []*ScanRange,
-	covers bool) (*PullIndexReader, error) {
+	scanRanges []*ScanRange) (*PullIndexReader, error) {
 
 	// Calculate the types of the results
 	var resultColTypes []common.ColumnType
@@ -118,7 +116,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 		rangeStart:       rangeStart,
 		rangeEnd:         rangeEnd,
 		includeCols:      includedCols,
-		covers:           covers,
 	}, nil
 }
 
@@ -148,6 +145,25 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 	}
 	numRows := len(kvPairs)
 	rows = p.rowsFactory.NewRows(numRows)
+	// Need to add PK cols if selected
+	var includedPkCols []int
+	for _, keyCol := range p.keyCols {
+		if common.Contains(p.includeCols, keyCol) {
+			includedPkCols = append(includedPkCols, keyCol)
+		}
+	}
+	// Check if index covers
+	var nonIndexCols []int
+	for _, keyCol := range p.includeCols {
+		if !common.Contains(includedPkCols, keyCol) && !common.Contains(p.indexInfo.IndexCols, keyCol) {
+			nonIndexCols = append(nonIndexCols, keyCol)
+		}
+	}
+	var includeCol []bool
+	for i := range p.colTypes {
+		included := common.Contains(p.includeCols, i)
+		includeCol = append(includeCol, included)
+	}
 	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
 			continue
@@ -155,51 +171,29 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
-		// Need to add PK cols if selected
-		var includedPkCols []int
-		for _, keyCol := range p.keyCols {
-			if common.Contains(p.includeCols, keyCol) {
-				includedPkCols = append(includedPkCols, keyCol)
+		// Index covers if all cols are in the index
+		if len(nonIndexCols) == 0 {
+			offset := 16
+			offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, len(includedPkCols), rows)
+
+			for _, pkCol := range includedPkCols {
+				colType := p.tableInfo.ColumnTypes[pkCol]
+				_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, pkCol, true, rows)
 			}
-		}
-		_, offset := common.ReadUint64FromBufferBE(kvPair.Key, 0)
-		_, offset = common.ReadUint64FromBufferBE(kvPair.Key, offset)
-		offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, len(includedPkCols), rows)
-		for _, pkCol := range includedPkCols {
-			colType := p.tableInfo.ColumnTypes[pkCol]
-			_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, pkCol, true, rows)
-		}
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		if !p.covers {
-			// Find cols selected that are not in the index
-			var includeCol []bool
-			includeColCount := 0
-			for i := range p.colTypes {
-				included := common.Contains(p.includeCols, i) && !common.Contains(p.indexInfo.IndexCols, i)
-				includeCol = append(includeCol, included)
-				if included {
-					includeColCount++
-				}
-			}
-			tableAddress := append(table.EncodeTableKeyPrefix(p.tableInfo.ID, p.shardID, 32), kvPair.Key[offset:]...)
-			value, err := p.storage.LocalGet(tableAddress)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			startCol := len(p.includeCols) - includeColCount
-			offset := 0
-			for i, colIncluded := range includeCol {
-				offset, err = common.DecodeRowCol(value, offset, rows, p.tableInfo.ColumnTypes[i], startCol, colIncluded)
-				if err != nil {
-					return nil, errors.WithStack(err)
-				}
-				if colIncluded {
-					startCol++
-				}
+			// Index doesn't cover, and we get cols from originating table
+		} else {
+			keyBuff := table.EncodeTableKeyPrefix(p.tableInfo.ID, p.shardID, 16+len(kvPair.Value))
+			keyBuff = append(keyBuff, kvPair.Value...)
+			value, err := p.storage.LocalGet(keyBuff)
+			if err != nil {
+				return nil, errors.WithStack(err)
 			}
-
+			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, includeCol, rows); err != nil {
+				return nil, errors.WithStack(err)
+			}
 		}
 	}
 	return rows, nil

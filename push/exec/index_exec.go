@@ -36,14 +36,14 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
 		if currentRow != nil {
-			keyBuff, err := t.createKeyBuff(ctx.WriteBatch.ShardID, currentRow)
+			keyBuff, valueBuff, err := t.createKeyBuff(ctx.WriteBatch.ShardID, currentRow)
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			ctx.WriteBatch.AddPut(keyBuff, nil)
+			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
 		} else {
 			// It's a delete
-			keyBuff, err := t.createKeyBuff(ctx.WriteBatch.ShardID, prevRow)
+			keyBuff, _, err := t.createKeyBuff(ctx.WriteBatch.ShardID, prevRow)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -53,15 +53,20 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 	return nil
 }
 
-func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, error) {
+func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, []byte, error) {
 	keyBuff := table.EncodeTableKeyPrefix(t.IndexInfo.ID, shardID, 32)
 	keyBuff, err := common.EncodeIndexKeyCols(row, t.IndexInfo.IndexCols, t.TableInfo.ColumnTypes, keyBuff)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
 	keyBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, nil, errors.WithStack(err)
 	}
-	return keyBuff, nil
+	var valueBuff []byte
+	valueBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, valueBuff)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	return keyBuff, valueBuff, nil
 }

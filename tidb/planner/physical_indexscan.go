@@ -58,8 +58,6 @@ type PhysicalIndexScan struct {
 	KeepOrder bool
 
 	NeedCommonHandle bool
-
-	Covers bool
 }
 
 // Init initializes PhysicalIndexScan.
@@ -103,7 +101,6 @@ func (is *PhysicalIndexScan) initSchema(idxExprCols []*expression.Column, isDoub
 		}
 	}
 	is.NeedCommonHandle = is.Table.IsCommonHandle
-	is.Covers = !isDoubleRead
 
 	if is.NeedCommonHandle {
 		for i := len(is.Index.Columns); i < len(idxExprCols); i++ {

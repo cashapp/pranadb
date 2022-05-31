@@ -224,7 +224,7 @@ func attachIndexToSchema(schema *common.Schema) (*common.Schema, error) {
 		SchemaName: "test",
 		Name:       "index1",
 		TableName:  "table1",
-		IndexCols:  []int{1},
+		IndexCols:  []int{2},
 	}
 	if err := schema.PutIndex(index1); err != nil {
 		return nil, errors.WithStack(err)
