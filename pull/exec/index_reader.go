@@ -86,10 +86,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 				if err != nil {
 					return nil, err
 				}
-
-				if err != nil {
-					return nil, err
-				}
 			}
 			if !scanRange.HighExcl {
 				if !allBitsSet(rangeEnd) {
