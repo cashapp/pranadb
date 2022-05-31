@@ -183,17 +183,29 @@ func (c *client) broadcast(messageBytes []byte, ri *responseInfo) error {
 	return nil
 }
 
+func (c *client) createConnection(serverAddress string) (net.Conn, error) {
+	addr, err := net.ResolveTCPAddr("tcp", serverAddress)
+	if err != nil {
+		return nil, err
+	}
+	nc, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		return nil, err
+	}
+	err = nc.SetNoDelay(true)
+	if err != nil {
+		return nil, err
+	}
+	return nc, nil
+}
+
 func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress string, ri *responseInfo) error {
 	clientConn, ok := c.connections[serverAddress]
 	if !ok {
-		var err error
-		addr, err := net.ResolveTCPAddr("tcp", serverAddress)
-		var nc *net.TCPConn
+		nc, err := c.createConnection(serverAddress)
+		var hbConn net.Conn
 		if err == nil {
-			nc, err = net.DialTCP("tcp", nil, addr)
-			if err == nil {
-				err = nc.SetNoDelay(true)
-			}
+			hbConn, err = c.createConnection(serverAddress)
 		}
 		if err != nil {
 			log.Warnf("failed to connect to %s %v", serverAddress, err)
@@ -206,6 +218,7 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			client:        c,
 			serverAddress: serverAddress,
 			conn:          nc,
+			hbConn:        hbConn,
 		}
 		cc := atomic.AddInt64(&c.clientConnCount, 1)
 		log.Tracef("client conn count is now %d", cc)
@@ -402,12 +415,13 @@ type clientConnection struct {
 	lock          sync.Mutex
 	client        *client
 	serverAddress string
-	conn          net.Conn
 	loopCh        chan error
 	hbTimer       *time.Timer
 	hbReceived    bool
 	started       bool
 	hbSentTime    time.Time
+	conn          net.Conn
+	hbConn        net.Conn
 }
 
 func (cc *clientConnection) start() {
@@ -454,14 +468,14 @@ func (cc *clientConnection) stop() {
 func (cc *clientConnection) sendHeartbeat() bool {
 	cc.hbReceived = false
 	cc.hbSentTime = time.Now()
-	if err := writeMessage(heartbeatMessageType, nil, cc.conn); err != nil {
+	if err := writeMessage(heartbeatMessageType, nil, cc.hbConn); err != nil {
 		log.Errorf("failed to send heartbeat %+v", err)
 		return false
 	}
-	//t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
-	//log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
-	//	cc.conn.RemoteAddr().String())
-	//cc.hbTimer = t
+	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
+	log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
+		cc.conn.RemoteAddr().String())
+	cc.hbTimer = t
 	return true
 }
 

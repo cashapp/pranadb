@@ -186,6 +186,13 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 	if msgType == 0 {
 		panic("message type written is zero")
 	}
+	// Heartbeats don't have a body
+	if msgType == heartbeatMessageType {
+		if _, err := conn.Write([]byte{heartbeatMessageType}); err != nil {
+			return err
+		}
+		return nil
+	}
 	bytes := make([]byte, 0, messageHeaderSize+len(msg))
 	bytes = append(bytes, byte(msgType))
 	bytes = common.AppendUint32ToBufferLE(bytes, uint32(len(msg)))
@@ -206,10 +213,17 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn) {
 			return
 		}
 		msgBuf = append(msgBuf, readBuff[0:n]...)
-		var msgType messageType
+		msgType := messageType(msgBuf[0])
+		if msgType == heartbeatMessageType {
+			// Heartbeats don't have a message body
+			if err := handler(msgType, nil); err != nil {
+				ch <- err
+				return
+			}
+			msgBuf = msgBuf[1:]
+		}
 		for len(msgBuf) >= messageHeaderSize {
 			if msgLen == -1 {
-				msgType = messageType(msgBuf[0])
 				u, _ := common.ReadUint32FromBufferLE(msgBuf, 1)
 				msgLen = int(u)
 			}

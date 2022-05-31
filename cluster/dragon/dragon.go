@@ -39,8 +39,7 @@ const (
 
 	retryTimeout = 10 * time.Minute
 
-	// TODO maybe try exponential increasing timeout???
-	callTimeout = 30 * time.Second
+	callTimeout = 10 * time.Second
 
 	toDeleteShardID uint64 = 4
 
@@ -81,6 +80,7 @@ type Dragon struct {
 	requestClientMap             sync.Map
 	requestClientPool            []remoting.Client
 	requestClientPoolLock        sync.Mutex
+	healthChecker *remoting.HealthChecker
 }
 
 type snapshot struct {
@@ -211,6 +211,9 @@ func (d *Dragon) start0() error {
 	// complete
 	d.lock.Lock()
 	defer d.lock.Unlock()
+
+	d.healthChecker = remoting.NewHealthChecker(d.cnf.NotifListenAddresses, 2 * time.Second, 5 * time.Second)
+	d.healthChecker.Start()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
 	if d.cnf.ScreenDragonLogSpam {
@@ -378,6 +381,7 @@ func (d *Dragon) Stop() error {
 	if !d.started {
 		return nil
 	}
+	d.healthChecker.Stop()
 	d.nh.Stop()
 	d.nh = nil
 	d.nodeHostStarted = false
@@ -1073,6 +1077,7 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 	_, ok := d.localShardsMap[shardID]
 	if ok {
 		// We handle this directly
+		log.Tracef("Executing read locally")
 		return d.executeSyncReadWithRetry(shardID, request)
 	}
 
@@ -1080,14 +1085,17 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Tracef("sending remote read %d", shardID)
 	clusterRequest := &notifications.ClusterReadRequest{
 		ShardId:     int64(shardID),
 		RequestBody: request,
 	}
 	resp, err := requestClient.SendRequest(clusterRequest, 1*time.Minute)
 	if err != nil {
+		log.Errorf("failed %v", err)
 		return nil, err
 	}
+	log.Tracef("got remote read response %d", shardID)
 	clusterResp, ok := resp.(*notifications.ClusterReadResponse)
 	if !ok {
 		panic("not a notifications.ClusterReadResponse")
