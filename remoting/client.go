@@ -12,16 +12,13 @@ import (
 	"github.com/squareup/pranadb/errors"
 )
 
-const (
-	connectionRetryBackoff = 1 * time.Second
-)
-
 type Client interface {
 	SendRequest(message ClusterMessage, timeout time.Duration) (ClusterMessage, error)
 	BroadcastOneway(notif ClusterMessage) error
 	BroadcastSync(notif ClusterMessage) error
 	Start() error
 	Stop() error
+	AvailabilityListener() AvailabilityListener
 }
 
 func NewClient(heartbeatInterval time.Duration, serverAddresses ...string) Client {
@@ -32,7 +29,7 @@ func newClient(heartbeatInterval time.Duration, serverAddresses ...string) *clie
 	return &client{
 		serverAddresses:    serverAddresses,
 		connections:        make(map[string]*clientConnection),
-		unavailableServers: make(map[string]time.Time),
+		unavailableServers: make(map[string]struct{}),
 		msgSeq:             -1,
 		heartbeatInterval:  heartbeatInterval,
 	}
@@ -45,11 +42,15 @@ type client struct {
 	connections        map[string]*clientConnection
 	lock               sync.Mutex
 	availableServers   map[string]struct{}
-	unavailableServers map[string]time.Time
+	unavailableServers map[string]struct{}
 	responseChannels   sync.Map
 	msgSeq             int64
 	heartbeatInterval  time.Duration
 	clientConnCount    int64
+}
+
+func (c *client) AvailabilityListener() AvailabilityListener {
+	return c
 }
 
 func (c *client) connectionClosed(conn *clientConnection) {
@@ -63,20 +64,33 @@ func (c *client) connectionClosed(conn *clientConnection) {
 	})
 }
 
+func (c *client) AvailabilityChanged(serverAddress string, available bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	log.Tracef("server %s became available? %t", serverAddress, available)
+	if available {
+		c.makeAvailable(serverAddress)
+	} else {
+		conn, ok := c.connections[serverAddress]
+		if ok {
+			conn.Stop()
+		}
+		c.makeUnavailable(serverAddress)
+	}
+}
+
+func (c *client) makeAvailable(serverAddress string) {
+	delete(c.unavailableServers, serverAddress)
+	c.availableServers[serverAddress] = struct{}{}
+}
+
 func (c *client) makeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
-	// Unavailable ones will be retried after a delay
 	log.Errorf("Server became unavailable %s", serverAddress)
 	delete(c.connections, serverAddress)
 	delete(c.availableServers, serverAddress)
-	c.unavailableServers[serverAddress] = time.Now()
-}
-
-func (c *client) makeUnavailableWithLock(serverAddress string) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.makeUnavailable(serverAddress)
+	c.unavailableServers[serverAddress] = struct{}{}
 }
 
 // SendRequest attempts to send the request to one of the serverAddresses starting at the first one
@@ -97,7 +111,7 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 			rpc:         true,
 		}
 		c.responseChannels.Store(nf.sequence, ri)
-		sent := c.doSendRequest(messageBytes, ri, c.serverAddresses...)
+		sent := c.doSendRequest(messageBytes, ri)
 		if sent {
 			resp, ok := <-respChan
 			if !ok {
@@ -121,13 +135,15 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 	}
 }
 
-func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo, serverAddresses ...string) bool {
+func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.maybeMakeUnavailableAvailable()
-	for _, serverAddress := range serverAddresses {
-		if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
-			return true
+	for _, serverAddress := range c.serverAddresses {
+		_, ok := c.availableServers[serverAddress]
+		if ok {
+			if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
+				return true
+			}
 		}
 	}
 	return false
@@ -171,7 +187,6 @@ func (c *client) broadcast(messageBytes []byte, ri *responseInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.maybeMakeUnavailableAvailable()
 	c.incrementConnCount(ri)
 	for serverAddress := range c.availableServers {
 		if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err != nil {
@@ -203,10 +218,6 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 	clientConn, ok := c.connections[serverAddress]
 	if !ok {
 		nc, err := c.createConnection(serverAddress)
-		var hbConn net.Conn
-		if err == nil {
-			hbConn, err = c.createConnection(serverAddress)
-		}
 		if err != nil {
 			log.Warnf("failed to connect to %s %v", serverAddress, err)
 			c.makeUnavailable(serverAddress)
@@ -218,13 +229,13 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			client:        c,
 			serverAddress: serverAddress,
 			conn:          nc,
-			hbConn:        hbConn,
 		}
 		cc := atomic.AddInt64(&c.clientConnCount, 1)
 		log.Tracef("client conn count is now %d", cc)
 		clientConn.start()
 		c.connections[serverAddress] = clientConn
 	}
+	log.Tracef("Writing request to %s", serverAddress)
 	if err := writeMessage(requestMessageType, messageBytes, clientConn.conn); err != nil {
 		clientConn.Stop()
 		c.makeUnavailable(serverAddress)
@@ -243,20 +254,6 @@ func (c *client) incrementConnCount(ri *responseInfo) {
 	// So we add on count for each server _before_ we send the request and we subtract any request that weren't used
 	if ri != nil {
 		ri.addToConnCount(int32(len(c.availableServers)))
-	}
-}
-
-func (c *client) maybeMakeUnavailableAvailable() {
-	if len(c.unavailableServers) > 0 {
-		now := time.Now()
-		for serverAddress, failTime := range c.unavailableServers {
-			if now.Sub(failTime) >= connectionRetryBackoff {
-				// Put the server back in the available set
-				log.Warnf("Backoff time for unavailable server %s has expired - adding back to available set", serverAddress)
-				delete(c.unavailableServers, serverAddress)
-				c.availableServers[serverAddress] = struct{}{}
-			}
-		}
 	}
 }
 
@@ -296,7 +293,7 @@ func (c *client) Stop() error {
 		conn.Stop()
 	}
 	c.connections = make(map[string]*clientConnection)
-	c.unavailableServers = make(map[string]time.Time)
+	c.unavailableServers = make(map[string]struct{})
 	c.started = false
 	return nil
 }
@@ -419,28 +416,15 @@ type clientConnection struct {
 	hbTimer       *time.Timer
 	hbReceived    bool
 	started       bool
-	hbSentTime    time.Time
 	conn          net.Conn
-	hbConn        net.Conn
 }
 
 func (cc *clientConnection) start() {
-	if ok := cc.doStart(); !ok {
-		// Must be outside the lock
-		cc.heartbeatFailed(true)
-	}
-}
-
-func (cc *clientConnection) doStart() bool {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
 	cc.loopCh = make(chan error, 10)
 	go readMessage(cc.handleMessage, cc.loopCh, cc.conn)
-	ok := cc.sendHeartbeat()
-	if ok {
-		cc.started = true
-	}
-	return ok
+	cc.started = true
 }
 
 func (cc *clientConnection) Stop() {
@@ -465,64 +449,9 @@ func (cc *clientConnection) stop() {
 	log.Tracef("client conn count is now %d", ccc)
 }
 
-func (cc *clientConnection) sendHeartbeat() bool {
-	cc.hbReceived = false
-	cc.hbSentTime = time.Now()
-	if err := writeMessage(heartbeatMessageType, nil, cc.hbConn); err != nil {
-		log.Errorf("failed to send heartbeat %+v", err)
-		return false
-	}
-	t := time.AfterFunc(cc.client.heartbeatInterval, cc.heartTimerFired)
-	log.Tracef("%d scheduled heartbeat to fire after %d ms on %s from %s", cc.id, cc.client.heartbeatInterval.Milliseconds(), cc.conn.LocalAddr().String(),
-		cc.conn.RemoteAddr().String())
-	cc.hbTimer = t
-	return true
-}
-
-func (cc *clientConnection) heartTimerFired() {
-	failed := true //nolint:ifshort
-	cc.lock.Lock()
-	if !cc.started {
-		return
-	}
-	log.Tracef("%d heart timer fired on %s from %s, hb.received is %t", cc.id, cc.conn.LocalAddr().String(),
-		cc.conn.RemoteAddr().String(), cc.hbReceived)
-	if cc.hbReceived {
-		failed = !cc.sendHeartbeat()
-		log.Tracef("%d heart timer fired then sent another hb on %s from %s, failed %t", cc.id, cc.conn.LocalAddr().String(),
-			cc.conn.RemoteAddr().String(), failed)
-	}
-	cc.lock.Unlock()
-	if failed {
-		// We must execute this outside the lock to prevent a deadlock situation where a heartbeat arrives at the
-		// same time this fires
-		cc.heartbeatFailed(false)
-	}
-}
-
-func (cc *clientConnection) heartbeatFailed(atStart bool) {
-	log.Warnf("response heartbeat not received within %f seconds on %s from %s at start %t",
-		cc.client.heartbeatInterval.Seconds(), cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String(), atStart)
-	cc.stop()
-	cc.client.makeUnavailableWithLock(cc.serverAddress)
-	cc.client.connectionClosed(cc)
-}
-
-func (cc *clientConnection) heartbeatReceived() {
-	log.Tracef("response heartbeat response on client %s from %s",
-		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())
-	cc.lock.Lock()
-	cc.hbReceived = true
-	hbDur := time.Now().Sub(cc.hbSentTime)
-	log.Tracef("heartbeat took %d ms to round trip", hbDur.Milliseconds())
-	cc.lock.Unlock()
-	log.Tracef("response heartbeat response on client %s from %s - updated status",
-		cc.conn.LocalAddr().String(), cc.conn.RemoteAddr().String())
-}
-
 func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error {
 	if msgType == heartbeatMessageType {
-		cc.heartbeatReceived()
+		panic("received heartbeat on client")
 		return nil
 	}
 	if msgType == responseMessageType {

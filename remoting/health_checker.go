@@ -3,6 +3,7 @@ package remoting
 import (
 	log "github.com/sirupsen/logrus"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -66,6 +67,14 @@ func (h *HealthChecker) checkConnections() {
 	if !h.started {
 		return
 	}
+
+	sb := &strings.Builder{}
+	for sa := range h.connections {
+		sb.WriteString(sa)
+		sb.WriteString(",")
+	}
+	log.Tracef("** available servers %s", sb.String())
+
 	chans := make([]chan net.Conn, len(h.serverAddresses))
 	for i, serverAddress := range h.serverAddresses {
 		// We do the checks in parallel

@@ -177,12 +177,9 @@ func (c *connection) handleMessageLoop() {
 
 func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 	if msgType == heartbeatMessageType {
-		log.Tracef("Received heartbeat on server from %s to %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		if !c.s.responsesDisabled.Get() {
 			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
 				log.Errorf("failed to write heartbeat %+v", err)
-			} else {
-				log.Tracef("Wrote heartbeat response on server from %s to %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 			}
 		}
 		return nil

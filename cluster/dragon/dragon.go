@@ -1138,6 +1138,7 @@ func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, erro
 		if err := client.Start(); err != nil {
 			return nil, err
 		}
+		d.healthChecker.AddAvailabilityListener(client.AvailabilityListener())
 		d.requestClientPool[index] = client
 	}
 	d.requestClientMap.Store(shardID, client)
@@ -1165,6 +1166,7 @@ func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
 }
 
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
+	log.Tracef("handling remote propose request on node %s", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
@@ -1195,6 +1197,7 @@ func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remot
 }
 
 func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
+	log.Tracef("handling remote read request on node %s", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {

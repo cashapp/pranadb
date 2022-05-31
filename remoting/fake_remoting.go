@@ -16,6 +16,10 @@ type FakeServer struct {
 	messageHandlers map[ClusterMessageType]ClusterMessageHandler
 }
 
+func (f *FakeServer) AvailabilityListener() AvailabilityListener {
+	return nil
+}
+
 func (f *FakeServer) Start() error {
 	return nil
 }
