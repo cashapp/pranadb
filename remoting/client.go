@@ -146,7 +146,7 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 		if ok {
 			if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
 				return true
-			} else {
+			} else { //nolint:revive
 				log.Warnf("failed to send request %v", err)
 			}
 		}
@@ -421,7 +421,6 @@ type clientConnection struct {
 	serverAddress string
 	loopCh        chan error
 	hbTimer       *time.Timer
-	hbReceived    bool
 	started       bool
 	conn          net.Conn
 }
@@ -459,7 +458,6 @@ func (cc *clientConnection) stop() {
 func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error {
 	if msgType == heartbeatMessageType {
 		panic("received heartbeat on client")
-		return nil
 	}
 	if msgType == responseMessageType {
 		resp := &ClusterResponse{}

@@ -12,8 +12,8 @@ func NewHealthChecker(serverAddresses []string, hbTimeout time.Duration, hbInter
 	return &HealthChecker{
 		serverAddresses: serverAddresses,
 		hbTimeout:       hbTimeout,
-		hbInterval: hbInterval,
-		connections: map[string]net.Conn{},
+		hbInterval:      hbInterval,
+		connections:     map[string]net.Conn{},
 	}
 }
 
@@ -30,7 +30,7 @@ type HealthChecker struct {
 	hbInterval      time.Duration
 	timer           *time.Timer
 	lock            sync.Mutex
-	beenStarted bool
+	beenStarted     bool
 }
 
 func (h *HealthChecker) AddAvailabilityListener(listener AvailabilityListener) {
@@ -89,7 +89,7 @@ func (h *HealthChecker) checkConnections() {
 		go h.checkConnectionWithChan(conn, serverAddress, ch)
 	}
 	for i, ch := range chans {
-		conn := <- ch
+		conn := <-ch
 		serverAddress := h.serverAddresses[i]
 		_, prev := h.connections[serverAddress]
 		if !prev && conn != nil {
@@ -167,8 +167,7 @@ func (h *HealthChecker) heartbeat(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	msgType := readBuff[0]
-	if msgType != heartbeatMessageType {
+	if readBuff[0] != heartbeatMessageType {
 		panic("not a heartbeat")
 	}
 	return nil
@@ -179,4 +178,3 @@ func (h *HealthChecker) signalAvailabilityChange(serverAddress string, available
 		listener.AvailabilityChanged(serverAddress, available)
 	}
 }
-

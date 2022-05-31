@@ -80,7 +80,7 @@ type Dragon struct {
 	requestClientMap             sync.Map
 	requestClientPool            []remoting.Client
 	requestClientPoolLock        sync.Mutex
-	healthChecker *remoting.HealthChecker
+	healthChecker                *remoting.HealthChecker
 }
 
 type snapshot struct {
@@ -212,7 +212,7 @@ func (d *Dragon) start0() error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	d.healthChecker = remoting.NewHealthChecker(d.cnf.NotifListenAddresses, 2 * time.Second, 5 * time.Second)
+	d.healthChecker = remoting.NewHealthChecker(d.cnf.NotifListenAddresses, 2*time.Second, 5*time.Second)
 	d.healthChecker.Start()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
@@ -383,7 +383,7 @@ func (d *Dragon) Stop() error {
 		return nil
 	}
 	d.healthChecker.Stop()
-	log.Tracef("Stopped health-checker on node %s", d.cnf.NodeID)
+	log.Tracef("Stopped health-checker on node %d", d.cnf.NodeID)
 	d.nh.Stop()
 	d.nh = nil
 	d.nodeHostStarted = false
@@ -1171,7 +1171,7 @@ func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
 }
 
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
-	log.Tracef("handling remote propose request on node %s", d.cnf.NodeID)
+	log.Tracef("handling remote propose request on node %d", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
@@ -1202,7 +1202,7 @@ func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remot
 }
 
 func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
-	log.Tracef("handling remote read request on node %s", d.cnf.NodeID)
+	log.Tracef("handling remote read request on node %d", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {

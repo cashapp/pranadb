@@ -49,7 +49,7 @@ func setup() (servers []*server, serverAddresses []string, al *availabilityListe
 	servers = createServers(3)
 	serverAddresses = make([]string, 3)
 	for i := 0; i < 3; i++ {
-		serverAddresses[i] = fmt.Sprintf("localhost:%d", 7888 + i)
+		serverAddresses[i] = fmt.Sprintf("localhost:%d", 7888+i)
 	}
 	hbTimeout := 1 * time.Second
 	hbInterval := 2 * time.Second
@@ -62,7 +62,8 @@ func setup() (servers []*server, serverAddresses []string, al *availabilityListe
 
 // Start or stop the servers as appropriate until they are started/stopped according to desiredState - then verify
 // availability status is correct
-func waitUntilDesiredState(t *testing.T, desiredState []bool, serverAddresses[] string, servers []*server, al *availabilityListener) {
+func waitUntilDesiredState(t *testing.T, desiredState []bool, serverAddresses []string, servers []*server, al *availabilityListener) {
+	t.Helper()
 	for i, desired := range desiredState {
 		serverAddress := serverAddresses[i]
 		current := al.getAvailability(serverAddress)
@@ -89,7 +90,7 @@ func waitUntilDesiredState(t *testing.T, desiredState []bool, serverAddresses[] 
 
 type availabilityListener struct {
 	availStatuses map[string]bool
-	lock sync.Mutex
+	lock          sync.Mutex
 }
 
 func newAvailabilityListener() *availabilityListener {
