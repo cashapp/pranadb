@@ -6,6 +6,7 @@ import (
 	"github.com/cznic/mathutil"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -35,7 +36,7 @@ const (
 
 	locksClusterID uint64 = 2
 
-	retryDelay = 500 * time.Millisecond
+	retryDelay = 1000 * time.Millisecond
 
 	retryTimeout = 10 * time.Minute
 
@@ -794,7 +795,8 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			os.Exit(1)
 			return nil, nil
 		}
-		time.Sleep(retryDelay)
+		delayMs := float64(retryDelay) * rand.Float64()
+		time.Sleep(time.Millisecond * time.Duration(delayMs))
 	}
 }
 
