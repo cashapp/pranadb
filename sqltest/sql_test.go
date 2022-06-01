@@ -67,7 +67,7 @@ func TestSQLClusteredThreeNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Debug("Running TestSQLClusteredThreeNodes")
+	log.Info("Running TestSQLClusteredThreeNodes")
 	testSQL(t, false, 3, 3)
 }
 
@@ -75,7 +75,7 @@ func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Debug("Running TestSQLClusteredFiveNodes")
+	log.Info("Running TestSQLClusteredFiveNodes")
 	testSQL(t, false, 5, 3)
 }
 
@@ -83,7 +83,7 @@ func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Debug("Running TestSQLClusteredSevenNodesReplicationFive")
+	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
 	testSQL(t, false, 7, 5)
 }
 
