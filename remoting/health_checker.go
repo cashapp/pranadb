@@ -17,7 +17,7 @@ func NewHealthChecker(serverAddresses []string, hbTimeout time.Duration, hbInter
 }
 
 type AvailabilityListener interface {
-	AvailabilityChanged(serverAddress string, available bool)
+	AvailabilityChanged(serverAddresses []string)
 }
 
 type HealthChecker struct {
@@ -36,6 +36,7 @@ func (h *HealthChecker) AddAvailabilityListener(listener AvailabilityListener) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.availListeners = append(h.availListeners, listener)
+	listener.AvailabilityChanged(h.getAvailableServers())
 }
 
 func (h *HealthChecker) Start() {
@@ -80,6 +81,7 @@ func (h *HealthChecker) checkConnections() {
 		conn, _ := h.connections[serverAddress]
 		go h.checkConnectionWithChan(conn, serverAddress, ch)
 	}
+	changeOccurred := false
 	for i, ch := range chans {
 		conn := <-ch
 		serverAddress := h.serverAddresses[i]
@@ -87,14 +89,34 @@ func (h *HealthChecker) checkConnections() {
 		if !prev && conn != nil {
 			// New connection added
 			h.connections[serverAddress] = conn
-			h.signalAvailabilityChange(serverAddress, true)
+			changeOccurred = true
 		} else if prev && conn == nil {
 			// Connection closed
 			delete(h.connections, serverAddress)
-			h.signalAvailabilityChange(serverAddress, false)
+			changeOccurred = true
 		}
 	}
+	if changeOccurred {
+		h.sendAvailabilityUpdate()
+	}
 	h.timer = time.AfterFunc(h.hbInterval, h.checkConnectionsWithLock)
+}
+
+func (h *HealthChecker) sendAvailabilityUpdate() {
+	addresses := h.getAvailableServers()
+	for _, listener := range h.availListeners {
+		listener.AvailabilityChanged(addresses)
+	}
+}
+
+func (h *HealthChecker) getAvailableServers() []string {
+	addresses := make([]string, len(h.connections))
+	i := 0
+	for address := range h.connections {
+		addresses[i] = address
+		i++
+	}
+	return addresses
 }
 
 func (h *HealthChecker) checkConnectionsWithLock() {
@@ -162,10 +184,4 @@ func (h *HealthChecker) heartbeat(conn net.Conn) error {
 		panic("not a heartbeat")
 	}
 	return nil
-}
-
-func (h *HealthChecker) signalAvailabilityChange(serverAddress string, available bool) {
-	for _, listener := range h.availListeners {
-		listener.AvailabilityChanged(serverAddress, available)
-	}
 }

@@ -63,24 +63,27 @@ func (c *client) connectionClosed(conn *clientConnection) {
 	})
 }
 
-func (c *client) AvailabilityChanged(serverAddress string, available bool) {
+func (c *client) AvailabilityChanged(availServers []string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if available {
-		c.makeAvailable(serverAddress)
-	} else {
-		conn, ok := c.connections[serverAddress]
-		if ok {
-			conn.Stop()
-		}
-		c.makeUnavailable(serverAddress)
+	c.availableServers = make(map[string]struct{}, len(availServers))
+	for _, serverAddress := range availServers {
+		c.availableServers[serverAddress] = struct{}{}
 	}
-}
-
-func (c *client) makeAvailable(serverAddress string) {
-	log.Debugf("Server became available %s", serverAddress)
-	delete(c.unavailableServers, serverAddress)
-	c.availableServers[serverAddress] = struct{}{}
+	c.unavailableServers = map[string]struct{}{}
+	for _, address := range c.serverAddresses {
+		_, ok := c.availableServers[address]
+		if !ok {
+			c.unavailableServers[address] = struct{}{}
+		}
+	}
+	for address, conn := range c.connections {
+		_, ok := c.availableServers[address]
+		if !ok {
+			delete(c.connections, address)
+			conn.stop()
+		}
+	}
 }
 
 func (c *client) makeUnavailable(serverAddress string) {

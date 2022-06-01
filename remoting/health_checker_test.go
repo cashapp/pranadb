@@ -89,26 +89,40 @@ func waitUntilDesiredState(t *testing.T, desiredState []bool, serverAddresses []
 }
 
 type availabilityListener struct {
-	availStatuses map[string]bool
+	availStatuses map[string]struct{}
 	lock          sync.Mutex
 }
 
 func newAvailabilityListener() *availabilityListener {
 	return &availabilityListener{
-		availStatuses: map[string]bool{},
+		availStatuses: map[string]struct{}{},
 	}
 }
 
-func (a *availabilityListener) AvailabilityChanged(serverAddress string, available bool) {
+func (a *availabilityListener) AvailabilityChanged(availableAddresses []string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	a.availStatuses[serverAddress] = available
+
+	availMap := map[string]struct{}{}
+	for _, address := range availableAddresses {
+		availMap[address] = struct{}{}
+	}
+	for address := range a.availStatuses {
+		_, ok := availMap[address]
+		if !ok {
+			delete(a.availStatuses, address)
+		}
+	}
+	for _, address := range availableAddresses {
+		a.availStatuses[address] = struct{}{}
+	}
 }
 
 func (a *availabilityListener) getAvailability(serverAddress string) bool {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	return a.availStatuses[serverAddress]
+	_, ok := a.availStatuses[serverAddress]
+	return ok
 }
 
 func createServers(numServers int) []*server {
