@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "cluster_restart" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -58,18 +58,18 @@ const (
 	clientPageSize             = 3 // We set this to a small value to exercise the paging logic
 )
 
-func TestSQLFakeCluster(t *testing.T) {
-	log.Debug("Running TestSQLFakeCluster")
-	testSQL(t, true, 1, 0)
-}
+//func TestSQLFakeCluster(t *testing.T) {
+//	log.Debug("Running TestSQLFakeCluster")
+//	testSQL(t, true, 1, 0)
+//}
 
-func TestSQLClusteredThreeNodes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3)
-}
+//func TestSQLClusteredThreeNodes(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredThreeNodes")
+//	testSQL(t, false, 3, 3)
+//}
 
 func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
@@ -79,13 +79,13 @@ func TestSQLClusteredFiveNodes(t *testing.T) {
 	testSQL(t, false, 5, 3)
 }
 
-func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
-	testSQL(t, false, 7, 5)
-}
+//func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
+//	testSQL(t, false, 7, 5)
+//}
 
 type sqlTestsuite struct {
 	fakeCluster       bool
