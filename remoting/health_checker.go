@@ -3,7 +3,6 @@ package remoting
 import (
 	log "github.com/sirupsen/logrus"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -73,13 +72,6 @@ func (h *HealthChecker) checkConnections() {
 		return
 	}
 
-	sb := &strings.Builder{}
-	for sa := range h.connections {
-		sb.WriteString(sa)
-		sb.WriteString(",")
-	}
-	log.Tracef("** available servers %s", sb.String())
-
 	chans := make([]chan net.Conn, len(h.serverAddresses))
 	for i, serverAddress := range h.serverAddresses {
 		// We do the checks in parallel
@@ -117,7 +109,6 @@ func (h *HealthChecker) checkConnectionWithChan(conn net.Conn, serverAddress str
 }
 
 func (h *HealthChecker) checkConnection(conn net.Conn, serverAddress string) net.Conn {
-	//log.Infof("checking conn to %v %s", conn, serverAddress)
 	if conn == nil {
 		var err error
 		conn, err = h.createConnection(serverAddress)
@@ -125,7 +116,7 @@ func (h *HealthChecker) checkConnection(conn net.Conn, serverAddress string) net
 			log.Warnf("health checker failed to connect to %s", serverAddress)
 			return nil
 		}
-		log.Infof("health checker connected to %s", serverAddress)
+		log.Debugf("health checker connected to %s", serverAddress)
 	}
 	if err := h.heartbeat(conn); err != nil {
 		log.Warnf("heartbeat returned err %v", err)

@@ -47,6 +47,8 @@ const (
 	requestClientMaxPoolSize = 100
 
 	nodeHostStartTimeout = 10 * time.Second
+
+	pullQueryRetryTimeout = 10 * time.Second
 )
 
 func NewDragon(cnf conf.Config) (*Dragon, error) {
@@ -184,7 +186,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		}
 
 		if bytes[0] == 0 {
-			if time.Now().Sub(start) > 10*time.Second {
+			if time.Now().Sub(start) > pullQueryRetryTimeout {
 				msg := string(bytes[1:])
 				return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
 			}
@@ -384,7 +386,6 @@ func (d *Dragon) Stop() error {
 		return nil
 	}
 	d.healthChecker.Stop()
-	log.Tracef("Stopped health-checker on node %d", d.cnf.NodeID)
 	d.nh.Stop()
 	d.nh = nil
 	d.nodeHostStarted = false
@@ -395,12 +396,11 @@ func (d *Dragon) Stop() error {
 	d.requestClientPoolLock.Lock()
 	defer d.requestClientPoolLock.Unlock()
 	for i, cl := range d.requestClientPool {
-		cli := cl
-		d.requestClientPool[i] = nil
-		if cli != nil {
-			if err := cli.Stop(); err != nil {
+		if cl != nil {
+			if err := cl.Stop(); err != nil {
 				log.Errorf("failed to stop client %v", err)
 			}
+			d.requestClientPool[i] = nil
 		}
 	}
 	d.requestClientMap = sync.Map{} // clear the cache
@@ -1092,7 +1092,6 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Tracef("sending remote read %d", shardID)
 	clusterRequest := &notifications.ClusterReadRequest{
 		ShardId:     int64(shardID),
 		RequestBody: request,
@@ -1102,7 +1101,6 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 		log.Errorf("failed %v", err)
 		return nil, err
 	}
-	log.Tracef("got remote read response %d", shardID)
 	clusterResp, ok := resp.(*notifications.ClusterReadResponse)
 	if !ok {
 		panic("not a notifications.ClusterReadResponse")
@@ -1173,7 +1171,6 @@ func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
 }
 
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
-	log.Tracef("handling remote propose request on node %d", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
@@ -1204,7 +1201,6 @@ func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remot
 }
 
 func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
-	log.Tracef("handling remote read request on node %d", d.cnf.NodeID)
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {

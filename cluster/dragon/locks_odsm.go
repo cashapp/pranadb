@@ -32,7 +32,7 @@ type locksODStateMachine struct {
 	dragon *Dragon
 	// This mutex is to provide a memory barrier between calling threads, not for mutual exclusion
 	locksLock sync.Mutex
-	locks     map[string]string // TODO use a trie
+	locks     map[string]string
 }
 
 func (s *locksODStateMachine) loadLocks() error {

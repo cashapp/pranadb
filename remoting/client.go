@@ -46,7 +46,6 @@ type client struct {
 	responseChannels   sync.Map
 	msgSeq             int64
 	heartbeatInterval  time.Duration
-	clientConnCount    int64
 }
 
 func (c *client) AvailabilityListener() AvailabilityListener {
@@ -67,7 +66,6 @@ func (c *client) connectionClosed(conn *clientConnection) {
 func (c *client) AvailabilityChanged(serverAddress string, available bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	log.Tracef("server %s became available? %t", serverAddress, available)
 	if available {
 		c.makeAvailable(serverAddress)
 	} else {
@@ -80,6 +78,7 @@ func (c *client) AvailabilityChanged(serverAddress string, available bool) {
 }
 
 func (c *client) makeAvailable(serverAddress string) {
+	log.Debugf("Server became available %s", serverAddress)
 	delete(c.unavailableServers, serverAddress)
 	c.availableServers[serverAddress] = struct{}{}
 }
@@ -87,7 +86,7 @@ func (c *client) makeAvailable(serverAddress string) {
 func (c *client) makeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
-	log.Errorf("Server became unavailable %s", serverAddress)
+	log.Debugf("Server became unavailable %s", serverAddress)
 	delete(c.connections, serverAddress)
 	delete(c.availableServers, serverAddress)
 	c.unavailableServers[serverAddress] = struct{}{}
@@ -131,7 +130,6 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 			return nil, errors.New("failed to send cluster request - no servers available")
 		}
 		time.Sleep(1 * time.Second)
-		log.Info("retrying")
 	}
 }
 
@@ -151,7 +149,7 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 			}
 		}
 	}
-	log.Debug("no available servers")
+	log.Warn("no available servers")
 	return false
 }
 
@@ -236,12 +234,9 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			serverAddress: serverAddress,
 			conn:          nc,
 		}
-		cc := atomic.AddInt64(&c.clientConnCount, 1)
-		log.Tracef("client conn count is now %d", cc)
 		clientConn.start()
 		c.connections[serverAddress] = clientConn
 	}
-	log.Tracef("Writing request to %s", serverAddress)
 	if err := writeMessage(requestMessageType, messageBytes, clientConn.conn); err != nil {
 		clientConn.Stop()
 		c.makeUnavailable(serverAddress)
@@ -446,13 +441,10 @@ func (cc *clientConnection) stop() {
 	cc.lock.Unlock()
 	// We need to execute this and the wait on channel outside the lock to prevent deadlock
 	if err := cc.conn.Close(); err != nil {
-		// Do nothing - connection might already have been closed (e.g. from client)
-		log.Errorf("Failed to close connection %+v", err)
+		// Do nothing - connection might already have been closed from other side - this is ok
 	}
 	<-cc.loopCh
 	cc.client.connectionClosed(cc)
-	ccc := atomic.AddInt64(&cc.client.clientConnCount, -1)
-	log.Tracef("client conn count is now %d", ccc)
 }
 
 func (cc *clientConnection) handleMessage(msgType messageType, msg []byte) error {
