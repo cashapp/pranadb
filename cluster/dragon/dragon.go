@@ -795,8 +795,9 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			os.Exit(1)
 			return nil, nil
 		}
-		delayMs := float64(retryDelay) * rand.Float64()
-		time.Sleep(time.Millisecond * time.Duration(delayMs))
+		// Randomise the delay to prevent clashing concurrent retries
+		delay := float64(retryDelay) * rand.Float64()
+		time.Sleep(time.Duration(delay))
 	}
 }
 
