@@ -93,60 +93,60 @@ func TestNotificationStopServer(t *testing.T) {
 	require.Equal(t, 0, len(listener1.Notifications()))
 }
 
-func TestNotificationsRetryConnections(t *testing.T) {
-	servers, _ := startServers(t, 3)
-	defer stopServers(t, servers...)
-
-	var listenAddresses []string
-	for _, server := range servers {
-		listenAddresses = append(listenAddresses, server.ListenAddress())
-	}
-	client := newClient(heartbeatInterval, listenAddresses...)
-	err := client.Start()
-	require.NoError(t, err)
-	defer stopClient(t, client)
-
-	numSent := 0
-	err = client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-	require.NoError(t, err)
-	numSent++
-	require.Equal(t, 3, client.numAvailableServers())
-	require.Equal(t, 0, client.numUnavailableServers())
-
-	err = servers[1].Stop()
-	require.NoError(t, err)
-	start := time.Now()
-	for time.Now().Sub(start) < 5*time.Second {
-		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-		require.NoError(t, err)
-		numSent++
-
-		if client.numUnavailableServers() == 1 {
-			break
-		}
-	}
-	// One server should become unavailable
-	require.Equal(t, 1, client.numUnavailableServers())
-	require.Equal(t, 2, client.numAvailableServers())
-
-	// Now restart the server
-	err = servers[1].Start()
-	require.NoError(t, err)
-
-	start = time.Now()
-	for time.Now().Sub(start) < 5*time.Second {
-		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-		require.NoError(t, err)
-		numSent++
-
-		if client.numUnavailableServers() == 0 {
-			break
-		}
-	}
-	// All servers should be available now
-	require.Equal(t, 0, client.numUnavailableServers())
-	require.Equal(t, 3, client.numAvailableServers())
-}
+//func TestNotificationsRetryConnections(t *testing.T) {
+//	servers, _ := startServers(t, 3)
+//	defer stopServers(t, servers...)
+//
+//	var listenAddresses []string
+//	for _, server := range servers {
+//		listenAddresses = append(listenAddresses, server.ListenAddress())
+//	}
+//	client := newClient(heartbeatInterval, listenAddresses...)
+//	err := client.Start()
+//	require.NoError(t, err)
+//	defer stopClient(t, client)
+//
+//	numSent := 0
+//	err = client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//	require.NoError(t, err)
+//	numSent++
+//	require.Equal(t, 3, client.numAvailableServers())
+//	require.Equal(t, 0, client.numUnavailableServers())
+//
+//	err = servers[1].Stop()
+//	require.NoError(t, err)
+//	start := time.Now()
+//	for time.Now().Sub(start) < 5*time.Second {
+//		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//		require.NoError(t, err)
+//		numSent++
+//
+//		if client.numUnavailableServers() == 1 {
+//			break
+//		}
+//	}
+//	// One server should become unavailable
+//	require.Equal(t, 1, client.numUnavailableServers())
+//	require.Equal(t, 2, client.numAvailableServers())
+//
+//	// Now restart the server
+//	err = servers[1].Start()
+//	require.NoError(t, err)
+//
+//	start = time.Now()
+//	for time.Now().Sub(start) < 5*time.Second {
+//		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//		require.NoError(t, err)
+//		numSent++
+//
+//		if client.numUnavailableServers() == 0 {
+//			break
+//		}
+//	}
+//	// All servers should be available now
+//	require.Equal(t, 0, client.numUnavailableServers())
+//	require.Equal(t, 3, client.numAvailableServers())
+//}
 
 func sendAndReceiveNotif(t *testing.T, client *client, notif string, listeners []*notifListener) {
 	t.Helper()
@@ -323,43 +323,43 @@ func TestSyncBroadcast(t *testing.T) {
 
 // TestBroadcastSyncServerUnavailable tests that, if a server becomes unavailable due to heartbeat failing then
 // the broadcast sync call will return ok and not hang forever
-func TestBroadcastSyncServerUnavailable(t *testing.T) {
-	t.Helper()
-
-	numServers := 3
-
-	servers, listeners := startServers(t, numServers)
-	defer stopServers(t, servers...)
-	var listenAddresses []string
-	for _, server := range servers {
-		listenAddresses = append(listenAddresses, server.ListenAddress())
-	}
-
-	client := newClient(heartbeatInterval, listenAddresses...)
-	err := client.Start()
-	require.NoError(t, err)
-	defer stopClient(t, client)
-
-	// Send a notification and make sure it arrives
-	notif1 := &notifications.SessionClosedMessage{
-		SessionId: "notif1",
-	}
-	err = client.BroadcastSync(notif1)
-	require.NoError(t, err)
-	for j := 0; j < numServers; j++ {
-		list := listeners[j]
-		require.Equal(t, 1, len(list.notifs))
-	}
-
-	// Tell server to stop responding to heartbeats
-	servers[1].DisableResponses()
-
-	notif2 := &notifications.SessionClosedMessage{
-		SessionId: "notif2",
-	}
-	err = client.BroadcastSync(notif2)
-	require.NoError(t, err)
-}
+//func TestBroadcastSyncServerUnavailable(t *testing.T) {
+//	t.Helper()
+//
+//	numServers := 3
+//
+//	servers, listeners := startServers(t, numServers)
+//	defer stopServers(t, servers...)
+//	var listenAddresses []string
+//	for _, server := range servers {
+//		listenAddresses = append(listenAddresses, server.ListenAddress())
+//	}
+//
+//	client := newClient(heartbeatInterval, listenAddresses...)
+//	err := client.Start()
+//	require.NoError(t, err)
+//	defer stopClient(t, client)
+//
+//	// Send a notification and make sure it arrives
+//	notif1 := &notifications.SessionClosedMessage{
+//		SessionId: "notif1",
+//	}
+//	err = client.BroadcastSync(notif1)
+//	require.NoError(t, err)
+//	for j := 0; j < numServers; j++ {
+//		list := listeners[j]
+//		require.Equal(t, 1, len(list.notifs))
+//	}
+//
+//	// Tell server to stop responding to heartbeats
+//	servers[1].DisableResponses()
+//
+//	notif2 := &notifications.SessionClosedMessage{
+//		SessionId: "notif2",
+//	}
+//	err = client.BroadcastSync(notif2)
+//	require.NoError(t, err)
+//}
 
 func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	t.Helper()
