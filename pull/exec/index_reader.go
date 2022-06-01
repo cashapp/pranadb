@@ -66,9 +66,19 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 		rangeEnd = append(rangeEnd, indexShardPrefix...)
 		for i, scanRange := range scanRanges {
 			// if range vals are nil, doing a point get with nil as the index PK value
-			if scanRange.LowVal == nil {
+			if scanRange.LowVal == nil && scanRange.HighVal == nil {
 				rangeStart = append(rangeStart, 0)
+				rangeEnd = append(rangeEnd, 0)
+			} else if scanRange.HighVal == nil {
+				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
 			} else {
+				rangeEnd = append(rangeEnd, 1)
+				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if scanRange.LowVal != nil {
 				rangeStart = append(rangeStart, 1)
 				rangeStart, err = common.EncodeKeyElement(scanRange.LowVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
 				if err != nil {
@@ -76,15 +86,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 				}
 				if scanRange.LowExcl {
 					rangeStart = common.IncrementBytesBigEndian(rangeStart)
-				}
-			}
-			if scanRange.HighVal == nil {
-				rangeEnd = append(rangeEnd, 0)
-			} else {
-				rangeEnd = append(rangeEnd, 1)
-				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
-				if err != nil {
-					return nil, err
 				}
 			}
 			if !scanRange.HighExcl {
