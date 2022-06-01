@@ -356,8 +356,8 @@ func (d *Dragon) ExecutePingLookup(shardID uint64, request []byte) error {
 func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byte, error) {
 	res, err := d.executeWithRetry(func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		defer cancel()
 		res, err := d.nh.SyncRead(ctx, shardID, request)
-		cancel()
 		return res, errors.WithStack(err)
 	}, retryTimeout)
 	if err != nil {
@@ -774,7 +774,7 @@ func (d *Dragon) generateReplicas(shardID uint64, replicationFactor int, dataSha
 	d.shardAllocs[shardID] = nids
 }
 
-// It's expected to get cluster not ready from time to time, we should retry in this case
+// Some errors are expected, we should retry in this case
 // See https://github.com/lni/dragonboat/issues/183
 func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Duration) (interface{}, error) {
 	start := time.Now()
@@ -801,8 +801,8 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemachine.Result, error) {
 	r, err := d.executeWithRetry(func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		defer cancel()
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
-		cancel()
 		return res, errors.WithStack(err)
 	}, retryTimeout)
 	if err != nil {
