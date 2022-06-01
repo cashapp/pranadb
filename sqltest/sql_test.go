@@ -911,7 +911,7 @@ func (st *sqlTest) waitForCommitted(require *require.Assertions, numrows int, so
 			return true, nil
 		}
 		return false, nil
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 30*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok, fmt.Sprintf("timed out waiting for %d rows to be committed, actual committed %d", numrows, st.getNumCommitted(require, sourceID)))
 	st.waitForProcessingToComplete(require)
