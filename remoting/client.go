@@ -149,7 +149,6 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 			}
 		}
 	}
-	log.Warn("no available servers")
 	return false
 }
 

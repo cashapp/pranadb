@@ -1053,7 +1053,7 @@ func (d *Dragon) sendPropose(shardID uint64, request []byte) (uint64, []byte, er
 		ShardId:     int64(shardID),
 		RequestBody: request,
 	}
-	resp, err := requestClient.SendRequest(clusterRequest, 1*time.Minute)
+	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Minute)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1085,7 +1085,6 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 	_, ok := d.localShardsMap[shardID]
 	if ok {
 		// We handle this directly
-		log.Tracef("Executing read locally")
 		return d.executeSyncReadWithRetry(shardID, request)
 	}
 
@@ -1097,7 +1096,7 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 		ShardId:     int64(shardID),
 		RequestBody: request,
 	}
-	resp, err := requestClient.SendRequest(clusterRequest, 1*time.Minute)
+	resp, err := requestClient.SendRequest(clusterRequest, 10*time.Minute)
 	if err != nil {
 		log.Errorf("failed %v", err)
 		return nil, err
