@@ -384,7 +384,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.SetLevel(log.TraceLevel)
+	log.SetLevel(log.WarnLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
