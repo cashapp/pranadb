@@ -323,13 +323,14 @@ func (w *sqlTestsuite) registerEncoderFactory(factory encoderFactory, typ kafka.
 }
 
 func (w *sqlTestsuite) stopCluster() {
-	log.Debug("**** stopping cluster")
+	log.Info("**** stopping cluster")
 	for _, prana := range w.pranaCluster {
 		err := prana.Stop()
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
+	log.Info("**** stopped cluster")
 }
 
 func (w *sqlTestsuite) startCluster() {
@@ -384,7 +385,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.SetLevel(log.WarnLevel)
+	log.SetLevel(log.InfoLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
