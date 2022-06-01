@@ -790,10 +790,10 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		}
 		if time.Now().Sub(start) >= timeout {
 			// If we timeout, then something is seriously wrong - we should just exit
-			log.Errorf("timeout in making dragonboat calls, exiting %+v", err)
-			common.DumpStacks()
-			os.Exit(1)
-			return nil, nil
+			log.Errorf("timeout in making dragonboat calls %+v", err)
+			//common.DumpStacks()
+			//os.Exit(1)
+			return nil, err
 		}
 		// Randomise the delay to prevent clashing concurrent retries
 		delay := float64(retryDelay) * rand.Float64()
