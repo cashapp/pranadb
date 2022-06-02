@@ -6,6 +6,8 @@ import (
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/remoting"
 	"net/http" //nolint:stylecheck
+	"runtime"
+	"time"
 
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
@@ -118,25 +120,26 @@ func NewServer(config conf.Config) (*Server, error) {
 }
 
 type Server struct {
-	lock            sync.RWMutex
-	nodeID          int
-	lifeCycleMgr    *lifecycle.Endpoints
-	cluster         cluster.Cluster
-	shardr          *sharder.Sharder
-	metaController  *meta.Controller
-	pushEngine      *push.Engine
-	pullEngine      *pull.Engine
-	commandExecutor *command.Executor
-	schemaLoader    *schema.Loader
-	notifServer     remoting.Server
-	notifClient     remoting.Client
-	apiServer       *api.Server
-	services        []service
-	started         bool
-	conf            conf.Config
-	debugServer     *http.Server
-	metrics         *metrics.Server
-	failureinjector failinject.Injector
+	lock               sync.RWMutex
+	nodeID             int
+	lifeCycleMgr       *lifecycle.Endpoints
+	cluster            cluster.Cluster
+	shardr             *sharder.Sharder
+	metaController     *meta.Controller
+	pushEngine         *push.Engine
+	pullEngine         *pull.Engine
+	commandExecutor    *command.Executor
+	schemaLoader       *schema.Loader
+	notifServer        remoting.Server
+	notifClient        remoting.Client
+	apiServer          *api.Server
+	services           []service
+	started            bool
+	conf               conf.Config
+	debugServer        *http.Server
+	metrics            *metrics.Server
+	failureinjector    failinject.Injector
+	logGoroutinesTimer *time.Timer
 }
 
 type service interface {
@@ -184,9 +187,23 @@ func (s *Server) Start() error {
 
 	s.started = true
 
-	log.Infof("Prana server %d started", s.nodeID)
-
+	s.scheduleLogGoroutinesTimer()
+	log.Infof("Prana server %d started on %s with %d CPUs", s.nodeID, runtime.GOOS, runtime.NumCPU())
 	return nil
+}
+
+func (s *Server) logNumGoroutines() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if !s.started {
+		return
+	}
+	log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	s.scheduleLogGoroutinesTimer()
+}
+
+func (s *Server) scheduleLogGoroutinesTimer() {
+	s.logGoroutinesTimer = time.AfterFunc(5*time.Second, s.logNumGoroutines)
 }
 
 func (s *Server) Stop() error {
@@ -195,6 +212,10 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.logGoroutinesTimer != nil {
+		s.logGoroutinesTimer.Stop()
+		s.logGoroutinesTimer = nil
+	}
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {

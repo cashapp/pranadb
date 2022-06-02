@@ -5,9 +5,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"net"
-
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"net"
 )
 
 type ClusterMessageType int32
@@ -209,6 +208,10 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn) {
 		n, err := conn.Read(readBuff)
 		if err != nil {
 			// Connection closed
+			// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
+			if err := conn.Close(); err != nil {
+				// Ignore
+			}
 			ch <- nil
 			return
 		}

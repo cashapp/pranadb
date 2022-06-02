@@ -91,17 +91,16 @@ func (s *server) Stop() error {
 		panic("channel was closed")
 	}
 	// Now close connections
-	var e error
 	s.connections.Range(func(conn, _ interface{}) bool {
 		if err := conn.(*connection).stop(); err != nil {
-			e = err
-			return false
+			// Log, but continue! We must close all the connections to avoid leaks
+			log.Warnf("failed to close connection %v", err)
 		}
 		return true
 	})
 	s.started = false
 	log.Infof("stopped remoting server on %s", s.listenAddress)
-	return e
+	return nil
 }
 
 func (s *server) ListenAddress() string {
