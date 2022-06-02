@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	TestPrefix         = "basic_source" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "union_all" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -1025,7 +1025,6 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	start := time.Now()
 	isUse := strings.HasPrefix(statement, "use ")
 	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
-	log.Errorf("execute statement returned err %+v", err)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {
