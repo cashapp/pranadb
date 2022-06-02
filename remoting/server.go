@@ -154,7 +154,14 @@ func (c *connection) start() {
 }
 
 func (c *connection) readLoop() {
-	readMessage(c.handleMessage, c.readLoopExitCh, c.conn)
+	readMessage(c.handleMessage, c.readLoopExitCh, c.conn, func() {
+		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
+		if err := c.conn.Close(); err != nil {
+			// Ignore
+		}
+		// And close the async msg channel
+		close(c.asyncMsgCh)
+	})
 	c.s.removeConnection(c)
 }
 
@@ -236,9 +243,8 @@ func (c *connection) stop() error {
 	}
 	err, ok := <-c.readLoopExitCh
 	if !ok {
-		return errors.WithStack(errors.Error("connection channel was closed"))
+		panic("channel was closed")
 	}
 	c.asyncMsgsInProgress.Wait() // Wait for all async messages to be processed
-	close(c.asyncMsgCh)
 	return errors.WithStack(err)
 }

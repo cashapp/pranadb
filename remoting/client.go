@@ -428,7 +428,13 @@ func (cc *clientConnection) start() {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
 	cc.loopCh = make(chan error, 10)
-	go readMessage(cc.handleMessage, cc.loopCh, cc.conn)
+	go readMessage(cc.handleMessage, cc.loopCh, cc.conn, func() {
+		// Connection closed
+		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
+		if err := cc.conn.Close(); err != nil {
+			// Ignore
+		}
+	})
 	cc.started = true
 }
 

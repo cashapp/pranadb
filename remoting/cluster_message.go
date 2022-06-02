@@ -200,13 +200,14 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 	return errors.WithStack(err)
 }
 
-func readMessage(handler messageHandler, ch chan error, conn net.Conn) {
+func readMessage(handler messageHandler, ch chan error, conn net.Conn, closeAction func()) {
 	var msgBuf []byte
 	readBuff := make([]byte, readBuffSize)
 	msgLen := -1
 	for {
 		n, err := conn.Read(readBuff)
 		if err != nil {
+			closeAction()
 			// Connection closed
 			// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
 			if err := conn.Close(); err != nil {
