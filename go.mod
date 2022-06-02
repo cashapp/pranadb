@@ -28,7 +28,8 @@ require (
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lib/pq v1.10.4 // indirect
-	github.com/lni/dragonboat/v3 v3.3.4
+	github.com/lni/dragonboat/v3 v3.3.5
+	github.com/myesui/uuid v1.0.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/opencontainers/runc v1.1.2 // indirect
@@ -42,7 +43,7 @@ require (
 	github.com/sergi/go-diff v1.1.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/twinj/uuid v1.0.0 // indirect
+	github.com/twinj/uuid v1.0.0
 	github.com/twmb/murmur3 v1.1.6
 	github.com/uber-go/atomic v0.0.0-00010101000000-000000000000
 	go.uber.org/ratelimit v0.2.0
@@ -53,5 +54,6 @@ require (
 	google.golang.org/grpc v1.29.1
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
+	gopkg.in/stretchr/testify.v1 v1.2.2 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
 )
