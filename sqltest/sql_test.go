@@ -179,7 +179,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.Debug = true
 		cnf.EnableSourceStats = true
 		cnf.APIServerListenAddresses = []string{
-			"localhost:63401",
+			"127.0.0.1:63401",
 		}
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 		s, err := server.NewServer(*cnf)
@@ -192,9 +192,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		var notifAddresses []string
 		var apiServerListenAddresses []string
 		for i := 0; i < w.numNodes; i++ {
-			raftAddresses = append(raftAddresses, fmt.Sprintf("localhost:%d", i+63201))
-			notifAddresses = append(notifAddresses, fmt.Sprintf("localhost:%d", i+63301))
-			apiServerListenAddresses = append(apiServerListenAddresses, fmt.Sprintf("localhost:%d", i+63401))
+			raftAddresses = append(raftAddresses, fmt.Sprintf("127.0.0.1:%d", i+63201))
+			notifAddresses = append(notifAddresses, fmt.Sprintf("127.0.0.1:%d", i+63301))
+			apiServerListenAddresses = append(apiServerListenAddresses, fmt.Sprintf("127.0.0.1:%d", i+63401))
 		}
 		for i := 0; i < w.numNodes; i++ {
 			cnf := conf.NewDefaultConfig()
@@ -1050,7 +1050,7 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	// We connect to a random Prana
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
-	apiServerAddress := fmt.Sprintf("localhost:%d", apiServerListenAddressBase+id)
+	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
 	cli := client.NewClient(apiServerAddress, 5*time.Second)
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()

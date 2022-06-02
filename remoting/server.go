@@ -58,6 +58,7 @@ func (s *server) Start() error {
 	s.listener = list
 	s.started = true
 	go s.acceptLoop()
+	log.Infof("started remoting server on %s", s.listenAddress)
 	return nil
 }
 
@@ -99,6 +100,7 @@ func (s *server) Stop() error {
 		return true
 	})
 	s.started = false
+	log.Infof("stopped remoting server on %s", s.listenAddress)
 	return e
 }
 

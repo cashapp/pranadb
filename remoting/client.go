@@ -207,10 +207,12 @@ func (c *client) broadcast(messageBytes []byte, ri *responseInfo) error {
 func (c *client) createConnection(serverAddress string) (net.Conn, error) {
 	addr, err := net.ResolveTCPAddr("tcp", serverAddress)
 	if err != nil {
+		log.Errorf("lookup failed! %s %+v", serverAddress, err)
 		return nil, err
 	}
 	nc, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
+		log.Errorf("dial failed! %v %+v", addr, err)
 		return nil, err
 	}
 	err = nc.SetNoDelay(true)
