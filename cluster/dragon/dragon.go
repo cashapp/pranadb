@@ -383,16 +383,20 @@ func (d *Dragon) Stop() error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if !d.started {
+		log.Debug("not started")
 		return nil
 	}
 	d.healthChecker.Stop()
+	log.Debug("stopped health checker")
 	d.nh.Stop()
+	log.Debug("stopped node host")
 	d.nh = nil
 	d.nodeHostStarted = false
 	err := d.pebble.Close()
 	if err == nil {
 		d.started = false
 	}
+	log.Debug("stopped pebble")
 	d.requestClientPoolLock.Lock()
 	defer d.requestClientPoolLock.Unlock()
 	for i, cl := range d.requestClientPool {

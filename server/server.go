@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/remoting"
@@ -154,16 +153,16 @@ func (s *Server) Start() error {
 		return nil
 	}
 
-	if s.conf.Debug {
-		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
-		s.debugServer = &http.Server{Addr: addr}
-		go func(srv *http.Server) {
-			err := srv.ListenAndServe()
-			if err != nil && err != http.ErrServerClosed {
-				log.Errorf("debug server failed to listen %v", err)
-			}
-		}(s.debugServer)
-	}
+	//if s.conf.Debug {
+	//	addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
+	//	s.debugServer = &http.Server{Addr: addr}
+	//	go func(srv *http.Server) {
+	//		err := srv.ListenAndServe()
+	//		if err != nil && err != http.ErrServerClosed {
+	//			log.Errorf("debug server failed to listen %v", err)
+	//		}
+	//	}(s.debugServer)
+	//}
 
 	var err error
 	for _, s := range s.services {

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/kong"
@@ -24,7 +23,7 @@ type arguments struct {
 }
 
 func main() {
-	defer common.PanicHandler()
+	//defer common.PanicHandler()
 	r := &runner{}
 	if err := r.run(os.Args[1:], true); err != nil {
 		log.WithError(err).Fatal("startup failed")

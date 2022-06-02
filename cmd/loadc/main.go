@@ -4,7 +4,6 @@ import (
 	"github.com/alecthomas/kong"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cmd/loadc/runner"
-	"github.com/squareup/pranadb/common"
 )
 
 var CLI struct {
@@ -19,7 +18,7 @@ func main() {
 }
 
 func run() error {
-	defer common.PanicHandler()
+	//defer common.PanicHandler()
 	kong.Parse(&CLI)
 	run := runner.NewRunner(CLI.ScriptFile, CLI.Addr)
 	return run.Run()

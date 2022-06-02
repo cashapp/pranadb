@@ -60,7 +60,9 @@ func (h *HealthChecker) Stop() {
 		return
 	}
 	h.started = false
-	h.timer.Stop()
+	if h.timer != nil {
+		h.timer.Stop()
+	}
 	for _, conn := range h.connections {
 		if err := conn.Close(); err != nil {
 			// Ignore

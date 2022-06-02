@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,6 +38,8 @@ import (
 	"github.com/squareup/pranadb/push/source"
 	"github.com/squareup/pranadb/server"
 	"github.com/squareup/pranadb/table"
+
+	_ "net/http/pprof" //nolint:gosec
 )
 
 const (
@@ -75,6 +78,20 @@ func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	//addr := "127.0.0.1:63705"
+	//debugServer := &http.Server{Addr: addr}
+	//go func(srv *http.Server) {
+	//	err := srv.ListenAndServe()
+	//	if err != nil && err != http.ErrServerClosed {
+	//		log.Errorf("debug server failed to listen %v", err)
+	//	}
+	//}(debugServer)
+
 	log.Info("Running TestSQLClusteredFiveNodes")
 	testSQL(t, false, 5, 3)
 }
@@ -176,7 +193,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
-		cnf.Debug = true
+		cnf.Debug = false
 		cnf.EnableSourceStats = true
 		cnf.APIServerListenAddresses = []string{
 			"127.0.0.1:63401",

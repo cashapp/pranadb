@@ -147,7 +147,7 @@ func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatReques
 
 func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error { //nolint:gocyclo
 
-	defer common.PanicHandler()
+	//defer common.PanicHandler()
 
 	entry, err := s.lookupSession(in.GetSessionId())
 	if err != nil {
