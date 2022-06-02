@@ -1,4 +1,4 @@
-- Tests restarting the cluster and verifying all sources, MVs and data are still there;
+-- Tests restarting the cluster and verifying all sources, MVs and data are still there;
 
 --create topic testtopic1;
 use test;

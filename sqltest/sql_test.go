@@ -65,7 +65,7 @@ const (
 //	log.Debug("Running TestSQLFakeCluster")
 //	testSQL(t, true, 1, 0)
 //}
-
+//
 //func TestSQLClusteredThreeNodes(t *testing.T) {
 //	if testing.Short() {
 //		t.Skip("-short: skipped")
