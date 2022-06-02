@@ -220,7 +220,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.APIServerListenAddresses = apiServerListenAddresses
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 			cnf.EnableFailureInjector = true
-			cnf.ScreenDragonLogSpam = true
+			cnf.ScreenDragonLogSpam = false
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.NotifierHeartbeatInterval = 100 * time.Hour
 			cnf.APIServerSessionTimeout = 100 * time.Hour
@@ -392,7 +392,7 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.TraceLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
@@ -1025,6 +1025,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 	start := time.Now()
 	isUse := strings.HasPrefix(statement, "use ")
 	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
+	log.Errorf("execute statement returned err %+v", err)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {
