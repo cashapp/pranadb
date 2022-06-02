@@ -1,3 +1,4 @@
+--repeat 10000;
 --create topic testtopic;
 use test;
 create source test_source_1(

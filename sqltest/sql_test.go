@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "basic_source" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -220,7 +220,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.APIServerListenAddresses = apiServerListenAddresses
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 			cnf.EnableFailureInjector = true
-			cnf.ScreenDragonLogSpam = false
+			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.NotifierHeartbeatInterval = 100 * time.Hour
 			cnf.APIServerSessionTimeout = 100 * time.Hour

@@ -1,3 +1,4 @@
+--repeat 10000;
 --create topic testtopic1;
 --create topic testtopic2;
 use test;
