@@ -186,8 +186,19 @@ func (s *Server) logNumGoroutines() {
 	if !s.started {
 		return
 	}
-	//log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	log.Infof("Alloc = %v MiB", bToMb(m.Alloc))
+	log.Infof("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	log.Infof("\tSys = %v MiB", bToMb(m.Sys))
+	log.Infof("\tNumGC = %v\n", m.NumGC)
 	s.scheduleLogGoroutinesTimer()
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
 
 func (s *Server) scheduleLogGoroutinesTimer() {
