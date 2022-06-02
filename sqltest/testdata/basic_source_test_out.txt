@@ -1,4 +1,3 @@
---repeat 10000;
 --create topic testtopic;
 use test;
 0 rows returned
