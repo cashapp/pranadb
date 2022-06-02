@@ -36,7 +36,6 @@ type Config struct {
 	SequenceCompactionOverhead       int
 	LocksSnapshotEntries             int
 	LocksCompactionOverhead          int
-	Debug                            bool
 	NotifierHeartbeatInterval        time.Duration
 	EnableAPIServer                  bool
 	APIServerListenAddresses         []string

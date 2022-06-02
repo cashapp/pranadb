@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	TestPrefix         = "cluster_restart" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -78,19 +78,6 @@ func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
-	//addr := "127.0.0.1:63705"
-	//debugServer := &http.Server{Addr: addr}
-	//go func(srv *http.Server) {
-	//	err := srv.ListenAndServe()
-	//	if err != nil && err != http.ErrServerClosed {
-	//		log.Errorf("debug server failed to listen %v", err)
-	//	}
-	//}(debugServer)
 
 	log.Info("Running TestSQLClusteredFiveNodes")
 	testSQL(t, false, 5, 3)
@@ -137,6 +124,11 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 
 func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int) {
 	t.Helper()
+
+	go func() {
+		// Start a profiling server
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors:            true,
@@ -193,7 +185,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.EnableAPIServer = true
-		cnf.Debug = false
 		cnf.EnableSourceStats = true
 		cnf.APIServerListenAddresses = []string{
 			"127.0.0.1:63401",
@@ -224,7 +215,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.TestServer = false
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
-			cnf.Debug = true
 			cnf.EnableSourceStats = true
 			cnf.EnableAPIServer = true
 			cnf.APIServerListenAddresses = apiServerListenAddresses

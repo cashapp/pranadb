@@ -1,4 +1,3 @@
---repeat 10000;
 -- Tests restarting the cluster and verifying all sources, MVs and data are still there;
 
 --create topic testtopic1;
