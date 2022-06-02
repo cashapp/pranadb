@@ -135,13 +135,13 @@ func (h *HealthChecker) checkConnection(conn net.Conn, serverAddress string) net
 		var err error
 		conn, err = h.createConnection(serverAddress)
 		if err != nil {
-			log.Warnf("health checker failed to connect to %s", serverAddress)
+			log.Infof("health checker failed to connect to %s", serverAddress)
 			return nil
 		}
-		log.Debugf("health checker connected to %s", serverAddress)
+		log.Infof("health checker connected to %s", serverAddress)
 	}
 	if err := h.heartbeat(conn); err != nil {
-		log.Warnf("heartbeat returned err %v", err)
+		log.Infof("heartbeat returned err %v", err)
 		if err := conn.Close(); err != nil {
 			// Ignore
 		}

@@ -198,7 +198,7 @@ func (s *Server) logNumGoroutines() {
 	if !s.started {
 		return
 	}
-	log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	//log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
 	s.scheduleLogGoroutinesTimer()
 }
 
