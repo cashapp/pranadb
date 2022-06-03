@@ -2,6 +2,7 @@ package remoting
 
 import (
 	log "github.com/sirupsen/logrus"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -29,7 +30,7 @@ type HealthChecker struct {
 	hbInterval      time.Duration
 	timer           *time.Timer
 	lock            sync.Mutex
-	beenStarted     bool
+	firstSchedule   bool
 }
 
 func (h *HealthChecker) AddAvailabilityListener(listener AvailabilityListener) {
@@ -46,10 +47,6 @@ func (h *HealthChecker) Start() {
 		return
 	}
 	h.started = true
-	if h.beenStarted {
-		panic("hc already started")
-	}
-	h.beenStarted = true
 	h.checkConnections()
 }
 
@@ -68,6 +65,7 @@ func (h *HealthChecker) Stop() {
 			// Ignore
 		}
 	}
+	h.firstSchedule = false
 }
 
 func (h *HealthChecker) checkConnections() {
@@ -101,7 +99,19 @@ func (h *HealthChecker) checkConnections() {
 	if changeOccurred {
 		h.sendAvailabilityUpdate()
 	}
-	h.timer = time.AfterFunc(h.hbInterval, h.checkConnectionsWithLock)
+
+	var delay time.Duration
+	if !h.firstSchedule {
+		// Randomise the first schedule completely
+		delay = time.Duration(float64(h.hbInterval) * rand.Float64())
+		h.firstSchedule = true
+	} else {
+		// We add a random element (+/- 25%) to the delay to prevent them all synchronizing over time
+		randomDelay := 0.5 * float64(h.hbInterval) * (rand.Float64() - 0.5)
+		delay = time.Duration(randomDelay) + h.hbInterval
+	}
+
+	h.timer = time.AfterFunc(delay, h.checkConnectionsWithLock)
 }
 
 func (h *HealthChecker) sendAvailabilityUpdate() {
