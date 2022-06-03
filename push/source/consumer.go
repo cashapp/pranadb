@@ -100,8 +100,9 @@ func (m *MessageConsumer) pollLoop() {
 				m.consumerError(err, false)
 				return
 			}
+			log.Debugf("ingested batch of %d", len(messages))
 		}
-		log.Debugf("ingested batch of %d", len(messages))
+
 		// Commit the offsets - note there may be more offsets than messages in the case of duplicates
 		if len(offsetsToCommit) != 0 {
 			if m.source.commitOffsets.Get() {
@@ -114,8 +115,6 @@ func (m *MessageConsumer) pollLoop() {
 				m.source.addCommittedCount(int64(len(messages)))
 				log.Debugf("increased committed count by %d", len(messages))
 			}
-		} else {
-			log.Debugf("no offsets to commit")
 		}
 	}
 }
