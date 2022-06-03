@@ -215,7 +215,16 @@ func (d *Dragon) start0() error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	d.healthChecker = remoting.NewHealthChecker(d.cnf.NotifListenAddresses, 5*time.Second, 5*time.Second)
+	// We don't ping ourself
+	ln := len(d.cnf.NotifListenAddresses)
+	var addresses []string
+	for i := 0; i < ln; i++ {
+		if i != d.cnf.NodeID {
+			addresses = append(addresses, d.cnf.NotifListenAddresses[i])
+		}
+	}
+
+	d.healthChecker = remoting.NewHealthChecker(addresses, 5*time.Second, 5*time.Second)
 	d.healthChecker.Start()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
