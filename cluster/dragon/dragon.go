@@ -663,7 +663,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        50,
+		ElectionRTT:        100,
 		HeartbeatRTT:       2,
 		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.DataSnapshotEntries),
