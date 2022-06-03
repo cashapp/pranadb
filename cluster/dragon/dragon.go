@@ -669,7 +669,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 		NodeID:             uint64(d.cnf.NodeID + 1),
 		ElectionRTT:        300,
 		HeartbeatRTT:       30,
-		CheckQuorum:        false,
+		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.DataSnapshotEntries),
 		CompactionOverhead: uint64(d.cnf.DataCompactionOverhead),
 		ClusterID:          shardID,
