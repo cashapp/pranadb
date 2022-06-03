@@ -227,10 +227,12 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 			// snapshotting - in real life these would be much higher
-			//cnf.DataSnapshotEntries = 10
-			//cnf.DataCompactionOverhead = 5
-			//cnf.SequenceSnapshotEntries = 10
-			//cnf.SequenceCompactionOverhead = 5
+			cnf.DataSnapshotEntries = 0
+			cnf.DataCompactionOverhead = 5
+			cnf.SequenceSnapshotEntries = 0
+			cnf.SequenceCompactionOverhead = 5
+			cnf.LocksSnapshotEntries = 0
+			cnf.LocksCompactionOverhead = 5
 
 			s, err := server.NewServer(*cnf)
 			if err != nil {

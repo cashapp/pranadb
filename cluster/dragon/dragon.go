@@ -242,6 +242,9 @@ func (d *Dragon) start0() error {
 	// We always want to log Raft leader/follower changes
 	logger.GetLogger("raft").SetLevel(logger.INFO)
 	logger.GetLogger("dragonboat").SetLevel(logger.INFO)
+	logger.GetLogger("rsm").SetLevel(logger.INFO)
+	logger.GetLogger("transport").SetLevel(logger.WARNING)
+	logger.GetLogger("grpc").SetLevel(logger.WARNING)
 
 	log.Debugf("Starting dragon on node %d", d.cnf.NodeID)
 
