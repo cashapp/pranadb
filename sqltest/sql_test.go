@@ -230,6 +230,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.SequenceSnapshotEntries = 1000000000
 			cnf.SequenceCompactionOverhead = 100000000
 
+			cnf.APIServerSessionCheckInterval = 100 * time.Hour
+
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
