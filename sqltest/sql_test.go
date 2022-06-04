@@ -222,17 +222,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
-			cnf.RemotingHeartbeatInterval = 100 * time.Hour
-			cnf.APIServerSessionTimeout = 100 * time.Hour
-
-			// We set snapshot settings to low values so we can trigger more snapshots and exercise the
-			// snapshotting - in real life these would be much higher
-			cnf.DataSnapshotEntries = 1000000000
-			cnf.DataCompactionOverhead = 100000000
-			cnf.SequenceSnapshotEntries = 1000000000
-			cnf.SequenceCompactionOverhead = 100000000
-			cnf.LocksSnapshotEntries = 1000000000
-			cnf.LocksCompactionOverhead = 100000000
 
 			s, err := server.NewServer(*cnf)
 			if err != nil {
