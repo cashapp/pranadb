@@ -308,6 +308,8 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return nil
 	}
 
+	log.Debugf("rttms:%d hbrtt:%d ertt:%d", d.cnf.RaftRTTMs, d.cnf.RaftHeartbeatRTT, d.cnf.RaftElectionRTT)
+
 	if err := d.start0(); err != nil {
 		return err
 	}
