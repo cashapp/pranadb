@@ -223,6 +223,13 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 
+			cnf.DataSnapshotEntries = 1000000000
+			cnf.DataCompactionOverhead = 100000000
+			cnf.LocksSnapshotEntries = 1000000000
+			cnf.LocksCompactionOverhead = 100000000
+			cnf.SequenceSnapshotEntries = 1000000000
+			cnf.SequenceCompactionOverhead = 100000000
+
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
