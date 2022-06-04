@@ -286,7 +286,7 @@ func (d *Dragon) start0() error {
 		DeploymentID:   d.cnf.ClusterID,
 		WALDir:         dragonBoatDir,
 		NodeHostDir:    dragonBoatDir,
-		RTTMillisecond: 100,
+		RTTMillisecond: uint64(d.cnf.RaftRTTMs),
 		RaftAddress:    nodeAddress,
 		EnableMetrics:  d.cnf.EnableMetrics,
 	}
@@ -646,7 +646,7 @@ func (d *Dragon) joinShardGroups() error {
 			panic("cannot find shard alloc")
 		}
 		ch := make(chan error)
-		// We join them in parallel - not that it makes much difference to time
+		// We join them in parallel
 		go d.joinShardGroup(shardID, nodeIDs, ch)
 		chans[index] = ch
 		index++
@@ -667,8 +667,8 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 	rc := config.Config{
 		NodeID:             uint64(d.cnf.NodeID + 1),
-		ElectionRTT:        300,
-		HeartbeatRTT:       30,
+		ElectionRTT:        uint64(d.cnf.RaftElectionRTT),
+		HeartbeatRTT:       uint64(d.cnf.RaftHeartbeatRTT),
 		CheckQuorum:        true,
 		SnapshotEntries:    uint64(d.cnf.DataSnapshotEntries),
 		CompactionOverhead: uint64(d.cnf.DataCompactionOverhead),

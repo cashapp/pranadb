@@ -18,6 +18,9 @@ const (
 	DefaultAPIServerSessionTimeout       = 30 * time.Second
 	DefaultAPIServerSessionCheckInterval = 5 * time.Second
 	DefaultGlobalIngestLimitRowsPerSec   = 1000
+	DefaultRaftRTTMs                     = 100
+	DefaultRaftHeartbeatRTT              = 30
+	DefaultRaftElectionRTT               = 300
 )
 
 type Config struct {
@@ -54,6 +57,9 @@ type Config struct {
 	EnableFailureInjector            bool
 	ScreenDragonLogSpam              bool
 	DisableShardPlacementSanityCheck bool
+	RaftRTTMs                        int
+	RaftElectionRTT                  int
+	RaftHeartbeatRTT                 int
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -153,6 +159,18 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.GlobalIngestLimitRowsPerSec < -1 || c.GlobalIngestLimitRowsPerSec == 0 {
 		return errors.NewInvalidConfigurationError("GlobalIngestLimitRowsPerSec must be > 0 or -1")
 	}
+	if c.RaftRTTMs < 1 {
+		return errors.NewInvalidConfigurationError("RaftRTTMs must be > 0")
+	}
+	if c.RaftHeartbeatRTT < 1 {
+		return errors.NewInvalidConfigurationError("RaftHeartbeatRTT must be > 0")
+	}
+	if c.RaftElectionRTT < 1 {
+		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 0")
+	}
+	if c.RaftElectionRTT < 2*c.RaftHeartbeatRTT {
+		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 2 * RaftHeartbeatRTT")
+	}
 	return nil
 }
 
@@ -183,6 +201,9 @@ func NewDefaultConfig() *Config {
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,
 		GlobalIngestLimitRowsPerSec:   DefaultGlobalIngestLimitRowsPerSec,
+		RaftRTTMs:                     DefaultRaftRTTMs,
+		RaftHeartbeatRTT:              DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:               DefaultRaftElectionRTT,
 	}
 }
 
