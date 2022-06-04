@@ -61,27 +61,27 @@ const (
 	clientPageSize             = 3 // We set this to a small value to exercise the paging logic
 )
 
-func TestSQLFakeCluster(t *testing.T) {
-	log.Debug("Running TestSQLFakeCluster")
-	testSQL(t, true, 1, 0)
-}
-
-func TestSQLClusteredThreeNodes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3)
-}
-
-func TestSQLClusteredFiveNodes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-
-	log.Info("Running TestSQLClusteredFiveNodes")
-	testSQL(t, false, 5, 3)
-}
+//func TestSQLFakeCluster(t *testing.T) {
+//	log.Debug("Running TestSQLFakeCluster")
+//	testSQL(t, true, 1, 0)
+//}
+//
+//func TestSQLClusteredThreeNodes(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredThreeNodes")
+//	testSQL(t, false, 3, 3)
+//}
+//
+//func TestSQLClusteredFiveNodes(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//
+//	log.Info("Running TestSQLClusteredFiveNodes")
+//	testSQL(t, false, 5, 3)
+//}
 
 func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
 	if testing.Short() {
