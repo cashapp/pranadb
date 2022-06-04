@@ -184,7 +184,6 @@ func (c *connection) handleMessage(msgType messageType, msg []byte) error {
 			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
 				log.Errorf("failed to write heartbeat %+v", err)
 			}
-			log.Infof("server wrote hb from %s to %s", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		}
 		return nil
 	}

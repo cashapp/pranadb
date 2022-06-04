@@ -65,7 +65,6 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 
 func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	// this MUST be idempotent - same entries can be applied more than once in case of retry after timeout
-	log.Tracef("locks shard update entries %d", len(entries))
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	batch := s.dragon.pebble.NewBatch()
@@ -86,7 +85,6 @@ func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachi
 						log.Debugf("lock already held by same locker %s %s", prefix, locker)
 						s.setResult(true, entries, i)
 					} else {
-						log.Debugf("lock already held! %s", prefix)
 						s.setResult(false, entries, i)
 					}
 					held = true
@@ -123,7 +121,6 @@ func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachi
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	log.Trace("locks shard updated")
 	return entries, nil
 }
 

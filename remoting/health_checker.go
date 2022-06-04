@@ -196,6 +196,5 @@ func (h *HealthChecker) heartbeat(conn net.Conn) error {
 	if readBuff[0] != heartbeatMessageType {
 		panic("not a heartbeat")
 	}
-	log.Infof("client read hb from %s to %s", conn.LocalAddr().String(), conn.RemoteAddr().String())
 	return nil
 }
