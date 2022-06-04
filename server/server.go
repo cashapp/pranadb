@@ -54,7 +54,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		}
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = remoting.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
+		notifClient = remoting.NewClient(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}

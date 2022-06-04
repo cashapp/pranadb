@@ -50,9 +50,15 @@ func invalidBrokerClientTypeConf() Config {
 	return cnf
 }
 
-func invalidNotifierHeartbeatInterval() Config {
+func invalidRemotingHeartbeatInterval() Config {
 	cnf := confAllFields
-	cnf.NotifierHeartbeatInterval = time.Second - 1
+	cnf.RemotingHeartbeatInterval = time.Second - 1
+	return cnf
+}
+
+func invalidRemotingHeartbeatTimeout() Config {
+	cnf := confAllFields
+	cnf.RemotingHeartbeatTimeout = time.Millisecond - 1
 	return cnf
 }
 
@@ -272,7 +278,8 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB0004 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB0004 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB0004 - Invalid configuration: NotifierHeartbeatInterval must be >= 1000000000", invalidNotifierHeartbeatInterval()},
+	{"PDB0004 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
+	{"PDB0004 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
 	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 1000000000", invalidAPIServerSessionTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 100000000", invalidAPIServerSessionCheckInterval()},
@@ -339,7 +346,8 @@ var confAllFields = Config{
 	SequenceCompactionOverhead:    1001,
 	LocksSnapshotEntries:          101,
 	LocksCompactionOverhead:       51,
-	NotifierHeartbeatInterval:     76 * time.Second,
+	RemotingHeartbeatInterval:     76 * time.Second,
+	RemotingHeartbeatTimeout:      4 * time.Second,
 	EnableAPIServer:               true,
 	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 	APIServerSessionTimeout:       41 * time.Second,

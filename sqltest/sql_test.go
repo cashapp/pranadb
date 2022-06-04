@@ -222,7 +222,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
-			cnf.NotifierHeartbeatInterval = 100 * time.Hour
+			cnf.RemotingHeartbeatInterval = 100 * time.Hour
 			cnf.APIServerSessionTimeout = 100 * time.Hour
 
 			// We set snapshot settings to low values so we can trigger more snapshots and exercise the

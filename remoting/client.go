@@ -21,17 +21,16 @@ type Client interface {
 	AvailabilityListener() AvailabilityListener
 }
 
-func NewClient(heartbeatInterval time.Duration, serverAddresses ...string) Client {
-	return newClient(heartbeatInterval, serverAddresses...)
+func NewClient(serverAddresses ...string) Client {
+	return newClient(serverAddresses...)
 }
 
-func newClient(heartbeatInterval time.Duration, serverAddresses ...string) *client {
+func newClient(serverAddresses ...string) *client {
 	return &client{
 		serverAddresses:    serverAddresses,
 		connections:        make(map[string]*clientConnection),
 		unavailableServers: make(map[string]struct{}),
 		msgSeq:             -1,
-		heartbeatInterval:  heartbeatInterval,
 	}
 }
 
@@ -45,7 +44,6 @@ type client struct {
 	unavailableServers map[string]struct{}
 	responseChannels   sync.Map
 	msgSeq             int64
-	heartbeatInterval  time.Duration
 }
 
 func (c *client) AvailabilityListener() AvailabilityListener {

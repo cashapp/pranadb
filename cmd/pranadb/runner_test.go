@@ -70,7 +70,7 @@ func createConfigWithAllFields() conf.Config {
 		SequenceCompactionOverhead:    1001,
 		LocksSnapshotEntries:          101,
 		LocksCompactionOverhead:       51,
-		NotifierHeartbeatInterval:     76 * time.Second,
+		RemotingHeartbeatInterval:     76 * time.Second,
 		EnableAPIServer:               true,
 		APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 		APIServerSessionTimeout:       41 * time.Second,

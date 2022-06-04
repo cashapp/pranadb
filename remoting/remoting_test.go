@@ -17,8 +17,6 @@ import (
 // We test primarily with SessionClosedMessage as this allows us to pass simply an arbitrarily sized string so we can
 // test notifications with various sizes
 
-const heartbeatInterval = 1 * time.Second
-
 func TestSimpleNotificationOneServer(t *testing.T) {
 	testSimpleNotification(t, 1)
 }
@@ -71,7 +69,7 @@ func TestNotificationStopServer(t *testing.T) {
 	for _, server := range servers {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -170,7 +168,7 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 	clients := make([]*client, 10)
 
 	for i := 0; i < numClients; i++ {
-		client := newClient(heartbeatInterval, listenAddresses...)
+		client := newClient(listenAddresses...)
 		err := client.Start()
 		require.NoError(t, err)
 		clients[i] = client
@@ -216,7 +214,7 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -250,7 +248,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient("localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -292,7 +290,7 @@ func TestSyncBroadcast(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -372,7 +370,7 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 		listenAddresses = append(listenAddresses, server.ListenAddress())
 	}
 
-	client := newClient(heartbeatInterval, listenAddresses...)
+	client := newClient(listenAddresses...)
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -418,7 +416,7 @@ func TestSendRequest(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient("localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -453,7 +451,7 @@ func TestSendMultipleRequests(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient("localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -491,7 +489,7 @@ func TestSendMultipleRequests(t *testing.T) {
 func TestSendRequestServerNotAvailable(t *testing.T) {
 	t.Helper()
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient("localhost:7888")
 	err := client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -529,7 +527,7 @@ func TestSendRequestOneServerNotAvailable(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7889", "localhost:7888")
+	client := newClient("localhost:7889", "localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)
@@ -566,7 +564,7 @@ func TestSendRequestWithError(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 
-	client := newClient(heartbeatInterval, "localhost:7888")
+	client := newClient("localhost:7888")
 	err = client.Start()
 	require.NoError(t, err)
 	defer stopClient(t, client)

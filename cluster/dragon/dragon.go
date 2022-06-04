@@ -224,7 +224,7 @@ func (d *Dragon) start0() error {
 		}
 	}
 
-	d.healthChecker = remoting.NewHealthChecker(addresses, 5*time.Second, 5*time.Second)
+	d.healthChecker = remoting.NewHealthChecker(addresses, d.cnf.RemotingHeartbeatTimeout, d.cnf.RemotingHeartbeatInterval)
 	d.healthChecker.Start()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
@@ -1156,7 +1156,7 @@ func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, erro
 	client = d.requestClientPool[index]
 	if client == nil {
 		serverAddresses := d.getServerAddressesForShard(shardID)
-		client = remoting.NewClient(d.cnf.NotifierHeartbeatInterval, serverAddresses...)
+		client = remoting.NewClient(serverAddresses...)
 		if err := client.Start(); err != nil {
 			return nil, err
 		}
