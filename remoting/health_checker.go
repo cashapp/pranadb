@@ -183,7 +183,6 @@ func (h *HealthChecker) heartbeat(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("client wrote hb from %s to %s", conn.LocalAddr().String(), conn.RemoteAddr().String())
 	readBuff := make([]byte, 1)
 	err = conn.SetReadDeadline(time.Now().Add(h.hbTimeout))
 	if err != nil {
