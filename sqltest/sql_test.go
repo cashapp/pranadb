@@ -74,22 +74,22 @@ const (
 //	testSQL(t, false, 3, 3)
 //}
 //
-//func TestSQLClusteredFiveNodes(t *testing.T) {
-//	if testing.Short() {
-//		t.Skip("-short: skipped")
-//	}
-//
-//	log.Info("Running TestSQLClusteredFiveNodes")
-//	testSQL(t, false, 5, 3)
-//}
-
-func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
+func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
-	testSQL(t, false, 7, 5)
+
+	log.Info("Running TestSQLClusteredFiveNodes")
+	testSQL(t, false, 5, 3)
 }
+
+//func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
+//	testSQL(t, false, 7, 5)
+//}
 
 type sqlTestsuite struct {
 	fakeCluster       bool
