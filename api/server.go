@@ -138,11 +138,16 @@ func (s *Server) lookupSession(sessionID string) (*sessionEntry, error) {
 }
 
 func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatRequest) (*emptypb.Empty, error) {
-	entry, err := s.lookupSession(request.GetSessionId())
-	if err == nil && entry != nil {
-		entry.refreshLastAccessedTime()
+	v, ok := s.sessions.Load(request.GetSessionId())
+	// It's not an error if we can't find the session, the heartbeat might come in after the session is closed from the client
+	if ok {
+		session, ok := v.(*sessionEntry)
+		if !ok {
+			panic("not a sessionEntry")
+		}
+		session.refreshLastAccessedTime()
 	}
-	return &emptypb.Empty{}, errors.WithStack(err)
+	return &emptypb.Empty{}, nil
 }
 
 func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error { //nolint:gocyclo
