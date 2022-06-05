@@ -232,6 +232,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 			cnf.APIServerSessionCheckInterval = 100 * time.Hour
 
+			cnf.RaftHeartbeatRTT = 50
+			cnf.RaftElectionRTT = 600
+
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)

@@ -814,9 +814,16 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 			//os.Exit(1)
 			return nil, err
 		}
+		var delay time.Duration
+		if err == dragonboat.ErrTimeout {
+			delay = retryDelay
+		} else {
+			// Use a longer delay- this usually happens on node startup
+			delay = 5 * time.Second
+		}
 		// Randomise the delay to prevent clashing concurrent retries
-		delay := float64(retryDelay) * rand.Float64()
-		time.Sleep(time.Duration(delay))
+		randDelay := float64(delay) + 0.5*float64(delay)*(rand.Float64()-0.5)
+		time.Sleep(time.Duration(randDelay))
 	}
 }
 
