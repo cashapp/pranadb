@@ -39,3 +39,9 @@ message ClusterReadRequest {
 message ClusterReadResponse {
   bytes response_body = 1;
 }
+
+message DeletePrefixRequest {
+  int64 shard_id = 1;
+  bytes start_prefix = 2;
+  bytes end_prefix = 3;
+}

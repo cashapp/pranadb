@@ -20,6 +20,7 @@ const (
 	ClusterMessageClusterReadRequest
 	ClusterMessageClusterProposeResponse
 	ClusterMessageClusterReadResponse
+	ClusterMessageDeletePrefixRequest
 )
 
 func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
@@ -38,6 +39,8 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 		return ClusterMessageClusterProposeResponse
 	case *notifications.ClusterReadResponse:
 		return ClusterMessageClusterReadResponse
+	case *notifications.DeletePrefixRequest:
+		return ClusterMessageDeletePrefixRequest
 	default:
 		return ClusterMessageTypeUnknown
 	}
@@ -75,6 +78,8 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.SessionClosedMessage{}
 	case ClusterMessageReloadProtobuf:
 		msg = &notifications.ReloadProtobuf{}
+	case ClusterMessageDeletePrefixRequest:
+		msg = &notifications.DeletePrefixRequest{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}

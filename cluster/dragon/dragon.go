@@ -603,24 +603,31 @@ func (d *Dragon) deleteAllDataInRangeForShardFullPrefix(theShardID uint64, start
 
 func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
 
-	chans := make([]chan error, len(d.allDataShards))
-	for i, shardID := range d.allDataShards {
-		ch := make(chan error, 1)
-		chans[i] = ch
-		theShardID := shardID
-		go func() {
-			err := d.deleteAllDataInRangeForShard(theShardID, startPrefix, endPrefix)
-			ch <- err
-		}()
-	}
+	for _, shardID := range d.allDataShards {
 
-	for _, ch := range chans {
-		err, ok := <-ch
-		if !ok {
-			panic("channel closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
+		// Does the local node have this shard?
+		_, ok := d.localShardsMap[shardID]
+		if ok {
+			// We handle this directly
+			if err := d.DeleteAllDataInRangeForShardLocally(shardID, startPrefix, endPrefix); err != nil {
+				return err
+			}
+		} else {
+			// TODO execute concurrently?
+			requestClient, err := d.getRequestClient(shardID)
+			if err != nil {
+				return err
+			}
+			clusterRequest := &notifications.DeletePrefixRequest{
+				ShardId:     int64(shardID),
+				StartPrefix: startPrefix,
+				EndPrefix: endPrefix,
+			}
+
+			err = requestClient.BroadcastSync(clusterRequest)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1240,6 +1247,26 @@ func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadReque
 		ResponseBody: respBody,
 	}
 	return resp, nil
+}
+
+type deletePrefixHandler struct {
+	d *Dragon
+}
+
+func (p *deletePrefixHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := notification.(*notifications.DeletePrefixRequest)
+	if !ok {
+		panic(fmt.Sprintf("not a *notifications.DeletePrefixRequest %v", req))
+	}
+	err := p.d.DeleteAllDataInRangeForShardLocally(uint64(req.ShardId), req.StartPrefix, req.EndPrefix)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (d *Dragon) GetRemoteDeletePrefixHandler() remoting.ClusterMessageHandler {
+	return &deletePrefixHandler{d: d}
 }
 
 // Waits until the node host is available - is called with the lock RLock held and always returns with it held

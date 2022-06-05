@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix         = "basic_mv" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
@@ -74,14 +74,14 @@ const (
 //	testSQL(t, false, 3, 3)
 //}
 //
-//func TestSQLClusteredFiveNodes(t *testing.T) {
-//	if testing.Short() {
-//		t.Skip("-short: skipped")
-//	}
-//
-//	log.Info("Running TestSQLClusteredFiveNodes")
-//	testSQL(t, false, 5, 3)
-//}
+func TestSQLClusteredFiveNodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
+
+	log.Info("Running TestSQLClusteredFiveNodes")
+	testSQL(t, false, 5, 3)
+}
 
 func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
 	if testing.Short() {
@@ -232,8 +232,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 			cnf.APIServerSessionCheckInterval = 100 * time.Hour
 
-			cnf.RaftHeartbeatRTT = 50
-			cnf.RaftElectionRTT = 600
+			//cnf.RaftHeartbeatRTT = 50
+			//cnf.RaftElectionRTT = 600
 
 			s, err := server.NewServer(*cnf)
 			if err != nil {
