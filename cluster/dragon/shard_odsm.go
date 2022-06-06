@@ -15,12 +15,11 @@ import (
 )
 
 const (
-	shardStateMachineLookupPing               byte   = 1
-	shardStateMachineLookupQuery              byte   = 2
-	shardStateMachineCommandWrite             byte   = 1
-	shardStateMachineCommandForwardWrite      byte   = 2
-	shardStateMachineCommandDeleteRangePrefix byte   = 3
-	shardStateMachineResponseOK               uint64 = 1
+	shardStateMachineLookupPing          byte   = 1
+	shardStateMachineLookupQuery         byte   = 2
+	shardStateMachineCommandWrite        byte   = 1
+	shardStateMachineCommandForwardWrite byte   = 2
+	shardStateMachineResponseOK          uint64 = 1
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
@@ -114,11 +113,6 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			hasForward = true
 		case shardStateMachineCommandWrite:
 			if err := s.handleWrite(batch, cmdBytes, false); err != nil {
-				return nil, errors.WithStack(err)
-			}
-		case shardStateMachineCommandDeleteRangePrefix:
-			err := s.handleDeleteRange(batch, cmdBytes)
-			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 		default:
@@ -278,19 +272,6 @@ func (s *ShardOnDiskStateMachine) checkDedup(key []byte, batch *pebble.Batch) (i
 		return false, errors.WithStack(err)
 	}
 	return false, nil
-}
-
-func (s *ShardOnDiskStateMachine) handleDeleteRange(batch *pebble.Batch, bytes []byte) error {
-	offset := 1
-	lsp, offset := common.ReadUint32FromBufferLE(bytes, offset)
-	lenStartPrefix := int(lsp)
-	startPrefix := bytes[offset : offset+lenStartPrefix]
-	offset += lenStartPrefix
-
-	lenEndPrefix, offset := common.ReadUint32FromBufferLE(bytes, offset)
-	endPrefix := bytes[offset : offset+int(lenEndPrefix)]
-
-	return batch.DeleteRange(startPrefix, endPrefix, nosyncWriteOptions)
 }
 
 func (s *ShardOnDiskStateMachine) checkKey(key []byte) {

@@ -86,13 +86,6 @@ func (c *CreateIndexCommand) Before() error {
 	defer c.lock.Unlock()
 	var err error
 	c.indexInfo, err = c.getIndexInfo(c.ast)
-	if err != nil {
-		return err
-	}
-
-	// We store rows in the to_delete table - if index creation fails (e.g. node crashes) then on restart the index state will
-	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
-	c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
 	return err
 }
 
@@ -114,11 +107,26 @@ func (c *CreateIndexCommand) onPhase0() error {
 			return errors.Errorf("invalid create index statement %s", c.createIndexSQL)
 		}
 	}
+
+	// We store rows in the to_delete table - if index creation fails (e.g. node crashes) then on restart the index state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	var err error
+	c.toDeleteBatch, err = storeToDeleteBatch(c.indexInfo.ID, c.e.cluster)
+	if err != nil {
+		return err
+	}
+
 	// We create the index but we don't register it yet
 	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
 }
 
 func (c *CreateIndexCommand) onPhase1() error {
+
+	// We can now remove from the to_delete table
+	if err := c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch); err != nil {
+		return err
+	}
+
 	// Now we register the index so it can be used in queries
 	return c.e.metaController.RegisterIndex(c.indexInfo)
 }
@@ -129,12 +137,7 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	if phase == 0 {
 		// We persist the index after it's been filled but *before* it's been registered - otherwise in case of
 		// failure the index can disappear after it has been used
-		if err := c.e.metaController.PersistIndex(c.indexInfo); err != nil {
-			return err
-		}
-
-		// We can now remove from the to_delete table
-		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+		return c.e.metaController.PersistIndex(c.indexInfo)
 	}
 	return nil
 }

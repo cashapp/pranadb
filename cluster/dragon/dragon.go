@@ -536,18 +536,25 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 	return pairs, nil
 }
 
-func (d *Dragon) DeleteAllDataInRangeForShardLocally(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
-	// Remember, key must be in big-endian order
-	startPrefixWithShard := make([]byte, 0, 16)
-	startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
-	startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
+func (d *Dragon) DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error {
+	return d.deleteAllDataInRangeForShardsLocally(startPrefix, endPrefix, shardID)
+}
 
-	endPrefixWithShard := make([]byte, 0, 16)
-	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
-	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+func (d *Dragon) deleteAllDataInRangeForShardsLocally(startPrefix []byte, endPrefix []byte, shardIDs ...uint64) error {
 	batch := d.pebble.NewBatch()
-	if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
-		return errors.WithStack(err)
+	for _, shardID := range shardIDs {
+		// Remember, key must be in big-endian order
+		startPrefixWithShard := make([]byte, 0, 16)
+		startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, shardID)
+		startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
+
+		endPrefixWithShard := make([]byte, 0, 16)
+		endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, shardID)
+		endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
+
+		if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 	if err := d.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return errors.WithStack(err)
@@ -562,61 +569,8 @@ func (d *Dragon) deleteAllDataInRangeLocally(batch *pebble.Batch, startPrefix []
 	return nil
 }
 
-func (d *Dragon) deleteAllDataInRangeForShard(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
-	// Remember, key must be in big-endian order
-	startPrefixWithShard := make([]byte, 0, 16)
-	startPrefixWithShard = common.AppendUint64ToBufferBE(startPrefixWithShard, theShardID)
-	startPrefixWithShard = append(startPrefixWithShard, startPrefix...)
-
-	endPrefixWithShard := make([]byte, 0, 16)
-	endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, theShardID)
-	endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
-
-	return d.deleteAllDataInRangeForShardFullPrefix(theShardID, startPrefixWithShard, endPrefixWithShard)
-}
-
-func (d *Dragon) deleteAllDataInRangeForShardFullPrefix(theShardID uint64, startPrefix []byte, endPrefix []byte) error {
-	var buff []byte
-	buff = append(buff, shardStateMachineCommandDeleteRangePrefix)
-
-	buff = common.AppendUint32ToBufferLE(buff, uint32(len(startPrefix)))
-	buff = append(buff, startPrefix...)
-	buff = common.AppendUint32ToBufferLE(buff, uint32(len(endPrefix)))
-	buff = append(buff, endPrefix...)
-
-	retVal, _, err := d.sendPropose(theShardID, buff)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if retVal != shardStateMachineResponseOK {
-		return errors.Errorf("unexpected return value %d from request to delete range to shard %d", retVal, theShardID)
-	}
-	return nil
-}
-
-func (d *Dragon) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
-
-	chans := make([]chan error, len(d.allDataShards))
-	for i, shardID := range d.allDataShards {
-		ch := make(chan error, 1)
-		chans[i] = ch
-		theShardID := shardID
-		go func() {
-			err := d.deleteAllDataInRangeForShard(theShardID, startPrefix, endPrefix)
-			ch <- err
-		}()
-	}
-
-	for _, ch := range chans {
-		err, ok := <-ch
-		if !ok {
-			panic("channel closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
-	return nil
+func (d *Dragon) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
+	return d.deleteAllDataInRangeForShardsLocally(startPrefix, endPrefix, d.allDataShards...)
 }
 
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {
@@ -838,7 +792,7 @@ func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemac
 func (d *Dragon) AddToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 	batch := d.pebble.NewBatch()
 	for _, prefix := range deleteBatch.Prefixes {
-		key := createToDeleteKey(deleteBatch.Local, deleteBatch.ConditionalTableID, prefix)
+		key := createToDeleteKey(deleteBatch.ConditionalTableID, prefix)
 		if err := batch.Set(key, nil, nil); err != nil {
 			return errors.WithStack(err)
 		}
@@ -852,7 +806,7 @@ func (d *Dragon) AddToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 func (d *Dragon) RemoveToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 	batch := d.pebble.NewBatch()
 	for _, prefix := range deleteBatch.Prefixes {
-		key := createToDeleteKey(deleteBatch.Local, deleteBatch.ConditionalTableID, prefix)
+		key := createToDeleteKey(deleteBatch.ConditionalTableID, prefix)
 		if err := batch.Delete(key, nil); err != nil {
 			return errors.WithStack(err)
 		}
@@ -863,16 +817,8 @@ func (d *Dragon) RemoveToDeleteBatch(deleteBatch *cluster.ToDeleteBatch) error {
 	return nil
 }
 
-const localFlagTrue byte = 1
-const localFlagFalse byte = 0
-
-func createToDeleteKey(local bool, conditionalTableID uint64, prefix []byte) []byte {
+func createToDeleteKey(conditionalTableID uint64, prefix []byte) []byte {
 	key := table.EncodeTableKeyPrefix(common.ToDeleteTableID, toDeleteShardID, 16+1+8+len(prefix))
-	if local {
-		key = append(key, localFlagTrue)
-	} else {
-		key = append(key, localFlagFalse)
-	}
 	key = common.AppendUint64ToBufferBE(key, conditionalTableID)
 	key = append(key, prefix...)
 	return key
@@ -893,30 +839,21 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 	}
 
 	var localBatches []*cluster.ToDeleteBatch
-	var remoteBatches []*cluster.ToDeleteBatch
 	var currBatch *cluster.ToDeleteBatch
 
 	log.Debugf("There are %d to_delete entries", len(kvPairs))
 
 	for _, kvPair := range kvPairs {
 		offset := 16
-		b := kvPair.Key[offset]
-		offset++
-		local := b == localFlagTrue
 		conditionalTableID, _ := common.ReadUint64FromBufferBE(kvPair.Key, offset)
 		offset += 8
 		prefix := kvPair.Key[offset:]
 
 		if currBatch == nil || currBatch.ConditionalTableID != conditionalTableID {
 			currBatch = &cluster.ToDeleteBatch{
-				Local:              local,
 				ConditionalTableID: conditionalTableID,
 			}
-			if local {
-				localBatches = append(localBatches, currBatch)
-			} else {
-				remoteBatches = append(remoteBatches, currBatch)
-			}
+			localBatches = append(localBatches, currBatch)
 		}
 		currBatch.Prefixes = append(currBatch.Prefixes, prefix)
 	}
@@ -947,37 +884,8 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 		}
 	}
 
-	if len(remoteBatches) != 0 {
-		// Process the replicated deletes
-		for _, batch := range remoteBatches {
-			exists, err := d.tableExists(queryExec, batch.ConditionalTableID)
-			if err != nil {
-				return err
-			}
-			if !exists {
-				log.Debugf("Conditional table with id %d does not exist, there are %d prefixes", batch.ConditionalTableID, len(batch.Prefixes))
-				for _, prefix := range batch.Prefixes {
-					log.Debugf("Deleting all remote data with prefix %s", common.DumpDataKey(prefix))
-					endPrefix := common.IncrementBytesBigEndian(prefix)
-					// shard id is first 8 bytes
-					shardID, _ := common.ReadUint64FromBufferBE(prefix, 0)
-					if err := d.deleteAllDataInRangeForShardFullPrefix(shardID, prefix, endPrefix); err != nil {
-						return err
-					}
-				}
-			} else {
-				log.Debug("Table exists so not deleting table data")
-			}
-		}
-	}
-
 	// Now remove from to_delete table
 	for _, batch := range localBatches {
-		if err := d.RemoveToDeleteBatch(batch); err != nil {
-			return err
-		}
-	}
-	for _, batch := range remoteBatches {
 		if err := d.RemoveToDeleteBatch(batch); err != nil {
 			return err
 		}

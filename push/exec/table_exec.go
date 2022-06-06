@@ -216,7 +216,6 @@ func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint
 		prefixes = append(prefixes, prefix)
 	}
 	batch := &cluster.ToDeleteBatch{
-		Local:              true,
 		ConditionalTableID: newTableID,
 		Prefixes:           prefixes,
 	}

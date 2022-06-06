@@ -18,7 +18,6 @@ type DropMVCommand struct {
 	mvName        string
 	mv            *push.MaterializedView
 	schema        *common.Schema
-	originating   bool
 	toDeleteBatch *cluster.ToDeleteBatch
 }
 
@@ -44,11 +43,10 @@ func (c *DropMVCommand) LockName() string {
 
 func NewOriginatingDropMVCommand(e *Executor, schemaName string, sql string, mvName string) *DropMVCommand {
 	return &DropMVCommand{
-		e:           e,
-		schemaName:  schemaName,
-		sql:         sql,
-		mvName:      mvName,
-		originating: true,
+		e:          e,
+		schemaName: schemaName,
+		sql:        sql,
+		mvName:     mvName,
 	}
 }
 
@@ -128,8 +126,7 @@ func (c *DropMVCommand) onPhase1() error {
 	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
 		return errors.WithStack(err)
 	}
-	// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
-	return c.mv.Drop(c.originating)
+	return c.mv.Drop()
 }
 
 func (c *DropMVCommand) AfterPhase(phase int32) error {
