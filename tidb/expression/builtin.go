@@ -705,13 +705,14 @@ var funcs = map[string]functionClass{
 	ast.Or:                 &bitOrFunctionClass{baseFunctionClass{ast.Or, 2, 2}},
 	ast.Xor:                &bitXorFunctionClass{baseFunctionClass{ast.Xor, 2, 2}},
 	ast.UnaryMinus:         &unaryMinusFunctionClass{baseFunctionClass{ast.UnaryMinus, 1, 1}},
+	ast.In:                 &inFunctionClass{baseFunctionClass{ast.In, 2, -1}},
 	ast.IsTruthWithoutNull: &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruthWithoutNull, 1, 1}, opcode.IsTruth, false},
 	ast.IsTruthWithNull:    &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruthWithNull, 1, 1}, opcode.IsTruth, true},
 	ast.IsFalsity:          &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsFalsity, 1, 1}, opcode.IsFalsity, false},
 	ast.Like:               &likeFunctionClass{baseFunctionClass{ast.Like, 3, 3}},
 	ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
 	ast.Case:               &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
-
+	
 	// json functions
 	ast.JSONType:          &jsonTypeFunctionClass{baseFunctionClass{ast.JSONType, 1, 1}},
 	ast.JSONExtract:       &jsonExtractFunctionClass{baseFunctionClass{ast.JSONExtract, 2, -1}},

@@ -1,0 +1,52 @@
+-- tests SQL operators;
+----------------------;
+
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_1;
+
+-- test "IN";
+
+-- commented out for now - results in multiple ranges, will be fixed in follow up PR;
+--select * from test_source_1 where col0 in (3, 7, 9, 10, 26) order by col0;
+select * from test_source_1 where col1 in (200, 600, 700, 900, 2000) order by col0;
+select * from test_source_1 where col2 in (1000, 2000, 6000, 9000, 11000) order by col0;
+select * from test_source_1 where col3 in (2234.4321, 6234.4321, 9234.4321, 10234.4321, 7654.23) order by col0;
+select * from test_source_1 where col4 in (42345678.99, 72345678.99, 92345678.99, 22345678.99, 87453659.87) order by col0;
+select * from test_source_1 where col5 in ('str1', 'str3', 'str9', 'str6', 'strwhateva') order by col0;
+
+select * from test_source_1 where col1 in (3000, 4000, 5000) order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
