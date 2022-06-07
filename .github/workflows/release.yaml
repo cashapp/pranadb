@@ -1,0 +1,36 @@
+on:
+  push:
+    tags:
+      - 'v*'
+name: Release
+jobs:
+  deployable:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '^1.16.3'
+      - run: ./bin/hermit env --raw >> $GITHUB_ENV
+      - name: Build Prana
+        run: |
+          make GOOS=linux GOARCH=amd64 CHANNEL=stable build
+          make GOOS=linux GOARCH=arm64 CHANNEL=stable build
+          make GOOS=darwin GOARCH=amd64 CHANNEL=stable build
+          make GOOS=darwin GOARCH=arm64 CHANNEL=stable build
+      - name: Release versioned
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "out/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release stable
+        uses: ncipollo/release-action@v1
+        with:
+          tag: stable
+          name: Stable
+          allowUpdates: true
+          artifacts: "out/*"
+          token: ${{ secrets.GITHUB_TOKEN }}

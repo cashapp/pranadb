@@ -1,16 +1,23 @@
-.PHONY: all
-all: protos
+ROOT = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+BUILD_DIR = $(ROOT)/out
+CHANNEL ?= canary
+VERSION ?= $(shell git describe --tags --dirty  --always)
+GOOS ?= $(shell ./bin/go version | awk '{print $$NF}' | cut -d/ -f1)
+GOARCH ?= $(shell ./bin/go version | awk '{print $$NF}' | cut -d/ -f2)
+BIN = $(BUILD_DIR)/pranadb-$(GOOS)-$(GOARCH)
 
-.PHONY: protos
+.PHONY: all protos build test docker-image start stop create-topics publish-payments connect status
+
+all: protos build
+
 protos:
-	make -C protos
+	$(MAKE) -C ./protos
 
-.PHONY: clean
-clean:
-	make -C protos clean
-	go clean -testcache
+build: protos ## builds binary and gzips it
+	mkdir -p $(BIN)
+	go build -tags musl -o $(BIN) ./cmd/pranadb
+	gzip -9 -f $(BIN)/pranadb
 
-.PHONY: test
 test: protos
 	go test -race -short -timeout 30s ./...
 
