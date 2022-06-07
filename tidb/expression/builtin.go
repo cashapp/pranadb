@@ -712,7 +712,7 @@ var funcs = map[string]functionClass{
 	ast.Like:               &likeFunctionClass{baseFunctionClass{ast.Like, 3, 3}},
 	ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
 	ast.Case:               &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
-	
+
 	// json functions
 	ast.JSONType:          &jsonTypeFunctionClass{baseFunctionClass{ast.JSONType, 1, 1}},
 	ast.JSONExtract:       &jsonExtractFunctionClass{baseFunctionClass{ast.JSONExtract, 2, -1}},

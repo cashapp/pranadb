@@ -178,19 +178,15 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 	if !ok {
 		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
 	}
-	if len(ranges) > 1 {
-		return nil, errors.Error("only one range supported")
-	}
-	var scanRange *exec.ScanRange
-	if len(ranges) == 1 {
-		rng := ranges[0]
+	scanRanges := make([]*exec.ScanRange, len(ranges))
+	for i, rng := range ranges {
 		if !rng.IsFullRange() {
 			if len(rng.LowVal) != 1 {
 				return nil, errors.Error("composite ranges not supported")
 			}
 			lowD := rng.LowVal[0]
 			highD := rng.HighVal[0]
-			scanRange = &exec.ScanRange{
+			scanRanges[i] = &exec.ScanRange{
 				LowVals:  []interface{}{common.TiDBValueToPranaValue(lowD.GetValue())},
 				HighVals: []interface{}{common.TiDBValueToPranaValue(highD.GetValue())},
 				LowExcl:  rng.LowExclude,
@@ -202,7 +198,7 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 	for _, col := range columns {
 		colIndexes = append(colIndexes, col.Offset)
 	}
-	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRange)
+	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRanges)
 }
 
 func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range,

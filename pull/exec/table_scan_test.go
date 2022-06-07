@@ -111,7 +111,7 @@ func TestTableScanWithRangeIncLowIncHigh(t *testing.T) {
 		{3, "los angeles", 20.6, "11.75"},
 		{4, "sydney", 45.2, "4.99"},
 	}
-	testTableScanWithRange(t, scanRange, expectedRows)
+	testTableScanWithRange(t, []*ScanRange{scanRange}, expectedRows)
 }
 
 func TestTableScanWithRangeIncLowExclHigh(t *testing.T) {
@@ -124,7 +124,7 @@ func TestTableScanWithRangeIncLowExclHigh(t *testing.T) {
 	expectedRows := [][]interface{}{
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	testTableScanWithRange(t, scanRange, expectedRows)
+	testTableScanWithRange(t, []*ScanRange{scanRange}, expectedRows)
 }
 
 func TestTableScanWithRangeExclLowIncHigh(t *testing.T) {
@@ -138,7 +138,7 @@ func TestTableScanWithRangeExclLowIncHigh(t *testing.T) {
 		{4, "sydney", 45.2, "4.99"},
 		{5, "tokyo", 28.9, "999.99"},
 	}
-	testTableScanWithRange(t, scanRange, expectedRows)
+	testTableScanWithRange(t, []*ScanRange{scanRange}, expectedRows)
 }
 
 func TestTableScanWithRangeExclLowExclHigh(t *testing.T) {
@@ -153,10 +153,38 @@ func TestTableScanWithRangeExclLowExclHigh(t *testing.T) {
 		{3, "los angeles", 20.6, "11.75"},
 		{4, "sydney", 45.2, "4.99"},
 	}
-	testTableScanWithRange(t, scanRange, expectedRows)
+	testTableScanWithRange(t, []*ScanRange{scanRange}, expectedRows)
 }
 
-func testTableScanWithRange(t *testing.T, scanRange *ScanRange, expectedRows [][]interface{}) {
+func TestTableScanWithMultipleRanges(t *testing.T) {
+	scanRange1 := &ScanRange{
+		LowVals:   []interface{}{int64(1)},
+		HighVals:  []interface{}{int64(1)},
+		LowExcl:  false,
+		HighExcl: false,
+	}
+	scanRange2 := &ScanRange{
+		LowVals:   []interface{}{int64(2)},
+		HighVals:  []interface{}{int64(3)},
+		LowExcl:  false,
+		HighExcl: true,
+	}
+	scanRange3 := &ScanRange{
+		LowVals:   []interface{}{int64(4)},
+		HighVals:  []interface{}{int64(5)},
+		LowExcl:  false,
+		HighExcl: false,
+	}
+	expectedRows := [][]interface{}{
+		{1, "wincanton", 25.5, "132.45"},
+		{2, "london", 35.1, "9.32"},
+		{4, "sydney", 45.2, "4.99"},
+		{5, "tokyo", 28.9, "999.99"},
+	}
+	testTableScanWithRange(t, []*ScanRange{scanRange1, scanRange2, scanRange3}, expectedRows)
+}
+
+func testTableScanWithRange(t *testing.T, scanRanges []*ScanRange, expectedRows [][]interface{}) {
 	t.Helper()
 	inpRows := [][]interface{}{
 		{1, "wincanton", 25.5, "132.45"},
@@ -166,7 +194,7 @@ func testTableScanWithRange(t *testing.T, scanRange *ScanRange, expectedRows [][
 		{5, "tokyo", 28.9, "999.99"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, scanRange, colTypes, nil)
+	ts, clust := setupTableScan(t, inpRows, scanRanges, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	exp1 := toRows(t, expectedRows, colTypes)
@@ -334,7 +362,7 @@ func stopCluster(t *testing.T, clust cluster.Cluster) {
 	require.NoError(t, err)
 }
 
-func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRange, colTypes []common.ColumnType, pkCols []int) (PullExecutor, cluster.Cluster) {
+func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRanges []*ScanRange, colTypes []common.ColumnType, pkCols []int) (PullExecutor, cluster.Cluster) {
 	t.Helper()
 
 	clust := fake.NewFakeCluster(0, 10)
@@ -377,7 +405,7 @@ func setupTableScan(t *testing.T, inputRows [][]interface{}, scanRange *ScanRang
 
 	insertRowsIntoTable(t, shardID, &tableInfoAfter, inpRows, clust)
 
-	ts, err := NewPullTableScan(&tableInfo, nil, clust, shardID, scanRange)
+	ts, err := NewPullTableScan(&tableInfo, nil, clust, shardID, scanRanges)
 	require.NoError(t, err)
 
 	return ts, clust

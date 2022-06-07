@@ -37,8 +37,7 @@ create source test_source_1(
 
 -- test "IN";
 
--- commented out for now - results in multiple ranges, will be fixed in follow up PR;
---select * from test_source_1 where col0 in (3, 7, 9, 10, 26) order by col0;
+select * from test_source_1 where col0 in (3, 7, 9, 10, 26) order by col0;
 select * from test_source_1 where col1 in (200, 600, 700, 900, 2000) order by col0;
 select * from test_source_1 where col2 in (1000, 2000, 6000, 9000, 11000) order by col0;
 select * from test_source_1 where col3 in (2234.4321, 6234.4321, 9234.4321, 10234.4321, 7654.23) order by col0;
