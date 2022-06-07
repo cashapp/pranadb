@@ -169,17 +169,25 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	return buffer, nil
 }
 
-func DecodeIndexKeyWithIgnoredCols(buffer []byte, offset int, colTypes []ColumnType, includeCols []int, indexCols []int, startCol int, rows *Rows) (int, error) {
+func DecodeIndexKeyWithIgnoredCols(buffer []byte, offset int, colTypes []ColumnType, includeCols []int, indexCols []int, rows *Rows) (int, error) {
 	var err error
+	rowColIndex := 0
 	for _, indexCol := range indexCols {
 		colType := colTypes[indexCol]
-		include := includeCols == nil || Contains(includeCols, indexCol)
-		offset, err = DecodeIndexKeyCol(buffer, offset, colType, include, startCol, false, rows)
+		include := false
+		//include := includeCols == nil || Contains(includeCols, indexCol)
+		for i, includeCol := range includeCols {
+			if indexCol == includeCol {
+				include = true
+				rowColIndex = i
+			}
+		}
+		offset, err = DecodeIndexKeyCol(buffer, offset, colType, include, rowColIndex, false, rows)
 		if err != nil {
 			return 0, errors.WithStack(err)
 		}
 		if include {
-			startCol++
+			rowColIndex++
 		}
 	}
 	return offset, nil

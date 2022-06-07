@@ -171,11 +171,17 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 		// Index covers if all cols are in the index
 		if len(nonIndexCols) == 0 {
 			offset := 16
-			offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, len(includedPkCols), rows)
+			offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows)
 
 			for _, pkCol := range includedPkCols {
 				colType := p.tableInfo.ColumnTypes[pkCol]
-				_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, pkCol, true, rows)
+				var rowColIndex int
+				for j, col := range p.includeCols {
+					if col == pkCol {
+						rowColIndex = j
+					}
+				}
+				_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, rowColIndex, true, rows)
 			}
 			if err != nil {
 				return nil, errors.WithStack(err)

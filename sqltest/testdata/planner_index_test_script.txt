@@ -36,17 +36,29 @@ select customer_id from transactions where customer_id = 1000000;
 
 select * from transactions where customer_id = 600;
 
+select * from transactions where id > 5;
+
 drop index index1 on transactions;
 
 --test multi-col index;
 
 create index index2 on transactions (customer_id, col2);
 
+select * from transactions where id > 10;
+
 select * from transactions where customer_id = 600;
 
 select col2 from transactions where col2 = 'abc';
 
 select col2, customer_id from transactions where customer_id = 600;
+
+select customer_id from transactions where customer_id > 600;
+
+select * from transactions where customer_id > 600 and customer_id < 900;
+
+select * from transactions where customer_id > 300 and col2 is null;
+
+select customer_id, col2, id from transactions where customer_id > 300 and col2 is null;
 
 drop index index2 on transactions;
 

@@ -72,7 +72,7 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 			return nil, errors.WithStack(err)
 		}
 		if !scanRange.HighExcl {
-			if !allBitsSet(rangeEnd) {
+			if !allBitsSet(rangeEnd[16:]) {
 				rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
 			} else {
 				rangeEnd = nil
