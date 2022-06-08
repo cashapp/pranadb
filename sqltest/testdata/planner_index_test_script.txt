@@ -26,7 +26,7 @@ create index index1 on transactions (customer_id);
 
 select customer_id from transactions where customer_id = 600;
 
-select customer_id from transactions where customer_id > 600;
+select customer_id from transactions where customer_id > 600 order by customer_id;
 
 select customer_id from transactions where customer_id is null;
 
@@ -50,15 +50,15 @@ select * from transactions where customer_id = 600 order by id;
 
 select col2 from transactions where col2 = 'abc';
 
-select col2, customer_id from transactions where customer_id = 600 order by customer_id, col2;
+select col2, customer_id from transactions where customer_id = 600 order by col2;
 
-select customer_id from transactions where customer_id > 600;
+select customer_id from transactions where customer_id > 600 order by customer_id;
 
 select * from transactions where customer_id > 600 and customer_id < 900 order by id;
 
 select * from transactions where customer_id > 300 and col2 is null order by id;
 
-select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id, col2;
+select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
 
 drop index index2 on transactions;
 

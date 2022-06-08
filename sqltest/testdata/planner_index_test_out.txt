@@ -33,10 +33,10 @@ select customer_id from transactions where customer_id = 600;
 |600|
 2 rows returned
 
-select customer_id from transactions where customer_id > 600;
+select customer_id from transactions where customer_id > 600 order by customer_id;
 |customer_id|
-|900|
 |800|
+|900|
 |1000|
 3 rows returned
 
@@ -95,16 +95,16 @@ select col2 from transactions where col2 = 'abc';
 |abc|
 7 rows returned
 
-select col2, customer_id from transactions where customer_id = 600 order by customer_id, col2;
+select col2, customer_id from transactions where customer_id = 600 order by col2;
 |col2|customer_id|
 |abc|600|
 |abc|600|
 2 rows returned
 
-select customer_id from transactions where customer_id > 600;
+select customer_id from transactions where customer_id > 600 order by customer_id;
 |customer_id|
-|900|
 |800|
+|900|
 |1000|
 3 rows returned
 
@@ -118,7 +118,7 @@ select * from transactions where customer_id > 300 and col2 is null order by id;
 |4|400|null|
 1 rows returned
 
-select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id, col2;
+select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
 |customer_id|id|col2|
 |400|4|null|
 1 rows returned
