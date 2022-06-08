@@ -81,6 +81,38 @@ select * from test_source_1 where col1 in (3000, 4000, 5000) order by col0;
 |col0|col1|col2|col3|col4|col5|col6|
 0 rows returned
 
+-- test "OR";
+
+select * from test_source_1 where col1 = 200 or col1 = 600 or col1 = 700 or col1 = 999 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+3 rows returned
+select * from test_source_1 where col2 = 1000 or col2 = 5000 or col2 = 8000 or col2 = 9999 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123000|
+|8|800|8000|8234.4321|82345678.99|str8|2020-01-08 01:00:00.123000|
+3 rows returned
+select * from test_source_1 where col3 = 2234.4321 or col3 = 6234.4321 or col3 = 9234.4321 or col3 = 7654.98 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|6|600|6000|6234.4321|62345678.99|str6|2020-01-06 01:00:00.123000|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+3 rows returned
+select * from test_source_1 where col4 = 72345678.99 or col4 = 22345678.99 or col4 = 7545334.76 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+2 rows returned
+select * from test_source_1 where col5 = 'str3' or col5 = 'str1' or col5 = 'str2' or col5 = 'blah' order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123000|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|
+|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+3 rows returned
+
 drop source test_source_1;
 0 rows returned
 

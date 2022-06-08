@@ -47,6 +47,14 @@ select * from test_source_1 where col5 in ('str1', 'str3', 'str9', 'str6', 'strw
 
 select * from test_source_1 where col1 in (3000, 4000, 5000) order by col0;
 
+-- test "OR";
+
+select * from test_source_1 where col1 = 200 or col1 = 600 or col1 = 700 or col1 = 999 order by col0;
+select * from test_source_1 where col2 = 1000 or col2 = 5000 or col2 = 8000 or col2 = 9999 order by col0;
+select * from test_source_1 where col3 = 2234.4321 or col3 = 6234.4321 or col3 = 9234.4321 or col3 = 7654.98 order by col0;
+select * from test_source_1 where col4 = 72345678.99 or col4 = 22345678.99 or col4 = 7545334.76 order by col0;
+select * from test_source_1 where col5 = 'str3' or col5 = 'str1' or col5 = 'str2' or col5 = 'blah' order by col0;
+
 drop source test_source_1;
 
 --delete topic testtopic;
