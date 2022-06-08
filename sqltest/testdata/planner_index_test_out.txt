@@ -51,18 +51,18 @@ select customer_id from transactions where customer_id = 1000000;
 
 --test partially-covering index;
 
-select * from transactions where customer_id = 600;
-|customer_id|id|col2|
-|7|600|abc|
+select * from transactions where customer_id = 600 order by id;
+|id|customer_id|col2|
 |6|600|abc|
+|7|600|abc|
 2 rows returned
 
-select * from transactions where id > 5;
+select * from transactions where id > 5 order by id;
 |id|customer_id|col2|
-|7|600|abc|
-|9|900|abc|
-|8|800|abc|
 |6|600|abc|
+|7|600|abc|
+|8|800|abc|
+|9|900|abc|
 |10|1000|abc|
 5 rows returned
 
@@ -74,14 +74,14 @@ drop index index1 on transactions;
 create index index2 on transactions (customer_id, col2);
 0 rows returned
 
-select * from transactions where id > 10;
+select * from transactions where id > 10 order by id;
 |id|customer_id|col2|
 0 rows returned
 
-select * from transactions where customer_id = 600;
-|customer_id|col2|id|
-|600|abc|7|
-|600|abc|6|
+select * from transactions where customer_id = 600 order by id;
+|id|customer_id|col2|
+|6|600|abc|
+|7|600|abc|
 2 rows returned
 
 select col2 from transactions where col2 = 'abc';
@@ -95,7 +95,7 @@ select col2 from transactions where col2 = 'abc';
 |abc|
 7 rows returned
 
-select col2, customer_id from transactions where customer_id = 600;
+select col2, customer_id from transactions where customer_id = 600 order by customer_id, col2;
 |col2|customer_id|
 |abc|600|
 |abc|600|
@@ -108,17 +108,17 @@ select customer_id from transactions where customer_id > 600;
 |1000|
 3 rows returned
 
-select * from transactions where customer_id > 600 and customer_id < 900;
-|customer_id|col2|id|
-|800|abc|8|
+select * from transactions where customer_id > 600 and customer_id < 900 order by id;
+|id|customer_id|col2|
+|8|800|abc|
 1 rows returned
 
-select * from transactions where customer_id > 300 and col2 is null;
-|customer_id|col2|id|
-|400|null|4|
+select * from transactions where customer_id > 300 and col2 is null order by id;
+|id|customer_id|col2|
+|4|400|null|
 1 rows returned
 
-select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null;
+select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id, col2;
 |customer_id|id|col2|
 |400|4|null|
 1 rows returned

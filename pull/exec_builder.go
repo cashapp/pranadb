@@ -3,8 +3,6 @@ package pull
 import (
 	"strings"
 
-	"github.com/squareup/pranadb/tidb/expression"
-
 	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -103,7 +101,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 		if remote {
 			tableName := op.Table.Name.L
 			indexName := op.Index.Name.L
-			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Schema().Columns, op.Columns, session.QueryInfo.ShardID)
+			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -203,7 +201,8 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRange)
 }
 
-func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range, planSchemaColumns []*expression.Column, columnInfos []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {
+func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range,
+	columnInfos []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {
 	tbl, ok := schema.GetTable(tableName)
 	if !ok {
 		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
@@ -229,13 +228,8 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 		}
 	}
 	var colIndexes []int
-	for _, col := range planSchemaColumns {
-		for _, colInfo := range columnInfos {
-			if col.ID == colInfo.ID {
-				colIndexes = append(colIndexes, colInfo.Offset)
-				break
-			}
-		}
+	for _, colInfo := range columnInfos {
+		colIndexes = append(colIndexes, colInfo.Offset)
 	}
 	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges)
 }

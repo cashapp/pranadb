@@ -20,11 +20,9 @@ package planner
 
 import (
 	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/statistics"
-	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
@@ -74,91 +72,6 @@ func (p PhysicalIndexScan) Init(ctx sessionctx.Context, offset int) *PhysicalInd
 //   PhysicalIndexScan.IdxCols       []*expression.Column
 //   PhysicalIndexScan.Columns       []*model.ColumnInfo
 func (is *PhysicalIndexScan) initSchema(idxExprCols []*expression.Column, isDoubleRead bool) {
-	indexCols := make([]*expression.Column, len(is.IdxCols), len(is.Index.Columns)+1)
-	copy(indexCols, is.IdxCols)
-
-	for i := len(is.IdxCols); i < len(is.Index.Columns); i++ {
-		if idxExprCols[i] != nil {
-			indexCols = append(indexCols, idxExprCols[i])
-		} else {
-			// TODO: try to reuse the col generated when building the LogicalDataSource.
-			colInfo := is.Table.Columns[is.Index.Columns[i].Offset]
-			fieldName := &types.FieldName{
-				DBName:            is.DBName,
-				TblName:           is.Table.Name,
-				ColName:           colInfo.Name,
-				OrigTblName:       is.Table.Name,
-				OrigColName:       colInfo.Name,
-				Hidden:            colInfo.Hidden,
-				NotExplicitUsable: colInfo.State != model.StatePublic,
-			}
-			indexCols = append(indexCols, &expression.Column{
-				ID:       colInfo.ID,
-				RetType:  &colInfo.FieldType,
-				UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
-				OrigName: fieldName.String(),
-			})
-		}
-	}
-	is.NeedCommonHandle = is.Table.IsCommonHandle
-
-	if is.NeedCommonHandle {
-		for i := len(is.Index.Columns); i < len(idxExprCols); i++ {
-			indexCols = append(indexCols, idxExprCols[i])
-		}
-	}
-	//setHandle := false
-	// TODO - for some reason was adding the PK col again (resulting in same col twice) when the index was on the PK
-	// Commenting out seems to fix - need to investigate more
-	//setHandle := len(indexCols) > len(is.Index.Columns)
-	//if !setHandle {
-	//	for i, col := range is.Columns {
-	//		if (mysql.HasPriKeyFlag(col.Flag) && is.Table.PKIsHandle) || col.ID == model.ExtraHandleID {
-	//			indexCols = append(indexCols, is.dataSourceSchema.Columns[i])
-	//			setHandle = true
-	//			break
-	//		}
-	//	}
-	//}
-
-	if isDoubleRead {
-		// If it's a double read, we need to add the queried columns that are not already in the index.
-		for _, queryCol := range is.Columns {
-			setQueryCol := true
-			for _, idxCol := range is.IdxCols {
-				if queryCol.ID == idxCol.ID {
-					setQueryCol = false
-				}
-			}
-			if setQueryCol {
-				indexCols = append(indexCols, &expression.Column{
-					RetType:  types.NewFieldType(queryCol.FieldType.Tp),
-					ID:       queryCol.ID,
-					UniqueID: queryCol.ID,
-					OrigName: is.DBName.L + "." + is.Table.Name.L + "." + queryCol.Name.L,
-				})
-			}
-		}
-		// If it's double read case, the first index must return handle. So we should add extra handle column
-		// if there isn't a handle column.
-		//if !setHandle {
-		//	if !is.Table.IsCommonHandle {
-		//		indexCols = append(indexCols, &expression.Column{
-		//			RetType:  types.NewFieldType(mysql.TypeLonglong),
-		//			ID:       model.ExtraHandleID,
-		//			UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
-		//		})
-		//	}
-		//}
-		// If index is global, we should add extra column for pid.
-		if is.Index.Global {
-			indexCols = append(indexCols, &expression.Column{
-				RetType:  types.NewFieldType(mysql.TypeLonglong),
-				ID:       model.ExtraPidColID,
-				UniqueID: is.ctx.GetSessionVars().AllocPlanColumnID(),
-			})
-		}
-	}
-
-	is.SetSchema(expression.NewSchema(indexCols...))
+	// Should always be the same as logical schema
+	is.SetSchema(is.dataSourceSchema)
 }
