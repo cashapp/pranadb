@@ -98,7 +98,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 		if remote {
 			tableName := op.Table.Name.L
 			indexName := op.Index.Name.L
-			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID, op.Covers)
+			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -107,7 +107,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 			if err != nil {
 				return nil, err
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, remoteDag.ColNames(), remoteDag.ColTypes(), session.Schema.Name, p.cluster,
 				-1)
 		}
 	case *planner.PhysicalSort:
@@ -205,7 +205,8 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 	return exec.NewPullTableScan(tbl.GetTableInfo(), colIndexes, p.cluster, shardID, scanRange)
 }
 
-func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range, columns []*model.ColumnInfo, shardID uint64, covers bool) (exec.PullExecutor, error) {
+func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, indexName string, ranges []*ranger.Range,
+	columnInfos []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {
 	tbl, ok := schema.GetTable(tableName)
 	if !ok {
 		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
@@ -231,10 +232,10 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 		}
 	}
 	var colIndexes []int
-	for _, col := range columns {
-		colIndexes = append(colIndexes, col.Offset)
+	for _, colInfo := range columnInfos {
+		colIndexes = append(colIndexes, colInfo.Offset)
 	}
-	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges, covers)
+	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges)
 }
 
 func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {

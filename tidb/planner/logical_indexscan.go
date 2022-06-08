@@ -19,6 +19,8 @@ package planner
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/pingcap/parser/model"
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/tidb/expression"
@@ -26,7 +28,6 @@ import (
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/types"
 	"github.com/squareup/pranadb/tidb/util/ranger"
-	"strings"
 )
 
 // LogicalIndexScan is the logical index scan operator for TiKV.

@@ -18,9 +18,11 @@
 package parplan
 
 import (
-	"github.com/squareup/pranadb/common"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSimpleWildcard(t *testing.T) {
@@ -214,4 +216,18 @@ func createTestSchema() *common.Schema {
 	}
 	schema.PutTable(table2.Name, table2)
 	return schema
+}
+
+func attachIndexToSchema(schema *common.Schema) (*common.Schema, error) {
+	index1 := &common.IndexInfo{
+		ID:         0,
+		SchemaName: "test",
+		Name:       "index1",
+		TableName:  "table1",
+		IndexCols:  []int{2},
+	}
+	if err := schema.PutIndex(index1); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return schema, nil
 }

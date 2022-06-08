@@ -140,6 +140,8 @@ func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
 			// If index columns can cover all of the needed columns, we can use a IndexGather + IndexScan.
 			if ds.isCoveringIndex(ds.schema.Columns, path.FullIdxCols, path.FullIdxColLens, ds.tableInfo) {
 				scans = append(scans, ds.buildIndexScan(path, false))
+			} else if ds.isPartiallyCoveringIndex(ds.schema.Columns, path.FullIdxCols, ds.tableInfo) {
+				scans = append(scans, ds.buildIndexScan(path, true))
 			}
 		}
 	}
@@ -469,7 +471,7 @@ func (ds *LogicalDataSource) isCoveringIndex(columns, indexColumns []*expression
 	return true
 }
 
-func (ds *LogicalDataSource) isPartiallyCoveringIndex(columns, indexColumns []*expression.Column, idxColLens []int, tblInfo *model.TableInfo) bool {
+func (ds *LogicalDataSource) isPartiallyCoveringIndex(columns, indexColumns []*expression.Column, tblInfo *model.TableInfo) bool {
 	for _, col := range columns {
 		if tblInfo.PKIsHandle && mysql.HasPriKeyFlag(col.RetType.Flag) {
 			continue

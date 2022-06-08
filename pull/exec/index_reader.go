@@ -17,32 +17,31 @@ type PullIndexReader struct {
 	rangeStart    []byte
 	rangeEnd      []byte
 	includeCols   []int
-	covers        bool
 }
 
 var _ PullExecutor = &PullIndexReader{}
-
-/*
-No hidden cols
-*/
 
 func NewPullIndexReader(tableInfo *common.TableInfo,
 	indexInfo *common.IndexInfo,
 	includedCols []int, // Col indexes in the table that are being returned
 	storage cluster.Cluster,
 	shardID uint64,
-	scanRanges []*ScanRange,
-	covers bool) (*PullIndexReader, error) {
+	scanRanges []*ScanRange) (*PullIndexReader, error) {
 
 	// Calculate the types of the results
 	var resultColTypes []common.ColumnType
 	for _, colIndex := range includedCols {
 		resultColTypes = append(resultColTypes, tableInfo.ColumnTypes[colIndex])
 	}
+	var resultColNames []string
+	for _, colIndex := range includedCols {
+		resultColNames = append(resultColNames, tableInfo.ColumnNames[colIndex])
+	}
 
 	rf := common.NewRowsFactory(resultColTypes)
 	base := pullExecutorBase{
-		colTypes:    tableInfo.ColumnTypes,
+		colNames:    resultColNames,
+		colTypes:    resultColTypes,
 		rowsFactory: rf,
 		keyCols:     tableInfo.PrimaryKeyCols,
 	}
@@ -63,9 +62,19 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 		rangeEnd = append(rangeEnd, indexShardPrefix...)
 		for i, scanRange := range scanRanges {
 			// if range vals are nil, doing a point get with nil as the index PK value
-			if scanRange.LowVal == nil {
+			if scanRange.LowVal == nil && scanRange.HighVal == nil {
 				rangeStart = append(rangeStart, 0)
+				rangeEnd = append(rangeEnd, 0)
+			} else if scanRange.HighVal == nil {
+				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
 			} else {
+				rangeEnd = append(rangeEnd, 1)
+				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if scanRange.LowVal != nil {
 				rangeStart = append(rangeStart, 1)
 				rangeStart, err = common.EncodeKeyElement(scanRange.LowVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
 				if err != nil {
@@ -73,19 +82,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 				}
 				if scanRange.LowExcl {
 					rangeStart = common.IncrementBytesBigEndian(rangeStart)
-				}
-			}
-			if scanRange.HighVal == nil {
-				rangeEnd = append(rangeEnd, 0)
-			} else {
-				rangeEnd = append(rangeEnd, 1)
-				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
-				if err != nil {
-					return nil, err
-				}
-
-				if err != nil {
-					return nil, err
 				}
 			}
 			if !scanRange.HighExcl {
@@ -113,11 +109,10 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 		rangeStart:       rangeStart,
 		rangeEnd:         rangeEnd,
 		includeCols:      includedCols,
-		covers:           covers,
 	}, nil
 }
 
-func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
+func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //nolint:gocyclo
 	if limit < 1 {
 		return nil, errors.Errorf("invalid limit %d", limit)
 	}
@@ -143,6 +138,25 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
 	}
 	numRows := len(kvPairs)
 	rows = p.rowsFactory.NewRows(numRows)
+	// Need to add PK cols if selected
+	var includedPkCols []int
+	for _, keyCol := range p.keyCols {
+		if common.Contains(p.includeCols, keyCol) {
+			includedPkCols = append(includedPkCols, keyCol)
+		}
+	}
+	// Check if index covers
+	var nonIndexCols []int
+	for _, keyCol := range p.includeCols {
+		if !common.Contains(includedPkCols, keyCol) && !common.Contains(p.indexInfo.IndexCols, keyCol) {
+			nonIndexCols = append(nonIndexCols, keyCol)
+		}
+	}
+	var includeCol []bool
+	for i := range p.colTypes {
+		included := common.Contains(p.includeCols, i)
+		includeCol = append(includeCol, included)
+	}
 	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
 			continue
@@ -150,14 +164,35 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
-		if p.covers {
-			//Just construct row from key
-			if err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows); err != nil {
+		// Index covers if all cols are in the index
+		if len(nonIndexCols) == 0 {
+			offset := 16
+			offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows)
+
+			for _, pkCol := range includedPkCols {
+				colType := p.tableInfo.ColumnTypes[pkCol]
+				var rowColIndex int
+				for j, col := range p.includeCols {
+					if col == pkCol {
+						rowColIndex = j
+					}
+				}
+				_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, rowColIndex, true, rows)
+			}
+			if err != nil {
 				return nil, errors.WithStack(err)
 			}
+			// Index doesn't cover, and we get cols from originating table
 		} else {
-			// Lookup row in table
-			// TODO
+			keyBuff := table.EncodeTableKeyPrefix(p.tableInfo.ID, p.shardID, 16+len(kvPair.Value))
+			keyBuff = append(keyBuff, kvPair.Value...)
+			value, err := p.storage.LocalGet(keyBuff)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, includeCol, rows); err != nil {
+				return nil, errors.WithStack(err)
+			}
 		}
 	}
 	return rows, nil

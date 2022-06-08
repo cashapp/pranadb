@@ -17,9 +17,10 @@
 package parplan
 
 import (
+	"testing"
+
 	planner2 "github.com/squareup/pranadb/tidb/planner"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestPointGetUsesTableScanWithUnitaryRangeForPullQuery(t *testing.T) {
@@ -46,4 +47,31 @@ func TestPointGetUsesSelectForPushQuery(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 1, len(ts.Ranges))
 	require.True(t, ts.Ranges[0].IsFullRange())
+}
+
+func TestPointGetUsesIndexScanForPullQuery(t *testing.T) {
+	schema := createTestSchema()
+	schema, err := attachIndexToSchema(schema)
+	require.NoError(t, err)
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col2 from table1 where col2=1", false, true)
+	require.NoError(t, err)
+	is, ok := physi.(*planner2.PhysicalIndexScan)
+	require.True(t, ok)
+	require.Equal(t, 0, len(is.Children()))
+	require.Equal(t, 1, len(is.Ranges))
+	require.True(t, is.Ranges[0].IsPoint(planner.StatementContext()))
+}
+
+func TestRangeUsesIndexScanForPullQuery(t *testing.T) {
+	schema := createTestSchema()
+	schema, err := attachIndexToSchema(schema)
+	require.NoError(t, err)
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col2 from table1 where col2 > 1", false, true)
+	require.NoError(t, err)
+	is, ok := physi.(*planner2.PhysicalIndexScan)
+	require.True(t, ok)
+	require.Equal(t, 0, len(is.Children()))
+	require.Equal(t, 1, len(is.Ranges))
 }
