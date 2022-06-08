@@ -169,48 +169,36 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	return buffer, nil
 }
 
-func DecodeIndexKeyWithIgnoredCols(buffer []byte, offset int, colTypes []ColumnType, includeCols []int, indexCols []int, rows *Rows) (int, error) {
-	var err error
-	rowColIndex := 0
-	for _, indexCol := range indexCols {
-		colType := colTypes[indexCol]
-		include := false
-		for i, includeCol := range includeCols {
-			if indexCol == includeCol {
-				include = true
-				rowColIndex = i
-			}
-		}
-		offset, err = DecodeIndexKeyCol(buffer, offset, colType, include, rowColIndex, false, rows)
+func DecodeIndexOrPKCols(buffer []byte, offset int, pk bool, indexOrPKColTypes []ColumnType, indexOrPKOutputCols []int, rows *Rows) (int, error) {
+	for i, outputCol := range indexOrPKOutputCols {
+		colType := indexOrPKColTypes[i]
+		var err error
+		offset, err = DecodeIndexOrPKCol(buffer, offset, colType, outputCol, pk, rows)
 		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-		if include {
-			rowColIndex++
+			return 0, err
 		}
 	}
 	return offset, nil
 }
 
-func DecodeIndexKeyCol(buffer []byte, offset int, colType ColumnType, include bool, rowColIndex int, pkCol bool, rows *Rows) (int, error) {
-	if buffer[offset] == 0 {
-		if !pkCol {
-			offset++
-		}
-		if include {
-			rows.AppendNullToColumn(rowColIndex)
+func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputColIndex int, pkCol bool, rows *Rows) (int, error) {
+	isNull := false
+	if !pkCol {
+		isNull = buffer[offset] == 0
+		offset++
+	}
+	if isNull {
+		if outputColIndex != -1 {
+			rows.AppendNullToColumn(outputColIndex)
 		}
 	} else {
-		if !pkCol {
-			offset++
-		}
 		switch colType.Type {
 		case TypeTinyInt, TypeInt, TypeBigInt:
 			var u uint64
 			u, offset = ReadUint64FromBufferBE(buffer, offset)
-			if include {
+			if outputColIndex != -1 {
 				decoded := u ^ SignBitMask
-				rows.AppendInt64ToColumn(rowColIndex, int64(decoded))
+				rows.AppendInt64ToColumn(outputColIndex, int64(decoded))
 			}
 		case TypeDecimal:
 			var val Decimal
@@ -219,20 +207,20 @@ func DecodeIndexKeyCol(buffer []byte, offset int, colType ColumnType, include bo
 			if err != nil {
 				return 0, errors.WithStack(err)
 			}
-			if include {
-				rows.AppendDecimalToColumn(rowColIndex, val)
+			if outputColIndex != -1 {
+				rows.AppendDecimalToColumn(outputColIndex, val)
 			}
 		case TypeDouble:
 			var val float64
 			val, offset = ReadFloat64FromBufferBE(buffer, offset)
-			if include {
-				rows.AppendFloat64ToColumn(rowColIndex, val)
+			if outputColIndex != -1 {
+				rows.AppendFloat64ToColumn(outputColIndex, val)
 			}
 		case TypeVarchar:
 			var val string
 			val, offset = ReadStringFromBufferBE(buffer, offset)
-			if include {
-				rows.AppendStringToColumn(rowColIndex, val)
+			if outputColIndex != -1 {
+				rows.AppendStringToColumn(outputColIndex, val)
 			}
 		case TypeTimestamp:
 			var (
@@ -243,21 +231,12 @@ func DecodeIndexKeyCol(buffer []byte, offset int, colType ColumnType, include bo
 			if err != nil {
 				return 0, errors.WithStack(err)
 			}
-			if include {
-				rows.AppendTimestampToColumn(rowColIndex, val)
+			if outputColIndex != -1 {
+				rows.AppendTimestampToColumn(outputColIndex, val)
 			}
 		default:
 			return 0, errors.Errorf("unexpected column type %d", colType)
 		}
 	}
 	return offset, nil
-}
-
-func Contains(indexes []int, index int) bool {
-	for _, idx := range indexes {
-		if idx == index {
-			return true
-		}
-	}
-	return false
 }
