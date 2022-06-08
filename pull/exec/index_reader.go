@@ -21,10 +21,6 @@ type PullIndexReader struct {
 
 var _ PullExecutor = &PullIndexReader{}
 
-/*
-No hidden cols
-*/
-
 func NewPullIndexReader(tableInfo *common.TableInfo,
 	indexInfo *common.IndexInfo,
 	includedCols []int, // Col indexes in the table that are being returned

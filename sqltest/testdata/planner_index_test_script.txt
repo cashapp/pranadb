@@ -58,7 +58,7 @@ select * from transactions where customer_id > 600 and customer_id < 900;
 
 select * from transactions where customer_id > 300 and col2 is null;
 
-select customer_id, col2, id from transactions where customer_id > 300 and col2 is null;
+select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null;
 
 drop index index2 on transactions;
 

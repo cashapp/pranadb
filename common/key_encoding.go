@@ -175,7 +175,6 @@ func DecodeIndexKeyWithIgnoredCols(buffer []byte, offset int, colTypes []ColumnT
 	for _, indexCol := range indexCols {
 		colType := colTypes[indexCol]
 		include := false
-		//include := includeCols == nil || Contains(includeCols, indexCol)
 		for i, includeCol := range includeCols {
 			if indexCol == includeCol {
 				include = true
