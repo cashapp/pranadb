@@ -59,14 +59,15 @@ func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, 
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
+	pkStart := len(keyBuff)
+	// We encode the PK cols on both the end of the key and the value
+	// It needs to be on the key to make the entry unique (for non unique indexes)
+	// and on the value so we can make looking up the PK easy for non covering indexes without having to parse the
+	// whole key
 	keyBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
-	var valueBuff []byte
-	valueBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, valueBuff)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
+	valueBuff := keyBuff[pkStart:] // Value is just the PK
 	return keyBuff, valueBuff, nil
 }

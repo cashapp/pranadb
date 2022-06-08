@@ -22,8 +22,8 @@ type PullTableScan struct {
 var _ PullExecutor = &PullTableScan{}
 
 type ScanRange struct {
-	LowVal   interface{}
-	HighVal  interface{}
+	LowVals  []interface{}
+	HighVals []interface{}
 	LowExcl  bool
 	HighExcl bool
 }
@@ -60,14 +60,16 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 	// If a query contains a select (aka a filter, where clause) on a primary key this is often pushed down to the
 	// table scan as a range
 	if scanRange != nil {
-		rangeStart, err = common.EncodeKey([]interface{}{scanRange.LowVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
+		lv := scanRange.LowVals[0]
+		hv := scanRange.HighVals[0]
+		rangeStart, err = common.EncodeKey([]interface{}{lv}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		if scanRange.LowExcl {
 			rangeStart = common.IncrementBytesBigEndian(rangeStart)
 		}
-		rangeEnd, err = common.EncodeKey([]interface{}{scanRange.HighVal}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
+		rangeEnd, err = common.EncodeKey([]interface{}{hv}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

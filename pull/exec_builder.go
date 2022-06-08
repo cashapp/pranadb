@@ -191,8 +191,8 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 			lowD := rng.LowVal[0]
 			highD := rng.HighVal[0]
 			scanRange = &exec.ScanRange{
-				LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
-				HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
+				LowVals:  []interface{}{common.TiDBValueToPranaValue(lowD.GetValue())},
+				HighVals: []interface{}{common.TiDBValueToPranaValue(highD.GetValue())},
 				LowExcl:  rng.LowExclude,
 				HighExcl: rng.HighExclude,
 			}
@@ -215,17 +215,25 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 	if !ok {
 		return nil, errors.Errorf("unknown index %s", indexName)
 	}
+	if len(ranges) > 1 {
+		return nil, errors.Error("multiple ranges not supported")
+	}
 	var scanRanges []*exec.ScanRange
-	for _, rng := range ranges {
+	if len(ranges) > 0 {
+		rng := ranges[0]
 		if !rng.IsFullRange() {
-			if len(rng.LowVal) != 1 {
-				return nil, errors.Error("composite ranges not supported")
+			nr := len(rng.LowVal)
+			lowVals := make([]interface{}, nr)
+			highVals := make([]interface{}, nr)
+			for i := 0; i < len(rng.LowVal); i++ {
+				lowD := rng.LowVal[i]
+				highD := rng.HighVal[i]
+				lowVals[i] = common.TiDBValueToPranaValue(lowD.GetValue())
+				highVals[i] = common.TiDBValueToPranaValue(highD.GetValue())
 			}
-			lowD := rng.LowVal[0]
-			highD := rng.HighVal[0]
 			scanRanges = append(scanRanges, &exec.ScanRange{
-				LowVal:   common.TiDBValueToPranaValue(lowD.GetValue()),
-				HighVal:  common.TiDBValueToPranaValue(highD.GetValue()),
+				LowVals:  lowVals,
+				HighVals: highVals,
 				LowExcl:  rng.LowExclude,
 				HighExcl: rng.HighExclude,
 			})

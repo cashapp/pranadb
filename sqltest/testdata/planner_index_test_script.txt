@@ -60,6 +60,12 @@ select * from transactions where customer_id > 300 and col2 is null order by id;
 
 select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
 
+-- test index usage with composite range - we do this by fixing the leftmost columns in the index;
+
+select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
+
+select * from transactions where customer_id = 400 and col2 is null order by id;
+
 drop index index2 on transactions;
 
 drop source transactions;
