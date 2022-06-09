@@ -39,8 +39,13 @@ create source test_source_1(
 
 -- test "IN";
 
--- commented out for now - results in multiple ranges, will be fixed in follow up PR;
---select * from test_source_1 where col0 in (3, 7, 9, 10, 26) order by col0;
+select * from test_source_1 where col0 in (3, 7, 9, 10, 26) order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|3|300|3000|3234.4321|32345678.99|str3|2020-01-03 01:00:00.123000|
+|7|700|7000|7234.4321|72345678.99|str7|2020-01-07 01:00:00.123000|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123000|
+|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123000|
+4 rows returned
 select * from test_source_1 where col1 in (200, 600, 700, 900, 2000) order by col0;
 |col0|col1|col2|col3|col4|col5|col6|
 |2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123000|

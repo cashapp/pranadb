@@ -41,3 +41,32 @@ func TestStringToByteSliceZeroCopy(t *testing.T) {
 	b2 := common.StringToByteSliceZeroCopy(s2)
 	require.Equal(t, "", string(b2))
 }
+
+func TestIncrementBytesBigEndian(t *testing.T) {
+	incAndCheckBytes(t, []byte{0, 0, 0, 0}, []byte{0, 0, 0, 1})
+	incAndCheckBytes(t, []byte{0, 0, 0, 1}, []byte{0, 0, 0, 2})
+	incAndCheckBytes(t, []byte{0, 0, 0, 254}, []byte{0, 0, 0, 255})
+	incAndCheckBytes(t, []byte{0, 0, 0, 255}, []byte{0, 0, 1, 0})
+	incAndCheckBytes(t, []byte{0, 0, 1, 0}, []byte{0, 0, 1, 1})
+	incAndCheckBytes(t, []byte{0, 0, 1, 1}, []byte{0, 0, 1, 2})
+	incAndCheckBytes(t, []byte{0, 0, 1, 254}, []byte{0, 0, 1, 255})
+	incAndCheckBytes(t, []byte{0, 0, 1, 255}, []byte{0, 0, 2, 0})
+	incAndCheckBytes(t, []byte{0, 0, 2, 0}, []byte{0, 0, 2, 1})
+	incAndCheckBytes(t, []byte{255, 255, 255, 254}, []byte{255, 255, 255, 255})
+	defer func() {
+		err := recover()
+		if err != nil {
+			require.Equal(t, "cannot increment key - all bits set", err)
+		} else {
+			// expected a panic
+			t.Fail()
+		}
+	}()
+	incAndCheckBytes(t, []byte{255, 255, 255, 255}, []byte{255, 255, 255, 255})
+}
+
+func incAndCheckBytes(t *testing.T, bytes []byte, expected []byte) {
+	t.Helper()
+	res := common.IncrementBytesBigEndian(bytes)
+	require.Equal(t, expected, res)
+}

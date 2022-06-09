@@ -108,6 +108,7 @@ func IncrementBytesBigEndian(bytes []byte) []byte {
 			inced[i] = b + 1
 			break
 		}
+		inced[i] = 0
 		if i == 0 {
 			panic("cannot increment key - all bits set")
 		}
