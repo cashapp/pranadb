@@ -56,10 +56,10 @@ var spamLines = []string{"releaseLoop.func1", "sync.runtime_notifyListWait"}
 
 // DumpStacks dumps stacks for all goroutines to stdout, useful when debugging
 func DumpStacks() {
-	doDumpStacks(true)
+	DoDumpStacks(true)
 }
 
-func doDumpStacks(filterSpam bool) {
+func DoDumpStacks(filterSpam bool) {
 	buf := make([]byte, 1<<16)
 	runtime.Stack(buf, true)
 	s := string(buf)

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/squareup/pranadb/common"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
-	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 
 	"github.com/alecthomas/kong"

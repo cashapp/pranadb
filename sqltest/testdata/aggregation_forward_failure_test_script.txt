@@ -34,6 +34,10 @@ create materialized view test_mv_1 as select country, sum(reading_1) from latest
 --activate failpoint process_batch_before_local_commit 0;
 --activate failpoint process_batch_before_local_commit 1;
 --activate failpoint process_batch_before_local_commit 2;
+--activate failpoint process_batch_before_local_commit 3;
+--activate failpoint process_batch_before_local_commit 4;
+--activate failpoint process_batch_before_local_commit 5;
+--activate failpoint process_batch_before_local_commit 6;
 
 --load data dataset_1 no wait;
 
@@ -46,6 +50,10 @@ select * from test_mv_1;
 --deactivate failpoint process_batch_before_local_commit 0;
 --deactivate failpoint process_batch_before_local_commit 1;
 --deactivate failpoint process_batch_before_local_commit 2;
+--deactivate failpoint process_batch_before_local_commit 3;
+--deactivate failpoint process_batch_before_local_commit 4;
+--deactivate failpoint process_batch_before_local_commit 5;
+--deactivate failpoint process_batch_before_local_commit 6;
 
 --restart cluster;
 

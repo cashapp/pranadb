@@ -14,10 +14,14 @@ const (
 	DefaultSequenceCompactionOverhead    = 250
 	DefaultLocksSnapshotEntries          = 1000
 	DefaultLocksCompactionOverhead       = 250
-	DefaultNotifierHeartbeatInterval     = 5 * time.Second
+	DefaultRemotingHeartbeatInterval     = 10 * time.Second
+	DefaultRemotingHeartbeatTimeout      = 5 * time.Second
 	DefaultAPIServerSessionTimeout       = 30 * time.Second
 	DefaultAPIServerSessionCheckInterval = 5 * time.Second
 	DefaultGlobalIngestLimitRowsPerSec   = 1000
+	DefaultRaftRTTMs                     = 100
+	DefaultRaftHeartbeatRTT              = 30
+	DefaultRaftElectionRTT               = 300
 )
 
 type Config struct {
@@ -36,8 +40,8 @@ type Config struct {
 	SequenceCompactionOverhead       int
 	LocksSnapshotEntries             int
 	LocksCompactionOverhead          int
-	Debug                            bool
-	NotifierHeartbeatInterval        time.Duration
+	RemotingHeartbeatInterval        time.Duration
+	RemotingHeartbeatTimeout         time.Duration
 	EnableAPIServer                  bool
 	APIServerListenAddresses         []string
 	APIServerSessionTimeout          time.Duration
@@ -55,6 +59,9 @@ type Config struct {
 	EnableFailureInjector            bool
 	ScreenDragonLogSpam              bool
 	DisableShardPlacementSanityCheck bool
+	RaftRTTMs                        int
+	RaftElectionRTT                  int
+	RaftHeartbeatRTT                 int
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -76,8 +83,11 @@ func (c *Config) Validate() error { //nolint:gocyclo
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
 	}
-	if c.NotifierHeartbeatInterval < 1*time.Second {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("NotifierHeartbeatInterval must be >= %d", time.Second))
+	if c.RemotingHeartbeatInterval < 1*time.Second {
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatInterval must be >= %d", time.Second))
+	}
+	if c.RemotingHeartbeatTimeout < 1*time.Millisecond {
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatTimeout must be >= %d", time.Millisecond))
 	}
 	if c.EnableAPIServer {
 		if len(c.APIServerListenAddresses) == 0 {
@@ -154,6 +164,18 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.GlobalIngestLimitRowsPerSec < -1 || c.GlobalIngestLimitRowsPerSec == 0 {
 		return errors.NewInvalidConfigurationError("GlobalIngestLimitRowsPerSec must be > 0 or -1")
 	}
+	if c.RaftRTTMs < 1 {
+		return errors.NewInvalidConfigurationError("RaftRTTMs must be > 0")
+	}
+	if c.RaftHeartbeatRTT < 1 {
+		return errors.NewInvalidConfigurationError("RaftHeartbeatRTT must be > 0")
+	}
+	if c.RaftElectionRTT < 1 {
+		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 0")
+	}
+	if c.RaftElectionRTT < 2*c.RaftHeartbeatRTT {
+		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 2 * RaftHeartbeatRTT")
+	}
 	return nil
 }
 
@@ -180,19 +202,27 @@ func NewDefaultConfig() *Config {
 		SequenceCompactionOverhead:    DefaultSequenceCompactionOverhead,
 		LocksSnapshotEntries:          DefaultLocksSnapshotEntries,
 		LocksCompactionOverhead:       DefaultLocksCompactionOverhead,
-		NotifierHeartbeatInterval:     DefaultNotifierHeartbeatInterval,
+		RemotingHeartbeatInterval:     DefaultRemotingHeartbeatInterval,
+		RemotingHeartbeatTimeout:      DefaultRemotingHeartbeatTimeout,
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,
 		GlobalIngestLimitRowsPerSec:   DefaultGlobalIngestLimitRowsPerSec,
+		RaftRTTMs:                     DefaultRaftRTTMs,
+		RaftHeartbeatRTT:              DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:               DefaultRaftElectionRTT,
 	}
 }
 
 func NewTestConfig(fakeKafkaID int64) *Config {
 	return &Config{
-		NotifierHeartbeatInterval:     DefaultNotifierHeartbeatInterval,
+		RemotingHeartbeatInterval:     DefaultRemotingHeartbeatInterval,
+		RemotingHeartbeatTimeout:      DefaultRemotingHeartbeatTimeout,
 		APIServerSessionTimeout:       DefaultAPIServerSessionTimeout,
 		APIServerSessionCheckInterval: DefaultAPIServerSessionCheckInterval,
 		GlobalIngestLimitRowsPerSec:   DefaultGlobalIngestLimitRowsPerSec,
+		RaftRTTMs:                     DefaultRaftRTTMs,
+		RaftHeartbeatRTT:              DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:               DefaultRaftElectionRTT,
 		NodeID:                        0,
 		NumShards:                     10,
 		TestServer:                    true,

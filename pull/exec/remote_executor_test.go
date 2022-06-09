@@ -10,7 +10,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/stretchr/testify/require"
 )
@@ -206,9 +206,6 @@ func (t *testCluster) ReleaseLock(prefix string) (bool, error) {
 	return false, nil
 }
 
-func (t *testCluster) RegisterMembershipListener(listener cluster.MembershipListener) {
-}
-
 func (t *testCluster) reset() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -280,11 +277,11 @@ func (t *testCluster) RegisterShardListenerFactory(factory cluster.ShardListener
 	panic("should not be called")
 }
 
-func (t *testCluster) BroadcastOneway(notification notifier.Notification) error {
+func (t *testCluster) BroadcastOneway(notification remoting.ClusterMessage) error {
 	panic("should not be called")
 }
 
-func (t *testCluster) RegisterNotificationListener(notificationType notifier.NotificationType, listener notifier.NotificationListener) {
+func (t *testCluster) RegisterMessageHandler(notificationType remoting.ClusterMessageType, listener remoting.ClusterMessageHandler) {
 	panic("should not be called")
 }
 

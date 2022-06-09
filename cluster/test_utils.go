@@ -4,22 +4,22 @@ import (
 	"sync"
 
 	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/notifier"
+	"github.com/squareup/pranadb/remoting"
 )
 
 type TestNotificationListener struct {
 	lock   sync.Mutex
-	notifs []notifier.Notification
+	notifs []remoting.ClusterMessage
 }
 
-func (t *TestNotificationListener) HandleNotification(notification notifier.Notification) error {
+func (t *TestNotificationListener) HandleNotification(notification remoting.ClusterMessage) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.notifs = append(t.notifs, notification)
 	return nil
 }
 
-func (t *TestNotificationListener) getNotifs() []notifier.Notification {
+func (t *TestNotificationListener) getNotifs() []remoting.ClusterMessage {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	return t.notifs

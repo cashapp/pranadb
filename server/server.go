@@ -1,10 +1,12 @@
 package server
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/remoting"
 	"net/http" //nolint:stylecheck
+	"runtime"
+	"time"
 
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
@@ -26,7 +28,6 @@ import (
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/meta/schema"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
@@ -38,21 +39,24 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
-	var notifClient notifier.Client
-	var notifServer notifier.Server
+	var notifClient remoting.Client
+	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
-		fakeNotifier := notifier.NewFakeNotifier()
+		fakeNotifier := remoting.NewFakeServer()
 		notifClient = fakeNotifier
-		notifServer = fakeNotifier
+		remotingServer = fakeNotifier
 	} else {
 		var err error
-		clus, err = dragon.NewDragon(config)
+		drag, err := dragon.NewDragon(config)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		notifServer = notifier.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = notifier.NewClient(config.NotifierHeartbeatInterval, config.NotifListenAddresses...)
+		clus = drag
+		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
+		notifClient = remoting.NewClient(config.NotifListenAddresses...)
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -71,17 +75,16 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.RegisterShardListenerFactory(pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
 		protoRegistry, failureInjector)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeDDLStatement, commandExecutor)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeCloseSession, pullEngine)
-	notifServer.RegisterNotificationListener(notifier.NotificationTypeReloadProtobuf, protoRegistry)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
-	clus.RegisterMembershipListener(pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
 
 	services := []service{
 		lifeCycleMgr,
-		notifServer,
 		metaController,
+		remotingServer,
 		clus,
 		shardr,
 		commandExecutor,
@@ -89,8 +92,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine,
 		protoRegistry,
 		schemaLoader,
-		apiServer,
 		theMetrics,
+		apiServer,
 		failureInjector,
 	}
 
@@ -105,7 +108,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
-		notifServer:     notifServer,
+		notifServer:     remotingServer,
 		notifClient:     notifClient,
 		apiServer:       apiServer,
 		services:        services,
@@ -116,25 +119,26 @@ func NewServer(config conf.Config) (*Server, error) {
 }
 
 type Server struct {
-	lock            sync.RWMutex
-	nodeID          int
-	lifeCycleMgr    *lifecycle.Endpoints
-	cluster         cluster.Cluster
-	shardr          *sharder.Sharder
-	metaController  *meta.Controller
-	pushEngine      *push.Engine
-	pullEngine      *pull.Engine
-	commandExecutor *command.Executor
-	schemaLoader    *schema.Loader
-	notifServer     notifier.Server
-	notifClient     notifier.Client
-	apiServer       *api.Server
-	services        []service
-	started         bool
-	conf            conf.Config
-	debugServer     *http.Server
-	metrics         *metrics.Server
-	failureinjector failinject.Injector
+	lock               sync.RWMutex
+	nodeID             int
+	lifeCycleMgr       *lifecycle.Endpoints
+	cluster            cluster.Cluster
+	shardr             *sharder.Sharder
+	metaController     *meta.Controller
+	pushEngine         *push.Engine
+	pullEngine         *pull.Engine
+	commandExecutor    *command.Executor
+	schemaLoader       *schema.Loader
+	notifServer        remoting.Server
+	notifClient        remoting.Client
+	apiServer          *api.Server
+	services           []service
+	started            bool
+	conf               conf.Config
+	debugServer        *http.Server
+	metrics            *metrics.Server
+	failureinjector    failinject.Injector
+	logGoroutinesTimer *time.Timer
 }
 
 type service interface {
@@ -147,17 +151,6 @@ func (s *Server) Start() error {
 	defer s.lock.Unlock()
 	if s.started {
 		return nil
-	}
-
-	if s.conf.Debug {
-		addr := fmt.Sprintf("localhost:%d", s.cluster.GetNodeID()+6676)
-		s.debugServer = &http.Server{Addr: addr}
-		go func(srv *http.Server) {
-			err := srv.ListenAndServe()
-			if err != nil && err != http.ErrServerClosed {
-				log.Errorf("debug server failed to listen %v", err)
-			}
-		}(s.debugServer)
 	}
 
 	var err error
@@ -175,13 +168,39 @@ func (s *Server) Start() error {
 		return errors.WithStack(err)
 	}
 
+	s.pullEngine.SetAvailable()
+
 	s.lifeCycleMgr.SetActive(true)
 
 	s.started = true
 
-	log.Infof("Prana server %d started", s.nodeID)
-
+	s.scheduleLogGoroutinesTimer()
+	log.Infof("Prana server %d started on %s with %d CPUs", s.nodeID, runtime.GOOS, runtime.NumCPU())
 	return nil
+}
+
+func (s *Server) logNumGoroutines() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if !s.started {
+		return
+	}
+	log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Infof("Alloc = %v MiB", bytesToMB(m.Alloc))
+	log.Infof("\tTotalAlloc = %v MiB", bytesToMB(m.TotalAlloc))
+	log.Infof("\tSys = %v MiB", bytesToMB(m.Sys))
+	log.Infof("\tNumGC = %v\n", m.NumGC)
+	s.scheduleLogGoroutinesTimer()
+}
+
+func bytesToMB(bytes uint64) uint64 {
+	return bytes / 1024 / 1024
+}
+
+func (s *Server) scheduleLogGoroutinesTimer() {
+	s.logGoroutinesTimer = time.AfterFunc(30*time.Second, s.logNumGoroutines)
 }
 
 func (s *Server) Stop() error {
@@ -190,6 +209,10 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.logGoroutinesTimer != nil {
+		s.logGoroutinesTimer.Stop()
+		s.logGoroutinesTimer = nil
+	}
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
@@ -229,11 +252,11 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
 }
 
-func (s *Server) GetNotificationsClient() notifier.Client {
+func (s *Server) GetNotificationsClient() remoting.Client {
 	return s.notifClient
 }
 
-func (s *Server) GetNotificationsServer() notifier.Server {
+func (s *Server) GetNotificationsServer() remoting.Server {
 	return s.notifServer
 }
 

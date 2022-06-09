@@ -32,11 +32,11 @@ type locksODStateMachine struct {
 	dragon *Dragon
 	// This mutex is to provide a memory barrier between calling threads, not for mutual exclusion
 	locksLock sync.Mutex
-	locks     map[string]struct{} // TODO use a trie
+	locks     map[string]string
 }
 
 func (s *locksODStateMachine) loadLocks() error {
-	s.locks = make(map[string]struct{})
+	s.locks = make(map[string]string)
 	startPrefix := table.EncodeTableKeyPrefix(common.LocksTableID, locksClusterID, 16)
 	endPrefix := table.EncodeTableKeyPrefix(common.LocksTableID+1, locksClusterID, 16)
 	kvp, err := s.dragon.LocalScan(startPrefix, endPrefix, math.MaxInt32)
@@ -45,7 +45,7 @@ func (s *locksODStateMachine) loadLocks() error {
 	}
 	for _, kv := range kvp {
 		sKey, _ := common.ReadStringFromBufferBE(kv.Key, 16)
-		s.locks[sKey] = struct{}{}
+		s.locks[sKey] = string(kv.Value)
 	}
 	return nil
 }
@@ -64,36 +64,45 @@ func (s *locksODStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 func (s *locksODStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
-	// FIXME - this MUST be idempotent - same entries can be applied more than once in case of retry after timeout
-	log.Tracef("locks shard update entries %d", len(entries))
+	// this MUST be idempotent - same entries can be applied more than once in case of retry after timeout
 	s.locksLock.Lock()
 	defer s.locksLock.Unlock()
 	batch := s.dragon.pebble.NewBatch()
-outer:
 	for i, entry := range entries {
 		offset := 0
 		var command string
 		command, offset = common.ReadStringFromBufferLE(entry.Cmd, offset)
-		prefix, _ := common.ReadStringFromBufferLE(entry.Cmd, offset)
+		prefix, offset := common.ReadStringFromBufferLE(entry.Cmd, offset)
+		locker, _ := common.ReadStringFromBufferLE(entry.Cmd, offset)
 		if command == GetLockCommand {
-			for k := range s.locks {
+			held := false
+			for k, currLocker := range s.locks {
 				// If one is a prefix of the other, they can't be held together
 				if strings.HasPrefix(k, prefix) || strings.HasPrefix(prefix, k) {
 					// Lock already held
-					s.setResult(false, entries, i)
-					continue outer
+					if locker == currLocker {
+						// Already held by same locker - this is ok and gives us the idempotency we need
+						log.Debugf("lock already held by same locker %s %s", prefix, locker)
+						s.setResult(true, entries, i)
+					} else {
+						s.setResult(false, entries, i)
+					}
+					held = true
 				}
 			}
-			s.locks[prefix] = struct{}{}
-			keyBuff := s.encodeLocksKey(prefix)
-			if err := batch.Set(keyBuff, nil, &pebble.WriteOptions{Sync: false}); err != nil {
-				return nil, errors.WithStack(err)
+			if !held {
+				s.locks[prefix] = locker
+				keyBuff := s.encodeLocksKey(prefix)
+				if err := batch.Set(keyBuff, []byte(locker), &pebble.WriteOptions{Sync: false}); err != nil {
+					return nil, errors.WithStack(err)
+				}
+				s.setResult(true, entries, i)
 			}
-			s.setResult(true, entries, i)
 		} else if command == ReleaseLockCommand {
 			_, ok := s.locks[prefix]
 			if !ok {
-				s.setResult(false, entries, i)
+				// Release lock must always succeed to provide the idempotency guarantee we need
+				s.setResult(true, entries, i)
 				continue
 			}
 			delete(s.locks, prefix)
@@ -112,7 +121,6 @@ outer:
 	if err := s.dragon.pebble.Apply(batch, nosyncWriteOptions); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	log.Trace("locks shard updated")
 	return entries, nil
 }
 

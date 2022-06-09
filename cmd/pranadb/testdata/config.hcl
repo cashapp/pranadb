@@ -26,8 +26,8 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-debug                             = true
-notifier-heartbeat-interval       = "76s"
+remoting-heartbeat-interval       = "76s"
+remoting-heartbeat-timeout        = "5s"
 enable-api-server                 = true
 api-server-listen-addresses       = [
   "addr7",
@@ -50,3 +50,6 @@ kafka-brokers = {
 }
 
 global-ingest-limit-rows-per-sec = 5000
+raft-rtt-ms                       = 100
+raft-heartbeat-rtt                = 30
+raft-election-rtt                 = 300

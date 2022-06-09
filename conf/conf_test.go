@@ -50,9 +50,15 @@ func invalidBrokerClientTypeConf() Config {
 	return cnf
 }
 
-func invalidNotifierHeartbeatInterval() Config {
+func invalidRemotingHeartbeatInterval() Config {
 	cnf := confAllFields
-	cnf.NotifierHeartbeatInterval = time.Second - 1
+	cnf.RemotingHeartbeatInterval = time.Second - 1
+	return cnf
+}
+
+func invalidRemotingHeartbeatTimeout() Config {
+	cnf := confAllFields
+	cnf.RemotingHeartbeatTimeout = time.Millisecond - 1
 	return cnf
 }
 
@@ -224,13 +230,56 @@ func invalidGlobalIngestLimitRowsPerNegative() Config {
 	return cnf
 }
 
+func invalidRaftRTTMsZero() Config {
+	cnf := confAllFields
+	cnf.RaftRTTMs = 0
+	return cnf
+}
+
+func invalidRaftRTTMsNegative() Config {
+	cnf := confAllFields
+	cnf.RaftRTTMs = -1
+	return cnf
+}
+
+func invalidRaftHeartbeatRTTZero() Config {
+	cnf := confAllFields
+	cnf.RaftHeartbeatRTT = 0
+	return cnf
+}
+
+func invalidRaftHeartbeatRTTNegative() Config {
+	cnf := confAllFields
+	cnf.RaftHeartbeatRTT = -1
+	return cnf
+}
+
+func invalidRaftElectionRTTZero() Config {
+	cnf := confAllFields
+	cnf.RaftElectionRTT = 0
+	return cnf
+}
+
+func invalidRaftElectionRTTNegative() Config {
+	cnf := confAllFields
+	cnf.RaftElectionRTT = -1
+	return cnf
+}
+
+func invalidRaftElectionRTTTooSmall() Config {
+	cnf := confAllFields
+	cnf.RaftElectionRTT = 1 + cnf.RaftHeartbeatRTT
+	return cnf
+}
+
 var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
 	{"PDB0004 - Invalid configuration: NumShards must be >= 1", invalidNumShardsConf()},
 	{"PDB0004 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB0004 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB0004 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB0004 - Invalid configuration: NotifierHeartbeatInterval must be >= 1000000000", invalidNotifierHeartbeatInterval()},
+	{"PDB0004 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
+	{"PDB0004 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
 	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 1000000000", invalidAPIServerSessionTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 100000000", invalidAPIServerSessionCheckInterval()},
@@ -254,6 +303,13 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
 	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
 	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
+	{"PDB0004 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsZero()},
+	{"PDB0004 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsNegative()},
+	{"PDB0004 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTZero()},
+	{"PDB0004 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTNegative()},
+	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTZero()},
+	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTNegative()},
+	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
 }
 
 func TestValidate(t *testing.T) {
@@ -290,11 +346,14 @@ var confAllFields = Config{
 	SequenceCompactionOverhead:    1001,
 	LocksSnapshotEntries:          101,
 	LocksCompactionOverhead:       51,
-	Debug:                         true,
-	NotifierHeartbeatInterval:     76 * time.Second,
+	RemotingHeartbeatInterval:     76 * time.Second,
+	RemotingHeartbeatTimeout:      4 * time.Second,
 	EnableAPIServer:               true,
 	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
 	APIServerSessionTimeout:       41 * time.Second,
 	APIServerSessionCheckInterval: 6 * time.Second,
 	GlobalIngestLimitRowsPerSec:   3000,
+	RaftRTTMs:                     100,
+	RaftHeartbeatRTT:              10,
+	RaftElectionRTT:               100,
 }

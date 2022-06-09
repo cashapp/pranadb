@@ -28,8 +28,9 @@ type Client struct {
 	conn                  *grpc.ClientConn
 	client                service.PranaDBServiceClient
 	currentStatement      string
-	sessionIDs            map[string]struct{}
+	sessionIDs            sync.Map
 	heartbeatTimer        *time.Timer
+	heartbeatLock         sync.Mutex
 	heartbeatSendInterval time.Duration
 	pageSize              int
 }
@@ -48,7 +49,7 @@ func (c *Client) Start() error {
 	if c.started {
 		return nil
 	}
-	c.sessionIDs = make(map[string]struct{})
+	c.sessionIDs = sync.Map{}
 	conn, err := grpc.Dial(c.serverAddress, grpc.WithInsecure())
 	if err != nil {
 		return errors.WithStack(err)
@@ -67,6 +68,8 @@ func (c *Client) Stop() error {
 		return nil
 	}
 	c.started = false
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	if c.heartbeatTimer != nil {
 		c.heartbeatTimer.Stop()
 	}
@@ -93,7 +96,7 @@ func (c *Client) CreateSession() (string, error) {
 		return "", errors.WithStack(err)
 	}
 	sessID := resp.GetSessionId()
-	c.sessionIDs[sessID] = struct{}{}
+	c.sessionIDs.Store(sessID, struct{}{})
 	return sessID, nil
 }
 
@@ -107,7 +110,7 @@ func (c *Client) CloseSession(sessionID string) error {
 		return errors.Errorf("statement currently executing: %s", c.currentStatement)
 	}
 	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
-	delete(c.sessionIDs, sessionID)
+	c.sessionIDs.Delete(sessionID)
 	return errors.WithStack(err)
 }
 
@@ -246,23 +249,27 @@ func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProt
 }
 
 func (c *Client) sendHeartbeats() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if !c.started {
-		return
-	}
-	for sessID := range c.sessionIDs {
+	// This must be done outside the lock otherwise heartbeats will be delayed while long statements run which could
+	// time out the sesssion on the server
+	c.sessionIDs.Range(func(sid, _ interface{}) bool {
+		sessID, ok := sid.(string)
+		if !ok {
+			panic("not a string")
+		}
 		_, err := c.client.Heartbeat(context.Background(), &service.HeartbeatRequest{SessionId: sessID})
 		if err != nil {
 			err = stripgRPCPrefix(err)
 			log.Errorf("heartbeat failed %+v", err)
-			delete(c.sessionIDs, sessID)
+			c.sessionIDs.Delete(sessID)
 		}
-	}
+		return true
+	})
 	c.scheduleHeartbeats()
 }
 
 func (c *Client) scheduleHeartbeats() {
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	c.heartbeatTimer = time.AfterFunc(c.heartbeatSendInterval, c.sendHeartbeats)
 }
 
@@ -282,6 +289,8 @@ func stripgRPCPrefix(err error) error {
 func (c *Client) disableHeartbeats() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	c.heartbeatLock.Lock()
+	defer c.heartbeatLock.Unlock()
 	c.heartbeatSendInterval = math.MaxInt64
 	if c.heartbeatTimer != nil {
 		c.heartbeatTimer.Stop()

@@ -14,12 +14,12 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/notifier"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/sess"
 )
 
@@ -28,7 +28,7 @@ type Executor struct {
 	metaController    *meta.Controller
 	pushEngine        *push.Engine
 	pullEngine        *pull.Engine
-	notifClient       notifier.Client
+	notifClient       remoting.Client
 	protoRegistry     protolib.Resolver
 	sessionIDSequence int64
 	ddlRunner         *DDLCommandRunner
@@ -37,11 +37,11 @@ type Executor struct {
 
 type sessCloser struct {
 	clus        cluster.Cluster
-	notifClient notifier.Client
+	notifClient remoting.Client
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
-	cluster cluster.Cluster, notifClient notifier.Client, protoRegistry protolib.Resolver,
+	cluster cluster.Cluster, notifClient remoting.Client, protoRegistry protolib.Resolver,
 	failureInjector failinject.Injector) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
@@ -58,8 +58,8 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 	return ex
 }
 
-func (e *Executor) HandleNotification(notification notifier.Notification) error {
-	return e.ddlRunner.HandleNotification(notification)
+func (e *Executor) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, e.ddlRunner.HandleNotification(notification)
 }
 
 func (e *Executor) Start() error {

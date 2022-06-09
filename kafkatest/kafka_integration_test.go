@@ -178,7 +178,6 @@ func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
 		cnf.TestServer = false
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.NotifListenAddresses = notifAddresses
-		cnf.Debug = true
 		cnf.EnableAPIServer = true
 		cnf.APIServerListenAddresses = apiServerListenAddresses
 

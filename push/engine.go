@@ -412,7 +412,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
 			// Does the entity exist in storage?
-			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id, prepare_state from tables where id=%d", entityID))
+			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id from tables where id=%d", entityID))
 			if err != nil {
 				return errors.WithStack(err)
 			}
