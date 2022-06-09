@@ -123,6 +123,18 @@ select customer_id, id, col2 from transactions where customer_id > 300 and col2 
 |400|4|null|
 1 rows returned
 
+-- test index usage with composite range - we do this by fixing the leftmost columns in the index;
+
+select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
+|id|customer_id|col2|
+|3|300|ghi|
+1 rows returned
+
+select * from transactions where customer_id = 400 and col2 is null order by id;
+|id|customer_id|col2|
+|4|400|null|
+1 rows returned
+
 drop index index2 on transactions;
 0 rows returned
 

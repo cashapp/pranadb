@@ -58,38 +58,46 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	var rangeStart, rangeEnd []byte
 
 	if scanRanges != nil {
+		if len(scanRanges) > 1 {
+			return nil, errors.New("multiple scan ranges not supported")
+		}
+		sr := scanRanges[0]
 		rangeStart = append(rangeStart, indexShardPrefix...)
 		rangeEnd = append(rangeEnd, indexShardPrefix...)
-		for i, scanRange := range scanRanges {
+		for i := 0; i < len(sr.LowVals); i++ {
+			lv := sr.LowVals[i]
+			hv := sr.HighVals[i]
 			// if range vals are nil, doing a point get with nil as the index PK value
-			if scanRange.LowVal == nil && scanRange.HighVal == nil {
+			if lv == nil && hv == nil {
 				rangeStart = append(rangeStart, 0)
 				rangeEnd = append(rangeEnd, 0)
-			} else if scanRange.HighVal == nil {
+			} else if hv == nil {
 				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
 			} else {
 				rangeEnd = append(rangeEnd, 1)
-				rangeEnd, err = common.EncodeKeyElement(scanRange.HighVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
+				rangeEnd, err = common.EncodeKeyElement(hv, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
 				if err != nil {
 					return nil, err
 				}
 			}
-			if scanRange.LowVal != nil {
+			if lv != nil {
 				rangeStart = append(rangeStart, 1)
-				rangeStart, err = common.EncodeKeyElement(scanRange.LowVal, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
+				rangeStart, err = common.EncodeKeyElement(lv, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
 				if err != nil {
 					return nil, err
 				}
-				if scanRange.LowExcl {
-					rangeStart = common.IncrementBytesBigEndian(rangeStart)
-				}
+
 			}
-			if !scanRange.HighExcl {
-				if !allBitsSet(rangeEnd) {
-					rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
-				} else {
-					rangeEnd = nil
-				}
+
+		}
+		if sr.LowExcl {
+			rangeStart = common.IncrementBytesBigEndian(rangeStart)
+		}
+		if !sr.HighExcl {
+			if !allBitsSet(rangeEnd) {
+				rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
+			} else {
+				rangeEnd = nil
 			}
 		}
 	}
@@ -158,12 +166,14 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 		includeCol = append(includeCol, included)
 	}
 	for i, kvPair := range kvPairs {
+
 		if i == 0 && skipFirst {
 			continue
 		}
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
+
 		// Index covers if all cols are in the index
 		if len(nonIndexCols) == 0 {
 			offset := 16
