@@ -17,7 +17,6 @@ type DropIndexCommand struct {
 	tableName     string
 	indexName     string
 	indexInfo     *common.IndexInfo
-	originating   bool
 	toDeleteBatch *cluster.ToDeleteBatch
 }
 
@@ -43,12 +42,11 @@ func (c *DropIndexCommand) LockName() string {
 
 func NewOriginatingDropIndexCommand(e *Executor, schemaName string, sql string, tableName string, indexName string) *DropIndexCommand {
 	return &DropIndexCommand{
-		e:           e,
-		schemaName:  schemaName,
-		sql:         sql,
-		tableName:   tableName,
-		indexName:   indexName,
-		originating: true,
+		e:          e,
+		schemaName: schemaName,
+		sql:        sql,
+		tableName:  tableName,
+		indexName:  indexName,
 	}
 }
 
@@ -108,7 +106,7 @@ func (c *DropIndexCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	// This disconnects and removes the data for the index (data removal only happens on the originating node)
-	return c.e.pushEngine.RemoveIndex(c.indexInfo, c.originating)
+	return c.e.pushEngine.RemoveIndex(c.indexInfo)
 }
 
 func (c *DropIndexCommand) AfterPhase(phase int32) error {

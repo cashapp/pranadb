@@ -2,7 +2,6 @@ package command
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/cluster"
 	"sync"
 
 	"github.com/alecthomas/repr"
@@ -24,7 +23,6 @@ type CreateSourceCommand struct {
 	ast            *parser.CreateSource
 	sourceInfo     *common.SourceInfo
 	source         *source.Source
-	toDeleteBatch  *cluster.ToDeleteBatch
 }
 
 func (c *CreateSourceCommand) CommandType() DDLCommandType {
@@ -74,15 +72,7 @@ func (c *CreateSourceCommand) Before() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	err = c.validate()
-	if err != nil {
-		return err
-	}
-
-	// We store rows in the to_delete table - if source creation fails (e.g. node crashes) then on restart the MV state will
-	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
-	c.toDeleteBatch, err = storeToDeleteBatch(c.sourceInfo.ID, c.e.cluster)
-	return err
+	return c.validate()
 }
 
 func (c *CreateSourceCommand) validate() error {
@@ -160,13 +150,14 @@ func (c *CreateSourceCommand) onPhase0() error {
 			return errors.WithStack(err)
 		}
 	}
+
 	// Create source in push engine so it can receive forwarded rows, do not activate consumers yet
 	src, err := c.e.pushEngine.CreateSource(c.sourceInfo)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	c.source = src
-	return nil
+	return err
 }
 
 func (c *CreateSourceCommand) onPhase1() error {
@@ -189,12 +180,7 @@ func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 	if phase == 0 {
 		// We persist the source *before* it is registered - otherwise if failure occurs source can disappear after
 		// being used
-		if err := c.e.metaController.PersistSource(c.sourceInfo); err != nil {
-			return err
-		}
-
-		// Now delete rows from the to_delete table
-		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+		return c.e.metaController.PersistSource(c.sourceInfo)
 	}
 	return nil
 }

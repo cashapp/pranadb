@@ -365,7 +365,6 @@ func storeToDeleteBatch(tableID uint64, clust cluster.Cluster) (*cluster.ToDelet
 		prefixes = append(prefixes, prefix)
 	}
 	batch := &cluster.ToDeleteBatch{
-		Local:              false,
 		ConditionalTableID: tableID,
 		Prefixes:           prefixes,
 	}

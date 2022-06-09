@@ -24,7 +24,7 @@ import (
 
 func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint64, remoteConsumerID uint64) []byte {
 	buff := make([]byte, 0, 33)
-	buff = append(buff, 1)
+	buff = append(buff, 1) // This byte means duplicated detection is enabled
 	// The first 24 bytes is the dedup key and comprises [originator_id (16 bytes), sequence (8 bytes)]
 	// Originator id for an ingest from Kafka comprises [source_id (8 bytes), partition_id (8 bytes) ]
 	buff = common.AppendUint64ToBufferBE(buff, sourceID)

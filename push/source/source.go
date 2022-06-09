@@ -207,15 +207,16 @@ func (s *Source) IsRunning() bool {
 func (s *Source) Drop() error {
 	// Delete the deduplication ids for the source
 	startPrefix := common.AppendUint64ToBufferBE(nil, common.ForwardDedupTableID)
+	startPrefix = common.AppendUint64ToBufferBE(startPrefix, s.sourceInfo.ID)
 	endPrefix := common.IncrementBytesBigEndian(startPrefix)
-	if err := s.cluster.DeleteAllDataInRangeForAllShards(startPrefix, endPrefix); err != nil {
+	if err := s.cluster.DeleteAllDataInRangeForAllShardsLocally(startPrefix, endPrefix); err != nil {
 		return errors.WithStack(err)
 	}
 
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)
-	return s.cluster.DeleteAllDataInRangeForAllShards(tableStartPrefix, tableEndPrefix)
+	return s.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
 }
 
 func (s *Source) AddConsumingExecutor(mvName string, executor exec.PushExecutor) {

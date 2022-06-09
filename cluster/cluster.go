@@ -53,7 +53,7 @@ type Cluster interface {
 
 	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
-	DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error
+	DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error
 
 	DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error
 
@@ -73,7 +73,6 @@ type Cluster interface {
 }
 
 type ToDeleteBatch struct {
-	Local              bool
 	ConditionalTableID uint64
 	Prefixes           [][]byte
 }

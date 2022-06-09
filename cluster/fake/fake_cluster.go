@@ -312,7 +312,7 @@ func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix [
 	return nil
 }
 
-func (f *FakeCluster) DeleteAllDataInRangeForAllShards(startPrefix []byte, endPrefix []byte) error {
+func (f *FakeCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, shardID := range f.allShardIds {

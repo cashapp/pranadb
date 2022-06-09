@@ -109,9 +109,6 @@ func (c *CreateMVCommand) Before() error {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
 
-	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the MV state will
-	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
-	c.toDeleteBatch, err = storeToDeleteBatch(mv.Info.ID, c.e.cluster)
 	return err
 }
 
@@ -127,6 +124,14 @@ func (c *CreateMVCommand) onPhase0() error {
 			return errors.WithStack(err)
 		}
 		c.mv = mv
+	}
+
+	// We store rows in the to_delete table - if MV creation fails (e.g. node crashes) then on restart the MV state will
+	// be cleaned up - we have to add a prefix for each shard as the shard id comes first in the key
+	var err error
+	c.toDeleteBatch, err = storeToDeleteBatch(c.mv.Info.ID, c.e.cluster)
+	if err != nil {
+		return err
 	}
 
 	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
@@ -158,15 +163,22 @@ func (c *CreateMVCommand) onPhase2() error {
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
 		return errors.WithStack(err)
 	}
-	return c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables)
+	if err := c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
+		return err
+	}
+	// Maybe inject an error after fill and after row in tables table is persisted but before to_delete rows removed
+	if err := c.e.FailureInjector().GetFailpoint("create_mv_2").CheckFail(); err != nil {
+		return err
+	}
+
+	// Now delete rows from the to_delete table
+	return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
 }
 
 func (c *CreateMVCommand) AfterPhase(phase int32) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	switch phase {
-	case 1:
-
+	if phase == 1 {
 		// Maybe inject an error after fill but before row in tables table is persisted
 		if err := c.e.FailureInjector().GetFailpoint("create_mv_1").CheckFail(); err != nil {
 			return err
@@ -176,18 +188,7 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 		// We only do this on the originating node
 		// We need to do this *before* the MV is available to clients otherwise a node failure and restart could cause
 		// the MV to disappear after it's been used
-		if err := c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
-			return err
-		}
-	case 2:
-
-		// Maybe inject an error after fill and after row in tables table is persisted but before to_delete rows removed
-		if err := c.e.FailureInjector().GetFailpoint("create_mv_2").CheckFail(); err != nil {
-			return err
-		}
-
-		// Now delete rows from the to_delete table
-		return c.e.cluster.RemoveToDeleteBatch(c.toDeleteBatch)
+		return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables)
 	}
 	return nil
 }

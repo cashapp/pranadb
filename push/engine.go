@@ -249,7 +249,7 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 	return nil
 }
 
-func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo, deleteData bool) error {
+func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo) error {
 	te, err := p.getTableExecutorForIndex(indexInfo)
 	if err != nil {
 		return err
@@ -257,13 +257,10 @@ func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo, deleteData bool) error
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	te.RemoveConsumingNode(consumerName)
 
-	if deleteData {
-		// Delete the table data
-		tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
-		tableEndPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID+1)
-		return p.cluster.DeleteAllDataInRangeForAllShards(tableStartPrefix, tableEndPrefix)
-	}
-	return nil
+	// Delete the table data
+	tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
+	tableEndPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID+1)
+	return p.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
 }
 
 func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.TableExecutor, error) {

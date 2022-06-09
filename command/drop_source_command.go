@@ -16,7 +16,6 @@ type DropSourceCommand struct {
 	sql           string
 	sourceName    string
 	sourceInfo    *common.SourceInfo
-	originating   bool
 	toDeleteBatch *cluster.ToDeleteBatch
 }
 
@@ -42,11 +41,10 @@ func (c *DropSourceCommand) LockName() string {
 
 func NewOriginatingDropSourceCommand(e *Executor, schemaName string, sql string, sourceName string) *DropSourceCommand {
 	return &DropSourceCommand{
-		e:           e,
-		schemaName:  schemaName,
-		sql:         sql,
-		sourceName:  sourceName,
-		originating: true,
+		e:          e,
+		schemaName: schemaName,
+		sql:        sql,
+		sourceName: sourceName,
 	}
 }
 
@@ -127,11 +125,7 @@ func (c *DropSourceCommand) onPhase1() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if c.originating {
-		// We only delete the data from the originating node - otherwise all nodes would be deleting the same data
-		return src.Drop()
-	}
-	return nil
+	return src.Drop()
 }
 
 func (c *DropSourceCommand) AfterPhase(phase int32) error {
