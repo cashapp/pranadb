@@ -308,7 +308,7 @@ func describeRows(tableInfo *common.TableInfo) (exec.PullExecutor, error) {
 		}
 		resultRows.AppendStringToColumn(0, columnName)
 		resultRows.AppendStringToColumn(1, tableInfo.ColumnTypes[columnIndex].String())
-		if tableInfo.IsPrimaryKey(columnIndex) {
+		if tableInfo.IsPrimaryKeyCol(columnIndex) {
 			resultRows.AppendStringToColumn(2, "pk")
 		} else {
 			resultRows.AppendStringToColumn(2, "")

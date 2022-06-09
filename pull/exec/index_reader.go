@@ -9,41 +9,98 @@ import (
 
 type PullIndexReader struct {
 	pullExecutorBase
-	tableInfo     *common.TableInfo
-	indexInfo     *common.IndexInfo
-	storage       cluster.Cluster
-	shardID       uint64
-	lastRowPrefix []byte
-	rangeStart    []byte
-	rangeEnd      []byte
-	includeCols   []int
+	tableInfo         *common.TableInfo
+	indexInfo         *common.IndexInfo
+	storage           cluster.Cluster
+	shardID           uint64
+	lastRowPrefix     []byte
+	rangeStart        []byte
+	rangeEnd          []byte
+	covers            bool
+	indexOutputCols   []int
+	pkOutputCols      []int
+	indexColTypes     []common.ColumnType
+	pkColTypes        []common.ColumnType
+	includedTableCols []bool
 }
 
 var _ PullExecutor = &PullIndexReader{}
 
-func NewPullIndexReader(tableInfo *common.TableInfo,
+func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 	indexInfo *common.IndexInfo,
-	includedCols []int, // Col indexes in the table that are being returned
+	colIndexes []int, // Col indexes in the table that are being returned
 	storage cluster.Cluster,
 	shardID uint64,
 	scanRanges []*ScanRange) (*PullIndexReader, error) {
 
+	covers := true
+	for _, colIndex := range colIndexes {
+		if !tableInfo.IsPrimaryKeyCol(colIndex) {
+			if !indexInfo.ContainsColIndex(colIndex) {
+				covers = false
+				break
+			}
+		}
+	}
+	// Put the col indexes in a map for quick O(1) access
+	colIndexesMap := make(map[int]int, len(colIndexes))
+	for i, colIndex := range colIndexes {
+		colIndexesMap[colIndex] = i
+	}
+	var indexOutputCols, pkOutputCols []int
+	var indexColTypes, pkColTypes []common.ColumnType
+	var includedCols []bool
+	if covers {
+		// For each index column we calculate the position in the output or -1 if it doesn't appear in the output
+		indexOutputCols = make([]int, len(indexInfo.IndexCols))
+		for i, indexCol := range indexInfo.IndexCols {
+			position, ok := colIndexesMap[indexCol]
+			if ok {
+				// The index col is in the output
+				indexOutputCols[i] = position
+			} else {
+				indexOutputCols[i] = -1
+			}
+		}
+
+		indexColTypes = make([]common.ColumnType, len(indexInfo.IndexCols))
+		for i, indexCol := range indexInfo.IndexCols {
+			indexColTypes[i] = tableInfo.ColumnTypes[indexCol]
+		}
+
+		// We do the same for PK cols
+		pkOutputCols = make([]int, len(tableInfo.PrimaryKeyCols))
+		for i, pkCol := range tableInfo.PrimaryKeyCols {
+			position, ok := colIndexesMap[pkCol]
+			if ok {
+				// The index col is in the output
+				pkOutputCols[i] = position
+			} else {
+				pkOutputCols[i] = -1
+			}
+		}
+
+		pkColTypes = make([]common.ColumnType, len(tableInfo.PrimaryKeyCols))
+		for i, pkCol := range tableInfo.PrimaryKeyCols {
+			pkColTypes[i] = tableInfo.ColumnTypes[pkCol]
+		}
+	} else {
+		// We create an array which tells us, for each column in the table, whether it's included in the output
+		includedCols = make([]bool, len(tableInfo.ColumnTypes))
+		for i := 0; i < len(tableInfo.ColumnTypes); i++ {
+			_, ok := colIndexesMap[i]
+			includedCols[i] = ok
+		}
+	}
+
 	// Calculate the types of the results
 	var resultColTypes []common.ColumnType
-	for _, colIndex := range includedCols {
+	for _, colIndex := range colIndexes {
 		resultColTypes = append(resultColTypes, tableInfo.ColumnTypes[colIndex])
 	}
 	var resultColNames []string
-	for _, colIndex := range includedCols {
+	for _, colIndex := range colIndexes {
 		resultColNames = append(resultColNames, tableInfo.ColumnNames[colIndex])
-	}
-
-	rf := common.NewRowsFactory(resultColTypes)
-	base := pullExecutorBase{
-		colNames:    resultColNames,
-		colTypes:    resultColTypes,
-		rowsFactory: rf,
-		keyCols:     tableInfo.PrimaryKeyCols,
 	}
 
 	var err error
@@ -54,9 +111,7 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	//
 	// When scanning the index in a range we create a range start and a range end that are a prefix of the index key
 	// The key start, end, don't have to include all, or any, of the index columns
-
 	var rangeStart, rangeEnd []byte
-
 	if scanRanges != nil {
 		if len(scanRanges) > 1 {
 			return nil, errors.New("multiple scan ranges not supported")
@@ -86,9 +141,7 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 				if err != nil {
 					return nil, err
 				}
-
 			}
-
 		}
 		if sr.LowExcl {
 			rangeStart = common.IncrementBytesBigEndian(rangeStart)
@@ -108,15 +161,27 @@ func NewPullIndexReader(tableInfo *common.TableInfo,
 	if rangeEnd == nil {
 		rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
 	}
+	rf := common.NewRowsFactory(resultColTypes)
+	base := pullExecutorBase{
+		colNames:    resultColNames,
+		colTypes:    resultColTypes,
+		rowsFactory: rf,
+		keyCols:     tableInfo.PrimaryKeyCols,
+	}
 	return &PullIndexReader{
-		pullExecutorBase: base,
-		tableInfo:        tableInfo,
-		indexInfo:        indexInfo,
-		storage:          storage,
-		shardID:          shardID,
-		rangeStart:       rangeStart,
-		rangeEnd:         rangeEnd,
-		includeCols:      includedCols,
+		pullExecutorBase:  base,
+		tableInfo:         tableInfo,
+		indexInfo:         indexInfo,
+		storage:           storage,
+		shardID:           shardID,
+		rangeStart:        rangeStart,
+		rangeEnd:          rangeEnd,
+		covers:            covers,
+		indexOutputCols:   indexOutputCols,
+		pkOutputCols:      pkOutputCols,
+		indexColTypes:     indexColTypes,
+		pkColTypes:        pkColTypes,
+		includedTableCols: includedCols,
 	}, nil
 }
 
@@ -146,61 +211,32 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 	}
 	numRows := len(kvPairs)
 	rows = p.rowsFactory.NewRows(numRows)
-	// Need to add PK cols if selected
-	var includedPkCols []int
-	for _, keyCol := range p.keyCols {
-		if common.Contains(p.includeCols, keyCol) {
-			includedPkCols = append(includedPkCols, keyCol)
-		}
-	}
-	// Check if index covers
-	var nonIndexCols []int
-	for _, keyCol := range p.includeCols {
-		if !common.Contains(includedPkCols, keyCol) && !common.Contains(p.indexInfo.IndexCols, keyCol) {
-			nonIndexCols = append(nonIndexCols, keyCol)
-		}
-	}
-	var includeCol []bool
-	for i := range p.colTypes {
-		included := common.Contains(p.includeCols, i)
-		includeCol = append(includeCol, included)
-	}
-	for i, kvPair := range kvPairs {
 
+	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
 			continue
 		}
 		if i == numRows-1 {
 			p.lastRowPrefix = kvPair.Key
 		}
-
-		// Index covers if all cols are in the index
-		if len(nonIndexCols) == 0 {
-			offset := 16
-			offset, err := common.DecodeIndexKeyWithIgnoredCols(kvPair.Key, offset, p.tableInfo.ColumnTypes, p.includeCols, p.indexInfo.IndexCols, rows)
-
-			for _, pkCol := range includedPkCols {
-				colType := p.tableInfo.ColumnTypes[pkCol]
-				var rowColIndex int
-				for j, col := range p.includeCols {
-					if col == pkCol {
-						rowColIndex = j
-					}
-				}
-				_, err = common.DecodeIndexKeyCol(kvPair.Key, offset, colType, true, rowColIndex, true, rows)
+		if p.covers {
+			// Decode cols from the index
+			if _, err = common.DecodeIndexOrPKCols(kvPair.Key, 16, false, p.indexColTypes, p.indexOutputCols, rows); err != nil {
+				return nil, err
 			}
-			if err != nil {
-				return nil, errors.WithStack(err)
+			// And any from the PK
+			if _, err = common.DecodeIndexOrPKCols(kvPair.Value, 0, true, p.pkColTypes, p.pkOutputCols, rows); err != nil {
+				return nil, err
 			}
-			// Index doesn't cover, and we get cols from originating table
 		} else {
+			// Index doesn't cover, and we get cols from originating table
 			keyBuff := table.EncodeTableKeyPrefix(p.tableInfo.ID, p.shardID, 16+len(kvPair.Value))
 			keyBuff = append(keyBuff, kvPair.Value...)
 			value, err := p.storage.LocalGet(keyBuff)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, includeCol, rows); err != nil {
+			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, p.includedTableCols, rows); err != nil {
 				return nil, errors.WithStack(err)
 			}
 		}

@@ -156,29 +156,52 @@ type TableInfo struct {
 	IndexInfos     map[string]*IndexInfo
 	ColsVisible    []bool
 	Internal       bool
+	pKColsSet      map[int]struct{}
 }
 
-func (i *TableInfo) GetTableInfo() *TableInfo { return i }
-
-func (i *TableInfo) String() string {
-	return fmt.Sprintf("table[name=%s.%s,id=%d]", i.SchemaName, i.Name, i.ID)
-}
-
-func (i *TableInfo) IsPrimaryKey(colIndex int) bool {
-	for _, pkColIdx := range i.PrimaryKeyCols {
-		if pkColIdx == colIndex {
-			return true
-		}
+func (t *TableInfo) calcPKColsSet() {
+	t.pKColsSet = make(map[int]struct{}, len(t.PrimaryKeyCols))
+	for _, pkCol := range t.PrimaryKeyCols {
+		t.pKColsSet[pkCol] = struct{}{}
 	}
-	return false
+}
+
+func (t *TableInfo) GetTableInfo() *TableInfo { return t }
+
+func (t *TableInfo) String() string {
+	return fmt.Sprintf("table[name=%s.%s,id=%d]", t.SchemaName, t.Name, t.ID)
+}
+
+func (t *TableInfo) IsPrimaryKeyCol(colIndex int) bool {
+	if t.pKColsSet == nil {
+		t.calcPKColsSet()
+	}
+	_, ok := t.pKColsSet[colIndex]
+	return ok
 }
 
 type IndexInfo struct {
-	SchemaName string
-	ID         uint64
-	TableName  string
-	Name       string
-	IndexCols  []int
+	SchemaName   string
+	ID           uint64
+	TableName    string
+	Name         string
+	IndexCols    []int
+	indexColsSet map[int]struct{}
+}
+
+func (i *IndexInfo) calcColsSet() {
+	i.indexColsSet = make(map[int]struct{}, len(i.IndexCols))
+	for _, col := range i.IndexCols {
+		i.indexColsSet[col] = struct{}{}
+	}
+}
+
+func (i *IndexInfo) ContainsColIndex(colIndex int) bool {
+	if i.indexColsSet == nil {
+		i.calcColsSet()
+	}
+	_, ok := i.indexColsSet[colIndex]
+	return ok
 }
 
 type Schema struct {
