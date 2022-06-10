@@ -32,3 +32,22 @@ func encodeKeyFromRow(tableInfo *common.TableInfo, row *common.Row, shardID uint
 	keyBuff := EncodeTableKeyPrefix(tableInfo.ID, shardID, 32)
 	return common.EncodeKeyCols(row, tableInfo.PrimaryKeyCols, tableInfo.ColumnTypes, keyBuff)
 }
+
+func EncodeIndexKeyValue(tableInfo *common.TableInfo, indexInfo *common.IndexInfo, shardID uint64, row *common.Row) ([]byte, []byte, error) {
+	keyBuff := EncodeTableKeyPrefix(indexInfo.ID, shardID, 32)
+	keyBuff, err := common.EncodeIndexKeyCols(row, indexInfo.IndexCols, tableInfo.ColumnTypes, keyBuff)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	pkStart := len(keyBuff)
+	// We encode the PK cols on both the end of the key and the value
+	// It needs to be on the key to make the entry unique (for non unique indexes)
+	// and on the value so we can make looking up the PK easy for non covering indexes without having to parse the
+	// whole key
+	keyBuff, err = common.EncodeKeyCols(row, tableInfo.PrimaryKeyCols, tableInfo.ColumnTypes, keyBuff)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	valueBuff := keyBuff[pkStart:] // Value is just the PK
+	return keyBuff, valueBuff, nil
+}

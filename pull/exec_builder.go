@@ -45,7 +45,6 @@ func (p *Engine) buildPullDAGWithSort(session *sess.Session, logicalPlan planner
 	return dag, nil
 }
 
-// TODO: extract functions and break apart giant switch
 // nolint: gocyclo
 func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns

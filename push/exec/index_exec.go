@@ -36,14 +36,14 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
 		if currentRow != nil {
-			keyBuff, valueBuff, err := t.createKeyBuff(ctx.WriteBatch.ShardID, currentRow)
+			keyBuff, valueBuff, err := table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, currentRow)
 			if err != nil {
 				return errors.WithStack(err)
 			}
 			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
 		} else {
 			// It's a delete
-			keyBuff, _, err := t.createKeyBuff(ctx.WriteBatch.ShardID, prevRow)
+			keyBuff, _, err := table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, prevRow)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -51,23 +51,4 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		}
 	}
 	return nil
-}
-
-func (t *IndexExecutor) createKeyBuff(shardID uint64, row *common.Row) ([]byte, []byte, error) {
-	keyBuff := table.EncodeTableKeyPrefix(t.IndexInfo.ID, shardID, 32)
-	keyBuff, err := common.EncodeIndexKeyCols(row, t.IndexInfo.IndexCols, t.TableInfo.ColumnTypes, keyBuff)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	pkStart := len(keyBuff)
-	// We encode the PK cols on both the end of the key and the value
-	// It needs to be on the key to make the entry unique (for non unique indexes)
-	// and on the value so we can make looking up the PK easy for non covering indexes without having to parse the
-	// whole key
-	keyBuff, err = common.EncodeKeyCols(row, t.TableInfo.PrimaryKeyCols, t.TableInfo.ColumnTypes, keyBuff)
-	if err != nil {
-		return nil, nil, errors.WithStack(err)
-	}
-	valueBuff := keyBuff[pkStart:] // Value is just the PK
-	return keyBuff, valueBuff, nil
 }

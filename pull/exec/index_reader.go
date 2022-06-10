@@ -103,7 +103,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 		resultColNames = append(resultColNames, tableInfo.ColumnNames[colIndex])
 	}
 
-	var err error
 	indexShardPrefix := table.EncodeTableKeyPrefix(indexInfo.ID, shardID, 16)
 
 	// The index key in Pebble is:
@@ -119,15 +118,15 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 		sr := scanRanges[0]
 		rangeStart = append(rangeStart, indexShardPrefix...)
 		rangeEnd = append(rangeEnd, indexShardPrefix...)
+		var err error
 		for i := 0; i < len(sr.LowVals); i++ {
 			lv := sr.LowVals[i]
 			hv := sr.HighVals[i]
-			// if range vals are nil, doing a point get with nil as the index PK value
 			if lv == nil && hv == nil {
 				rangeStart = append(rangeStart, 0)
 				rangeEnd = append(rangeEnd, 0)
 			} else if hv == nil {
-				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
+				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID, shardID, 16)
 			} else {
 				rangeEnd = append(rangeEnd, 1)
 				rangeEnd, err = common.EncodeKeyElement(hv, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
