@@ -15,36 +15,6 @@ import (
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
-func (p *Engine) buildPullDAGWithSort(session *sess.Session, logicalPlan planner.LogicalPlan,
-	physicalPlan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
-	// Build dag from the plan
-	dag, err := p.buildPullDAG(session, physicalPlan, remote)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	logicalSort, ok := logicalPlan.(*planner.LogicalSort)
-	if ok {
-		_, hasPhysicalSort := dag.(*exec.PullSort)
-		if !hasPhysicalSort {
-			// The TiDB planner assumes range partitioning and therefore sometimes elides the physical sort operator
-			// from the physical plan during the optimisation process if the order by is on the primary key of the table
-			// In this case it thinks the table is already ordered and we fan out to remote nodes using range scans
-			// so the iteration order of the partial results when joined together gives us ordered results as require.
-			// However, we use hash partitioning, so we always need to implement the sort after all partial results
-			// are returned from nodes.
-			// So... if the logical plan has a sort, but the physical plan doesn't we need to add a sort executor
-			// in manually, which is what we're doing here
-
-			desc, sortByExprs := p.byItemsToDescAndSortExpression(logicalSort.ByItems)
-			sortExec := exec.NewPullSort(dag.ColNames(), dag.ColTypes(), desc, sortByExprs)
-			exec.ConnectPullExecutors([]exec.PullExecutor{dag}, sortExec)
-			dag = sortExec
-		}
-	}
-
-	return dag, nil
-}
-
 // nolint: gocyclo
 func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
@@ -96,17 +66,27 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalIndexScan:
 		if remote {
 			tableName := op.Table.Name.L
-			indexName := op.Index.Name.L
-			executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
-			if err != nil {
-				return nil, errors.WithStack(err)
+			if op.Index.Primary {
+				// This is a fake index we created because the table has a composite PK and TiDB planner doesn't
+				// support this case well. Having a fake index allows the planner to create multiple ranges for fast
+				// scans and lookup for the composite PK case
+				executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+				if err != nil {
+					return nil, errors.WithStack(err)
+				}
+			} else {
+				indexName := op.Index.Name.L
+				executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+				if err != nil {
+					return nil, errors.WithStack(err)
+				}
 			}
 		} else {
 			remoteDag, err := p.buildPullDAG(session, op, true)
 			if err != nil {
 				return nil, err
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, remoteDag.ColNames(), remoteDag.ColTypes(), session.Schema.Name, p.cluster,
+			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
 				-1)
 		}
 	case *planner.PhysicalSort:
@@ -177,22 +157,7 @@ func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ra
 	if !ok {
 		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
 	}
-	scanRanges := make([]*exec.ScanRange, len(ranges))
-	for i, rng := range ranges {
-		if !rng.IsFullRange() {
-			if len(rng.LowVal) != 1 {
-				return nil, errors.Error("composite ranges not supported")
-			}
-			lowD := rng.LowVal[0]
-			highD := rng.HighVal[0]
-			scanRanges[i] = &exec.ScanRange{
-				LowVals:  []interface{}{common.TiDBValueToPranaValue(lowD.GetValue())},
-				HighVals: []interface{}{common.TiDBValueToPranaValue(highD.GetValue())},
-				LowExcl:  rng.LowExclude,
-				HighExcl: rng.HighExclude,
-			}
-		}
-	}
+	scanRanges := createScanRanges(ranges)
 	var colIndexes []int
 	for _, col := range columns {
 		colIndexes = append(colIndexes, col.Offset)
@@ -206,16 +171,24 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 	if !ok {
 		return nil, errors.Errorf("unknown source or materialized view %s", tableName)
 	}
-	idx, ok := tbl.GetTableInfo().IndexInfos[strings.Replace(indexName, tableName+"_", "", 1)]
+	idx, ok := tbl.GetTableInfo().IndexInfos[strings.Replace(indexName, tableName+"_u", "", 1)]
 	if !ok {
 		return nil, errors.Errorf("unknown index %s", indexName)
 	}
 	if len(ranges) > 1 {
 		return nil, errors.Error("multiple ranges not supported")
 	}
-	var scanRanges []*exec.ScanRange
-	if len(ranges) > 0 {
-		rng := ranges[0]
+	scanRanges := createScanRanges(ranges)
+	var colIndexes []int
+	for _, colInfo := range columnInfos {
+		colIndexes = append(colIndexes, colInfo.Offset)
+	}
+	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges)
+}
+
+func createScanRanges(ranges []*ranger.Range) []*exec.ScanRange {
+	scanRanges := make([]*exec.ScanRange, len(ranges))
+	for i, rng := range ranges {
 		if !rng.IsFullRange() {
 			nr := len(rng.LowVal)
 			lowVals := make([]interface{}, nr)
@@ -226,19 +199,15 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 				lowVals[i] = common.TiDBValueToPranaValue(lowD.GetValue())
 				highVals[i] = common.TiDBValueToPranaValue(highD.GetValue())
 			}
-			scanRanges = append(scanRanges, &exec.ScanRange{
+			scanRanges[i] = &exec.ScanRange{
 				LowVals:  lowVals,
 				HighVals: highVals,
 				LowExcl:  rng.LowExclude,
 				HighExcl: rng.HighExclude,
-			})
+			}
 		}
 	}
-	var colIndexes []int
-	for _, colInfo := range columnInfos {
-		colIndexes = append(colIndexes, colInfo.Offset)
-	}
-	return exec.NewPullIndexReader(tbl.GetTableInfo(), idx, colIndexes, p.cluster, shardID, scanRanges)
+	return scanRanges
 }
 
 func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {

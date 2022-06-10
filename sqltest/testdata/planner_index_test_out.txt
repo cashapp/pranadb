@@ -40,6 +40,15 @@ select customer_id from transactions where customer_id > 600 order by customer_i
 |1000|
 3 rows returned
 
+select customer_id from transactions where customer_id < 600 order by customer_id;
+|customer_id|
+|null|
+|100|
+|300|
+|400|
+|500|
+5 rows returned
+
 select customer_id from transactions where customer_id is null;
 |customer_id|
 |null|
@@ -65,6 +74,14 @@ select * from transactions where id > 5 order by id;
 |9|900|abc|
 |10|1000|abc|
 5 rows returned
+
+select * from transactions where id < 5 order by id;
+|id|customer_id|col2|
+|1|100|abc|
+|2|null|def|
+|3|300|ghi|
+|4|400|null|
+4 rows returned
 
 drop index index1 on transactions;
 0 rows returned
@@ -107,6 +124,15 @@ select customer_id from transactions where customer_id > 600 order by customer_i
 |900|
 |1000|
 3 rows returned
+
+select customer_id from transactions where customer_id < 600 order by customer_id;
+|customer_id|
+|null|
+|100|
+|300|
+|400|
+|500|
+5 rows returned
 
 select * from transactions where customer_id > 600 and customer_id < 900 order by id;
 |id|customer_id|col2|
