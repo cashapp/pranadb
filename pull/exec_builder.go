@@ -193,11 +193,11 @@ func createScanRanges(ranges []*ranger.Range) []*exec.ScanRange {
 			nr := len(rng.LowVal)
 			lowVals := make([]interface{}, nr)
 			highVals := make([]interface{}, nr)
-			for i := 0; i < len(rng.LowVal); i++ {
-				lowD := rng.LowVal[i]
-				highD := rng.HighVal[i]
-				lowVals[i] = common.TiDBValueToPranaValue(lowD.GetValue())
-				highVals[i] = common.TiDBValueToPranaValue(highD.GetValue())
+			for j := 0; j < len(rng.LowVal); j++ {
+				lowD := rng.LowVal[j]
+				highD := rng.HighVal[j]
+				lowVals[j] = common.TiDBValueToPranaValue(lowD.GetValue())
+				highVals[j] = common.TiDBValueToPranaValue(highD.GetValue())
 			}
 			scanRanges[i] = &exec.ScanRange{
 				LowVals:  lowVals,

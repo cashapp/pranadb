@@ -9,7 +9,7 @@ func calcScanRangeKeys(scanRanges []*ScanRange, indexID uint64, indexCols []int,
 	shardID uint64, isIndex bool) ([]*rangeHolder, error) {
 	keyPrefix := table.EncodeTableKeyPrefix(indexID, shardID, 16)
 	if len(scanRanges) == 0 || (len(scanRanges) == 1 && scanRanges[0] == nil) {
-		return []*rangeHolder{{rangeStart: keyPrefix, rangeEnd:   table.EncodeTableKeyPrefix(indexID+1, shardID, 16)}}, nil
+		return []*rangeHolder{{rangeStart: keyPrefix, rangeEnd: table.EncodeTableKeyPrefix(indexID+1, shardID, 16)}}, nil
 	}
 	rangeHolders := make([]*rangeHolder, len(scanRanges))
 	for i, sr := range scanRanges {
