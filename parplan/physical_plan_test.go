@@ -46,7 +46,7 @@ func TestSelectAllUsesTableScanForPullQuery(t *testing.T) {
 	require.True(t, ts.Ranges[0].IsFullRange())
 }
 
-func TestMultiColumnPointGetUsesTableScanWithCompositeRangeForPullQuery(t *testing.T) {
+func TestMultiColumnPointGetUsesIndexScanWithCompositeRangeForPullQuery(t *testing.T) {
 	schema := createTestSchema()
 	planner := NewPlanner(schema)
 	physi, _, err := planner.QueryToPlan("select * from table3 where col0=123 and col1='foo' and col2=12", false, true)
@@ -90,6 +90,36 @@ func TestSecondaryIndexLookupUsingIndexScanForPullQuery(t *testing.T) {
 	require.Equal(t, 0, len(is.Children()))
 	require.Equal(t, 1, len(is.Ranges))
 	require.True(t, is.Ranges[0].IsPoint(planner.StatementContext()))
+}
+
+func TestSecondaryIndexLookupWithInUsingIndexScanWithMultipleRangesForPullQuery(t *testing.T) {
+	schema := createTestSchema()
+	schema, err := attachIndexToSchema(schema)
+	require.NoError(t, err)
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col2 from table1 where col2 in (100, 200, 300)", false, true)
+	require.NoError(t, err)
+	is, ok := physi.(*planner2.PhysicalIndexScan)
+	require.True(t, ok)
+	require.Equal(t, 0, len(is.Children()))
+	require.Equal(t, 3, len(is.Ranges))
+	require.True(t, is.Ranges[0].IsPoint(planner.StatementContext()))
+	require.True(t, is.Ranges[1].IsPoint(planner.StatementContext()))
+	require.True(t, is.Ranges[2].IsPoint(planner.StatementContext()))
+}
+
+func TestPrimaryKeyLookupWithInUsingTableScanWithMultipleRangesForPullQuery(t *testing.T) {
+	schema := createTestSchema()
+	planner := NewPlanner(schema)
+	physi, _, err := planner.QueryToPlan("select col0 from table1 where col0 in (100, 200, 300)", false, true)
+	require.NoError(t, err)
+	ts, ok := physi.(*planner2.PhysicalTableScan)
+	require.True(t, ok)
+	require.Equal(t, 0, len(ts.Children()))
+	require.Equal(t, 3, len(ts.Ranges))
+	require.True(t, ts.Ranges[0].IsPoint(planner.StatementContext()))
+	require.True(t, ts.Ranges[1].IsPoint(planner.StatementContext()))
+	require.True(t, ts.Ranges[2].IsPoint(planner.StatementContext()))
 }
 
 func TestSecondaryIndexMultiColumnLookupUsingIndexScanForPullQuery(t *testing.T) {

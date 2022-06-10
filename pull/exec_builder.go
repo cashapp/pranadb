@@ -175,9 +175,6 @@ func (p *Engine) createPullIndexScan(schema *common.Schema, tableName string, in
 	if !ok {
 		return nil, errors.Errorf("unknown index %s", indexName)
 	}
-	if len(ranges) > 1 {
-		return nil, errors.Error("multiple ranges not supported")
-	}
 	scanRanges := createScanRanges(ranges)
 	var colIndexes []int
 	for _, colInfo := range columnInfos {

@@ -42,6 +42,9 @@ select * from transactions where id > 5 order by id;
 
 select * from transactions where id < 5 order by id;
 
+-- this should trigger multiple ranges for an index scan;
+select * from transactions where customer_id in (500, 600, 700) order by id;
+
 drop index index1 on transactions;
 
 --test multi-col index;
@@ -71,6 +74,9 @@ select customer_id, id, col2 from transactions where customer_id > 300 and col2 
 select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
 
 select * from transactions where customer_id = 400 and col2 is null order by id;
+
+-- this should trigger multiple ranges for an index scan;
+select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
 
 drop index index2 on transactions;
 

@@ -125,6 +125,27 @@ func TestReadIndexCovers(t *testing.T) {
 	ranges = createSimpleRanges(int64(2), int64(2), false, false)
 	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
 
+	//Test with multiple ranges - this would be triggered, say, by an IN clause selecting multiple values from secondary index
+	expectedRows = [][]interface{}{
+		{2, "bbb"},
+		{2, "ccc"},
+		{1, "aaa"},
+	}
+	scanRange1 := &ScanRange{
+		LowVals:  []interface{}{int64(2)},
+		HighVals: []interface{}{int64(2)},
+		LowExcl:  false,
+		HighExcl: false,
+	}
+	scanRange2 := &ScanRange{
+		LowVals:  []interface{}{int64(1)},
+		HighVals: []interface{}{int64(1)},
+		LowExcl:  false,
+		HighExcl: false,
+	}
+	ranges = []*ScanRange{scanRange1, scanRange2}
+	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
+
 	// Just the PK
 	tableColIndexes = []int{0}
 	expectedColTypes = []common.ColumnType{common.BigIntColumnType}
@@ -259,6 +280,7 @@ func TestCompositeIndex(t *testing.T) {
 	}
 	ranges = []*ScanRange{scanRange}
 	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
+
 }
 
 func createSimpleRanges(lowVal interface{}, highVal interface{}, lowExcl bool, highExcl bool) []*ScanRange {
