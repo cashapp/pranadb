@@ -83,6 +83,14 @@ select * from transactions where id < 5 order by id;
 |4|400|null|
 4 rows returned
 
+-- this should trigger multiple ranges for an index scan;
+select * from transactions where customer_id in (500, 600, 700) order by id;
+|id|customer_id|col2|
+|5|500|abc|
+|6|600|abc|
+|7|600|abc|
+3 rows returned
+
 drop index index1 on transactions;
 0 rows returned
 
@@ -160,6 +168,14 @@ select * from transactions where customer_id = 400 and col2 is null order by id;
 |id|customer_id|col2|
 |4|400|null|
 1 rows returned
+
+-- this should trigger multiple ranges for an index scan;
+select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
+|id|customer_id|col2|
+|5|500|abc|
+|6|600|abc|
+|7|600|abc|
+3 rows returned
 
 drop index index2 on transactions;
 0 rows returned

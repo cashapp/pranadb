@@ -14,14 +14,15 @@ type PullIndexReader struct {
 	storage           cluster.Cluster
 	shardID           uint64
 	lastRowPrefix     []byte
-	rangeStart        []byte
-	rangeEnd          []byte
 	covers            bool
 	indexOutputCols   []int
 	pkOutputCols      []int
 	indexColTypes     []common.ColumnType
 	pkColTypes        []common.ColumnType
 	includedTableCols []bool
+	rows              *common.Rows
+	rangeIndex        int
+	rangeHolders      []*rangeHolder
 }
 
 var _ PullExecutor = &PullIndexReader{}
@@ -107,11 +108,6 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 	if err != nil {
 		return nil, err
 	}
-	if len(rangeHolders) > 1 {
-		return nil, errors.Error("multiple ranges not supported")
-	}
-	rangeStart := rangeHolders[0].rangeStart
-	rangeEnd := rangeHolders[0].rangeEnd
 
 	rf := common.NewRowsFactory(resultColTypes)
 	base := pullExecutorBase{
@@ -126,43 +122,44 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 		indexInfo:         indexInfo,
 		storage:           storage,
 		shardID:           shardID,
-		rangeStart:        rangeStart,
-		rangeEnd:          rangeEnd,
 		covers:            covers,
 		indexOutputCols:   indexOutputCols,
 		pkOutputCols:      pkOutputCols,
 		indexColTypes:     indexColTypes,
 		pkColTypes:        pkColTypes,
 		includedTableCols: includedCols,
+		rangeHolders:      rangeHolders,
 	}, nil
 }
 
-func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //nolint:gocyclo
-	if limit < 1 {
-		return nil, errors.Errorf("invalid limit %d", limit)
-	}
-
+func (p *PullIndexReader) getRowsFromRange(limit int, currRange *rangeHolder) error {
 	var skipFirst bool
 	var startPrefix []byte
 	if p.lastRowPrefix == nil {
-		startPrefix = p.rangeStart
+		startPrefix = currRange.rangeStart
 	} else {
 		startPrefix = p.lastRowPrefix
 		skipFirst = true
 	}
 
-	limitToUse := limit
-	if limit != -1 && skipFirst {
+	rc := 0
+	if p.rows != nil {
+		rc = p.rows.RowCount()
+	}
+	limitToUse := limit - rc
+	if skipFirst {
 		// We read one extra row as we'll skip the first
 		limitToUse++
 	}
 
-	kvPairs, err := p.storage.LocalScan(startPrefix, p.rangeEnd, limitToUse)
+	kvPairs, err := p.storage.LocalScan(startPrefix, currRange.rangeEnd, limitToUse)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 	numRows := len(kvPairs)
-	rows = p.rowsFactory.NewRows(numRows)
+	if p.rows == nil {
+		p.rows = p.rowsFactory.NewRows(numRows)
+	}
 
 	for i, kvPair := range kvPairs {
 		if i == 0 && skipFirst {
@@ -173,12 +170,12 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 		}
 		if p.covers {
 			// Decode cols from the index
-			if _, err = common.DecodeIndexOrPKCols(kvPair.Key, 16, false, p.indexColTypes, p.indexOutputCols, rows); err != nil {
-				return nil, err
+			if _, err = common.DecodeIndexOrPKCols(kvPair.Key, 16, false, p.indexColTypes, p.indexOutputCols, p.rows); err != nil {
+				return err
 			}
 			// And any from the PK
-			if _, err = common.DecodeIndexOrPKCols(kvPair.Value, 0, true, p.pkColTypes, p.pkOutputCols, rows); err != nil {
-				return nil, err
+			if _, err = common.DecodeIndexOrPKCols(kvPair.Value, 0, true, p.pkColTypes, p.pkOutputCols, p.rows); err != nil {
+				return err
 			}
 		} else {
 			// Index doesn't cover, and we get cols from originating table
@@ -186,12 +183,35 @@ func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) { //
 			keyBuff = append(keyBuff, kvPair.Value...)
 			value, err := p.storage.LocalGet(keyBuff)
 			if err != nil {
-				return nil, errors.WithStack(err)
+				return errors.WithStack(err)
 			}
-			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, p.includedTableCols, rows); err != nil {
-				return nil, errors.WithStack(err)
+			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, p.includedTableCols, p.rows); err != nil {
+				return errors.WithStack(err)
 			}
 		}
+	}
+	return nil
+}
+
+func (p *PullIndexReader) GetRows(limit int) (rows *common.Rows, err error) {
+	if limit < 1 {
+		return nil, errors.Errorf("invalid limit %d", limit)
+	}
+	for p.rangeIndex < len(p.rangeHolders) {
+		rng := p.rangeHolders[p.rangeIndex]
+		if err := p.getRowsFromRange(limit, rng); err != nil {
+			return nil, err
+		}
+		if p.rows.RowCount() == limit {
+			break
+		}
+		p.rangeIndex++
+		p.lastRowPrefix = nil
+	}
+	rows = p.rows
+	p.rows = nil
+	if rows == nil {
+		rows = p.rowsFactory.NewRows(0)
 	}
 	return rows, nil
 }
