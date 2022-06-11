@@ -215,6 +215,30 @@ func createTestSchema() *common.Schema {
 		Internal:       false,
 	}
 	schema.PutTable(table2.Name, table2)
+	table3 := &common.TableInfo{
+		ID:             0,
+		SchemaName:     "test",
+		Name:           "table3",
+		PrimaryKeyCols: []int{0, 1, 2},
+		ColumnNames:    []string{"col0", "col1", "col2", "col3", "col4"},
+		ColumnTypes:    []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.IntColumnType, common.VarcharColumnType, common.BigIntColumnType},
+		IndexInfos:     nil,
+		ColsVisible:    nil,
+		Internal:       false,
+	}
+	schema.PutTable(table3.Name, table3)
+	table4 := &common.TableInfo{
+		ID:             0,
+		SchemaName:     "test",
+		Name:           "table4",
+		PrimaryKeyCols: []int{0},
+		ColumnNames:    []string{"col0", "col1", "col2", "col3", "col4"},
+		ColumnTypes:    []common.ColumnType{common.BigIntColumnType, common.VarcharColumnType, common.IntColumnType, common.VarcharColumnType, common.BigIntColumnType},
+		IndexInfos:     nil,
+		ColsVisible:    nil,
+		Internal:       false,
+	}
+	schema.PutTable(table4.Name, table4)
 	return schema
 }
 
@@ -225,6 +249,20 @@ func attachIndexToSchema(schema *common.Schema) (*common.Schema, error) {
 		Name:       "index1",
 		TableName:  "table1",
 		IndexCols:  []int{2},
+	}
+	if err := schema.PutIndex(index1); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return schema, nil
+}
+
+func attachMultiColumnIndexToSchema(schema *common.Schema) (*common.Schema, error) {
+	index1 := &common.IndexInfo{
+		ID:         0,
+		SchemaName: "test",
+		Name:       "index1",
+		TableName:  "table4",
+		IndexCols:  []int{1, 2, 3},
 	}
 	if err := schema.PutIndex(index1); err != nil {
 		return nil, errors.WithStack(err)
