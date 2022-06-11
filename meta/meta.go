@@ -1,6 +1,7 @@
 package meta
 
 import (
+	log "github.com/sirupsen/logrus"
 	"sort"
 	"sync"
 
@@ -213,6 +214,7 @@ func (c *Controller) existsTable(schema *common.Schema, name string) error {
 func (c *Controller) RegisterIndex(indexInfo *common.IndexInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	log.Debugf("Registering index %s with id %d", indexInfo.Name, indexInfo.ID)
 	if err := c.checkIndexID(indexInfo.ID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -256,6 +258,7 @@ func (c *Controller) DeleteIndex(indexID uint64) error {
 func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	log.Debugf("Registering source %s with id %d", sourceInfo.Name, sourceInfo.ID)
 	if err := c.checkTableID(sourceInfo.ID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -311,6 +314,7 @@ func (c *Controller) checkIndexID(indexID uint64) error {
 func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	log.Debugf("Registering MV %s with id %d", mvInfo.Name, mvInfo.ID)
 	if err := c.checkTableID(mvInfo.ID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -331,6 +335,7 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 }
 
 func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
+	log.Debugf("Registering internal tabe %s with id %d", info.Name, info.ID)
 	if err := c.checkTableID(info.ID); err != nil {
 		return errors.WithStack(err)
 	}

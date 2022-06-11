@@ -103,63 +103,16 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 		resultColNames = append(resultColNames, tableInfo.ColumnNames[colIndex])
 	}
 
-	indexShardPrefix := table.EncodeTableKeyPrefix(indexInfo.ID, shardID, 16)
+	rangeHolders, err := calcScanRangeKeys(scanRanges, indexInfo.ID, indexInfo.IndexCols, tableInfo, shardID, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(rangeHolders) > 1 {
+		return nil, errors.Error("multiple ranges not supported")
+	}
+	rangeStart := rangeHolders[0].rangeStart
+	rangeEnd := rangeHolders[0].rangeEnd
 
-	// The index key in Pebble is:
-	// |shard_id|index_id|index_col0|index_col1|index_col2|...|table_pk_value
-	//
-	// When scanning the index in a range we create a range start and a range end that are a prefix of the index key
-	// The key start, end, don't have to include all, or any, of the index columns
-	var rangeStart, rangeEnd []byte
-	if scanRanges != nil {
-		if len(scanRanges) > 1 {
-			return nil, errors.New("multiple scan ranges not supported")
-		}
-		sr := scanRanges[0]
-		rangeStart = append(rangeStart, indexShardPrefix...)
-		rangeEnd = append(rangeEnd, indexShardPrefix...)
-		var err error
-		for i := 0; i < len(sr.LowVals); i++ {
-			lv := sr.LowVals[i]
-			hv := sr.HighVals[i]
-			if lv == nil && hv == nil {
-				rangeStart = append(rangeStart, 0)
-				rangeEnd = append(rangeEnd, 0)
-			} else if hv == nil {
-				rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID, shardID, 16)
-			} else {
-				rangeEnd = append(rangeEnd, 1)
-				rangeEnd, err = common.EncodeKeyElement(hv, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeEnd)
-				if err != nil {
-					return nil, err
-				}
-			}
-			if lv != nil {
-				rangeStart = append(rangeStart, 1)
-				rangeStart, err = common.EncodeKeyElement(lv, tableInfo.ColumnTypes[indexInfo.IndexCols[i]], rangeStart)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		if sr.LowExcl {
-			rangeStart = common.IncrementBytesBigEndian(rangeStart)
-		}
-		if !sr.HighExcl {
-			if !allBitsSet(rangeEnd) {
-				rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
-			} else {
-				rangeEnd = nil
-			}
-		}
-	}
-
-	if rangeStart == nil {
-		rangeStart = indexShardPrefix
-	}
-	if rangeEnd == nil {
-		rangeEnd = table.EncodeTableKeyPrefix(indexInfo.ID+1, shardID, 16)
-	}
 	rf := common.NewRowsFactory(resultColTypes)
 	base := pullExecutorBase{
 		colNames:    resultColNames,

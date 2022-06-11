@@ -49,6 +49,11 @@ func TestReadIndexCovers(t *testing.T) {
 	expectedRows = [][]interface{}{{4, nil}, {5, nil}}
 	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
 
+	// Range with no lower bound, but higher bound
+	ranges = createSimpleRanges(nil, int64(2), false, true)
+	expectedRows = [][]interface{}{{4, nil}, {5, nil}, {1, 1}}
+	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
+
 	// Simple range that excludes the first element
 	ranges = createSimpleRanges(int64(1), int64(1), true, false)
 	expectedRows = [][]interface{}{}

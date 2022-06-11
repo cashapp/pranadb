@@ -62,6 +62,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 			for pkIndex := range tableInfo.PrimaryKeyCols {
 				if columnIndex == pkIndex {
 					col.Flag |= mysql.PriKeyFlag
+					break
 				}
 			}
 			columns = append(columns, col)
@@ -69,6 +70,35 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 		tableName := model.NewCIStr(tableInfo.Name)
 
 		var indexes []*model.IndexInfo
+
+		// The TiDB planner doesn't seem to support PK with more than one column, so in this case we create a fake index
+		// which has all the PK cols in it, so the planner can generate an index scan with it, so we get fast lookups
+		// and table scans
+		if len(tableInfo.PrimaryKeyCols) > 1 {
+			var indexCols []*model.IndexColumn
+			for _, columnIndex := range tableInfo.PrimaryKeyCols {
+				col := &model.IndexColumn{
+					Name:   model.NewCIStr(tableInfo.ColumnNames[columnIndex]),
+					Offset: columnIndex,
+					Length: -1,
+				}
+				indexCols = append(indexCols, col)
+			}
+			pkIndex := &model.IndexInfo{
+				ID:        int64(tableInfo.ID), // we can just use the table id as we're not going to create a real index
+				Name:      model.NewCIStr(fmt.Sprintf("%s_pk", tableInfo.Name)),
+				Table:     tableName,
+				Columns:   indexCols,
+				State:     model.StatePublic,
+				Comment:   "",
+				Tp:        model.IndexTypeBtree,
+				Unique:    true,
+				Primary:   true,
+				Invisible: false,
+				Global:    false,
+			}
+			indexes = append(indexes, pkIndex)
+		}
 
 		if tableInfo.IndexInfos != nil {
 			for _, indexInfo := range tableInfo.IndexInfos {
@@ -84,7 +114,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 				}
 				index := &model.IndexInfo{
 					ID:        int64(indexInfo.ID),
-					Name:      model.NewCIStr(fmt.Sprintf("%s_%s", tableInfo.Name, indexInfo.Name)),
+					Name:      model.NewCIStr(fmt.Sprintf("%s_u%s", tableInfo.Name, indexInfo.Name)),
 					Table:     tableName,
 					Columns:   indexCols,
 					State:     model.StatePublic,

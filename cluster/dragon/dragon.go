@@ -552,6 +552,7 @@ func (d *Dragon) deleteAllDataInRangeForShardsLocally(startPrefix []byte, endPre
 		endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, shardID)
 		endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
 
+		log.Debugf("Deleting all data in range %v to %v", startPrefixWithShard, endPrefixWithShard)
 		if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
 			return errors.WithStack(err)
 		}
@@ -570,7 +571,7 @@ func (d *Dragon) deleteAllDataInRangeLocally(batch *pebble.Batch, startPrefix []
 }
 
 func (d *Dragon) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
-	return d.deleteAllDataInRangeForShardsLocally(startPrefix, endPrefix, d.allDataShards...)
+	return d.deleteAllDataInRangeForShardsLocally(startPrefix, endPrefix, d.localDataShards...)
 }
 
 func localGet(peb *pebble.DB, key []byte) ([]byte, error) {

@@ -4,7 +4,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/table"
 )
 
 type PullTableScan struct {
@@ -54,51 +53,9 @@ func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage clu
 		keyCols:     tableInfo.PrimaryKeyCols,
 	}
 
-	var rangeHolders []*rangeHolder
-	tableShardPrefix := table.EncodeTableKeyPrefix(tableInfo.ID, shardID, 16)
-
-	if len(scanRanges) == 0 {
-		rangeHolders = append(rangeHolders, &rangeHolder{
-			rangeStart: tableShardPrefix,
-			rangeEnd:   table.EncodeTableKeyPrefix(tableInfo.ID+1, shardID, 16),
-		})
-	} else {
-		for _, scanRange := range scanRanges {
-			var rangeStart, rangeEnd []byte
-			// If a query contains a select (aka a filter, where clause) on a primary key this is often pushed down to the
-			// table scan as a range
-			if scanRange != nil {
-				var err error
-				rangeStart, err = common.EncodeKey([]interface{}{scanRange.LowVals[0]}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
-				if err != nil {
-					return nil, errors.WithStack(err)
-				}
-				if scanRange.LowExcl {
-					rangeStart = common.IncrementBytesBigEndian(rangeStart)
-				}
-				rangeEnd, err = common.EncodeKey([]interface{}{scanRange.HighVals[0]}, tableInfo.ColumnTypes, tableInfo.PrimaryKeyCols, tableShardPrefix)
-				if err != nil {
-					return nil, errors.WithStack(err)
-				}
-				if !scanRange.HighExcl {
-					if !allBitsSet(rangeEnd) {
-						rangeEnd = common.IncrementBytesBigEndian(rangeEnd)
-					} else {
-						rangeEnd = nil
-					}
-				}
-			}
-			if rangeStart == nil {
-				rangeStart = tableShardPrefix
-			}
-			if rangeEnd == nil {
-				rangeEnd = table.EncodeTableKeyPrefix(tableInfo.ID+1, shardID, 16)
-			}
-			rangeHolders = append(rangeHolders, &rangeHolder{
-				rangeStart: rangeStart,
-				rangeEnd:   rangeEnd,
-			})
-		}
+	rangeHolders, err := calcScanRangeKeys(scanRanges, tableInfo.ID, tableInfo.PrimaryKeyCols, tableInfo, shardID, false)
+	if err != nil {
+		return nil, err
 	}
 	return &PullTableScan{
 		pullExecutorBase: base,

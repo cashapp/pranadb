@@ -171,12 +171,8 @@ func (r *ImplSort) Match(expr *GroupExpr, prop *property.PhysicalProperty) (matc
 // generate a PhysicalSort.
 func (r *ImplSort) OnImplement(expr *GroupExpr, reqProp *property.PhysicalProperty) ([]Implementation, error) {
 	ls := expr.ExprNode.(*LogicalSort)
-	if newProp, canUseNominal := getPropByOrderByItems(ls.ByItems); canUseNominal {
-		newProp.ExpectedCnt = reqProp.ExpectedCnt
-		ns := NominalSort{}.Init(
-			ls.SCtx(), expr.Group.Prop.Stats.ScaleByExpectCnt(reqProp.ExpectedCnt), ls.SelectBlockOffset(), newProp)
-		return []Implementation{NewNominalSortImpl(ns)}, nil
-	}
+	// We always return a PhysicalSort as sorts can't be pushed down to table/index scans even if in natural table/index order
+	// because we fanout to multiple nodes so need to order on return anyway
 	ps := PhysicalSort{ByItems: ls.ByItems}.Init(
 		ls.SCtx(),
 		expr.Group.Prop.Stats.ScaleByExpectCnt(reqProp.ExpectedCnt),

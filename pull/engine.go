@@ -123,7 +123,7 @@ func (p *Engine) ExecutePreparedStatement(session *sess.Session, psID int64, arg
 	if err != nil {
 		return nil, err
 	}
-	return p.buildPullDAGWithSort(session, ps.LogicalPlan, physicalPlan, false)
+	return p.buildPullDAG(session, physicalPlan, false)
 }
 
 func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullExecutor, error) {
@@ -144,7 +144,7 @@ func (p *Engine) BuildPullQuery(session *sess.Session, query string) (exec.PullE
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return p.buildPullDAGWithSort(session, logicalPlan, physicalPlan, false)
+	return p.buildPullDAG(session, physicalPlan, false)
 }
 
 // ExecuteRemotePullQuery - executes a pull query received from another node
