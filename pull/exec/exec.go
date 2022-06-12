@@ -23,18 +23,17 @@ type PullExecutor interface {
 	GetParent() PullExecutor
 	GetChildren() []PullExecutor
 	ColNames() []string
-	SimpleColNames() []string
 	ColTypes() []common.ColumnType
+	SetColNames(colNames []string)
 }
 
 type pullExecutorBase struct {
-	colNames       []string
-	simpleColNames []string
-	colTypes       []common.ColumnType
-	keyCols        []int
-	rowsFactory    *common.RowsFactory
-	parent         PullExecutor
-	children       []PullExecutor
+	colNames    []string
+	colTypes    []common.ColumnType
+	keyCols     []int
+	rowsFactory *common.RowsFactory
+	parent      PullExecutor
+	children    []PullExecutor
 }
 
 func (p *pullExecutorBase) SetParent(parent PullExecutor) {
@@ -65,8 +64,8 @@ func (p *pullExecutorBase) ColTypes() []common.ColumnType {
 	return p.colTypes
 }
 
-func (p *pullExecutorBase) SimpleColNames() []string {
-	return p.simpleColNames
+func (p *pullExecutorBase) SetColNames(colNames []string) {
+	p.colNames = colNames
 }
 
 func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {

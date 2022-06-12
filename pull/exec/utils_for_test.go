@@ -46,12 +46,11 @@ func (r *rowProvider) ColNames() []string {
 	return nil
 }
 
-func (r *rowProvider) SimpleColNames() []string {
+func (r *rowProvider) ColTypes() []common.ColumnType {
 	return nil
 }
 
-func (r *rowProvider) ColTypes() []common.ColumnType {
-	return nil
+func (r *rowProvider) SetColNames(colNames []string) {
 }
 
 func (r *rowProvider) GetRows(limit int) (rows *common.Rows, err error) {

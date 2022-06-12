@@ -15,10 +15,9 @@ func TestPullLimit_GetRows(t *testing.T) {
 	}
 	makeBase := func() pullExecutorBase {
 		base := pullExecutorBase{
-			colNames:       []string{"test_col"},
-			colTypes:       colTypes,
-			simpleColNames: common.ToSimpleColNames(colNames),
-			rowsFactory:    rowsFactory,
+			colNames:    []string{"test_col"},
+			colTypes:    colTypes,
+			rowsFactory: rowsFactory,
 		}
 		staticRows, _ := NewStaticRows(base.colNames, existingRows)
 		base.AddChild(staticRows)

@@ -178,7 +178,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 
 	// First send column definitions.
 	columns := &service.Columns{}
-	names := executor.SimpleColNames()
+	names := executor.ColNames()
 	for i, typ := range executor.ColTypes() {
 		name := names[i]
 		column := &service.Column{

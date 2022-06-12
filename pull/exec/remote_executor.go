@@ -28,10 +28,9 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 	colTypes []common.ColumnType, schemaName string, clust cluster.Cluster, pointGetShardID int64) *RemoteExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colNames:       colNames,
-		colTypes:       colTypes,
-		simpleColNames: common.ToSimpleColNames(colNames),
-		rowsFactory:    rf,
+		colNames:    colNames,
+		colTypes:    colTypes,
+		rowsFactory: rf,
 	}
 	re := RemoteExecutor{
 		pullExecutorBase: base,

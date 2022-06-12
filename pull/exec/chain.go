@@ -7,6 +7,7 @@ import (
 // PullChain combines a sequence of executors in a linked list and exposes them as a single executor.
 type PullChain struct {
 	nonEmptyChain []PullExecutor
+	colNames      []string
 }
 
 var _ PullExecutor = (*PullChain)(nil)
@@ -55,13 +56,13 @@ func (c *PullChain) SetParent(parent PullExecutor) {
 }
 
 func (c *PullChain) ColNames() []string {
-	return c.first().ColNames()
+	return c.colNames
 }
 
 func (c *PullChain) ColTypes() []common.ColumnType {
 	return c.first().ColTypes()
 }
 
-func (c *PullChain) SimpleColNames() []string {
-	return c.first().SimpleColNames()
+func (c *PullChain) SetColNames(colNames []string) {
+	c.colNames = colNames
 }

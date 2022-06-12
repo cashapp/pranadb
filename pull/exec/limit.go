@@ -19,10 +19,9 @@ type PullLimit struct {
 func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset uint64) *PullLimit {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
-		colNames:       colNames,
-		colTypes:       colTypes,
-		simpleColNames: common.ToSimpleColNames(colNames),
-		rowsFactory:    rf,
+		colNames:    colNames,
+		colTypes:    colTypes,
+		rowsFactory: rf,
 	}
 	return &PullLimit{
 		pullExecutorBase: base,
