@@ -31,18 +31,12 @@ func (s *JSONKeyJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []comm
 	keyMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal, err := getColVal(keyCol, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(keyCol, colType, row)
 		keyMap[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(i, colType, row)
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyBytes, err := json.Marshal(keyMap)
@@ -247,10 +241,7 @@ func encodeTLJSONValue(colTypes []common.ColumnType, row *common.Row, keyColInde
 		if i == keyColIndex {
 			continue
 		}
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(i, colType, row)
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	return json.Marshal(valMap)
@@ -269,20 +260,14 @@ func (s *NestedJSONKeyNestedJSONValueEncoder) EncodeMessage(row *common.Row, col
 	keyMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal, err := getColVal(keyCol, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(keyCol, colType, row)
 		nested := map[string]interface{}{}
 		keyMap[fmt.Sprintf("n%d", i)] = nested
 		nested[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(i, colType, row)
 		nested := map[string]interface{}{}
 		valMap[fmt.Sprintf("n%d", i)] = nested
 		nested[fmt.Sprintf("v%d", i)] = colVal
@@ -315,18 +300,12 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 	keyHeaderMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal, err := getColVal(keyCol, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(keyCol, colType, row)
 		keyHeaderMap[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valHeaderMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(i, colType, row)
 		valHeaderMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyHeaderBytes, err := json.Marshal(keyHeaderMap)
@@ -415,10 +394,7 @@ func (e *StringKeyProtobufValueEncoder) encodeProtobufValue(colTypes []common.Co
 	msg := dynamicpb.NewMessage(e.d)
 	fields := e.d.Fields()
 	for i, colType := range colTypes {
-		colVal, err := getColVal(i, colType, row)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+		colVal := getColVal(i, colType, row)
 		protoSet(msg, fields.ByNumber(pref.FieldNumber(i+1)), colVal)
 	}
 	return proto.Marshal(msg)

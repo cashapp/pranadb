@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/squareup/pranadb/errors"
@@ -25,7 +26,7 @@ func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.C
 		if err := IngestRow(topic, &row, colTypes, sourceInfo.PrimaryKeyCols, encoder, timestamp); err != nil {
 			return errors.WithStack(err)
 		}
-		timestamp = timestamp.Add(1 * time.Second)
+		timestamp = timestamp.Add(1 * time.Microsecond)
 	}
 	return nil
 }
@@ -40,9 +41,9 @@ func IngestRow(topic *Topic, row *common.Row, colTypes []common.ColumnType, keyC
 	return errors.WithStack(err)
 }
 
-func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interface{}, error) {
+func getColVal(colIndex int, colType common.ColumnType, row *common.Row) interface{} {
 	if row.IsNull(colIndex) {
-		return nil, nil
+		return nil
 	}
 	var colVal interface{}
 	switch colType.Type {
@@ -57,14 +58,11 @@ func getColVal(colIndex int, colType common.ColumnType, row *common.Row) (interf
 		colVal = dec.String()
 	case common.TypeTimestamp:
 		ts := row.GetTimestamp(colIndex)
-		gotime, err := ts.GoTime(time.UTC)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		// convert to unix millis past epoch
-		colVal = gotime.UnixNano() / 1000000
+		// Get as ISO-8601 string
+		ct := ts.CoreTime()
+		colVal = fmt.Sprintf("%d-%d-%d %d:%d:%d.%d", ct.Year(), ct.Month(), ct.Day(), ct.Hour(), ct.Minute(), ct.Second(), ct.Microsecond())
 	case common.TypeUnknown:
 		panic("unknown type")
 	}
-	return colVal, nil
+	return colVal
 }

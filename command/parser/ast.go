@@ -17,7 +17,7 @@ import (
 )
 
 // DefaultFSP is the default fractional seconds precision for a TIMESTAMP field.
-const DefaultFSP = 6
+const DefaultFSP = 0
 
 // RawQuery represents raw SQL that can be passed through directly.
 type RawQuery struct {

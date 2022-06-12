@@ -201,7 +201,8 @@ func TestParseMessageJSONNested(t *testing.T) {
 
 func TestParseMessageTimestamp(t *testing.T) {
 	theColNames := []string{"col0", "col1", "col2"}
-	theColTypes := []common.ColumnType{common.TimestampColumnType, common.TimestampColumnType, common.TimestampColumnType}
+	tsColType := common.ColumnType{Type: common.TypeTimestamp, FSP: 6}
+	theColTypes := []common.ColumnType{tsColType, tsColType, tsColType}
 
 	now := time.Now()
 	// round it to the nearest millisecond

@@ -3,8 +3,6 @@ package source
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -12,6 +10,7 @@ import (
 	"github.com/squareup/pranadb/protolib"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
+	"reflect"
 )
 
 var (
@@ -200,6 +199,10 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			tsVal, err := CoerceTimestamp(val)
 			if err != nil {
 				return errors.WithStack(err)
+			}
+			tsVal.SetFsp(colType.FSP)
+			if err := common.RoundTimestampToFSP(&tsVal, colType.FSP); err != nil {
+				return err
 			}
 			rows.AppendTimestampToColumn(i, tsVal)
 		default:
