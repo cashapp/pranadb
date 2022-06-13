@@ -710,7 +710,7 @@ var funcs = map[string]functionClass{
 	ast.IsTruthWithNull:    &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsTruthWithNull, 1, 1}, opcode.IsTruth, true},
 	ast.IsFalsity:          &isTrueOrFalseFunctionClass{baseFunctionClass{ast.IsFalsity, 1, 1}, opcode.IsFalsity, false},
 	ast.Like:               &likeFunctionClass{baseFunctionClass{ast.Like, 3, 3}},
-	ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
+	//ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
 	ast.Case:               &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
 
 	// json functions

@@ -9,3 +9,13 @@ dataset:dataset_1 test_source_1
 8,800,null,8234.4321,82345678.99,str8,null
 9,900,9000,9234.4321,92345678.99,str9,2020-01-09 01:00:00.123456
 10,1000,10000,10234.4321,93345678.99,str10,2020-01-10 01:00:00.123456
+dataset:dataset_2 test_source_2
+1,aubergines
+2,apples
+3,tomatoes
+4,pears
+5,lemons
+6,avocados
+7,cheese
+8,beer
+9,geese

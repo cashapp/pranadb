@@ -24,10 +24,6 @@ create source test_source_1(
         v4,
         v5,
         v6
-    ),
-    properties = (
-        "prop1" = "val1",
-        "prop2" = "val2"
     )
 );
 0 rows returned
@@ -460,6 +456,22 @@ select * from test_source_1 where col6 is not null order by col0;
 |10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123456|
 9 rows returned
 
+-- AND;
+select * from test_source_1 where col1 > 300 and col2 <= 9000 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|4|400|4000|null|42345678.99|str4|2020-01-04 01:00:00.123456|
+|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123456|
+|7|700|7000|7234.4321|null|str7|2020-01-07 01:00:00.123456|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123456|
+4 rows returned
+
+-- OR;
+select * from test_source_1 where col1 = 800 or col5 = 'str4' order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|4|400|4000|null|42345678.99|str4|2020-01-04 01:00:00.123456|
+|8|800|null|8234.4321|82345678.99|str8|null|
+2 rows returned
+
 -- IF;
 select col0, if(col0 > 4, "bigger", "smaller"),
 if (col1 > 300, "bigger", "smaller"),
@@ -482,7 +494,154 @@ from test_source_1 order by col0;
 |10|bigger|bigger|bigger|not eq|more|thinner|wobble|
 10 rows returned
 
+-- CASE;
+select col0,
+case
+when col1 = 300 then "3 hundred"
+when col1 = 500 then "5 hundred"
+when col1 is null then "eeets null"
+else "badgers"
+end from test_source_1 order by col0;
+|col0|case
+when col1 = 300 then "3 hundred"
+when col1 = 500 then "5 hundred"
+when col1 is null then "eeets null"
+else "badgers"
+end|
+|1|badgers|
+|2|badgers|
+|3|3 hundred|
+|4|badgers|
+|5|5 hundred|
+|6|eeets null|
+|7|badgers|
+|8|badgers|
+|9|badgers|
+|10|badgers|
+10 rows returned
+
+-- IN;
+select * from test_source_1 where col2 in (4000, 7000, 3000) order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|3|300|3000|3234.4321|32345678.99|null|2020-01-03 01:00:00.123456|
+|4|400|4000|null|42345678.99|str4|2020-01-04 01:00:00.123456|
+|7|700|7000|7234.4321|null|str7|2020-01-07 01:00:00.123456|
+3 rows returned
+
+--UNARY MINUS;
+select * from test_source_1 where -10 * col1 = -col2 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123456|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123456|
+|3|300|3000|3234.4321|32345678.99|null|2020-01-03 01:00:00.123456|
+|4|400|4000|null|42345678.99|str4|2020-01-04 01:00:00.123456|
+|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123456|
+|7|700|7000|7234.4321|null|str7|2020-01-07 01:00:00.123456|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123456|
+|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123456|
+8 rows returned
+select -col0, -col1, -col2, -col3, -col4 from test_source_1 order by -col0;
+|-col0|-col1|-col2|-col3|-col4|
+|-10|-1000|-10000|-10234.4321|-93345678.99|
+|-9|-900|-9000|-9234.4321|-92345678.99|
+|-8|-800|null|-8234.4321|-82345678.99|
+|-7|-700|-7000|-7234.4321|null|
+|-6|null|-6000|-6234.4321|-62345678.99|
+|-5|-500|-5000|-5234.4321|-52345678.99|
+|-4|-400|-4000|null|-42345678.99|
+|-3|-300|-3000|-3234.4321|-32345678.99|
+|-2|-200|-2000|-2234.4321|-22345678.99|
+|-1|-100|-1000|-1234.4321|-12345678.99|
+10 rows returned
+
+--UNARY NOT;
+select * from test_source_1 where not col1 = 400 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|
+|1|100|1000|1234.4321|12345678.99|str1|2020-01-01 01:00:00.123456|
+|2|200|2000|2234.4321|22345678.99|str2|2020-01-02 01:00:00.123456|
+|3|300|3000|3234.4321|32345678.99|null|2020-01-03 01:00:00.123456|
+|5|500|5000|5234.4321|52345678.99|str5|2020-01-05 01:00:00.123456|
+|7|700|7000|7234.4321|null|str7|2020-01-07 01:00:00.123456|
+|8|800|null|8234.4321|82345678.99|str8|null|
+|9|900|9000|9234.4321|92345678.99|str9|2020-01-09 01:00:00.123456|
+|10|1000|10000|10234.4321|93345678.99|str10|2020-01-10 01:00:00.123456|
+8 rows returned
+
+--IFNULL;
+select col0, ifnull(col1, 'eeeetz null!') from test_source_1 order by col0;
+|col0|ifnull(col1, 'eeeetz null!')|
+|1|100|
+|2|200|
+|3|300|
+|4|400|
+|5|500|
+|6|eeeetz null!|
+|7|700|
+|8|800|
+|9|900|
+|10|1000|
+10 rows returned
+
+--LIKE;
+--create topic testtopic2;
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+--load data dataset_2;
+
+select * from test_source_2 where col1 like 'a%' order by col0;
+|col0|col1|
+|1|aubergines|
+|2|apples|
+|6|avocados|
+3 rows returned
+select * from test_source_2 where col1 like '%r' order by col0;
+|col0|col1|
+|8|beer|
+1 rows returned
+select * from test_source_2 where col1 like '%ee%' order by col0;
+|col0|col1|
+|7|cheese|
+|8|beer|
+|9|geese|
+3 rows returned
+select * from test_source_2 where col1 like '_e%' order by col0;
+|col0|col1|
+|4|pears|
+|5|lemons|
+|8|beer|
+|9|geese|
+4 rows returned
+select * from test_source_2 where col1 like 'a_______%' order by col0;
+|col0|col1|
+|1|aubergines|
+|6|avocados|
+2 rows returned
+select * from test_source_2 where col1 like 'a%s' order by col0;
+|col0|col1|
+|1|aubergines|
+|2|apples|
+|6|avocados|
+3 rows returned
+
+drop source test_source_2;
+0 rows returned
 drop source test_source_1;
 0 rows returned
 
+--delete topic testtopic2;
 --delete topic testtopic;
