@@ -313,6 +313,19 @@ select col1 << 1, col2 << 2, col3 << 2 from test_source_4 order by col0;
 
 select col1 >> 1, col2 >> 2, col3 >> 3 from test_source_4 order by col0;
 
+-- COALESCE;
+
+select col0, coalesce(null, null, null, 'foo') from test_source_1 order by col0;
+select col0, coalesce(col1, col2, col3, col4) from test_source_1 order by col0;
+
+-- GREATEST / LEAST;
+
+select col0, greatest(col1, col2, col3, col4), least(col1, col2, col3, col4), greatest(null, 1), least(null, 1), greatest(300, 200), least(300, 200) from test_source_1 order by col0;
+
+-- INTERVAL;
+
+select col0, interval(85, 1, 75, 17, 30,56, 175) from test_source_1 order by col0;
+
 drop source test_source_4;
 drop source test_source_3;
 drop source test_source_2;
