@@ -14,7 +14,7 @@ import (
 type Expression struct {
 	expression expression.Expression
 	returnType *ColumnType
-	ctx sessionctx.Context
+	ctx        sessionctx.Context
 }
 
 func (e *Expression) ReturnType(colTypes []ColumnType) (ColumnType, error) {
