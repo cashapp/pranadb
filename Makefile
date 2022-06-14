@@ -22,7 +22,7 @@ test: protos
 	go test -race -short -timeout 30s ./...
 
 docker-image:
-	docker build -f docker/Dockerfile -t pranadb:latest .
+	docker build -f docker-files/Dockerfile -t pranadb:latest .
 
 start:docker-image
 	docker-compose -f ./local-deployment/docker-compose.yaml up -d --remove-orphans
