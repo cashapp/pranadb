@@ -1,0 +1,57 @@
+-- This test ensures that timestamp FSP values (fractional seconds part) is respected;
+--create topic testtopic;
+use test;
+-- col8 has default FSP which is zero;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(0),
+    col2 timestamp(1),
+    col3 timestamp(2),
+    col4 timestamp(3),
+    col5 timestamp(4),
+    col6 timestamp(5),
+    col7 timestamp(6),
+    col8 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7,
+        v8
+    )
+);
+
+--load data dataset_1;
+-- note that the FSP digits are rounded up;
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col1 = '2020-01-01 01:00:00';
+select * from test_source_1 where col2 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col2 = '2020-01-01 01:00:00.1';
+select * from test_source_1 where col3 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col3 = '2020-01-01 01:00:00.12';
+select * from test_source_1 where col4 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col4 = '2020-01-01 01:00:00.123';
+select * from test_source_1 where col5 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col5 = '2020-01-01 01:00:00.1235';
+select * from test_source_1 where col6 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col6 = '2020-01-01 01:00:00.12346';
+select * from test_source_1 where col7 = '2020-01-01 01:00:00';
+select * from test_source_1 where col7 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col8 = '2020-01-01 01:00:00.123456';
+select * from test_source_1 where col8 = '2020-01-01 01:00:00';
+
+drop source test_source_1;
+
+--delete topic testtopic;

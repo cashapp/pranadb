@@ -1,0 +1,103 @@
+-- This test ensures that timestamp FSP values (fractional seconds part) is respected;
+--create topic testtopic;
+use test;
+0 rows returned
+-- col8 has default FSP which is zero;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(0),
+    col2 timestamp(1),
+    col3 timestamp(2),
+    col4 timestamp(3),
+    col5 timestamp(4),
+    col6 timestamp(5),
+    col7 timestamp(6),
+    col8 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7,
+        v8
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+-- note that the FSP digits are rounded up;
+select * from test_source_1 order by col0;
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col1 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col1 = '2020-01-01 01:00:00';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col2 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col2 = '2020-01-01 01:00:00.1';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col3 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col3 = '2020-01-01 01:00:00.12';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col4 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col4 = '2020-01-01 01:00:00.123';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col5 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col5 = '2020-01-01 01:00:00.1235';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col6 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col6 = '2020-01-01 01:00:00.12346';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col7 = '2020-01-01 01:00:00';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col7 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+select * from test_source_1 where col8 = '2020-01-01 01:00:00.123456';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+0 rows returned
+select * from test_source_1 where col8 = '2020-01-01 01:00:00';
+|col0|col1|col2|col3|col4|col5|col6|col7|col8|
+|1|2020-01-01 01:00:00.000000|2020-01-01 01:00:00.100000|2020-01-01 01:00:00.120000|2020-01-01 01:00:00.123000|2020-01-01 01:00:00.123500|2020-01-01 01:00:00.123460|2020-01-01 01:00:00.123456|2020-01-01 01:00:00.000000|
+1 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;

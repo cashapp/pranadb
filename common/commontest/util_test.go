@@ -70,3 +70,22 @@ func incAndCheckBytes(t *testing.T, bytes []byte, expected []byte) {
 	res := common.IncrementBytesBigEndian(bytes)
 	require.Equal(t, expected, res)
 }
+
+func TestRoundTimestampToFSP(t *testing.T) {
+	testRoundTimestampToFSP(t, 0, 0)
+	testRoundTimestampToFSP(t, 1, 100000)
+	testRoundTimestampToFSP(t, 2, 120000)
+	testRoundTimestampToFSP(t, 3, 123000)
+	testRoundTimestampToFSP(t, 4, 123500)
+	testRoundTimestampToFSP(t, 5, 123460)
+	testRoundTimestampToFSP(t, 6, 123456)
+}
+
+func testRoundTimestampToFSP(t *testing.T, fsp int8, microAfter int) {
+	t.Helper()
+	ts := common.NewTimestampFromString("2020-01-01 01:00:00.123456")
+	require.Equal(t, 123456, ts.Microsecond())
+	err := common.RoundTimestampToFSP(&ts, fsp)
+	require.NoError(t, err)
+	require.Equal(t, microAfter, ts.Microsecond())
+}

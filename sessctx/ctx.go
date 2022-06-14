@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/sessionctx/variable"
 	"github.com/squareup/pranadb/tidb/types"
+	"time"
 )
 
 func NewSessionContext(is infoschema.InfoSchema, database string) *SessCtx {
@@ -14,6 +15,8 @@ func NewSessionContext(is infoschema.InfoSchema, database string) *SessCtx {
 	// plan
 	sessVars.StmtCtx.UseCache = true
 	sessVars.CurrentDB = database
+	sessVars.TimeZone = time.UTC
+	sessVars.StmtCtx.TimeZone = time.UTC
 
 	ctx := SessCtx{
 		is:          is,
