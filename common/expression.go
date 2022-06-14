@@ -3,6 +3,7 @@ package common
 import (
 	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/tidb/sessionctx"
 
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/types"
@@ -13,6 +14,7 @@ import (
 type Expression struct {
 	expression expression.Expression
 	returnType *ColumnType
+	ctx sessionctx.Context
 }
 
 func (e *Expression) ReturnType(colTypes []ColumnType) (ColumnType, error) {
@@ -88,7 +90,7 @@ func NewScalarFunctionExpression(colType ColumnType, funcName string, args ...*E
 	return &Expression{expression: f}, nil
 }
 
-func NewExpression(exp expression.Expression) *Expression {
+func NewExpression(exp expression.Expression, ctx sessionctx.Context) *Expression {
 	sf, ok := exp.(*expression.ScalarFunction)
 	if ok {
 		// All our varchar lengths are unbounded so we override what the TiDB planner gives us
@@ -97,7 +99,7 @@ func NewExpression(exp expression.Expression) *Expression {
 			rt.Flen = -1
 		}
 	}
-	return &Expression{expression: exp}
+	return &Expression{expression: exp, ctx: ctx}
 }
 
 func (e *Expression) GetColumnIndex() (int, bool) {
@@ -109,22 +111,22 @@ func (e *Expression) GetColumnIndex() (int, bool) {
 }
 
 func (e *Expression) EvalBoolean(row *Row) (bool, bool, error) {
-	val, null, err := e.expression.EvalInt(nil, row.tRow)
+	val, null, err := e.expression.EvalInt(e.ctx, row.tRow)
 	return val != 0, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalInt64(row *Row) (val int64, null bool, err error) {
-	val, null, err = e.expression.EvalInt(nil, row.tRow)
+	val, null, err = e.expression.EvalInt(e.ctx, row.tRow)
 	return val, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalFloat64(row *Row) (val float64, null bool, err error) {
-	val, null, err = e.expression.EvalReal(nil, row.tRow)
+	val, null, err = e.expression.EvalReal(e.ctx, row.tRow)
 	return val, null, errors.WithStack(err)
 }
 
 func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
-	dec, null, err := e.expression.EvalDecimal(nil, row.tRow)
+	dec, null, err := e.expression.EvalDecimal(e.ctx, row.tRow)
 	if err != nil {
 		return Decimal{}, false, errors.WithStack(err)
 	}
@@ -135,7 +137,7 @@ func (e *Expression) EvalDecimal(row *Row) (Decimal, bool, error) {
 }
 
 func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
-	ts, null, err := e.expression.EvalTime(nil, row.tRow)
+	ts, null, err := e.expression.EvalTime(e.ctx, row.tRow)
 	if err != nil {
 		return Timestamp{}, false, errors.WithStack(err)
 	}
@@ -146,5 +148,5 @@ func (e *Expression) EvalTimestamp(row *Row) (Timestamp, bool, error) {
 }
 
 func (e *Expression) EvalString(row *Row) (val string, null bool, err error) {
-	return e.expression.EvalString(nil, row.tRow)
+	return e.expression.EvalString(e.ctx, row.tRow)
 }

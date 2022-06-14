@@ -46,6 +46,12 @@ select * from test_mv_2 order by col0_2;
 
 describe test_mv_2;
 
+-- aliasing on pull queries;
+select col6_2 as my_ts from test_mv_1 order by col0_2;
+
+-- and with functions;
+select day(col6_2) as dom from test_mv_1 order by col0_2;
+
 drop materialized view test_mv_2;
 drop materialized view test_mv_1;
 

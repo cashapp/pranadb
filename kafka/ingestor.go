@@ -60,7 +60,7 @@ func getColVal(colIndex int, colType common.ColumnType, row *common.Row) interfa
 		ts := row.GetTimestamp(colIndex)
 		// Get as ISO-8601 string
 		ct := ts.CoreTime()
-		colVal = fmt.Sprintf("%d-%d-%d %d:%d:%d.%d", ct.Year(), ct.Month(), ct.Day(), ct.Hour(), ct.Minute(), ct.Second(), ct.Microsecond())
+		colVal = fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d.%06d", ct.Year(), ct.Month(), ct.Day(), ct.Hour(), ct.Minute(), ct.Second(), ct.Microsecond())
 	case common.TypeUnknown:
 		panic("unknown type")
 	}

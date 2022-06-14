@@ -53,13 +53,13 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 	case *planner.PhysicalProjection:
 		var exprs []*common.Expression
 		for _, expr := range op.Exprs {
-			exprs = append(exprs, common.NewExpression(expr))
+			exprs = append(exprs, common.NewExpression(expr, plan.SCtx()))
 		}
 		executor = exec.NewPushProjection(exprs)
 	case *planner.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
-			exprs = append(exprs, common.NewExpression(expr))
+			exprs = append(exprs, common.NewExpression(expr, plan.SCtx()))
 		}
 		executor = exec.NewPushSelect(exprs)
 	case *planner.PhysicalHashAgg:
@@ -73,7 +73,7 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			}
 			var argExpr *common.Expression
 			if len(argExprs) == 1 {
-				argExpr = common.NewExpression(argExprs[0])
+				argExpr = common.NewExpression(argExprs[0], plan.SCtx())
 			}
 
 			var funcType aggfuncs.AggFunctionType

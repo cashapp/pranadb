@@ -92,6 +92,36 @@ describe test_mv_2;
 |col6_2|timestamp(6)||
 7 rows returned
 
+-- aliasing on pull queries;
+select col6_2 as my_ts from test_mv_1 order by col0_2;
+|my_ts|
+|2020-01-01 01:00:00.123456|
+|2020-01-02 01:00:00.123456|
+|2020-01-03 01:00:00.123456|
+|2020-01-04 01:00:00.123456|
+|2020-01-05 01:00:00.123456|
+|2020-01-06 01:00:00.123456|
+|2020-01-07 01:00:00.123456|
+|2020-01-08 01:00:00.123456|
+|2020-01-09 01:00:00.123456|
+|2020-01-10 01:00:00.123456|
+10 rows returned
+
+-- and with functions;
+select day(col6_2) as dom from test_mv_1 order by col0_2;
+|dom|
+|1|
+|2|
+|3|
+|4|
+|5|
+|6|
+|7|
+|8|
+|9|
+|10|
+10 rows returned
+
 drop materialized view test_mv_2;
 0 rows returned
 drop materialized view test_mv_1;
