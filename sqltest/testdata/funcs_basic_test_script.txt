@@ -1,3 +1,5 @@
+--local only;
+-- This tests all the basic functions and operators we provide;
 --create topic testtopic;
 use test;
 create source test_source_1(
@@ -163,8 +165,160 @@ select * from test_source_2 where col1 like '_e%' order by col0;
 select * from test_source_2 where col1 like 'a_______%' order by col0;
 select * from test_source_2 where col1 like 'a%s' order by col0;
 
+-- Logic ops/functions;
+
+--create topic testtopic3;
+create source test_source_3(
+    col0 bigint,
+    col1 tinyint,
+    col2 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2
+    )
+);
+
+--load data dataset_3;
+
+-- IS TRUE;
+select * from test_source_3 where col1 is true;
+select * from test_source_3 where col2 is true;
+
+-- IS FALSE;
+select * from test_source_3 where col1 is false;
+select * from test_source_3 where col2 is false;
+
+select * from test_source_3 where col1 and col2;
+select * from test_source_3 where col1 or col2;
+select * from test_source_3 where col1 xor col2;
+
+select * from test_source_3 where not col1;
+
+-- basic arithmetic;
+
+-- ADD;
+
+select col0 + 10 from test_source_1 order by col0;
+select col1 + 10 from test_source_1 order by col0;
+select col2 + 10 from test_source_1 order by col0;
+select col3 + 100000.0001 from test_source_1 order by col0;
+select col4 + 100000 from test_source_1 order by col0;
+
+select col0 + col0 from test_source_1 order by col0;
+select col1 + col1 from test_source_1 order by col0;
+select col2 + col2 from test_source_1 order by col0;
+select col3 + col3 from test_source_1 order by col0;
+select col4 + col4 from test_source_1 order by col0;
+
+select col0 + col1 + col2 + col3 + col4 from test_source_1 order by col0;
+
+-- SUBTRACT;
+
+select col0 - 10 from test_source_1 order by col0;
+select col1 - 10 from test_source_1 order by col0;
+select col2 - 10 from test_source_1 order by col0;
+select col3 - 100000.0001 from test_source_1 order by col0;
+select col4 - 100000 from test_source_1 order by col0;
+
+select 2 * col0 - col0 from test_source_1 order by col0;
+select 2 * col1 - col1 from test_source_1 order by col0;
+select 2 * col2 - col2 from test_source_1 order by col0;
+select 2 * col3 - col3 from test_source_1 order by col0;
+select 2 * col4 - col4 from test_source_1 order by col0;
+
+select col4 - col3 - col2 - col1 - col0 from test_source_1 order by col0;
+
+-- MULTIPLY;
+
+select col0 * 2 from test_source_1 order by col0;
+select col1 * 2 from test_source_1 order by col0;
+select col2 * 2 from test_source_1 order by col0;
+select col3 * 2 from test_source_1 order by col0;
+select col4 * 2 from test_source_1 order by col0;
+
+select col0 * col1 from test_source_1 order by col0;
+
+-- DIVIDE;
+
+select col2 / col0 from test_source_1 order by col0;
+
+select col0 / 2, col1 / 4, col2 / 2, col3 / 2, col4 / 2 from test_source_1 order by col0;
+
+-- INTEGER DIVIDE;
+
+select col0 div 2, col1 div 4, col2 div 2, col3 div 2, col4 div 2 from test_source_1 order by col0;
+
+-- MOD;
+
+select col0 mod 2 from test_source_1 order by col0;
+
+select col0 % 2 from test_source_1 order by col0;
+
+select mod(col0, 2) from test_source_1 order by col0;
+
+-- Bitwise ops;
+
+--create topic testtopic4;
+create source test_source_4(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic4",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3
+    )
+);
+
+--load data dataset_4;
+
+-- BITWISE AND;
+
+select col1 & 113, col2 & 45284648, col3 & 6983586634234 from test_source_4 order by col0;
+
+-- BITWISE OR;
+
+select col1 | 113, col2 | 45284648, col3 | 6983586634234 from test_source_4 order by col0;
+
+-- BITWISE XOR;
+
+select col1 ^ 113, col2 ^ 45284648, col3 ^ 6983586634234 from test_source_4 order by col0;
+
+-- BITWISE NEGATION;
+
+select ~col1, ~col2, ~col3 from test_source_4 order by col0;
+
+-- BITWISE LEFT SHIFT;
+
+select col1 << 1, col2 << 2, col3 << 2 from test_source_4 order by col0;
+
+-- BITWISE RIGHT SHIFT;
+
+select col1 >> 1, col2 >> 2, col3 >> 3 from test_source_4 order by col0;
+
+drop source test_source_4;
+drop source test_source_3;
 drop source test_source_2;
 drop source test_source_1;
 
+--delete topic testtopic4;
+--delete topic testtopic3;
 --delete topic testtopic2;
 --delete topic testtopic;

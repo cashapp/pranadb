@@ -438,6 +438,11 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 				st.closeClient(require)
 				return 1
 			}
+		} else if strings.HasPrefix(command, "--local only") {
+			if st.testSuite.numNodes > 1 {
+				st.closeClient(require)
+				return 1
+			}
 		} else if strings.HasPrefix(command, "--pause") {
 			st.executePause(require, command)
 		}

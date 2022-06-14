@@ -19,3 +19,15 @@ dataset:dataset_2 test_source_2
 7,cheese
 8,beer
 9,geese
+dataset:dataset_3 test_source_3
+1,1,1
+2,0,0
+3,0,null
+4,1,1
+5,0,1
+6,1,0
+7,null,1
+8,0,1
+9,1,0
+dataset:dataset_4 test_source_4
+0,166,56894525713,4836452756345273

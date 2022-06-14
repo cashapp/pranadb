@@ -249,7 +249,7 @@ func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProt
 }
 
 func (c *Client) sendHeartbeats() {
-	// This must be done outside the lock otherwise heartbeats will be delayed while long statements run which could
+	// This must be done outside the main lock otherwise heartbeats will be delayed while long statements run which could
 	// time out the sesssion on the server
 	c.sessionIDs.Range(func(sid, _ interface{}) bool {
 		sessID, ok := sid.(string)
