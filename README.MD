@@ -36,5 +36,3 @@ In order to contribute please sign the [block CLA](http://squ.re/sign-the-cla)
 
 [Frequently asked questions](docs/faq.md)
 
-Come and chat with us in our [Gitter Community](https://gitter.im/Prana-DB/community?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
-
