@@ -562,6 +562,7 @@ var funcs = map[string]functionClass{
 
 	// time functions
 	/*
+	We don't support all the date/time functions currently
 		ast.AddDate:          &addDateFunctionClass{baseFunctionClass{ast.AddDate, 3, 3}},
 		ast.DateAdd:          &addDateFunctionClass{baseFunctionClass{ast.DateAdd, 3, 3}},
 		ast.SubDate:          &subDateFunctionClass{baseFunctionClass{ast.SubDate, 3, 3}},
@@ -715,6 +716,8 @@ var funcs = map[string]functionClass{
 	//ast.Regexp:             &regexpFunctionClass{baseFunctionClass{ast.Regexp, 2, 2}},
 	ast.Case: &caseWhenFunctionClass{baseFunctionClass{ast.Case, 1, -1}},
 
+	/*
+	We don't currently support the JSON type, but we can enable this in the future
 	// json functions
 	ast.JSONType:          &jsonTypeFunctionClass{baseFunctionClass{ast.JSONType, 1, 1}},
 	ast.JSONExtract:       &jsonExtractFunctionClass{baseFunctionClass{ast.JSONExtract, 2, -1}},
@@ -740,4 +743,5 @@ var funcs = map[string]functionClass{
 	ast.JSONDepth:         &jsonDepthFunctionClass{baseFunctionClass{ast.JSONDepth, 1, 1}},
 	ast.JSONKeys:          &jsonKeysFunctionClass{baseFunctionClass{ast.JSONKeys, 1, 2}},
 	ast.JSONLength:        &jsonLengthFunctionClass{baseFunctionClass{ast.JSONLength, 1, 2}},
+	*/
 }
