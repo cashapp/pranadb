@@ -164,6 +164,13 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 
 func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if !d.started {
+		return nil, errors.Errorf("failed to execute query on node %d not started", d.cnf.NodeID)
+	}
+
 	if queryInfo.ShardID < cluster.DataShardIDBase {
 		panic("invalid shard cluster id")
 	}

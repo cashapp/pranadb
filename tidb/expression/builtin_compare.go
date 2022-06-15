@@ -18,7 +18,6 @@
 package expression
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/tidb"
 	"math"
 	"strings"
@@ -2710,10 +2709,6 @@ func CompareTime(sctx sessionctx.Context, lhsArg, rhsArg Expression, lhsRow, rhs
 	if err != nil {
 		return 0, true, err
 	}
-
-	a1s := arg0.String()
-	a2s := arg1.String()
-	log.Infof("arg0:%s arg1:%s", a1s, a2s)
 
 	if isNull0 || isNull1 {
 		return compareNull(isNull0, isNull1), true, nil
