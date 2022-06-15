@@ -24,9 +24,8 @@ func NewSingleValueBigIntRow(val int64, colName string) *StaticRows {
 	colNames := []string{colName}
 	return &StaticRows{
 		pullExecutorBase: pullExecutorBase{
-			colTypes:       rows.ColumnTypes(),
-			colNames:       colNames,
-			simpleColNames: colNames,
+			colTypes: rows.ColumnTypes(),
+			colNames: colNames,
 		},
 		rows: rows,
 	}
@@ -47,7 +46,6 @@ func NewStaticRows(colNames []string, rows *common.Rows) (*StaticRows, error) {
 		return nil, errors.Errorf("got different length of column names and column types arrays: colNames=%d, colTypes=%d", len(colNames), len(colTypes))
 	}
 	sr.colNames = colNames
-	sr.simpleColNames = colNames
 	sr.colTypes = colTypes
 	return sr, nil
 }

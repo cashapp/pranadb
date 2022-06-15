@@ -15,6 +15,20 @@ import (
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
+func (p *Engine) buildPullDAGWithOutputNames(session *sess.Session, logicalPlan planner.LogicalPlan,
+	plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
+	dag, err := p.buildPullDAG(session, plan, remote)
+	if err != nil {
+		return nil, err
+	}
+	var colNames []string
+	for _, colName := range logicalPlan.OutputNames() {
+		colNames = append(colNames, colName.ColName.L)
+	}
+	dag.SetColNames(colNames)
+	return dag, nil
+}
+
 // nolint: gocyclo
 func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
