@@ -3,14 +3,15 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/cznic/mathutil"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
-	"github.com/squareup/pranadb/remoting"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/cznic/mathutil"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/remoting"
 
 	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/table"
@@ -268,6 +269,10 @@ func (d *Dragon) start0() error {
 	log.Debugf("Opened pebble on node %d", d.cnf.NodeID)
 
 	if err := d.checkConstantShards(d.cnf.NumShards); err != nil {
+		return err
+	}
+
+	if err := d.checkConstantReplicationFactor(d.cnf.ReplicationFactor); err != nil {
 		return err
 	}
 
@@ -902,6 +907,38 @@ func (d *Dragon) tableExists(queryExec common.SimpleQueryExec, id uint64) (bool,
 		return false, err
 	}
 	return rows.RowCount() != 0, nil
+}
+
+// Currently the replication factor of the cluster is fixed. We must make sure the user doesn't change the replication factor
+// in the config after the cluster has been created. So we store the number in the database and check
+func (d *Dragon) checkConstantReplicationFactor(expectedReplicationFactor int) error {
+	log.Debug("Checking constant replication factor: %d", expectedReplicationFactor)
+	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
+	propKey := []byte("replication-factor")
+	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
+	key = append(key, propKey...)
+	v, err := d.LocalGet(key)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		log.Debug("New cluster - no value for replication-factor in stroage, persisting it")
+		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedReplicationFactor))
+		batch := d.pebble.NewBatch()
+		if err := batch.Set(key, v, nil); err != nil {
+			return errors.WithStack(err)
+		}
+		if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
+			return errors.WithStack(err)
+		}
+	} else {
+		replicationFactor, _ := common.ReadUint32FromBufferBE(v, 0)
+		log.Debugf("value for replication-factor found in storage: %d", replicationFactor)
+		if int(replicationFactor) != expectedReplicationFactor {
+			return errors.Errorf("replication factor in cluster cannot be changed after cluster creation. cluster value %d new value %d", expectedReplicationFactor, replicationFactor)
+		}
+	}
+	return nil
 }
 
 // Currently the number of shards in the cluster is fixed. We must make sure the user doesn't change the number of shards
