@@ -150,17 +150,58 @@ func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatReques
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, stream service.PranaDBService_ExecuteSQLStatementServer) error { //nolint:gocyclo
-
+func (s *Server) ExecuteSQLStatementInSchema(in *service.ExecuteSQLStatementInSchemaRequest,
+	stream service.PranaDBService_ExecuteSQLStatementInSchemaServer) error {
 	defer common.PanicHandler()
+	// We create a session on the fly
+	session := s.ce.CreateSession()
+	defer func() {
+		if err := session.Close(s.metaController); err != nil {
+			log.Errorf("failed to close session %v", err)
+		}
+	}()
+	schema := s.metaController.GetOrCreateSchema(in.Schema)
+	session.UseSchema(schema)
+	return s.doExecuteSQLStatement(session, in.Statement, int(in.PageSize), func(result interface{}) error {
+		r := &service.ExecuteSQLStatementInSchemaResponse{}
+		switch op := result.(type) {
+		case *service.Page:
+			r.Result = &service.ExecuteSQLStatementInSchemaResponse_Page{Page: op}
+		case *service.Columns:
+			r.Result = &service.ExecuteSQLStatementInSchemaResponse_Columns{Columns: op}
+		default:
+			panic("unexpected type")
+		}
+		return stream.Send(r)
+	})
+}
 
+func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
+	stream service.PranaDBService_ExecuteSQLStatementServer) error {
+	defer common.PanicHandler()
 	entry, err := s.lookupSession(in.GetSessionId())
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	session := entry.session
+	return s.doExecuteSQLStatement(session, in.Statement, int(in.PageSize), func(result interface{}) error {
+		r := &service.ExecuteSQLStatementResponse{}
+		switch op := result.(type) {
+		case *service.Page:
+			r.Result = &service.ExecuteSQLStatementResponse_Page{Page: op}
+		case *service.Columns:
+			r.Result = &service.ExecuteSQLStatementResponse_Columns{Columns: op}
+		default:
+			panic("unexpected type")
+		}
+		return stream.Send(r)
+	})
+}
 
-	executor, err := s.ce.ExecuteSQLStatement(session, in.Statement)
+func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, pageSize int,
+	stream func(result interface{}) error) error { //nolint:gocyclo
+
+	executor, err := s.ce.ExecuteSQLStatement(session, statement)
 	if err != nil {
 		log.Errorf("failed to execute statement %+v", err)
 		var perr errors.PranaError
@@ -193,16 +234,15 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 		}
 		columns.Columns = append(columns.Columns, column)
 	}
-	if err := stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Columns{Columns: columns}}); err != nil {
+	if err := stream(columns); err != nil {
 		return errors.WithStack(err)
 	}
 
 	// Then start sending pages until complete.
 	numCols := len(executor.ColTypes())
-	limit := int(in.PageSize)
 	for {
 		// Transcode rows.
-		rows, err := executor.GetRows(limit)
+		rows, err := executor.GetRows(pageSize)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -249,10 +289,10 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest, str
 			Count: uint64(numRows),
 			Rows:  prows,
 		}
-		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
+		if err = stream(results); err != nil {
 			return errors.WithStack(err)
 		}
-		if numRows < limit {
+		if numRows < pageSize {
 			break
 		}
 	}

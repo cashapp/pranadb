@@ -273,6 +273,70 @@ func (x *ExecuteSQLStatementRequest) GetPageSize() int32 {
 	return 0
 }
 
+type ExecuteSQLStatementInSchemaRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Schema    string `protobuf:"bytes,1,opt,name=schema,proto3" json:"schema,omitempty"`
+	Statement string `protobuf:"bytes,2,opt,name=statement,proto3" json:"statement,omitempty"`
+	// Size of each page of results returned when paginating.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+}
+
+func (x *ExecuteSQLStatementInSchemaRequest) Reset() {
+	*x = ExecuteSQLStatementInSchemaRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ExecuteSQLStatementInSchemaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteSQLStatementInSchemaRequest) ProtoMessage() {}
+
+func (x *ExecuteSQLStatementInSchemaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteSQLStatementInSchemaRequest.ProtoReflect.Descriptor instead.
+func (*ExecuteSQLStatementInSchemaRequest) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExecuteSQLStatementInSchemaRequest) GetSchema() string {
+	if x != nil {
+		return x.Schema
+	}
+	return ""
+}
+
+func (x *ExecuteSQLStatementInSchemaRequest) GetStatement() string {
+	if x != nil {
+		return x.Statement
+	}
+	return ""
+}
+
+func (x *ExecuteSQLStatementInSchemaRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
 // Column definitions sent prior to a set of Pages.
 type Columns struct {
 	state         protoimpl.MessageState
@@ -285,7 +349,7 @@ type Columns struct {
 func (x *Columns) Reset() {
 	*x = Columns{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[3]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -298,7 +362,7 @@ func (x *Columns) String() string {
 func (*Columns) ProtoMessage() {}
 
 func (x *Columns) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[3]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -311,7 +375,7 @@ func (x *Columns) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Columns.ProtoReflect.Descriptor instead.
 func (*Columns) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{3}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Columns) GetColumns() []*Column {
@@ -332,7 +396,7 @@ type Row struct {
 func (x *Row) Reset() {
 	*x = Row{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[4]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -345,7 +409,7 @@ func (x *Row) String() string {
 func (*Row) ProtoMessage() {}
 
 func (x *Row) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[4]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -358,7 +422,7 @@ func (x *Row) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Row.ProtoReflect.Descriptor instead.
 func (*Row) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{4}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Row) GetValues() []*ColValue {
@@ -384,7 +448,7 @@ type ColValue struct {
 func (x *ColValue) Reset() {
 	*x = ColValue{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -397,7 +461,7 @@ func (x *ColValue) String() string {
 func (*ColValue) ProtoMessage() {}
 
 func (x *ColValue) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -410,7 +474,7 @@ func (x *ColValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ColValue.ProtoReflect.Descriptor instead.
 func (*ColValue) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{5}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (m *ColValue) GetValue() isColValue_Value {
@@ -489,7 +553,7 @@ type Page struct {
 func (x *Page) Reset() {
 	*x = Page{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -502,7 +566,7 @@ func (x *Page) String() string {
 func (*Page) ProtoMessage() {}
 
 func (x *Page) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -515,7 +579,7 @@ func (x *Page) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Page.ProtoReflect.Descriptor instead.
 func (*Page) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{6}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Page) GetCount() uint64 {
@@ -546,7 +610,7 @@ type ExecuteSQLStatementResponse struct {
 func (x *ExecuteSQLStatementResponse) Reset() {
 	*x = ExecuteSQLStatementResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -559,7 +623,7 @@ func (x *ExecuteSQLStatementResponse) String() string {
 func (*ExecuteSQLStatementResponse) ProtoMessage() {}
 
 func (x *ExecuteSQLStatementResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +636,7 @@ func (x *ExecuteSQLStatementResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteSQLStatementResponse.ProtoReflect.Descriptor instead.
 func (*ExecuteSQLStatementResponse) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{7}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (m *ExecuteSQLStatementResponse) GetResult() isExecuteSQLStatementResponse_Result {
@@ -612,6 +676,86 @@ func (*ExecuteSQLStatementResponse_Columns) isExecuteSQLStatementResponse_Result
 
 func (*ExecuteSQLStatementResponse_Page) isExecuteSQLStatementResponse_Result() {}
 
+type ExecuteSQLStatementInSchemaResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Types that are assignable to Result:
+	//	*ExecuteSQLStatementInSchemaResponse_Columns
+	//	*ExecuteSQLStatementInSchemaResponse_Page
+	Result isExecuteSQLStatementInSchemaResponse_Result `protobuf_oneof:"result"`
+}
+
+func (x *ExecuteSQLStatementInSchemaResponse) Reset() {
+	*x = ExecuteSQLStatementInSchemaResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ExecuteSQLStatementInSchemaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteSQLStatementInSchemaResponse) ProtoMessage() {}
+
+func (x *ExecuteSQLStatementInSchemaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteSQLStatementInSchemaResponse.ProtoReflect.Descriptor instead.
+func (*ExecuteSQLStatementInSchemaResponse) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (m *ExecuteSQLStatementInSchemaResponse) GetResult() isExecuteSQLStatementInSchemaResponse_Result {
+	if m != nil {
+		return m.Result
+	}
+	return nil
+}
+
+func (x *ExecuteSQLStatementInSchemaResponse) GetColumns() *Columns {
+	if x, ok := x.GetResult().(*ExecuteSQLStatementInSchemaResponse_Columns); ok {
+		return x.Columns
+	}
+	return nil
+}
+
+func (x *ExecuteSQLStatementInSchemaResponse) GetPage() *Page {
+	if x, ok := x.GetResult().(*ExecuteSQLStatementInSchemaResponse_Page); ok {
+		return x.Page
+	}
+	return nil
+}
+
+type isExecuteSQLStatementInSchemaResponse_Result interface {
+	isExecuteSQLStatementInSchemaResponse_Result()
+}
+
+type ExecuteSQLStatementInSchemaResponse_Columns struct {
+	Columns *Columns `protobuf:"bytes,1,opt,name=columns,proto3,oneof"` // Present in first response.
+}
+
+type ExecuteSQLStatementInSchemaResponse_Page struct {
+	Page *Page `protobuf:"bytes,2,opt,name=page,proto3,oneof"`
+}
+
+func (*ExecuteSQLStatementInSchemaResponse_Columns) isExecuteSQLStatementInSchemaResponse_Result() {}
+
+func (*ExecuteSQLStatementInSchemaResponse_Page) isExecuteSQLStatementInSchemaResponse_Result() {}
+
 type UseRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -623,7 +767,7 @@ type UseRequest struct {
 func (x *UseRequest) Reset() {
 	*x = UseRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -636,7 +780,7 @@ func (x *UseRequest) String() string {
 func (*UseRequest) ProtoMessage() {}
 
 func (x *UseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +793,7 @@ func (x *UseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseRequest.ProtoReflect.Descriptor instead.
 func (*UseRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{8}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UseRequest) GetSchema() string {
@@ -668,7 +812,7 @@ type CreateSessionRequest struct {
 func (x *CreateSessionRequest) Reset() {
 	*x = CreateSessionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -681,7 +825,7 @@ func (x *CreateSessionRequest) String() string {
 func (*CreateSessionRequest) ProtoMessage() {}
 
 func (x *CreateSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -694,7 +838,7 @@ func (x *CreateSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateSessionRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{9}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{11}
 }
 
 type CreateSessionResponse struct {
@@ -708,7 +852,7 @@ type CreateSessionResponse struct {
 func (x *CreateSessionResponse) Reset() {
 	*x = CreateSessionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[10]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -721,7 +865,7 @@ func (x *CreateSessionResponse) String() string {
 func (*CreateSessionResponse) ProtoMessage() {}
 
 func (x *CreateSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[10]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -734,7 +878,7 @@ func (x *CreateSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSessionResponse.ProtoReflect.Descriptor instead.
 func (*CreateSessionResponse) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{10}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateSessionResponse) GetSessionId() string {
@@ -755,7 +899,7 @@ type CloseSessionRequest struct {
 func (x *CloseSessionRequest) Reset() {
 	*x = CloseSessionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[11]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -768,7 +912,7 @@ func (x *CloseSessionRequest) String() string {
 func (*CloseSessionRequest) ProtoMessage() {}
 
 func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[11]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -781,7 +925,7 @@ func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
 func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{11}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CloseSessionRequest) GetSessionId() string {
@@ -802,7 +946,7 @@ type HeartbeatRequest struct {
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[12]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -815,7 +959,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[12]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +972,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{12}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HeartbeatRequest) GetSessionId() string {
@@ -849,7 +993,7 @@ type RegisterProtobufsRequest struct {
 func (x *RegisterProtobufsRequest) Reset() {
 	*x = RegisterProtobufsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[13]
+		mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[15]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -862,7 +1006,7 @@ func (x *RegisterProtobufsRequest) String() string {
 func (*RegisterProtobufsRequest) ProtoMessage() {}
 
 func (x *RegisterProtobufsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[13]
+	mi := &file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[15]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -875,7 +1019,7 @@ func (x *RegisterProtobufsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterProtobufsRequest.ProtoReflect.Descriptor instead.
 func (*RegisterProtobufsRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{13}
+	return file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RegisterProtobufsRequest) GetDescriptors() *descriptorpb.FileDescriptorSet {
@@ -923,33 +1067,52 @@ var file_squareup_cash_pranadb_service_v1_service_proto_rawDesc = []byte{
 	0x49, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x73, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x18,
 	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x73, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74,
 	0x12, 0x1b, 0x0a, 0x09, 0x70, 0x61, 0x67, 0x65, 0x5f, 0x73, 0x69, 0x7a, 0x65, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x05, 0x52, 0x08, 0x70, 0x61, 0x67, 0x65, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x4d, 0x0a,
-	0x07, 0x43, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x12, 0x42, 0x0a, 0x07, 0x63, 0x6f, 0x6c, 0x75,
-	0x6d, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x73, 0x71, 0x75, 0x61,
-	0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64,
-	0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6c,
-	0x75, 0x6d, 0x6e, 0x52, 0x07, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x22, 0x49, 0x0a, 0x03,
-	0x52, 0x6f, 0x77, 0x12, 0x42, 0x0a, 0x06, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x73, 0x18, 0x01, 0x20,
-	0x03, 0x28, 0x0b, 0x32, 0x2a, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63,
-	0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76,
-	0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6c, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x52,
-	0x06, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x73, 0x22, 0x95, 0x01, 0x0a, 0x08, 0x43, 0x6f, 0x6c, 0x56,
-	0x61, 0x6c, 0x75, 0x65, 0x12, 0x19, 0x0a, 0x07, 0x69, 0x73, 0x5f, 0x6e, 0x75, 0x6c, 0x6c, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00, 0x52, 0x06, 0x69, 0x73, 0x4e, 0x75, 0x6c, 0x6c, 0x12,
-	0x1d, 0x0a, 0x09, 0x69, 0x6e, 0x74, 0x5f, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01,
-	0x28, 0x03, 0x48, 0x00, 0x52, 0x08, 0x69, 0x6e, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x12, 0x21,
-	0x0a, 0x0b, 0x66, 0x6c, 0x6f, 0x61, 0x74, 0x5f, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x01, 0x48, 0x00, 0x52, 0x0a, 0x66, 0x6c, 0x6f, 0x61, 0x74, 0x56, 0x61, 0x6c, 0x75,
-	0x65, 0x12, 0x23, 0x0a, 0x0c, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x5f, 0x76, 0x61, 0x6c, 0x75,
-	0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00, 0x52, 0x0b, 0x73, 0x74, 0x72, 0x69, 0x6e,
-	0x67, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x42, 0x07, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x22,
-	0x57, 0x0a, 0x04, 0x50, 0x61, 0x67, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x39, 0x0a,
-	0x04, 0x72, 0x6f, 0x77, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x73, 0x71,
-	0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e,
-	0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52,
-	0x6f, 0x77, 0x52, 0x04, 0x72, 0x6f, 0x77, 0x73, 0x22, 0xac, 0x01, 0x0a, 0x1b, 0x45, 0x78, 0x65,
-	0x63, 0x75, 0x74, 0x65, 0x53, 0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74,
+	0x01, 0x28, 0x05, 0x52, 0x08, 0x70, 0x61, 0x67, 0x65, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x77, 0x0a,
+	0x22, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x53, 0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65,
+	0x6d, 0x65, 0x6e, 0x74, 0x49, 0x6e, 0x53, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x12, 0x1c, 0x0a, 0x09, 0x73,
+	0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09,
+	0x73, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x70, 0x61, 0x67,
+	0x65, 0x5f, 0x73, 0x69, 0x7a, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x70, 0x61,
+	0x67, 0x65, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x4d, 0x0a, 0x07, 0x43, 0x6f, 0x6c, 0x75, 0x6d, 0x6e,
+	0x73, 0x12, 0x42, 0x0a, 0x07, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03,
+	0x28, 0x0b, 0x32, 0x28, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61,
+	0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69,
+	0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x52, 0x07, 0x63, 0x6f,
+	0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x22, 0x49, 0x0a, 0x03, 0x52, 0x6f, 0x77, 0x12, 0x42, 0x0a, 0x06,
+	0x76, 0x61, 0x6c, 0x75, 0x65, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2a, 0x2e, 0x73,
+	0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61,
+	0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e,
+	0x43, 0x6f, 0x6c, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x52, 0x06, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x73,
+	0x22, 0x95, 0x01, 0x0a, 0x08, 0x43, 0x6f, 0x6c, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x12, 0x19, 0x0a,
+	0x07, 0x69, 0x73, 0x5f, 0x6e, 0x75, 0x6c, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x48, 0x00,
+	0x52, 0x06, 0x69, 0x73, 0x4e, 0x75, 0x6c, 0x6c, 0x12, 0x1d, 0x0a, 0x09, 0x69, 0x6e, 0x74, 0x5f,
+	0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x48, 0x00, 0x52, 0x08, 0x69,
+	0x6e, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x12, 0x21, 0x0a, 0x0b, 0x66, 0x6c, 0x6f, 0x61, 0x74,
+	0x5f, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x01, 0x48, 0x00, 0x52, 0x0a,
+	0x66, 0x6c, 0x6f, 0x61, 0x74, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x12, 0x23, 0x0a, 0x0c, 0x73, 0x74,
+	0x72, 0x69, 0x6e, 0x67, 0x5f, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09,
+	0x48, 0x00, 0x52, 0x0b, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x42,
+	0x07, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x22, 0x57, 0x0a, 0x04, 0x50, 0x61, 0x67, 0x65,
+	0x12, 0x14, 0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52,
+	0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x39, 0x0a, 0x04, 0x72, 0x6f, 0x77, 0x73, 0x18, 0x02,
+	0x20, 0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e,
+	0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72,
+	0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x6f, 0x77, 0x52, 0x04, 0x72, 0x6f, 0x77,
+	0x73, 0x22, 0xac, 0x01, 0x0a, 0x1b, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x53, 0x51, 0x4c,
+	0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x12, 0x45, 0x0a, 0x07, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x29, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61,
+	0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69,
+	0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x48, 0x00, 0x52,
+	0x07, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x73, 0x12, 0x3c, 0x0a, 0x04, 0x70, 0x61, 0x67, 0x65,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75,
+	0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73,
+	0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x67, 0x65, 0x48, 0x00,
+	0x52, 0x04, 0x70, 0x61, 0x67, 0x65, 0x42, 0x08, 0x0a, 0x06, 0x72, 0x65, 0x73, 0x75, 0x6c, 0x74,
+	0x22, 0xb4, 0x01, 0x0a, 0x23, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x53, 0x51, 0x4c, 0x53,
+	0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x49, 0x6e, 0x53, 0x63, 0x68, 0x65, 0x6d, 0x61,
 	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x45, 0x0a, 0x07, 0x63, 0x6f, 0x6c, 0x75,
 	0x6d, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x29, 0x2e, 0x73, 0x71, 0x75, 0x61,
 	0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64,
@@ -993,7 +1156,7 @@ var file_squareup_cash_pranadb_service_v1_service_proto_rawDesc = []byte{
 	0x13, 0x43, 0x4f, 0x4c, 0x55, 0x4d, 0x4e, 0x5f, 0x54, 0x59, 0x50, 0x45, 0x5f, 0x56, 0x41, 0x52,
 	0x43, 0x48, 0x41, 0x52, 0x10, 0x06, 0x12, 0x19, 0x0a, 0x15, 0x43, 0x4f, 0x4c, 0x55, 0x4d, 0x4e,
 	0x5f, 0x54, 0x59, 0x50, 0x45, 0x5f, 0x54, 0x49, 0x4d, 0x45, 0x53, 0x54, 0x41, 0x4d, 0x50, 0x10,
-	0x07, 0x32, 0xaa, 0x04, 0x0a, 0x0e, 0x50, 0x72, 0x61, 0x6e, 0x61, 0x44, 0x42, 0x53, 0x65, 0x72,
+	0x07, 0x32, 0xd9, 0x05, 0x0a, 0x0e, 0x50, 0x72, 0x61, 0x6e, 0x61, 0x44, 0x42, 0x53, 0x65, 0x72,
 	0x76, 0x69, 0x63, 0x65, 0x12, 0x60, 0x0a, 0x0d, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x53, 0x65,
 	0x73, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
 	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x37, 0x2e,
@@ -1021,18 +1184,29 @@ var file_squareup_cash_pranadb_service_v1_service_proto_rawDesc = []byte{
 	0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72,
 	0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x53,
 	0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x30, 0x01, 0x12, 0x67, 0x0a, 0x11, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65,
-	0x72, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x73, 0x12, 0x3a, 0x2e, 0x73, 0x71, 0x75,
-	0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61,
-	0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65,
-	0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x73, 0x52,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x42, 0x45,
-	0x5a, 0x43, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x71, 0x75,
-	0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x63, 0x61,
-	0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x76, 0x31, 0x2f, 0x73, 0x65,
-	0x72, 0x76, 0x69, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6e, 0x73, 0x65, 0x30, 0x01, 0x12, 0xac, 0x01, 0x0a, 0x1b, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74,
+	0x65, 0x53, 0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x49, 0x6e, 0x53,
+	0x63, 0x68, 0x65, 0x6d, 0x61, 0x12, 0x44, 0x2e, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70,
+	0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2e, 0x73, 0x65,
+	0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65,
+	0x53, 0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x49, 0x6e, 0x53, 0x63,
+	0x68, 0x65, 0x6d, 0x61, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x45, 0x2e, 0x73, 0x71,
+	0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e,
+	0x61, 0x64, 0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x45,
+	0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x53, 0x51, 0x4c, 0x53, 0x74, 0x61, 0x74, 0x65, 0x6d, 0x65,
+	0x6e, 0x74, 0x49, 0x6e, 0x53, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x30, 0x01, 0x12, 0x67, 0x0a, 0x11, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72,
+	0x50, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x73, 0x12, 0x3a, 0x2e, 0x73, 0x71, 0x75, 0x61,
+	0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64,
+	0x62, 0x2e, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x67,
+	0x69, 0x73, 0x74, 0x65, 0x72, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x42, 0x45, 0x5a,
+	0x43, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61,
+	0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x63, 0x61, 0x73,
+	0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x76, 0x31, 0x2f, 0x73, 0x65, 0x72,
+	0x76, 0x69, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1048,50 +1222,56 @@ func file_squareup_cash_pranadb_service_v1_service_proto_rawDescGZIP() []byte {
 }
 
 var file_squareup_cash_pranadb_service_v1_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_squareup_cash_pranadb_service_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_squareup_cash_pranadb_service_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_squareup_cash_pranadb_service_v1_service_proto_goTypes = []interface{}{
-	(ColumnType)(0),                        // 0: squareup.cash.pranadb.service.v1.ColumnType
-	(*DecimalParams)(nil),                  // 1: squareup.cash.pranadb.service.v1.DecimalParams
-	(*Column)(nil),                         // 2: squareup.cash.pranadb.service.v1.Column
-	(*ExecuteSQLStatementRequest)(nil),     // 3: squareup.cash.pranadb.service.v1.ExecuteSQLStatementRequest
-	(*Columns)(nil),                        // 4: squareup.cash.pranadb.service.v1.Columns
-	(*Row)(nil),                            // 5: squareup.cash.pranadb.service.v1.Row
-	(*ColValue)(nil),                       // 6: squareup.cash.pranadb.service.v1.ColValue
-	(*Page)(nil),                           // 7: squareup.cash.pranadb.service.v1.Page
-	(*ExecuteSQLStatementResponse)(nil),    // 8: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse
-	(*UseRequest)(nil),                     // 9: squareup.cash.pranadb.service.v1.UseRequest
-	(*CreateSessionRequest)(nil),           // 10: squareup.cash.pranadb.service.v1.CreateSessionRequest
-	(*CreateSessionResponse)(nil),          // 11: squareup.cash.pranadb.service.v1.CreateSessionResponse
-	(*CloseSessionRequest)(nil),            // 12: squareup.cash.pranadb.service.v1.CloseSessionRequest
-	(*HeartbeatRequest)(nil),               // 13: squareup.cash.pranadb.service.v1.HeartbeatRequest
-	(*RegisterProtobufsRequest)(nil),       // 14: squareup.cash.pranadb.service.v1.RegisterProtobufsRequest
-	(*descriptorpb.FileDescriptorSet)(nil), // 15: google.protobuf.FileDescriptorSet
-	(*emptypb.Empty)(nil),                  // 16: google.protobuf.Empty
+	(ColumnType)(0),                             // 0: squareup.cash.pranadb.service.v1.ColumnType
+	(*DecimalParams)(nil),                       // 1: squareup.cash.pranadb.service.v1.DecimalParams
+	(*Column)(nil),                              // 2: squareup.cash.pranadb.service.v1.Column
+	(*ExecuteSQLStatementRequest)(nil),          // 3: squareup.cash.pranadb.service.v1.ExecuteSQLStatementRequest
+	(*ExecuteSQLStatementInSchemaRequest)(nil),  // 4: squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaRequest
+	(*Columns)(nil),                             // 5: squareup.cash.pranadb.service.v1.Columns
+	(*Row)(nil),                                 // 6: squareup.cash.pranadb.service.v1.Row
+	(*ColValue)(nil),                            // 7: squareup.cash.pranadb.service.v1.ColValue
+	(*Page)(nil),                                // 8: squareup.cash.pranadb.service.v1.Page
+	(*ExecuteSQLStatementResponse)(nil),         // 9: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse
+	(*ExecuteSQLStatementInSchemaResponse)(nil), // 10: squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaResponse
+	(*UseRequest)(nil),                          // 11: squareup.cash.pranadb.service.v1.UseRequest
+	(*CreateSessionRequest)(nil),                // 12: squareup.cash.pranadb.service.v1.CreateSessionRequest
+	(*CreateSessionResponse)(nil),               // 13: squareup.cash.pranadb.service.v1.CreateSessionResponse
+	(*CloseSessionRequest)(nil),                 // 14: squareup.cash.pranadb.service.v1.CloseSessionRequest
+	(*HeartbeatRequest)(nil),                    // 15: squareup.cash.pranadb.service.v1.HeartbeatRequest
+	(*RegisterProtobufsRequest)(nil),            // 16: squareup.cash.pranadb.service.v1.RegisterProtobufsRequest
+	(*descriptorpb.FileDescriptorSet)(nil),      // 17: google.protobuf.FileDescriptorSet
+	(*emptypb.Empty)(nil),                       // 18: google.protobuf.Empty
 }
 var file_squareup_cash_pranadb_service_v1_service_proto_depIdxs = []int32{
 	0,  // 0: squareup.cash.pranadb.service.v1.Column.type:type_name -> squareup.cash.pranadb.service.v1.ColumnType
 	1,  // 1: squareup.cash.pranadb.service.v1.Column.decimal_params:type_name -> squareup.cash.pranadb.service.v1.DecimalParams
 	2,  // 2: squareup.cash.pranadb.service.v1.Columns.columns:type_name -> squareup.cash.pranadb.service.v1.Column
-	6,  // 3: squareup.cash.pranadb.service.v1.Row.values:type_name -> squareup.cash.pranadb.service.v1.ColValue
-	5,  // 4: squareup.cash.pranadb.service.v1.Page.rows:type_name -> squareup.cash.pranadb.service.v1.Row
-	4,  // 5: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse.columns:type_name -> squareup.cash.pranadb.service.v1.Columns
-	7,  // 6: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse.page:type_name -> squareup.cash.pranadb.service.v1.Page
-	15, // 7: squareup.cash.pranadb.service.v1.RegisterProtobufsRequest.descriptors:type_name -> google.protobuf.FileDescriptorSet
-	16, // 8: squareup.cash.pranadb.service.v1.PranaDBService.CreateSession:input_type -> google.protobuf.Empty
-	12, // 9: squareup.cash.pranadb.service.v1.PranaDBService.CloseSession:input_type -> squareup.cash.pranadb.service.v1.CloseSessionRequest
-	13, // 10: squareup.cash.pranadb.service.v1.PranaDBService.Heartbeat:input_type -> squareup.cash.pranadb.service.v1.HeartbeatRequest
-	3,  // 11: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatement:input_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementRequest
-	14, // 12: squareup.cash.pranadb.service.v1.PranaDBService.RegisterProtobufs:input_type -> squareup.cash.pranadb.service.v1.RegisterProtobufsRequest
-	11, // 13: squareup.cash.pranadb.service.v1.PranaDBService.CreateSession:output_type -> squareup.cash.pranadb.service.v1.CreateSessionResponse
-	16, // 14: squareup.cash.pranadb.service.v1.PranaDBService.CloseSession:output_type -> google.protobuf.Empty
-	16, // 15: squareup.cash.pranadb.service.v1.PranaDBService.Heartbeat:output_type -> google.protobuf.Empty
-	8,  // 16: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatement:output_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse
-	16, // 17: squareup.cash.pranadb.service.v1.PranaDBService.RegisterProtobufs:output_type -> google.protobuf.Empty
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	7,  // 3: squareup.cash.pranadb.service.v1.Row.values:type_name -> squareup.cash.pranadb.service.v1.ColValue
+	6,  // 4: squareup.cash.pranadb.service.v1.Page.rows:type_name -> squareup.cash.pranadb.service.v1.Row
+	5,  // 5: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse.columns:type_name -> squareup.cash.pranadb.service.v1.Columns
+	8,  // 6: squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse.page:type_name -> squareup.cash.pranadb.service.v1.Page
+	5,  // 7: squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaResponse.columns:type_name -> squareup.cash.pranadb.service.v1.Columns
+	8,  // 8: squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaResponse.page:type_name -> squareup.cash.pranadb.service.v1.Page
+	17, // 9: squareup.cash.pranadb.service.v1.RegisterProtobufsRequest.descriptors:type_name -> google.protobuf.FileDescriptorSet
+	18, // 10: squareup.cash.pranadb.service.v1.PranaDBService.CreateSession:input_type -> google.protobuf.Empty
+	14, // 11: squareup.cash.pranadb.service.v1.PranaDBService.CloseSession:input_type -> squareup.cash.pranadb.service.v1.CloseSessionRequest
+	15, // 12: squareup.cash.pranadb.service.v1.PranaDBService.Heartbeat:input_type -> squareup.cash.pranadb.service.v1.HeartbeatRequest
+	3,  // 13: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatement:input_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementRequest
+	4,  // 14: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatementInSchema:input_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaRequest
+	16, // 15: squareup.cash.pranadb.service.v1.PranaDBService.RegisterProtobufs:input_type -> squareup.cash.pranadb.service.v1.RegisterProtobufsRequest
+	13, // 16: squareup.cash.pranadb.service.v1.PranaDBService.CreateSession:output_type -> squareup.cash.pranadb.service.v1.CreateSessionResponse
+	18, // 17: squareup.cash.pranadb.service.v1.PranaDBService.CloseSession:output_type -> google.protobuf.Empty
+	18, // 18: squareup.cash.pranadb.service.v1.PranaDBService.Heartbeat:output_type -> google.protobuf.Empty
+	9,  // 19: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatement:output_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementResponse
+	10, // 20: squareup.cash.pranadb.service.v1.PranaDBService.ExecuteSQLStatementInSchema:output_type -> squareup.cash.pranadb.service.v1.ExecuteSQLStatementInSchemaResponse
+	18, // 21: squareup.cash.pranadb.service.v1.PranaDBService.RegisterProtobufs:output_type -> google.protobuf.Empty
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_squareup_cash_pranadb_service_v1_service_proto_init() }
@@ -1137,7 +1317,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Columns); i {
+			switch v := v.(*ExecuteSQLStatementInSchemaRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1149,7 +1329,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Row); i {
+			switch v := v.(*Columns); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1161,7 +1341,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ColValue); i {
+			switch v := v.(*Row); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1173,7 +1353,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Page); i {
+			switch v := v.(*ColValue); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1185,7 +1365,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ExecuteSQLStatementResponse); i {
+			switch v := v.(*Page); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1197,7 +1377,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*UseRequest); i {
+			switch v := v.(*ExecuteSQLStatementResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1209,7 +1389,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CreateSessionRequest); i {
+			switch v := v.(*ExecuteSQLStatementInSchemaResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1221,7 +1401,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CreateSessionResponse); i {
+			switch v := v.(*UseRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1233,7 +1413,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CloseSessionRequest); i {
+			switch v := v.(*CreateSessionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1245,7 +1425,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*HeartbeatRequest); i {
+			switch v := v.(*CreateSessionResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1257,6 +1437,30 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CloseSessionRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*HeartbeatRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*RegisterProtobufsRequest); i {
 			case 0:
 				return &v.state
@@ -1270,15 +1474,19 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 		}
 	}
 	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[1].OneofWrappers = []interface{}{}
-	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[5].OneofWrappers = []interface{}{
+	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[6].OneofWrappers = []interface{}{
 		(*ColValue_IsNull)(nil),
 		(*ColValue_IntValue)(nil),
 		(*ColValue_FloatValue)(nil),
 		(*ColValue_StringValue)(nil),
 	}
-	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[7].OneofWrappers = []interface{}{
+	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[8].OneofWrappers = []interface{}{
 		(*ExecuteSQLStatementResponse_Columns)(nil),
 		(*ExecuteSQLStatementResponse_Page)(nil),
+	}
+	file_squareup_cash_pranadb_service_v1_service_proto_msgTypes[9].OneofWrappers = []interface{}{
+		(*ExecuteSQLStatementInSchemaResponse_Columns)(nil),
+		(*ExecuteSQLStatementInSchemaResponse_Page)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1286,7 +1494,7 @@ func file_squareup_cash_pranadb_service_v1_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_squareup_cash_pranadb_service_v1_service_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
@@ -1318,6 +1526,7 @@ type PranaDBServiceClient interface {
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Execute SQL and return results.
 	ExecuteSQLStatement(ctx context.Context, in *ExecuteSQLStatementRequest, opts ...grpc.CallOption) (PranaDBService_ExecuteSQLStatementClient, error)
+	ExecuteSQLStatementInSchema(ctx context.Context, in *ExecuteSQLStatementInSchemaRequest, opts ...grpc.CallOption) (PranaDBService_ExecuteSQLStatementInSchemaClient, error)
 	RegisterProtobufs(ctx context.Context, in *RegisterProtobufsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -1388,6 +1597,38 @@ func (x *pranaDBServiceExecuteSQLStatementClient) Recv() (*ExecuteSQLStatementRe
 	return m, nil
 }
 
+func (c *pranaDBServiceClient) ExecuteSQLStatementInSchema(ctx context.Context, in *ExecuteSQLStatementInSchemaRequest, opts ...grpc.CallOption) (PranaDBService_ExecuteSQLStatementInSchemaClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_PranaDBService_serviceDesc.Streams[1], "/squareup.cash.pranadb.service.v1.PranaDBService/ExecuteSQLStatementInSchema", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &pranaDBServiceExecuteSQLStatementInSchemaClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type PranaDBService_ExecuteSQLStatementInSchemaClient interface {
+	Recv() (*ExecuteSQLStatementInSchemaResponse, error)
+	grpc.ClientStream
+}
+
+type pranaDBServiceExecuteSQLStatementInSchemaClient struct {
+	grpc.ClientStream
+}
+
+func (x *pranaDBServiceExecuteSQLStatementInSchemaClient) Recv() (*ExecuteSQLStatementInSchemaResponse, error) {
+	m := new(ExecuteSQLStatementInSchemaResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *pranaDBServiceClient) RegisterProtobufs(ctx context.Context, in *RegisterProtobufsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/squareup.cash.pranadb.service.v1.PranaDBService/RegisterProtobufs", in, out, opts...)
@@ -1404,6 +1645,7 @@ type PranaDBServiceServer interface {
 	Heartbeat(context.Context, *HeartbeatRequest) (*emptypb.Empty, error)
 	// Execute SQL and return results.
 	ExecuteSQLStatement(*ExecuteSQLStatementRequest, PranaDBService_ExecuteSQLStatementServer) error
+	ExecuteSQLStatementInSchema(*ExecuteSQLStatementInSchemaRequest, PranaDBService_ExecuteSQLStatementInSchemaServer) error
 	RegisterProtobufs(context.Context, *RegisterProtobufsRequest) (*emptypb.Empty, error)
 }
 
@@ -1422,6 +1664,9 @@ func (*UnimplementedPranaDBServiceServer) Heartbeat(context.Context, *HeartbeatR
 }
 func (*UnimplementedPranaDBServiceServer) ExecuteSQLStatement(*ExecuteSQLStatementRequest, PranaDBService_ExecuteSQLStatementServer) error {
 	return status.Errorf(codes.Unimplemented, "method ExecuteSQLStatement not implemented")
+}
+func (*UnimplementedPranaDBServiceServer) ExecuteSQLStatementInSchema(*ExecuteSQLStatementInSchemaRequest, PranaDBService_ExecuteSQLStatementInSchemaServer) error {
+	return status.Errorf(codes.Unimplemented, "method ExecuteSQLStatementInSchema not implemented")
 }
 func (*UnimplementedPranaDBServiceServer) RegisterProtobufs(context.Context, *RegisterProtobufsRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterProtobufs not implemented")
@@ -1506,6 +1751,27 @@ func (x *pranaDBServiceExecuteSQLStatementServer) Send(m *ExecuteSQLStatementRes
 	return x.ServerStream.SendMsg(m)
 }
 
+func _PranaDBService_ExecuteSQLStatementInSchema_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecuteSQLStatementInSchemaRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(PranaDBServiceServer).ExecuteSQLStatementInSchema(m, &pranaDBServiceExecuteSQLStatementInSchemaServer{stream})
+}
+
+type PranaDBService_ExecuteSQLStatementInSchemaServer interface {
+	Send(*ExecuteSQLStatementInSchemaResponse) error
+	grpc.ServerStream
+}
+
+type pranaDBServiceExecuteSQLStatementInSchemaServer struct {
+	grpc.ServerStream
+}
+
+func (x *pranaDBServiceExecuteSQLStatementInSchemaServer) Send(m *ExecuteSQLStatementInSchemaResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _PranaDBService_RegisterProtobufs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterProtobufsRequest)
 	if err := dec(in); err != nil {
@@ -1549,6 +1815,11 @@ var _PranaDBService_serviceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ExecuteSQLStatement",
 			Handler:       _PranaDBService_ExecuteSQLStatement_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ExecuteSQLStatementInSchema",
+			Handler:       _PranaDBService_ExecuteSQLStatementInSchema_Handler,
 			ServerStreams: true,
 		},
 	},
