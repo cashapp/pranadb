@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/tidb/sessionctx"
 	"strings"
 
 	"github.com/pingcap/parser/model"
@@ -46,7 +47,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalProjection:
 		var exprs []*common.Expression
 		for _, expr := range op.Exprs {
-			exprs = append(exprs, common.NewExpression(expr))
+			exprs = append(exprs, common.NewExpression(expr, session.Planner().SessionContext()))
 		}
 		executor, err = exec.NewPullProjection(colNames, colTypes, exprs)
 		if err != nil {
@@ -55,7 +56,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
-			exprs = append(exprs, common.NewExpression(expr))
+			exprs = append(exprs, common.NewExpression(expr, session.Planner().SessionContext()))
 		}
 		executor = exec.NewPullSelect(colNames, colTypes, exprs)
 	case *planner.PhysicalTableScan:
@@ -104,13 +105,13 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 				-1)
 		}
 	case *planner.PhysicalSort:
-		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, session.Planner().SessionContext())
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	case *planner.PhysicalLimit:
 		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
 	case *planner.PhysicalTopN:
 		limit := exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
-		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems)
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, session.Planner().SessionContext())
 		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 		executor = exec.NewPullChain(limit, sort)
 	default:
@@ -221,13 +222,13 @@ func createScanRanges(ranges []*ranger.Range) []*exec.ScanRange {
 	return scanRanges
 }
 
-func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems) ([]bool, []*common.Expression) {
+func (p *Engine) byItemsToDescAndSortExpression(byItems []*util.ByItems, ctx sessionctx.Context) ([]bool, []*common.Expression) {
 	lbi := len(byItems)
 	desc := make([]bool, lbi)
 	sortByExprs := make([]*common.Expression, lbi)
 	for i, byitem := range byItems {
 		desc[i] = byitem.Desc
-		sortByExprs[i] = common.NewExpression(byitem.Expr)
+		sortByExprs[i] = common.NewExpression(byitem.Expr, ctx)
 	}
 	return desc, sortByExprs
 }

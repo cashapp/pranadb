@@ -26,6 +26,7 @@ func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
 		ft = types.NewFieldType(mysql.TypeVarchar)
 	case TypeTimestamp:
 		ft = types.NewFieldType(mysql.TypeTimestamp)
+		ft.Decimal = int(columnType.FSP)
 	default:
 		panic(fmt.Sprintf("unknown column type %d", columnType))
 	}

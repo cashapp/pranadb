@@ -3,6 +3,7 @@ package parplan
 import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/planner"
+	"github.com/squareup/pranadb/tidb/sessionctx"
 	"github.com/squareup/pranadb/tidb/sessionctx/stmtctx"
 
 	"github.com/squareup/pranadb/sessctx"
@@ -38,6 +39,10 @@ func NewPlanner(schema *common.Schema) *Planner {
 
 func (p *Planner) StatementContext() *stmtctx.StatementContext {
 	return p.sessionCtx.GetSessionVars().StmtCtx
+}
+
+func (p *Planner) SessionContext() sessionctx.Context {
+	return p.sessionCtx
 }
 
 func (p *Planner) SetPSArgs(args []interface{}) {

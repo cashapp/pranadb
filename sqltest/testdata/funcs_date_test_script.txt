@@ -1,0 +1,39 @@
+--local only;
+-- This tests all the date/time functions we provide;
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_1;
+
+-- YEAR, MONTH, DAYOFMONTH, HOUR, MINUTE, SECOND, MICROSECOND;
+
+select col0, year(col1), month(col1), day(col1), hour(col1), minute(col1), second(col1), microsecond(col1) from test_source_1 order by col0;
+
+-- DATE FORMAT;
+
+select col0, date_format(col1, '%H:%i:%s::%f %d/%m/%y') from test_source_1 order by col0;
+
+-- UNIX_TIMESTAMP;
+
+select col0, unix_timestamp(col1) from test_source_1 order by col0;
+
+select col0, unix_timestamp(from_unixtime(1606214734.745343)), unix_timestamp(from_unixtime(1577836800)) from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic;
