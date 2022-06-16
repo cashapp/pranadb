@@ -133,9 +133,8 @@ func TestLoader(t *testing.T) {
 			expectedSchemas := make(map[string]*common.Schema)
 			for _, ddl := range test.ddl {
 				numTables := 0
-				session := executor.CreateSession()
 				schema := metaController.GetOrCreateSchema(ddl.schema)
-				session.UseSchema(schema)
+				session := executor.CreateExecutionContext(schema)
 				for _, query := range ddl.queries {
 					_, err := executor.ExecuteSQLStatement(session, query)
 					numTables++
@@ -176,7 +175,6 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *remoting.FakeServer) (
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry, failinject.NewDummyInjector())
 	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, protolib.EmptyRegistry, failinject.NewDummyInjector())
 	notif.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, ce)
-	notif.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)
 	err = clus.Start()

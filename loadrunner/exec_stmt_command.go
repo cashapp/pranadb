@@ -5,7 +5,6 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"
-	"time"
 )
 
 // ExecStatementCommandFactory is a CommandFactory instance that creates ExecuteStatementCommand instances
@@ -70,15 +69,11 @@ func (p *ExecStatementCommand) runStatementsWithCh(ch chan error, numIters int, 
 }
 
 func (p *ExecStatementCommand) runStatements(numIters int, pranaHostname string, schemaName string, statement string) error {
-	pranaClient := client.NewClient(pranaHostname, 5*time.Second)
+	pranaClient := client.NewClient(pranaHostname)
 	if err := pranaClient.Start(); err != nil {
 		return err
 	}
-	sessionID, err := pranaClient.CreateSession()
-	if err != nil {
-		return err
-	}
-	resultCh, err := pranaClient.ExecuteStatement(sessionID, fmt.Sprintf("use %s", schemaName))
+	resultCh, err := pranaClient.ExecuteStatement(fmt.Sprintf("use %s", schemaName))
 	if err != nil {
 		return err
 	}
@@ -86,7 +81,7 @@ func (p *ExecStatementCommand) runStatements(numIters int, pranaHostname string,
 		log.Println(line)
 	}
 	for i := 0; i < numIters; i++ {
-		ch, err := pranaClient.ExecuteStatement(sessionID, statement)
+		ch, err := pranaClient.ExecuteStatement(statement)
 		if err != nil {
 			return err
 		}

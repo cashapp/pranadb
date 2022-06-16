@@ -46,7 +46,7 @@ func TestKafkaIntegration(t *testing.T) {
 	cluster := startPranaCluster(t, dataDir)
 	defer stopPranaCluster(t, cluster)
 
-	cli := client.NewClient(cluster[0].GetAPIServer().GetListenAddress(), time.Second*5)
+	cli := client.NewClient(cluster[0].GetAPIServer().GetListenAddress())
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {
@@ -62,11 +62,7 @@ func TestKafkaIntegration(t *testing.T) {
 		"bootstrap.servers": "localhost:9092",
 	}
 
-	sessionID, err := cli.CreateSession()
-	require.NoError(t, err)
-	require.NotNil(t, sessionID)
-
-	ch, err := cli.ExecuteStatement(sessionID, "use test")
+	ch, err := cli.ExecuteStatement("use test")
 	require.NoError(t, err)
 	res := <-ch
 	require.Equal(t, "0 rows returned", res)
@@ -99,12 +95,12 @@ create source payments(
     properties = ()
 )
 `, paymentTopicName)
-	ch, err = cli.ExecuteStatement(sessionID, createSourceSQL)
+	ch, err = cli.ExecuteStatement(createSourceSQL)
 	require.NoError(t, err)
 	res = <-ch
 	require.Equal(t, "0 rows returned", res)
 
-	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
 	res = <-ch
 	require.Equal(t, "|payment_id|customer_id|payment_time|amount|payment_type|currency|fraud_score|", res)
@@ -116,7 +112,7 @@ create source payments(
 
 	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
 
-	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
 	lineCount := 0
 	for range ch {
@@ -130,7 +126,7 @@ create source payments(
 
 	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
 
-	ch, err = cli.ExecuteStatement(sessionID, "select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
 
 	lineCount = 0

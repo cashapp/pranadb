@@ -1,5 +1,5 @@
 
-º
+½
 :squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -10,8 +10,8 @@ command_id (R	commandId
 schema_name (	R
 schemaName
 sql (	Rsql'
-table_sequences (RtableSequences"5
-SessionClosedMessage
+table_sequences (RtableSequences"8
+NotificationTestMessage
 
 session_id (	R	sessionId"
 ReloadProtobuf"U

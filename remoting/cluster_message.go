@@ -14,20 +14,18 @@ type ClusterMessageType int32
 const (
 	ClusterMessageTypeUnknown ClusterMessageType = iota + 1
 	ClusterMessageDDLStatement
-	ClusterMessageCloseSession
 	ClusterMessageReloadProtobuf
 	ClusterMessageClusterProposeRequest
 	ClusterMessageClusterReadRequest
 	ClusterMessageClusterProposeResponse
 	ClusterMessageClusterReadResponse
+	ClusterMessageNotificationTestMessage
 )
 
 func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 	switch notification.(type) {
 	case *notifications.DDLStatementInfo:
 		return ClusterMessageDDLStatement
-	case *notifications.SessionClosedMessage:
-		return ClusterMessageCloseSession
 	case *notifications.ReloadProtobuf:
 		return ClusterMessageReloadProtobuf
 	case *notifications.ClusterProposeRequest:
@@ -38,6 +36,8 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 		return ClusterMessageClusterProposeResponse
 	case *notifications.ClusterReadResponse:
 		return ClusterMessageClusterReadResponse
+	case *notifications.NotificationTestMessage:
+		return ClusterMessageNotificationTestMessage
 	default:
 		return ClusterMessageTypeUnknown
 	}
@@ -71,10 +71,10 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.ClusterReadResponse{}
 	case ClusterMessageDDLStatement:
 		msg = &notifications.DDLStatementInfo{}
-	case ClusterMessageCloseSession:
-		msg = &notifications.SessionClosedMessage{}
 	case ClusterMessageReloadProtobuf:
 		msg = &notifications.ReloadProtobuf{}
+	case ClusterMessageNotificationTestMessage:
+		msg = &notifications.NotificationTestMessage{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}

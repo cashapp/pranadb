@@ -18,7 +18,7 @@ import (
 func TestRemoteExecutorGetAll(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(numRows)
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestRemoteExecutorGetAll(t *testing.T) {
 func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(numRows * 2)
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 func TestRemoteExecutorGetOne(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, _, _ := setupRowExecutor(t, numRows, rf, false)
+	re, _, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(1)
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestRemoteExecutorGetOne(t *testing.T) {
 func TestRemoteExecutorGetInBatches(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	allReceived := rf.NewRows(numRows)
 	for i := 0; i < 10; i++ {
@@ -107,7 +107,7 @@ func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 }
 
 //nolint: unparam
-func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool) (PullExecutor, *common.Rows, *testCluster) {
+func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory) (PullExecutor, *common.Rows, *testCluster) {
 	t.Helper()
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
@@ -142,9 +142,7 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool
 	tc.rowsByShardOrig = rowsByShard
 	tc.reset()
 
-	queryInfo := &cluster.QueryExecutionInfo{
-		IsPs: ps,
-	}
+	queryInfo := &cluster.QueryExecutionInfo{}
 
 	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, -1), allRows, tc
 }

@@ -3,8 +3,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"sync"
@@ -20,37 +18,31 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
-	"github.com/squareup/pranadb/sess"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // Registers gzip (de)-compressor
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// Server over gRPC.
+var _ service.PranaDBServiceServer = &Server{}
+
 type Server struct {
-	lock                 sync.Mutex
-	started              bool
-	ce                   *command.Executor
-	serverAddress        string
-	gsrv                 *grpc.Server
-	errorSequence        int64
-	sessions             sync.Map
-	expSessCheckTimer    *time.Timer
-	expSessCheckInterval time.Duration
-	sessTimeout          time.Duration
-	protoRegistry        *protolib.ProtoRegistry
-	metaController       *meta.Controller
+	lock           sync.Mutex
+	started        bool
+	ce             *command.Executor
+	serverAddress  string
+	gsrv           *grpc.Server
+	errorSequence  int64
+	protoRegistry  *protolib.ProtoRegistry
+	metaController *meta.Controller
 }
 
 func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
 	return &Server{
-		metaController:       metaController,
-		ce:                   ce,
-		protoRegistry:        protobufs,
-		serverAddress:        cfg.APIServerListenAddresses[cfg.NodeID],
-		expSessCheckInterval: cfg.APIServerSessionCheckInterval,
-		sessTimeout:          cfg.APIServerSessionTimeout,
+		metaController: metaController,
+		ce:             ce,
+		protoRegistry:  protobufs,
+		serverAddress:  cfg.APIServerListenAddresses[cfg.NodeID],
 	}
 }
 
@@ -69,7 +61,6 @@ func (s *Server) Start() error {
 	service.RegisterPranaDBServiceServer(s.gsrv, s)
 	s.started = true
 	go s.startServer(list)
-	s.scheduleExpiredSessionsCheck()
 	return nil
 }
 
@@ -90,118 +81,23 @@ func (s *Server) Stop() error {
 		return nil
 	}
 	s.gsrv.Stop()
-	if s.expSessCheckTimer != nil {
-		s.expSessCheckTimer.Stop()
-	}
 	s.errorSequence = 0
 	return nil
-}
-
-var _ service.PranaDBServiceServer = &Server{}
-
-func (s *Server) CreateSession(ctx context.Context, _ *emptypb.Empty) (*service.CreateSessionResponse, error) {
-	session := s.ce.CreateSession()
-	hasher := sha256.New()
-	hasher.Write([]byte(session.ID))
-	bytes := hasher.Sum(nil)
-	sessKey := hex.EncodeToString(bytes)
-	entry := &sessionEntry{
-		session: session,
-	}
-	entry.refreshLastAccessedTime()
-	s.sessions.Store(sessKey, entry)
-	return &service.CreateSessionResponse{SessionId: sessKey}, nil
-}
-
-func (s *Server) CloseSession(ctx context.Context, request *service.CloseSessionRequest) (*emptypb.Empty, error) {
-	sessEntry, err := s.lookupSession(request.GetSessionId())
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	s.sessions.Delete(request.GetSessionId())
-	if err := sessEntry.session.Close(s.metaController); err != nil {
-		log.Errorf("failed to close session %+v", err)
-	}
-	return &emptypb.Empty{}, nil
-}
-
-func (s *Server) lookupSession(sessionID string) (*sessionEntry, error) {
-	v, ok := s.sessions.Load(sessionID)
-	if !ok {
-		return nil, errors.NewUnknownSessionIDError(sessionID)
-	}
-	session, ok := v.(*sessionEntry)
-	if !ok {
-		panic("not a sessionEntry")
-	}
-	return session, nil
-}
-
-func (s *Server) Heartbeat(ctx context.Context, request *service.HeartbeatRequest) (*emptypb.Empty, error) {
-	v, ok := s.sessions.Load(request.GetSessionId())
-	// It's not an error if we can't find the session, the heartbeat might come in after the session is closed from the client
-	if ok {
-		session, ok := v.(*sessionEntry)
-		if !ok {
-			panic("not a sessionEntry")
-		}
-		session.refreshLastAccessedTime()
-	}
-	return &emptypb.Empty{}, nil
-}
-
-func (s *Server) ExecuteSQLStatementInSchema(in *service.ExecuteSQLStatementInSchemaRequest,
-	stream service.PranaDBService_ExecuteSQLStatementInSchemaServer) error {
-	defer common.PanicHandler()
-	// We create a session on the fly
-	session := s.ce.CreateSession()
-	defer func() {
-		if err := session.Close(s.metaController); err != nil {
-			log.Errorf("failed to close session %v", err)
-		}
-	}()
-	schema := s.metaController.GetOrCreateSchema(in.Schema)
-	session.UseSchema(schema)
-	return s.doExecuteSQLStatement(session, in.Statement, int(in.PageSize), func(result interface{}) error {
-		r := &service.ExecuteSQLStatementInSchemaResponse{}
-		switch op := result.(type) {
-		case *service.Page:
-			r.Result = &service.ExecuteSQLStatementInSchemaResponse_Page{Page: op}
-		case *service.Columns:
-			r.Result = &service.ExecuteSQLStatementInSchemaResponse_Columns{Columns: op}
-		default:
-			panic("unexpected type")
-		}
-		return stream.Send(r)
-	})
 }
 
 func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
 	stream service.PranaDBService_ExecuteSQLStatementServer) error {
 	defer common.PanicHandler()
-	entry, err := s.lookupSession(in.GetSessionId())
-	if err != nil {
-		return errors.WithStack(err)
+	var schema *common.Schema
+	if in.Schema != "" {
+		schema = s.metaController.GetOrCreateSchema(in.Schema)
 	}
-	session := entry.session
-	return s.doExecuteSQLStatement(session, in.Statement, int(in.PageSize), func(result interface{}) error {
-		r := &service.ExecuteSQLStatementResponse{}
-		switch op := result.(type) {
-		case *service.Page:
-			r.Result = &service.ExecuteSQLStatementResponse_Page{Page: op}
-		case *service.Columns:
-			r.Result = &service.ExecuteSQLStatementResponse_Columns{Columns: op}
-		default:
-			panic("unexpected type")
-		}
-		return stream.Send(r)
-	})
-}
+	execCtx := s.ce.CreateExecutionContext(schema)
+	defer func() {
+		s.metaController.DeleteSchemaIfEmpty(schema)
+	}()
 
-func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, pageSize int,
-	stream func(result interface{}) error) error { //nolint:gocyclo
-
-	executor, err := s.ce.ExecuteSQLStatement(session, statement)
+	executor, err := s.ce.ExecuteSQLStatement(execCtx, in.Statement)
 	if err != nil {
 		log.Errorf("failed to execute statement %+v", err)
 		var perr errors.PranaError
@@ -234,7 +130,7 @@ func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, 
 		}
 		columns.Columns = append(columns.Columns, column)
 	}
-	if err := stream(columns); err != nil {
+	if err := stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Columns{Columns: columns}}); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -242,7 +138,7 @@ func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, 
 	numCols := len(executor.ColTypes())
 	for {
 		// Transcode rows.
-		rows, err := executor.GetRows(pageSize)
+		rows, err := executor.GetRows(int(in.PageSize))
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -289,10 +185,10 @@ func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, 
 			Count: uint64(numRows),
 			Rows:  prows,
 		}
-		if err = stream(results); err != nil {
+		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
 			return errors.WithStack(err)
 		}
-		if numRows < pageSize {
+		if numRows < int(in.PageSize) {
 			break
 		}
 	}
@@ -301,67 +197,6 @@ func (s *Server) doExecuteSQLStatement(session *sess.Session, statement string, 
 
 func (s *Server) RegisterProtobufs(ctx context.Context, request *service.RegisterProtobufsRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.protoRegistry.RegisterFiles(request.GetDescriptors())
-}
-
-type sessionEntry struct {
-	session          *sess.Session
-	lastAccessedTime atomic.Value
-}
-
-func (se *sessionEntry) getLastAccessedTime() *time.Time {
-	v := se.lastAccessedTime.Load()
-	if v == nil {
-		panic("no lastAccessedTime")
-	}
-	lat, ok := v.(*time.Time)
-	if !ok {
-		panic("not a *time.Time")
-	}
-	return lat
-}
-
-func (se *sessionEntry) refreshLastAccessedTime() {
-	t := time.Now()
-	se.lastAccessedTime.Store(&t)
-}
-
-func (s *Server) scheduleExpiredSessionsCheck() {
-	s.expSessCheckTimer = time.AfterFunc(s.expSessCheckInterval, s.checkExpiredSessions)
-}
-
-func (s *Server) checkExpiredSessions() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if !s.started {
-		return
-	}
-	now := time.Now()
-	s.sessions.Range(func(key, value interface{}) bool {
-		se, ok := value.(*sessionEntry)
-		if !ok {
-			panic("not a sessionEntry")
-		}
-
-		lat := se.getLastAccessedTime()
-		if now.Sub(*lat) > s.sessTimeout {
-			log.Debugf("Deleting expired session %v", key)
-			s.sessions.Delete(key)
-			if err := se.session.Close(s.metaController); err != nil {
-				log.Errorf("failed to close session %+v", err)
-			}
-		}
-		return true
-	})
-	s.scheduleExpiredSessionsCheck()
-}
-
-func (s *Server) SessionCount() int {
-	count := 0
-	s.sessions.Range(func(_, _ interface{}) bool {
-		count++
-		return true
-	})
-	return count
 }
 
 func (s *Server) GetListenAddress() string {

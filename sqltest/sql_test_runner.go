@@ -341,7 +341,6 @@ type sqlTest struct {
 	prana         *server.Server
 	topics        []*kafka.Topic
 	cli           *client.Client
-	sessionID     string
 	clientNodeID  int
 	currentSchema string
 }
@@ -501,7 +500,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.True(ok, "table data left at end of test")
 
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
-			num, err := prana.GetPullEngine().NumCachedSessions()
+			num, err := prana.GetPullEngine().NumCachedExecCtxs()
 			if err != nil {
 				return false, errors.WithStack(err)
 			}
@@ -540,8 +539,6 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.Equal(0, indexRows.RowCount(), "Rows in sys.indexes at end of test run")
 
 		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
-
-		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
 	}
 
 	if *updateFlag {
@@ -576,7 +573,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := st.cli.ExecuteStatement(st.sessionID, fmt.Sprintf("select * from %s", tableName))
+		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -779,9 +776,7 @@ func (st *sqlTest) executeCloseSession(require *require.Assertions) {
 }
 
 func (st *sqlTest) closeClient(require *require.Assertions) {
-	err := st.cli.CloseSession(st.sessionID)
-	require.NoError(err)
-	err = st.cli.Stop()
+	err := st.cli.Stop()
 	require.NoError(err)
 }
 
@@ -989,7 +984,7 @@ func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
 	isUse := strings.HasPrefix(statement, "use ")
-	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
+	resChan, err := st.cli.ExecuteStatement(statement)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {
@@ -1023,13 +1018,10 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
-	cli := client.NewClient(apiServerAddress, 5*time.Second)
+	cli := client.NewClient(apiServerAddress)
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
 	require.NoError(err)
-	sessID, err := cli.CreateSession()
-	require.NoError(err)
-	st.sessionID = sessID
 	st.clientNodeID = id
 	return cli
 }

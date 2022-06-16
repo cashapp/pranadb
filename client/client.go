@@ -3,43 +3,37 @@ package client
 import (
 	"context"
 	"fmt"
+	"github.com/squareup/pranadb/command/parser"
 	"io"
-	"math"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/squareup/pranadb/errors"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const maxBufferedLines = 1000
 
 // Client is a simple client used for executing statements against PranaDB, it used by the CLI and elsewhere
 type Client struct {
-	lock                  sync.Mutex
-	started               bool
-	serverAddress         string
-	conn                  *grpc.ClientConn
-	client                service.PranaDBServiceClient
-	currentStatement      string
-	sessionIDs            sync.Map
-	heartbeatTimer        *time.Timer
-	heartbeatLock         sync.Mutex
-	heartbeatSendInterval time.Duration
-	pageSize              int
+	lock             sync.Mutex
+	started          bool
+	serverAddress    string
+	conn             *grpc.ClientConn
+	client           service.PranaDBServiceClient
+	currentStatement string
+	pageSize         int
+	currentSchema    string
 }
 
-func NewClient(serverAddress string, heartbeatSendInterval time.Duration) *Client {
+func NewClient(serverAddress string) *Client {
 	return &Client{
-		serverAddress:         serverAddress,
-		heartbeatSendInterval: heartbeatSendInterval,
-		pageSize:              10000,
+		serverAddress: serverAddress,
+		pageSize:      10000,
 	}
 }
 
@@ -49,14 +43,12 @@ func (c *Client) Start() error {
 	if c.started {
 		return nil
 	}
-	c.sessionIDs = sync.Map{}
 	conn, err := grpc.Dial(c.serverAddress, grpc.WithInsecure())
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	c.conn = conn
 	c.client = service.NewPranaDBServiceClient(conn)
-	c.scheduleHeartbeats()
 	c.started = true
 	return nil
 }
@@ -68,11 +60,6 @@ func (c *Client) Stop() error {
 		return nil
 	}
 	c.started = false
-	c.heartbeatLock.Lock()
-	defer c.heartbeatLock.Unlock()
-	if c.heartbeatTimer != nil {
-		c.heartbeatTimer.Stop()
-	}
 	return c.conn.Close()
 }
 
@@ -82,41 +69,9 @@ func (c *Client) SetPageSize(pageSize int) {
 	c.pageSize = pageSize
 }
 
-func (c *Client) CreateSession() (string, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if !c.started {
-		return "", errors.Error("not started")
-	}
-	if c.currentStatement != "" {
-		return "", errors.Errorf("statement currently executing: %s", c.currentStatement)
-	}
-	resp, err := c.client.CreateSession(context.Background(), &emptypb.Empty{})
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-	sessID := resp.GetSessionId()
-	c.sessionIDs.Store(sessID, struct{}{})
-	return sessID, nil
-}
-
-func (c *Client) CloseSession(sessionID string) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if !c.started {
-		return errors.Error("not started")
-	}
-	if c.currentStatement != "" {
-		return errors.Errorf("statement currently executing: %s", c.currentStatement)
-	}
-	_, err := c.client.CloseSession(context.Background(), &service.CloseSessionRequest{SessionId: sessionID})
-	c.sessionIDs.Delete(sessionID)
-	return errors.WithStack(err)
-}
-
 // ExecuteStatement executes a Prana statement. Lines of output will be received on the channel that is returned.
 // When the channel is closed, the results are complete
-func (c *Client) ExecuteStatement(sessionID string, statement string) (chan string, error) {
+func (c *Client) ExecuteStatement(statement string) (chan string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
@@ -127,7 +82,7 @@ func (c *Client) ExecuteStatement(sessionID string, statement string) (chan stri
 	}
 	ch := make(chan string, maxBufferedLines)
 	c.currentStatement = statement
-	go c.doExecuteStatement(sessionID, statement, ch)
+	go c.doExecuteStatement(statement, ch)
 	return ch, nil
 }
 
@@ -135,8 +90,8 @@ func (c *Client) sendErrorToChannel(ch chan string, err error) {
 	ch <- err.Error()
 }
 
-func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan string) {
-	if rc, err := c.doExecuteStatementWithError(sessionID, statement, ch); err != nil {
+func (c *Client) doExecuteStatement(statement string, ch chan string) {
+	if rc, err := c.doExecuteStatementWithError(statement, ch); err != nil {
 		c.sendErrorToChannel(ch, err)
 	} else {
 		ch <- fmt.Sprintf("%d rows returned", rc)
@@ -147,12 +102,23 @@ func (c *Client) doExecuteStatement(sessionID string, statement string, ch chan 
 	c.lock.Unlock()
 }
 
-func (c *Client) doExecuteStatementWithError(sessionID string, statement string, ch chan string) (int, error) {
+func (c *Client) doExecuteStatementWithError(statement string, ch chan string) (int, error) { //nolint:gocyclo
 
+	ast, err := parser.Parse(statement)
+	if err != nil {
+		return 0, errors.Errorf("Failed to execute statement: %s", errors.NewInvalidStatementError(err.Error()).Error())
+	}
+	if ast.Use != "" {
+		c.currentSchema = ast.Use
+		return 0, nil
+	}
+	if c.currentSchema == "" && !(ast.Show != nil && ast.Show.Schemas != "") {
+		return 0, errors.NewSchemaNotInUseError()
+	}
 	utc, _ := time.LoadLocation("UTC")
 
 	stream, err := c.client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
-		SessionId: sessionID,
+		Schema:    c.currentSchema,
 		Statement: statement,
 		PageSize:  int32(c.pageSize),
 	})
@@ -248,31 +214,6 @@ func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProt
 	return errors.WithStack(err)
 }
 
-func (c *Client) sendHeartbeats() {
-	// This must be done outside the main lock otherwise heartbeats will be delayed while long statements run which could
-	// time out the sesssion on the server
-	c.sessionIDs.Range(func(sid, _ interface{}) bool {
-		sessID, ok := sid.(string)
-		if !ok {
-			panic("not a string")
-		}
-		_, err := c.client.Heartbeat(context.Background(), &service.HeartbeatRequest{SessionId: sessID})
-		if err != nil {
-			err = stripgRPCPrefix(err)
-			log.Errorf("heartbeat failed %+v", err)
-			c.sessionIDs.Delete(sessID)
-		}
-		return true
-	})
-	c.scheduleHeartbeats()
-}
-
-func (c *Client) scheduleHeartbeats() {
-	c.heartbeatLock.Lock()
-	defer c.heartbeatLock.Unlock()
-	c.heartbeatTimer = time.AfterFunc(c.heartbeatSendInterval, c.sendHeartbeats)
-}
-
 func stripgRPCPrefix(err error) error {
 	// Strip out the gRPC internal crap from the error message
 	ind := strings.Index(err.Error(), "PDB")
@@ -283,16 +224,4 @@ func stripgRPCPrefix(err error) error {
 		return errors.Errorf("Failed to execute statement: %s", msg)
 	}
 	return errors.WithStack(err)
-}
-
-// used in testing
-func (c *Client) disableHeartbeats() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.heartbeatLock.Lock()
-	defer c.heartbeatLock.Unlock()
-	c.heartbeatSendInterval = math.MaxInt64
-	if c.heartbeatTimer != nil {
-		c.heartbeatTimer.Stop()
-	}
 }

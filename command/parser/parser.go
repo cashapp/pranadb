@@ -34,17 +34,13 @@ var (
 		// }, "Ident"),
 		participle.Unquote("String"),
 	)
-	selectPrefix  = regexp.MustCompile(`(?i)^select\s+`)
-	preparePrefix = regexp.MustCompile(`(?i)^prepare\s+`)
+	selectPrefix = regexp.MustCompile(`(?i)^select\s+`)
 )
 
 // Parse an SQL statement.
 func Parse(sql string) (*AST, error) {
 	if selectPrefix.MatchString(sql) {
 		return &AST{Select: sql}, nil
-	}
-	if preparePrefix.MatchString(sql) {
-		return &AST{Prepare: sql}, nil
 	}
 	ast := &AST{}
 	err := parser.ParseString("", sql, ast)
