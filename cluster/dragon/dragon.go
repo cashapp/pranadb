@@ -909,69 +909,59 @@ func (d *Dragon) tableExists(queryExec common.SimpleQueryExec, id uint64) (bool,
 	return rows.RowCount() != 0, nil
 }
 
-// Currently the replication factor of the cluster is fixed. We must make sure the user doesn't change the replication factor
-// in the config after the cluster has been created. So we store the number in the database and check
-func (d *Dragon) checkConstantReplicationFactor(expectedReplicationFactor int) error {
-	log.Debug("Checking constant replication factor: %d", expectedReplicationFactor)
+func (d *Dragon) getConfigProperty(property string) ([]byte, error) {
 	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
-	propKey := []byte("replication-factor")
+	propKey := []byte(property)
 	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
 	key = append(key, propKey...)
-	v, err := d.LocalGet(key)
+	return d.LocalGet(key)
+}
+
+func (d *Dragon) setConfigProperty(property string, v []byte) error {
+	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
+	batch := d.pebble.NewBatch()
+	if err := batch.Set(key, v, nil); err != nil {
+		return errors.WithStack(err)
+	}
+	if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+func (d *Dragon) checkConstantProperty(property string, expectedValue int) error {
+	log.Debug("Checking constant %s: %d", property, expectedValue)
+	v, err := d.getConfigProperty(property)
 	if err != nil {
 		return err
 	}
 	if v == nil {
-		log.Debug("New cluster - no value for replication-factor in stroage, persisting it")
-		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedReplicationFactor))
-		batch := d.pebble.NewBatch()
-		if err := batch.Set(key, v, nil); err != nil {
-			return errors.WithStack(err)
-		}
-		if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
-			return errors.WithStack(err)
+		log.Debugf("New cluster - no value for %s in stroage, persisting it", property)
+		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedValue))
+		err = d.setConfigProperty(property, v)
+		if err != nil {
+			return err
 		}
 	} else {
-		replicationFactor, _ := common.ReadUint32FromBufferBE(v, 0)
-		log.Debugf("value for replication-factor found in storage: %d", replicationFactor)
-		if int(replicationFactor) != expectedReplicationFactor {
-			return errors.Errorf("replication factor in cluster cannot be changed after cluster creation. cluster value %d new value %d", expectedReplicationFactor, replicationFactor)
+		value, _ := common.ReadUint32FromBufferBE(v, 0)
+		log.Debugf("value for %s found in storage: %d", property, value)
+		if int(value) != expectedValue {
+			return errors.Errorf("%s in cluster cannot be changed after cluster creation. cluster value %d new value %d", property, expectedValue, value)
 		}
 	}
 	return nil
 }
 
+// Currently the replication factor of the cluster is fixed. We must make sure the user doesn't change the replication factor
+// in the config after the cluster has been created. So we store the number in the database and check
+func (d *Dragon) checkConstantReplicationFactor(expectedReplicationFactor int) error {
+	return d.checkConstantProperty("replication-factor", expectedReplicationFactor)
+}
+
 // Currently the number of shards in the cluster is fixed. We must make sure the user doesn't change the number of shards
 // in the config after the cluster has been created. So we store the number in the database and check
 func (d *Dragon) checkConstantShards(expectedShards int) error {
-	log.Debugf("Checking constant shards: %d", expectedShards)
-	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
-	propKey := []byte("num-shards")
-	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
-	key = append(key, propKey...)
-	v, err := d.LocalGet(key)
-	if err != nil {
-		return err
-	}
-	if v == nil {
-		log.Debug("New cluster - no value for num-shards in storage, persisting it")
-		// New cluster - persist the value
-		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedShards))
-		batch := d.pebble.NewBatch()
-		if err := batch.Set(key, v, nil); err != nil {
-			return errors.WithStack(err)
-		}
-		if err := d.pebble.Apply(batch, syncWriteOptions); err != nil {
-			return errors.WithStack(err)
-		}
-	} else {
-		shards, _ := common.ReadUint32FromBufferBE(v, 0)
-		log.Debugf("value for num-shards found in storage: %d", shards)
-		if int(shards) != expectedShards {
-			return errors.Errorf("number of shards in cluster cannot be changed after cluster creation. cluster value %d new value %d", expectedShards, shards)
-		}
-	}
-	return nil
+	return d.checkConstantProperty("num-shards", expectedShards)
 }
 
 func (d *Dragon) registerShardSM(shardID uint64) {
