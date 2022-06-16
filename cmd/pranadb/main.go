@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/common"
 	"os"
 	"os/signal"
@@ -37,6 +38,20 @@ type runner struct {
 }
 
 func (r *runner) run(args []string, start bool) error {
+	// We log the config file to stdout to help in debugging config related issues- we don't use the logger as a problem
+	// in config could prevent this being initialised properly
+	for i, arg := range args {
+		if arg == "--config" {
+			confFile := args[i+1]
+			bytes, err := os.ReadFile(confFile)
+			if err != nil {
+				return err
+			}
+			fmt.Println("PranaDB config file is:")
+			sFile := string(bytes)
+			fmt.Println(sFile)
+		}
+	}
 	cfg := arguments{}
 	parser, err := kong.New(&cfg, kong.Configuration(konghcl.Loader))
 	if err != nil {
