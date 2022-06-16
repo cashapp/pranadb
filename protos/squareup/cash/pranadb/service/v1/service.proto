@@ -37,6 +37,13 @@ message ExecuteSQLStatementRequest {
   int32 page_size = 3;
 }
 
+message ExecuteSQLStatementInSchemaRequest {
+  string schema = 1;
+  string statement = 2;
+  // Size of each page of results returned when paginating.
+  int32 page_size = 3;
+}
+
 // Column definitions sent prior to a set of Pages.
 message Columns {
   repeated Column columns = 1;
@@ -62,6 +69,13 @@ message Page {
 }
 
 message ExecuteSQLStatementResponse {
+  oneof result {
+    Columns columns = 1; // Present in first response.
+    Page page = 2;
+  }
+}
+
+message ExecuteSQLStatementInSchemaResponse {
   oneof result {
     Columns columns = 1; // Present in first response.
     Page page = 2;
@@ -97,5 +111,6 @@ service PranaDBService {
   rpc Heartbeat(HeartbeatRequest) returns (google.protobuf.Empty);
   // Execute SQL and return results.
   rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
+  rpc ExecuteSQLStatementInSchema(ExecuteSQLStatementInSchemaRequest) returns (stream ExecuteSQLStatementInSchemaResponse);
   rpc RegisterProtobufs(RegisterProtobufsRequest) returns (google.protobuf.Empty);
 }
