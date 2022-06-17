@@ -919,6 +919,9 @@ func (d *Dragon) getConfigProperty(property string) ([]byte, error) {
 
 func (d *Dragon) setConfigProperty(property string, v []byte) error {
 	key := table.EncodeTableKeyPrefix(common.LocalConfigTableID, 0, 16)
+	propKey := []byte(property)
+	key = common.AppendUint32ToBufferBE(key, uint32(len(propKey)))
+	key = append(key, propKey...)
 	batch := d.pebble.NewBatch()
 	if err := batch.Set(key, v, nil); err != nil {
 		return errors.WithStack(err)
