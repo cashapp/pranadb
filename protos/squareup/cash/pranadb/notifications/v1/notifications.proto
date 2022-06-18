@@ -14,7 +14,7 @@ message DDLStatementInfo {
   repeated uint64 table_sequences = 7;
 }
 
-message SessionClosedMessage {
+message NotificationTestMessage {
   string session_id = 1;
 }
 

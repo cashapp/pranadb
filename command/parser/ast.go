@@ -144,12 +144,6 @@ type Drop struct {
 	TableName        string `("ON" @Ident)?`
 }
 
-// Execute statement.
-type Execute struct {
-	PsID int64    `@Number`
-	Args []string `(@String | @Number)*`
-}
-
 // Show statement
 type Show struct {
 	Tables  string `  @"TABLES"`
@@ -158,13 +152,10 @@ type Show struct {
 
 // AST root.
 type AST struct {
-	Select  string // Unaltered SELECT statement, if any.
-	Prepare string // Unaltered PREPARE statement, if any.
-
-	Use      string   `(  "USE" @Ident`
-	Execute  *Execute ` | "EXECUTE" @@`
-	Drop     *Drop    ` | "DROP" @@ `
-	Create   *Create  ` | "CREATE" @@ `
-	Show     *Show    ` | "SHOW" @@ `
-	Describe string   ` | "DESCRIBE" @Ident ) ";"?`
+	Select   string  // Unaltered SELECT statement, if any.
+	Use      string  `(  "USE" @Ident`
+	Drop     *Drop   ` | "DROP" @@ `
+	Create   *Create ` | "CREATE" @@ `
+	Show     *Show   ` | "SHOW" @@ `
+	Describe string  ` | "DESCRIBE" @Ident ) ";"?`
 }

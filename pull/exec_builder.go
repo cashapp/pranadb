@@ -8,17 +8,17 @@ import (
 	"github.com/pingcap/parser/model"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/execctx"
 	"github.com/squareup/pranadb/pull/exec"
-	"github.com/squareup/pranadb/sess"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/tidb/planner"
 	"github.com/squareup/pranadb/tidb/planner/util"
 	"github.com/squareup/pranadb/tidb/util/ranger"
 )
 
-func (p *Engine) buildPullDAGWithOutputNames(session *sess.Session, logicalPlan planner.LogicalPlan,
+func (p *Engine) buildPullDAGWithOutputNames(ctx *execctx.ExecutionContext, logicalPlan planner.LogicalPlan,
 	plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
-	dag, err := p.buildPullDAG(session, plan, remote)
+	dag, err := p.buildPullDAG(ctx, plan, remote)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func (p *Engine) buildPullDAGWithOutputNames(session *sess.Session, logicalPlan 
 }
 
 // nolint: gocyclo
-func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
+func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -47,7 +47,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalProjection:
 		var exprs []*common.Expression
 		for _, expr := range op.Exprs {
-			exprs = append(exprs, common.NewExpression(expr, session.Planner().SessionContext()))
+			exprs = append(exprs, common.NewExpression(expr, ctx.Planner().SessionContext()))
 		}
 		executor, err = exec.NewPullProjection(colNames, colTypes, exprs)
 		if err != nil {
@@ -56,26 +56,26 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	case *planner.PhysicalSelection:
 		var exprs []*common.Expression
 		for _, expr := range op.Conditions {
-			exprs = append(exprs, common.NewExpression(expr, session.Planner().SessionContext()))
+			exprs = append(exprs, common.NewExpression(expr, ctx.Planner().SessionContext()))
 		}
 		executor = exec.NewPullSelect(colNames, colTypes, exprs)
 	case *planner.PhysicalTableScan:
 		if remote {
 			tableName := op.Table.Name.L
-			executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+			executor, err = p.createPullTableScan(ctx.Schema, tableName, op.Ranges, op.Columns, ctx.QueryInfo.ShardID)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(session, op, true)
+			remoteDag, err := p.buildPullDAG(ctx, op, true)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			pointGetShardID, err := p.getPointGetShardID(session, op.Ranges, op.Table.Name.L)
+			pointGetShardID, err := p.getPointGetShardID(ctx, op.Ranges, op.Table.Name.L)
 			if err != nil {
 				return nil, err
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+			executor = exec.NewRemoteExecutor(remoteDag, ctx.QueryInfo, colNames, colTypes, ctx.Schema.Name, p.cluster,
 				pointGetShardID)
 		}
 	case *planner.PhysicalIndexScan:
@@ -85,33 +85,33 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 				// This is a fake index we created because the table has a composite PK and TiDB planner doesn't
 				// support this case well. Having a fake index allows the planner to create multiple ranges for fast
 				// scans and lookup for the composite PK case
-				executor, err = p.createPullTableScan(session.Schema, tableName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+				executor, err = p.createPullTableScan(ctx.Schema, tableName, op.Ranges, op.Columns, ctx.QueryInfo.ShardID)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
 			} else {
 				indexName := op.Index.Name.L
-				executor, err = p.createPullIndexScan(session.Schema, tableName, indexName, op.Ranges, op.Columns, session.QueryInfo.ShardID)
+				executor, err = p.createPullIndexScan(ctx.Schema, tableName, indexName, op.Ranges, op.Columns, ctx.QueryInfo.ShardID)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(session, op, true)
+			remoteDag, err := p.buildPullDAG(ctx, op, true)
 			if err != nil {
 				return nil, err
 			}
-			executor = exec.NewRemoteExecutor(remoteDag, session.QueryInfo, colNames, colTypes, session.Schema.Name, p.cluster,
+			executor = exec.NewRemoteExecutor(remoteDag, ctx.QueryInfo, colNames, colTypes, ctx.Schema.Name, p.cluster,
 				-1)
 		}
 	case *planner.PhysicalSort:
-		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, session.Planner().SessionContext())
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, ctx.Planner().SessionContext())
 		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 	case *planner.PhysicalLimit:
 		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
 	case *planner.PhysicalTopN:
 		limit := exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
-		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, session.Planner().SessionContext())
+		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, ctx.Planner().SessionContext())
 		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 		executor = exec.NewPullChain(limit, sort)
 	default:
@@ -120,7 +120,7 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(session, child, remote)
+		childExecutor, err := p.buildPullDAG(ctx, child, remote)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -133,16 +133,16 @@ func (p *Engine) buildPullDAG(session *sess.Session, plan planner.PhysicalPlan, 
 	return executor, nil
 }
 
-func (p *Engine) getPointGetShardID(session *sess.Session, ranges []*ranger.Range, tableName string) (int64, error) {
+func (p *Engine) getPointGetShardID(ctx *execctx.ExecutionContext, ranges []*ranger.Range, tableName string) (int64, error) {
 	var pointGetShardID int64 = -1
 	if len(ranges) == 1 {
 		rng := ranges[0]
-		if rng.IsPoint(session.Planner().StatementContext()) {
+		if rng.IsPoint(ctx.Planner().StatementContext()) {
 			if len(rng.LowVal) != 1 {
 				// Composite ranges not supported yet
 				return -1, nil
 			}
-			table, ok := session.Schema.GetTable(tableName)
+			table, ok := ctx.Schema.GetTable(tableName)
 			if !ok {
 				return 0, errors.Errorf("cannot find table %s", tableName)
 			}

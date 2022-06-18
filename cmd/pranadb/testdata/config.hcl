@@ -34,8 +34,6 @@ api-server-listen-addresses       = [
   "addr8",
   "addr9"
 ]
-api-server-session-timeout        = "41s"
-api-server-session-check-interval = "6s"
 log-format                        = "json"
 log-level                         = "info"
 log-file                          = "-"
@@ -45,6 +43,13 @@ kafka-brokers = {
     "client-type" = 1,
     "properties"  = {
       "fakeKafkaID" = "1"
+    }
+  },
+  "testbroker2" = {
+    "client-type" = 2,
+    "properties"  = {
+      "fakeKafkaID" = "23"
+      "otherProp" = "xyz"
     }
   }
 }

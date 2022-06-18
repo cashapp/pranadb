@@ -2,8 +2,6 @@ package main
 
 import (
 	"github.com/squareup/pranadb/common"
-	"time"
-
 	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -28,7 +26,7 @@ func main() {
 func run() error {
 	defer common.PanicHandler()
 	ctx := kong.Parse(&CLI)
-	cl := client.NewClient(CLI.Addr, time.Second*5)
+	cl := client.NewClient(CLI.Addr)
 	if err := cl.Start(); err != nil {
 		return errors.WithStack(err)
 	}

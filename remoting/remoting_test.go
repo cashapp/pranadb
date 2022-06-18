@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// We test primarily with SessionClosedMessage as this allows us to pass simply an arbitrarily sized string so we can
+// We test primarily with NotificationTestMessage as this allows us to pass simply an arbitrarily sized string so we can
 // test notifications with various sizes
 
 func TestSimpleNotificationOneServer(t *testing.T) {
@@ -105,7 +105,7 @@ func TestNotificationStopServer(t *testing.T) {
 //	defer stopClient(t, client)
 //
 //	numSent := 0
-//	err = client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//	err = client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 //	require.NoError(t, err)
 //	numSent++
 //	require.Equal(t, 3, client.numAvailableServers())
@@ -115,7 +115,7 @@ func TestNotificationStopServer(t *testing.T) {
 //	require.NoError(t, err)
 //	start := time.Now()
 //	for time.Now().Sub(start) < 5*time.Second {
-//		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//		err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 //		require.NoError(t, err)
 //		numSent++
 //
@@ -133,7 +133,7 @@ func TestNotificationStopServer(t *testing.T) {
 //
 //	start = time.Now()
 //	for time.Now().Sub(start) < 5*time.Second {
-//		err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
+//		err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
 //		require.NoError(t, err)
 //		numSent++
 //
@@ -148,7 +148,7 @@ func TestNotificationStopServer(t *testing.T) {
 
 func sendAndReceiveNotif(t *testing.T, client *client, notif string, listeners []*notifListener) {
 	t.Helper()
-	err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
+	err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: notif})
 	require.NoError(t, err)
 	waitForNotifications(t, listeners, 1)
 	notificationsReceived(t, listeners, notif)
@@ -182,7 +182,7 @@ func TestNotificationsMultipleConnections(t *testing.T) {
 		for j := 0; j < numNotifications; j++ {
 			notif := fmt.Sprintf("requestMessage%d", j)
 			notifs = append(notifs, notif)
-			err := client.BroadcastOneway(&notifications.SessionClosedMessage{SessionId: notif})
+			err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: notif})
 			require.NoError(t, err)
 		}
 	}
@@ -222,7 +222,7 @@ func testNotifications(t *testing.T, numServers int, notifsToSend ...string) ([]
 	notifs := make([]ClusterMessage, len(notifsToSend))
 
 	for i, str := range notifsToSend {
-		notifs[i] = &notifications.SessionClosedMessage{
+		notifs[i] = &notifications.NotificationTestMessage{
 			SessionId: str,
 		}
 		err := client.BroadcastOneway(notifs[i])
@@ -243,7 +243,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	server := newServer("localhost:7888")
 	defer stopServers(t, server)
 	server.RegisterMessageHandler(ClusterMessageDDLStatement, notifListener1)
-	server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener2)
+	server.RegisterMessageHandler(ClusterMessageNotificationTestMessage, notifListener2)
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer stopClient(t, client)
 
-	scMessage := &notifications.SessionClosedMessage{SessionId: "foo"}
+	scMessage := &notifications.NotificationTestMessage{SessionId: "foo"}
 	err = client.BroadcastOneway(scMessage)
 	require.NoError(t, err)
 
@@ -275,7 +275,7 @@ func TestMultipleNotificationTypes(t *testing.T) {
 	require.Equal(t, ddlMessage.TableSequences, ddlRec.TableSequences)
 
 	waitForNotifications(t, []*notifListener{notifListener2}, 1)
-	require.Equal(t, scMessage.SessionId, notifListener2.notifs[0].(*notifications.SessionClosedMessage).SessionId) //nolint: forcetypeassert
+	require.Equal(t, scMessage.SessionId, notifListener2.notifs[0].(*notifications.NotificationTestMessage).SessionId) //nolint: forcetypeassert
 }
 
 func TestSyncBroadcast(t *testing.T) {
@@ -297,7 +297,7 @@ func TestSyncBroadcast(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		str := fmt.Sprintf("requestMessage%d", i)
-		notif := &notifications.SessionClosedMessage{
+		notif := &notifications.NotificationTestMessage{
 			SessionId: str,
 		}
 		log.Infof("sending broadcast %d", i)
@@ -309,7 +309,7 @@ func TestSyncBroadcast(t *testing.T) {
 			list := listeners[j]
 			require.Equal(t, i+1, len(list.notifs))
 			not := list.notifs[len(list.notifs)-1]
-			snot, ok := not.(*notifications.SessionClosedMessage)
+			snot, ok := not.(*notifications.NotificationTestMessage)
 			if !ok {
 				panic("not a session closed message")
 			}
@@ -318,46 +318,6 @@ func TestSyncBroadcast(t *testing.T) {
 	}
 
 }
-
-// TestBroadcastSyncServerUnavailable tests that, if a server becomes unavailable due to heartbeat failing then
-// the broadcast sync call will return ok and not hang forever
-//func TestBroadcastSyncServerUnavailable(t *testing.T) {
-//	t.Helper()
-//
-//	numServers := 3
-//
-//	servers, listeners := startServers(t, numServers)
-//	defer stopServers(t, servers...)
-//	var listenAddresses []string
-//	for _, server := range servers {
-//		listenAddresses = append(listenAddresses, server.ListenAddress())
-//	}
-//
-//	client := newClient(heartbeatInterval, listenAddresses...)
-//	err := client.Start()
-//	require.NoError(t, err)
-//	defer stopClient(t, client)
-//
-//	// Send a notification and make sure it arrives
-//	notif1 := &notifications.SessionClosedMessage{
-//		SessionId: "notif1",
-//	}
-//	err = client.BroadcastSync(notif1)
-//	require.NoError(t, err)
-//	for j := 0; j < numServers; j++ {
-//		list := listeners[j]
-//		require.Equal(t, 1, len(list.notifs))
-//	}
-//
-//	// Tell server to stop responding to heartbeats
-//	servers[1].DisableResponses()
-//
-//	notif2 := &notifications.SessionClosedMessage{
-//		SessionId: "notif2",
-//	}
-//	err = client.BroadcastSync(notif2)
-//	require.NoError(t, err)
-//}
 
 func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	t.Helper()
@@ -375,7 +335,7 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	require.NoError(t, err)
 	defer stopClient(t, client)
 
-	notif := &notifications.SessionClosedMessage{
+	notif := &notifications.NotificationTestMessage{
 		SessionId: "requestMessage",
 	}
 
@@ -622,7 +582,7 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 		listenAddress := fmt.Sprintf("localhost:%d", listenPort)
 		server := newServer(listenAddress)
 		notifListener := &notifListener{}
-		server.RegisterMessageHandler(ClusterMessageCloseSession, notifListener)
+		server.RegisterMessageHandler(ClusterMessageNotificationTestMessage, notifListener)
 		notifListeners[i] = notifListener
 		err := server.Start()
 		require.NoError(t, err)
@@ -682,7 +642,7 @@ func notificationsReceived(t *testing.T, listeners []*notifListener, expectedNot
 		require.Equal(t, len(expectedNotifs), len(recNotifs))
 		recNotifsMap := map[string]struct{}{}
 		for _, recNotif := range recNotifs {
-			scNotif := recNotif.(*notifications.SessionClosedMessage) //nolint: forcetypeassert
+			scNotif := recNotif.(*notifications.NotificationTestMessage) //nolint: forcetypeassert
 			recNotifsMap[scNotif.SessionId] = struct{}{}
 		}
 		for _, expNotif := range expectedNotifs {

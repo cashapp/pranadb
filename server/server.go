@@ -76,7 +76,6 @@ func NewServer(config conf.Config) (*Server, error) {
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
 		protoRegistry, failureInjector)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageCloseSession, pullEngine)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)

@@ -185,7 +185,7 @@ func (re *RemoteExecutor) createGetterQueryExecInfo(qei *cluster.QueryExecutionI
 	// We append the shard id to the session id - as on each remote node we need to maintain a different
 	// session for each shard, as each shard wil have an independent current query running and needs an
 	// independent planner as they're not thread-safe
-	qeiCopy.SessionID = fmt.Sprintf("%s-%d", re.queryInfo.SessionID, shardID)
+	qeiCopy.ExecutionID = fmt.Sprintf("%s-%d", re.queryInfo.ExecutionID, shardID)
 	qeiCopy.ShardID = shardID
 	return &qeiCopy
 }

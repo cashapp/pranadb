@@ -69,20 +69,6 @@ func invalidAPIServerListenAddress() Config {
 	return cnf
 }
 
-func invalidAPIServerSessionTimeout() Config {
-	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerSessionTimeout = 1*time.Second - 1
-	return cnf
-}
-
-func invalidAPIServerSessionCheckInterval() Config {
-	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerSessionCheckInterval = 100*time.Millisecond - 1
-	return cnf
-}
-
 func invalidReplicationFactorConfig() Config {
 	cnf := confAllFields
 	cnf.ReplicationFactor = 2
@@ -281,8 +267,6 @@ var invalidConfigs = []configPair{
 	{"PDB0004 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
 	{"PDB0004 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
 	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
-	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 1000000000", invalidAPIServerSessionTimeout()},
-	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 100000000", invalidAPIServerSessionCheckInterval()},
 	{"PDB0004 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB0004 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
 	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
@@ -340,20 +324,18 @@ var confAllFields = Config{
 			},
 		},
 	},
-	DataSnapshotEntries:           1001,
-	DataCompactionOverhead:        501,
-	SequenceSnapshotEntries:       2001,
-	SequenceCompactionOverhead:    1001,
-	LocksSnapshotEntries:          101,
-	LocksCompactionOverhead:       51,
-	RemotingHeartbeatInterval:     76 * time.Second,
-	RemotingHeartbeatTimeout:      4 * time.Second,
-	EnableAPIServer:               true,
-	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
-	APIServerSessionTimeout:       41 * time.Second,
-	APIServerSessionCheckInterval: 6 * time.Second,
-	GlobalIngestLimitRowsPerSec:   3000,
-	RaftRTTMs:                     100,
-	RaftHeartbeatRTT:              10,
-	RaftElectionRTT:               100,
+	DataSnapshotEntries:         1001,
+	DataCompactionOverhead:      501,
+	SequenceSnapshotEntries:     2001,
+	SequenceCompactionOverhead:  1001,
+	LocksSnapshotEntries:        101,
+	LocksCompactionOverhead:     51,
+	RemotingHeartbeatInterval:   76 * time.Second,
+	RemotingHeartbeatTimeout:    4 * time.Second,
+	EnableAPIServer:             true,
+	APIServerListenAddresses:    []string{"addr7", "addr8", "addr9"},
+	GlobalIngestLimitRowsPerSec: 3000,
+	RaftRTTMs:                   100,
+	RaftHeartbeatRTT:            10,
+	RaftElectionRTT:             100,
 }
