@@ -66,27 +66,32 @@ func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, partialA
 	}, nil
 }
 
+type stateHolders struct {
+	holdersMap map[string]*aggStateHolder
+	holders    []*aggStateHolder
+}
+
 func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 
 	// We first calculate the partial aggregations locally
-	stateHolders := make(map[string]*aggStateHolder)
+	holders := &stateHolders{holdersMap: make(map[string]*aggStateHolder)}
 	numRows := rowsBatch.Len()
 	readRows := a.rowsFactory.NewRows(numRows)
 	for i := 0; i < numRows; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
-		if err := a.calcPartialAggregations(prevRow, currentRow, readRows, stateHolders, ctx.WriteBatch.ShardID); err != nil {
+		if err := a.calcPartialAggregations(prevRow, currentRow, readRows, holders, ctx.WriteBatch.ShardID); err != nil {
 			return err
 		}
 	}
 
 	// Store the results locally
-	if err := a.storeAggregateResults(stateHolders, ctx.WriteBatch); err != nil {
+	if err := a.storeAggregateResults(holders, ctx.WriteBatch); err != nil {
 		return errors.WithStack(err)
 	}
 
 	// We send the partial aggregation results to the shard that owns the key
-	for _, stateHolder := range stateHolders {
+	for i, stateHolder := range holders.holders {
 		if stateHolder.aggState.IsChanged() {
 			// We ignore the first 16 bytes as this is shard-id|table-id
 			remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, stateHolder.keyBytes[16:])
@@ -94,10 +99,17 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 				return errors.WithStack(err)
 			}
 
+			// The batch sequence is a uint32 that is incremented for each batch written
+			// The state holder id is generated using a sequence deterministically for each batch processed
+			// We create the sequence value for the dedup key by combining both into a uint64
+			// The main thing here is that the same dup key is generated if the same batch is processed again
+			dupSeq := uint64(ctx.BatchSequence)<<32 | uint64(i)
+
 			forwardKey := util.EncodeKeyForForwardAggregation(ctx.EnableDuplicateDetection, a.PartialAggTableInfo.ID,
-				ctx.WriteBatch.ShardID, ctx.BatchSequence, a.FullAggTableInfo.ID)
+				ctx.WriteBatch.ShardID, dupSeq, a.FullAggTableInfo.ID)
 			value := util.EncodePrevAndCurrentRow(stateHolder.initialRowBytes, stateHolder.rowBytes)
 			ctx.AddToForwardBatch(remoteShardID, forwardKey, value)
+
 		}
 	}
 	return nil
@@ -107,7 +119,7 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 
 	numRows := rowsBatch.Len()
-	stateHolders := make(map[string]*aggStateHolder)
+	stateHolders := &stateHolders{holdersMap: make(map[string]*aggStateHolder)}
 	readRows := a.rowsFactory.NewRows(numRows)
 	numCols := len(a.colTypes)
 	for i := 0; i < numRows; i++ {
@@ -128,7 +140,7 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	rc := 0
 
 	// Send the rows to the parent
-	for _, stateHolder := range stateHolders {
+	for _, stateHolder := range stateHolders.holders {
 		if stateHolder.aggState.IsChanged() {
 			prevRow := stateHolder.initialRow
 			currRow := stateHolder.row
@@ -151,7 +163,8 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	return a.parent.HandleRows(NewRowsBatch(resultRows, entries), ctx)
 }
 
-func (a *Aggregator) calcPartialAggregations(prevRow *common.Row, currRow *common.Row, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder, shardID uint64) error {
+func (a *Aggregator) calcPartialAggregations(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
+	aggStateHolders *stateHolders, shardID uint64) error {
 
 	// Create the key
 	keyBytes, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.PartialAggTableInfo.ID)
@@ -180,7 +193,7 @@ func (a *Aggregator) calcPartialAggregations(prevRow *common.Row, currRow *commo
 }
 
 func (a *Aggregator) calcFullAggregation(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
-	stateHolders map[string]*aggStateHolder, shardID uint64, numCols int) error {
+	stateHolders *stateHolders, shardID uint64, numCols int) error {
 
 	key, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.colTypes, a.keyCols, a.FullAggTableInfo.ID)
 	if err != nil {
@@ -245,9 +258,9 @@ func (a *Aggregator) mergeState(toMerge *aggfuncs.AggState, currState *aggfuncs.
 	return nil
 }
 
-func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, aggStateHolders map[string]*aggStateHolder) (*aggStateHolder, error) {
+func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders) (*aggStateHolder, error) {
 	sKey := common.ByteSliceToStringZeroCopy(keyBytes)
-	stateHolder, ok := aggStateHolders[sKey] // maybe already cached for this batch
+	stateHolder, ok := aggStateHolders.holdersMap[sKey] // maybe already cached for this batch
 	if !ok {
 		// Nope - try and load the aggregate state from storage
 		rowBytes, err := a.storage.LocalGet(keyBytes)
@@ -265,9 +278,12 @@ func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, 
 		}
 		numCols := len(a.colTypes)
 		aggState := aggfuncs.NewAggState(numCols)
-		stateHolder = &aggStateHolder{aggState: aggState}
+		stateHolder = &aggStateHolder{
+			aggState: aggState,
+		}
 		stateHolder.keyBytes = keyBytes
-		aggStateHolders[sKey] = stateHolder
+		aggStateHolders.holdersMap[sKey] = stateHolder
+		aggStateHolders.holders = append(aggStateHolders.holders, stateHolder)
 		if currRow != nil {
 			// Initialise the agg state with the row from storage
 			if err := a.initAggStateWithRow(currRow, aggState, numCols); err != nil {
@@ -282,10 +298,10 @@ func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, 
 	return stateHolder, nil
 }
 
-func (a *Aggregator) storeAggregateResults(stateHolders map[string]*aggStateHolder, writeBatch *cluster.WriteBatch) error {
-	resultRows := a.rowsFactory.NewRows(len(stateHolders))
+func (a *Aggregator) storeAggregateResults(stateHolders *stateHolders, writeBatch *cluster.WriteBatch) error {
+	resultRows := a.rowsFactory.NewRows(len(stateHolders.holders))
 	rowCount := 0
-	for _, stateHolder := range stateHolders {
+	for _, stateHolder := range stateHolders.holders {
 		aggState := stateHolder.aggState
 		if aggState.IsChanged() {
 			for i, colType := range a.colTypes {

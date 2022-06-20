@@ -45,7 +45,7 @@ type FakeCluster struct {
 	locks                        map[string]struct{}
 	dedupMaps                    map[uint64]map[string]uint64
 	receiverSequences            map[uint64]uint64
-	batchSequences               map[uint64]uint64
+	batchSequences               map[uint64]uint32
 }
 
 type snapshot struct {
@@ -95,7 +95,7 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		locks:             make(map[string]struct{}),
 		dedupMaps:         make(map[uint64]map[string]uint64),
 		receiverSequences: make(map[uint64]uint64),
-		batchSequences:    make(map[uint64]uint64),
+		batchSequences:    make(map[uint64]uint32),
 	}
 }
 
@@ -217,7 +217,7 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 		// For a write into the receiver table (forward write) the key is constructed as follows:
 		// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
 		key = table.EncodeTableKeyPrefix(common.ReceiverTableID, batch.ShardID, 40)
-		key = common.AppendUint64ToBufferBE(key, batchSequence)
+		key = common.AppendUint32ToBufferBE(key, batchSequence)
 		key = common.AppendUint64ToBufferBE(key, receiverSequence)
 		key = append(key, remoteConsumerBytes...)
 
