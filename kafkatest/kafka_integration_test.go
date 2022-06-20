@@ -103,7 +103,8 @@ create source payments(
 	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
 	res = <-ch
-	require.Equal(t, "|payment_id|customer_id|payment_time|amount|payment_type|currency|fraud_score|", res)
+	res = <-ch
+	require.Equal(t, "| payment_id | customer_id          | payment_time               | amount     | payment_.. | currency   | fraud_sc.. |", res)
 
 	var numPayments int64 = 1500
 
@@ -114,11 +115,11 @@ create source payments(
 
 	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
-	lineCount := 0
-	for range ch {
-		lineCount++
+	lastLine := ""
+	for line := range ch {
+		lastLine = line
 	}
-	require.Equal(t, int(numPayments+2), lineCount)
+	require.Equal(t, "1500 rows returned", lastLine)
 
 	// Send more messages
 	err = gm.ProduceMessages("payments", paymentTopicName, numPartitions, 0, numPayments, numPayments, props)
@@ -129,11 +130,10 @@ create source payments(
 	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
 	require.NoError(t, err)
 
-	lineCount = 0
-	for range ch {
-		lineCount++
+	for line := range ch {
+		lastLine = line
 	}
-	require.Equal(t, int(2*numPayments+2), lineCount)
+	require.Equal(t, "3000 rows returned", lastLine)
 }
 
 func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
