@@ -349,7 +349,7 @@ func (p *Engine) removeScheduler(shardID uint64) {
 }
 
 type receiveBatch struct {
-	batchSequence uint64
+	batchSequence uint32
 	writeBatch    *cluster.WriteBatch
 	rawRows       map[uint64][][]byte
 }
@@ -366,14 +366,14 @@ func (p *Engine) HandleReceivedRows(receivingShardID uint64) error {
 
 	var receiveBatches []*receiveBatch
 	var currBatch *receiveBatch
-	var prevBatchSequence uint64
+	var prevBatchSequence uint32
 
 	// Format of key is:
 	// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id|
 
 	// We iterate through the pairs and create a receiveBatch for each value of batchSequence
 	for _, kvPair := range kvPairs {
-		batchSequence, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
+		batchSequence, _ := common.ReadUint32FromBufferBE(kvPair.Key, 16)
 		if currBatch == nil || batchSequence != prevBatchSequence {
 			currBatch = &receiveBatch{
 				batchSequence: batchSequence,
@@ -384,7 +384,7 @@ func (p *Engine) HandleReceivedRows(receivingShardID uint64) error {
 			prevBatchSequence = batchSequence
 		}
 
-		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 32)
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 28)
 		rows, ok := currBatch.rawRows[remoteConsumerID]
 		if !ok {
 			rows = make([][]byte, 0)

@@ -49,7 +49,7 @@ type ShardOnDiskStateMachine struct {
 	shardListener    cluster.ShardListener
 	dedupSequences   map[string]uint64 // TODO use byteslicemap or similar
 	receiverSequence uint64
-	batchSequence    uint64
+	batchSequence    uint32
 	lock             sync.Mutex
 }
 
@@ -69,7 +69,7 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	return lastRaftIndex, nil
 }
 
-func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, uint64, error) {
+func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, uint32, error) {
 	// read the index of the last persisted log entry and the last written receiver sequence
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, shardID, 16)
 	vb, closer, err := peb.Get(key)
@@ -82,18 +82,18 @@ func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) 
 	}
 	lastRaftIndex, _ := common.ReadUint64FromBufferLE(vb, 0)
 	receiverSequence, _ := common.ReadUint64FromBufferLE(vb, 8)
-	batchSequence, _ := common.ReadUint64FromBufferLE(vb, 16)
+	batchSequence, _ := common.ReadUint32FromBufferLE(vb, 16)
 	return lastRaftIndex, receiverSequence, batchSequence, nil
 }
 
 func (s *ShardOnDiskStateMachine) writeSequences(batch *pebble.Batch, lastRaftIndex uint64,
-	receiverSequence uint64, batchSequence uint64, shardID uint64) error {
+	receiverSequence uint64, batchSequence uint32, shardID uint64) error {
 	// We store the last received and persisted log entry and the last written receiver sequence
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, shardID, 16)
 	vb := make([]byte, 0, 16)
 	vb = common.AppendUint64ToBufferLE(vb, lastRaftIndex)
 	vb = common.AppendUint64ToBufferLE(vb, receiverSequence)
-	vb = common.AppendUint64ToBufferLE(vb, batchSequence)
+	vb = common.AppendUint32ToBufferLE(vb, batchSequence)
 	return batch.Set(key, vb, nil)
 }
 
@@ -177,7 +177,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 			// For a write into the receiver table (forward write) the key is constructed as follows:
 			// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
 			key = table.EncodeTableKeyPrefix(common.ReceiverTableID, s.shardID, 40)
-			key = common.AppendUint64ToBufferBE(key, s.batchSequence)
+			key = common.AppendUint32ToBufferBE(key, s.batchSequence)
 			key = common.AppendUint64ToBufferBE(key, s.receiverSequence)
 			key = append(key, remoteConsumerBytes...)
 			s.receiverSequence++

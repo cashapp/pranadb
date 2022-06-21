@@ -30,13 +30,14 @@ func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint6
 	buff = common.AppendUint64ToBufferBE(buff, sourceID)
 	buff = common.AppendUint64ToBufferBE(buff, partitionID)
 	buff = common.AppendUint64ToBufferBE(buff, offset)
+
 	// And remote consumer id goes on the end
 	buff = common.AppendUint64ToBufferBE(buff, remoteConsumerID)
 	return buff
 }
 
 func EncodeKeyForForwardAggregation(enableDupDetection bool, partialAggTableID uint64, sendingShardID uint64,
-	batchSequence uint64, remoteConsumerID uint64) []byte {
+	sequence uint64, remoteConsumerID uint64) []byte {
 
 	buff := make([]byte, 0, 33)
 
@@ -49,10 +50,9 @@ func EncodeKeyForForwardAggregation(enableDupDetection bool, partialAggTableID u
 
 	// The next 24 bytes is the dedup key and comprises [originator_id (16 bytes), sequence (8 bytes)]
 	// Originator id for forward of partial aggregation is [partial_agg_table_id (8 bytes), sending_shard_id (8 bytes) ]
-	// Sequence in this case is the batch number
 	buff = common.AppendUint64ToBufferBE(buff, partialAggTableID)
 	buff = common.AppendUint64ToBufferBE(buff, sendingShardID)
-	buff = common.AppendUint64ToBufferBE(buff, batchSequence)
+	buff = common.AppendUint64ToBufferBE(buff, sequence)
 	// And remote consumer id goes on the end
 	buff = common.AppendUint64ToBufferBE(buff, remoteConsumerID)
 

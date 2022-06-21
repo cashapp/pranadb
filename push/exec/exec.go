@@ -31,7 +31,7 @@ func NewExecutionContext(writeBatch *cluster.WriteBatch, enableDuplicateDetectio
 type ExecutionContext struct {
 	WriteBatch               *cluster.WriteBatch
 	RemoteBatches            map[uint64]*cluster.WriteBatch
-	BatchSequence            uint64
+	BatchSequence            uint32
 	EnableDuplicateDetection bool
 }
 
