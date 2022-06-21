@@ -1,3 +1,4 @@
+set max_line_width 500;
 -- This test ensures that timestamp FSP values (fractional seconds part) is respected;
 --create topic testtopic;
 use test;

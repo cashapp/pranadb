@@ -1,0 +1,227 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(65, 30),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+set max_line_width 200;
+
+select * from test_source_1 order by col0;
+
+set max_line_width 50;
+
+set foo 123;
+
+set max_line_width oranges;
+
+set max_line_width 0;
+
+set max_line_width -1;
+
+set bar;
+
+set;
+
+set max_line_width 80;
+
+select * from test_source_1 order by col0;
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    col2 double,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2
+    )
+);
+
+--load data dataset_2;
+
+select * from test_source_2 order by col0;
+
+set max_line_width 120;
+
+select * from test_source_2 order by col0;
+
+--create topic testtopic3;
+
+create source test_source_3(
+    col0 bigint,
+    col1 varchar,
+    col2 varchar,
+    col3 varchar,
+    col4 varchar,
+    col5 varchar,
+    col6 varchar,
+    col7 varchar,
+    col8 varchar,
+    col9 varchar,
+    col10 varchar,
+    col11 varchar,
+    col12 varchar,
+    col13 varchar,
+    col14 varchar,
+    col15 varchar,
+    col16 varchar,
+    col17 varchar,
+    col18 varchar,
+    col19 varchar,
+    col20 varchar,
+    col21 varchar,
+    col22 varchar,
+    col23 varchar,
+    col24 varchar,
+    col25 varchar,
+    col26 varchar,
+    col27 varchar,
+    col28 varchar,
+    col29 varchar,
+    col30 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7,
+        v8,
+        v9,
+        v10,
+        v11,
+        v12,
+        v13,
+        v14,
+        v15,
+        v16,
+        v17,
+        v18,
+        v19,
+        v20,
+        v21,
+        v22,
+        v23,
+        v24,
+        v25,
+        v26,
+        v27,
+        v28,
+        v29,
+        v30
+    )
+);
+
+--load data dataset_3;
+
+select * from test_source_3 order by col0;
+
+--create topic testtopic4;
+
+create source test_source_4(
+    col0 bigint,
+    col________________________________________________________________ varchar,
+    col2_______________________________________________________________ varchar,
+    col3_______________________________________________________________ varchar,
+    col4_______________________________________________________________ varchar,
+    col5_______________________________________________________________ varchar,
+    col6_______________________________________________________________ varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic4",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_4;
+
+select * from test_source_4 order by col0;
+
+--create topic testtopic5;
+create source test_source_5(
+    col0 bigint,
+    looooooooooooooooooooong_col_name tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic5",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_5;
+
+-- col name longer than col width;
+select looooooooooooooooooooong_col_name from test_source_5 order by col0;
+
+drop source test_source_5;
+drop source test_source_4;
+drop source test_source_3;
+drop source test_source_2;
+drop source test_source_1;
+
+--delete topic testtopic5;
+--delete topic testtopic4;
+--delete topic testtopic3;
+--delete topic testtopic2;
+--delete topic testtopic;

@@ -17,8 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sergi/go-diff/diffmatchpatch"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/command/parser"
@@ -47,7 +45,6 @@ const (
 	ExcludedTestPrefix = ""
 	TestClusterID      = 12345678
 	ProtoDescriptorDir = "../protos"
-	UseFancyDiff       = false
 )
 
 var (
@@ -550,20 +547,9 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	} else {
 		b, err := os.ReadFile("./testdata/" + st.outFile)
 		require.NoError(err)
-		if !UseFancyDiff {
-			// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
-			// to a basic check - this shows only the changed lines, not all the lines
-			require.Equal(string(b), st.output.String())
-		} else {
-			dmp := diffmatchpatch.New()
-			actualOutput := st.output.String()
-			diffs := dmp.DiffMain(actualOutput, string(b), false)
-			if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
-				diff := dmp.DiffPrettyText(diffs)
-				st.testSuite.T().Error("Test output did not match:")
-				fmt.Println(diff)
-			}
-		}
+		// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
+		// to a basic check - this shows only the changed lines, not all the lines
+		require.Equal(string(b), st.output.String())
 	}
 
 	dur := time.Now().Sub(start)
@@ -572,16 +558,17 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 }
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
+	lineExpected := fmt.Sprintf("%d rows returned", numRows)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
-		lineCount := -2 // There's a header and a footer
-		for range ch {
-			lineCount++
+		lastLine := ""
+		for l := range ch {
+			lastLine = l
 		}
-		return lineCount == numRows, nil
+		return lineExpected == lastLine, nil
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok)
@@ -992,8 +979,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 		st.output.WriteString(line + "\n")
 		lastLine = line
 	}
-	successful := lastLine == "0 rows returned"
-	if isUse && successful {
+	if isUse && strings.HasPrefix(lastLine, "0 rows returned") {
 		st.currentSchema = statement[4:]
 	}
 	end := time.Now()

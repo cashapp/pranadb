@@ -29,17 +29,20 @@ create source latest_sensor_readings(
 --load data dataset_1;
 
 select * from latest_sensor_readings order by sensor_id;
-|sensor_id|country|city|reading_1|reading_2|reading_3|
-|1|uk|london|1000|192.23|123456.33|
-|2|usa|new york|-1501|-563.34|-765432.34|
-|3|au|sydney|372|7890.765|98766554.34|
-|4|uk|london|2012|675.21|9873.74|
-|5|uk|bristol|-192|-876.23|-736464.38|
-|6|usa|new york|-346|-763.97|252673.83|
-|7|au|melbourne|0|764.32|9686.12|
-|8|uk|bristol|453|9867.99|87475.36|
-|9|usa|san francisco|-3736|-543.12|-8575.38|
-|10|au|sydney|2163|0|-38373.36|
++---------------------------------------------------------------------------------------------------------------------+
+| sensor_id            | country         | city            | reading_1            | reading_2       | reading_3       |
++---------------------------------------------------------------------------------------------------------------------+
+| 1                    | uk              | london          | 1000                 | 192.230000      | 123456.33       |
+| 2                    | usa             | new york        | -1501                | -563.340000     | -765432.34      |
+| 3                    | au              | sydney          | 372                  | 7890.765000     | 98766554.34     |
+| 4                    | uk              | london          | 2012                 | 675.210000      | 9873.74         |
+| 5                    | uk              | bristol         | -192                 | -876.230000     | -736464.38      |
+| 6                    | usa             | new york        | -346                 | -763.970000     | 252673.83       |
+| 7                    | au              | melbourne       | 0                    | 764.320000      | 9686.12         |
+| 8                    | uk              | bristol         | 453                  | 9867.990000     | 87475.36        |
+| 9                    | usa             | san francisco   | -3736                | -543.120000     | -8575.38        |
+| 10                   | au              | sydney          | 2163                 | 0.000000        | -38373.36       |
++---------------------------------------------------------------------------------------------------------------------+
 10 rows returned
 
 -- COUNT;
@@ -50,61 +53,85 @@ select * from latest_sensor_readings order by sensor_id;
 create materialized view test_mv_1 as select count(reading_1) from latest_sensor_readings;
 0 rows returned
 select * from test_mv_1;
-|count(reading_1)|
-|10|
++----------------------+
+| count(reading_1)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 create materialized view test_mv_2 as select count(reading_2) from latest_sensor_readings;
 0 rows returned
 select * from test_mv_2;
-|count(reading_2)|
-|10|
++----------------------+
+| count(reading_2)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 create materialized view test_mv_3 as select count(reading_3) from latest_sensor_readings;
 0 rows returned
 select * from test_mv_3;
-|count(reading_3)|
-|10|
++----------------------+
+| count(reading_3)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 create materialized view test_mv_4 as select count(reading_1) from latest_sensor_readings having count(reading_1) < 0;
 0 rows returned
 select * from test_mv_4;
-|count(reading_1)|
++----------------------+
+| count(reading_1)     |
++----------------------+
 0 rows returned
 
 create materialized view test_mv_5 as select count(reading_2) from latest_sensor_readings having count(reading_2) < 0;
 0 rows returned
 select * from test_mv_5;
-|count(reading_2)|
++----------------------+
+| count(reading_2)     |
++----------------------+
 0 rows returned
 
 create materialized view test_mv_6 as select count(reading_3) from latest_sensor_readings having count(reading_3) < 0;
 0 rows returned
 select * from test_mv_6;
-|count(reading_3)|
++----------------------+
+| count(reading_3)     |
++----------------------+
 0 rows returned
 
 create materialized view test_mv_7 as select count(reading_1) from latest_sensor_readings having count(reading_1) > 0;
 0 rows returned
 select * from test_mv_7;
-|count(reading_1)|
-|10|
++----------------------+
+| count(reading_1)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 create materialized view test_mv_8 as select count(reading_2) from latest_sensor_readings having count(reading_2) > 0;
 0 rows returned
 select * from test_mv_8;
-|count(reading_2)|
-|10|
++----------------------+
+| count(reading_2)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 create materialized view test_mv_9 as select count(reading_3) from latest_sensor_readings having count(reading_3) > 0;
 0 rows returned
 select * from test_mv_9;
-|count(reading_3)|
-|10|
++----------------------+
+| count(reading_3)     |
++----------------------+
+| 10                   |
++----------------------+
 1 rows returned
 
 -- Group by one column;
@@ -112,49 +139,67 @@ select * from test_mv_9;
 create materialized view test_mv_10 as select country, count(reading_1) from latest_sensor_readings group by country;
 0 rows returned
 select * from test_mv_10 order by country;
-|country|count(reading_1)|
-|au|3|
-|uk|4|
-|usa|3|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_1)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                                                                            | 3                    |
+| uk                                                                                            | 4                    |
+| usa                                                                                           | 3                    |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 
 create materialized view test_mv_11 as select country, count(reading_2) from latest_sensor_readings group by country;
 0 rows returned
 select * from test_mv_11 order by country;
-|country|count(reading_2)|
-|au|3|
-|uk|4|
-|usa|3|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_2)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                                                                            | 3                    |
+| uk                                                                                            | 4                    |
+| usa                                                                                           | 3                    |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 
 create materialized view test_mv_12 as select country, count(reading_3) from latest_sensor_readings group by country;
 0 rows returned
 select * from test_mv_12 order by country;
-|country|count(reading_3)|
-|au|3|
-|uk|4|
-|usa|3|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_3)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                                                                            | 3                    |
+| uk                                                                                            | 4                    |
+| usa                                                                                           | 3                    |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 
 create materialized view test_mv_13 as select country, count(reading_1) from latest_sensor_readings group by country having count(reading_1) > 3;
 0 rows returned
 select * from test_mv_13 order by country;
-|country|count(reading_1)|
-|uk|4|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_1)     |
++----------------------------------------------------------------------------------------------------------------------+
+| uk                                                                                            | 4                    |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
 create materialized view test_mv_14 as select country, count(reading_2) from latest_sensor_readings group by country having count(reading_2) > 3;
 0 rows returned
 select * from test_mv_14 order by country;
-|country|count(reading_2)|
-|uk|4|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_2)     |
++----------------------------------------------------------------------------------------------------------------------+
+| uk                                                                                            | 4                    |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
 create materialized view test_mv_15 as select country, count(reading_3) from latest_sensor_readings group by country having count(reading_3) > 3;
 0 rows returned
 select * from test_mv_15 order by country;
-|country|count(reading_3)|
-|uk|4|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                                                                       | count(reading_3)     |
++----------------------------------------------------------------------------------------------------------------------+
+| uk                                                                                            | 4                    |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
 -- Group by two columns;
@@ -162,67 +207,85 @@ select * from test_mv_15 order by country;
 create materialized view test_mv_16 as select country, city, count(reading_1) from latest_sensor_readings group by country, city;
 0 rows returned
 select * from test_mv_16 order by country, city;
-|country|city|count(reading_1)|
-|au|melbourne|1|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
-|usa|san francisco|1|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_1)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | melbourne                                     | 1                    |
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
+| usa                                           | san francisco                                 | 1                    |
++----------------------------------------------------------------------------------------------------------------------+
 6 rows returned
 
 create materialized view test_mv_17 as select country, city, count(reading_2) from latest_sensor_readings group by country, city;
 0 rows returned
 select * from test_mv_17 order by country, city;
-|country|city|count(reading_2)|
-|au|melbourne|1|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
-|usa|san francisco|1|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_2)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | melbourne                                     | 1                    |
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
+| usa                                           | san francisco                                 | 1                    |
++----------------------------------------------------------------------------------------------------------------------+
 6 rows returned
 
 create materialized view test_mv_18 as select country, city, count(reading_3) from latest_sensor_readings group by country, city;
 0 rows returned
 select * from test_mv_18 order by country, city;
-|country|city|count(reading_3)|
-|au|melbourne|1|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
-|usa|san francisco|1|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_3)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | melbourne                                     | 1                    |
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
+| usa                                           | san francisco                                 | 1                    |
++----------------------------------------------------------------------------------------------------------------------+
 6 rows returned
 
 create materialized view test_mv_19 as select country, city, count(reading_1) from latest_sensor_readings group by country, city having count(reading_1) > 1;
 0 rows returned
 select * from test_mv_19 order by country, city;
-|country|city|count(reading_1)|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_1)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
++----------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 create materialized view test_mv_20 as select country, city, count(reading_2) from latest_sensor_readings group by country, city having count(reading_2) > 1;
 0 rows returned
 select * from test_mv_20 order by country, city;
-|country|city|count(reading_2)|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_2)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
++----------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 create materialized view test_mv_21 as select country, city, count(reading_3) from latest_sensor_readings group by country, city having count(reading_3) > 1;
 0 rows returned
 select * from test_mv_21 order by country, city;
-|country|city|count(reading_3)|
-|au|sydney|2|
-|uk|bristol|2|
-|uk|london|2|
-|usa|new york|2|
++----------------------------------------------------------------------------------------------------------------------+
+| country                                       | city                                          | count(reading_3)     |
++----------------------------------------------------------------------------------------------------------------------+
+| au                                            | sydney                                        | 2                    |
+| uk                                            | bristol                                       | 2                    |
+| uk                                            | london                                        | 2                    |
+| usa                                           | new york                                      | 2                    |
++----------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 -- without aggregate in projection;
@@ -230,31 +293,40 @@ select * from test_mv_21 order by country, city;
 create materialized view test_mv_22 as select country, city from latest_sensor_readings group by country, city having count(reading_1) > 1;
 0 rows returned
 select * from test_mv_22 order by country, city;
-|country|city|
-|au|sydney|
-|uk|bristol|
-|uk|london|
-|usa|new york|
++---------------------------------------------------------------------------------------------------------------------+
+| country                                                  | city                                                     |
++---------------------------------------------------------------------------------------------------------------------+
+| au                                                       | sydney                                                   |
+| uk                                                       | bristol                                                  |
+| uk                                                       | london                                                   |
+| usa                                                      | new york                                                 |
++---------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 create materialized view test_mv_23 as select country, city from latest_sensor_readings group by country, city having count(reading_2) > 1;
 0 rows returned
 select * from test_mv_23 order by country, city;
-|country|city|
-|au|sydney|
-|uk|bristol|
-|uk|london|
-|usa|new york|
++---------------------------------------------------------------------------------------------------------------------+
+| country                                                  | city                                                     |
++---------------------------------------------------------------------------------------------------------------------+
+| au                                                       | sydney                                                   |
+| uk                                                       | bristol                                                  |
+| uk                                                       | london                                                   |
+| usa                                                      | new york                                                 |
++---------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 create materialized view test_mv_24 as select country, city from latest_sensor_readings group by country, city having count(reading_3) > 1;
 0 rows returned
 select * from test_mv_24 order by country, city;
-|country|city|
-|au|sydney|
-|uk|bristol|
-|uk|london|
-|usa|new york|
++---------------------------------------------------------------------------------------------------------------------+
+| country                                                  | city                                                     |
++---------------------------------------------------------------------------------------------------------------------+
+| au                                                       | sydney                                                   |
+| uk                                                       | bristol                                                  |
+| uk                                                       | london                                                   |
+| usa                                                      | new york                                                 |
++---------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 drop materialized view test_mv_24;

@@ -33,27 +33,33 @@ create source test_source(
 );
 0 rows returned
 describe test_source;
-|field|type|key|
-|col0|bigint|pk|
-|col1|tinyint||
-|col2|int||
-|col3|double||
-|col4|decimal(10, 2)||
-|col5|varchar||
-|col6|timestamp(6)||
++--------------------------------------------------------------------------------------------------------------------+
+| field                                | type                                 | key                                  |
++--------------------------------------------------------------------------------------------------------------------+
+| col0                                 | bigint                               | pk                                   |
+| col1                                 | tinyint                              |                                      |
+| col2                                 | int                                  |                                      |
+| col3                                 | double                               |                                      |
+| col4                                 | decimal(10, 2)                       |                                      |
+| col5                                 | varchar                              |                                      |
+| col6                                 | timestamp(6)                         |                                      |
++--------------------------------------------------------------------------------------------------------------------+
 7 rows returned
 
 create materialized view test_mv as select * from test_source;
 0 rows returned
 describe test_mv;
-|field|type|key|
-|col0|bigint|pk|
-|col1|tinyint||
-|col2|int||
-|col3|double||
-|col4|decimal(10, 2)||
-|col5|varchar||
-|col6|timestamp(6)||
++--------------------------------------------------------------------------------------------------------------------+
+| field                                | type                                 | key                                  |
++--------------------------------------------------------------------------------------------------------------------+
+| col0                                 | bigint                               | pk                                   |
+| col1                                 | tinyint                              |                                      |
+| col2                                 | int                                  |                                      |
+| col3                                 | double                               |                                      |
+| col4                                 | decimal(10, 2)                       |                                      |
+| col5                                 | varchar                              |                                      |
+| col6                                 | timestamp(6)                         |                                      |
++--------------------------------------------------------------------------------------------------------------------+
 7 rows returned
 
 drop materialized view test_mv;
