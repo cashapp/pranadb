@@ -5,6 +5,7 @@ create source transactions(
     id bigint,
     customer_id tinyint,
     col2 varchar,
+    col3 double,
     primary key (id)
 ) with (
     brokername = "testbroker",
@@ -15,7 +16,8 @@ create source transactions(
     columnselectors = (
         meta("key").k0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 0 rows returned
@@ -61,34 +63,34 @@ select customer_id from transactions where customer_id = 1000000;
 --test partially-covering index;
 
 select * from transactions where customer_id = 600 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
+|id|customer_id|col2|col3|
+|6|600|abc|0|
+|7|600|abc|789.101|
 2 rows returned
 
 select * from transactions where id > 5 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
-|8|800|abc|
-|9|900|abc|
-|10|1000|abc|
+|id|customer_id|col2|col3|
+|6|600|abc|0|
+|7|600|abc|789.101|
+|8|800|abc|1.23|
+|9|900|abc|2.34|
+|10|1000|abc|3.45|
 5 rows returned
 
 select * from transactions where id < 5 order by id;
-|id|customer_id|col2|
-|1|100|abc|
-|2|null|def|
-|3|300|ghi|
-|4|400|null|
+|id|customer_id|col2|col3|
+|1|100|abc|123.45|
+|2|null|def|234.56|
+|3|300|ghi|345.67|
+|4|400|null|456.78|
 4 rows returned
 
 -- this should trigger multiple ranges for an index scan;
 select * from transactions where customer_id in (500, 600, 700) order by id;
-|id|customer_id|col2|
-|5|500|abc|
-|6|600|abc|
-|7|600|abc|
+|id|customer_id|col2|col3|
+|5|500|abc|null|
+|6|600|abc|0|
+|7|600|abc|789.101|
 3 rows returned
 
 drop index index1 on transactions;
@@ -100,13 +102,13 @@ create index index2 on transactions (customer_id, col2);
 0 rows returned
 
 select * from transactions where id > 10 order by id;
-|id|customer_id|col2|
+|id|customer_id|col2|col3|
 0 rows returned
 
 select * from transactions where customer_id = 600 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
+|id|customer_id|col2|col3|
+|6|600|abc|0|
+|7|600|abc|789.101|
 2 rows returned
 
 select col2 from transactions where col2 = 'abc';
@@ -143,13 +145,13 @@ select customer_id from transactions where customer_id < 600 order by customer_i
 5 rows returned
 
 select * from transactions where customer_id > 600 and customer_id < 900 order by id;
-|id|customer_id|col2|
-|8|800|abc|
+|id|customer_id|col2|col3|
+|8|800|abc|1.23|
 1 rows returned
 
 select * from transactions where customer_id > 300 and col2 is null order by id;
-|id|customer_id|col2|
-|4|400|null|
+|id|customer_id|col2|col3|
+|4|400|null|456.78|
 1 rows returned
 
 select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
@@ -160,24 +162,36 @@ select customer_id, id, col2 from transactions where customer_id > 300 and col2 
 -- test index usage with composite range - we do this by fixing the leftmost columns in the index;
 
 select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
-|id|customer_id|col2|
-|3|300|ghi|
+|id|customer_id|col2|col3|
+|3|300|ghi|345.67|
 1 rows returned
 
 select * from transactions where customer_id = 400 and col2 is null order by id;
-|id|customer_id|col2|
-|4|400|null|
+|id|customer_id|col2|col3|
+|4|400|null|456.78|
 1 rows returned
 
 -- this should trigger multiple ranges for an index scan;
 select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
-|id|customer_id|col2|
-|5|500|abc|
-|6|600|abc|
-|7|600|abc|
+|id|customer_id|col2|col3|
+|5|500|abc|null|
+|6|600|abc|0|
+|7|600|abc|789.101|
 3 rows returned
 
 drop index index2 on transactions;
+0 rows returned
+
+create index index3 on transactions (customer_id, col3, col2);
+0 rows returned
+
+-- this test demonstrates a bug with decimal values in index cols;
+select * from transactions where customer_id = 600 and col3 > 1.23 order by id;
+|id|customer_id|col2|col3|
+|7|600|abc|-789.101|
+1 rows returned
+
+drop index index3 on transactions;
 0 rows returned
 
 drop source transactions;

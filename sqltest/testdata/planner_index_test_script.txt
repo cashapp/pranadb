@@ -4,6 +4,7 @@ create source transactions(
     id bigint,
     customer_id tinyint,
     col2 varchar,
+    col3 double,
     primary key (id)
 ) with (
     brokername = "testbroker",
@@ -14,7 +15,8 @@ create source transactions(
     columnselectors = (
         meta("key").k0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
@@ -79,6 +81,13 @@ select * from transactions where customer_id = 400 and col2 is null order by id;
 select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
 
 drop index index2 on transactions;
+
+create index index3 on transactions (customer_id, col3, col2);
+
+-- this test demonstrates a bug with decimal values in index cols;
+select * from transactions where customer_id = 600 and col3 > 1.23 order by id;
+
+drop index index3 on transactions;
 
 drop source transactions;
 
