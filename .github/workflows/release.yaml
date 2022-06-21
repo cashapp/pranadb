@@ -6,20 +6,19 @@ name: Release
 jobs:
   deployable:
     name: Release
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
-          go-version: '^1.16.3'
+          go-version: '^1.18'
       - run: ./bin/hermit env --raw >> $GITHUB_ENV
       - name: Build Prana
         run: |
-          make GOOS=linux GOARCH=amd64 CHANNEL=stable build
-          make GOOS=linux GOARCH=arm64 CHANNEL=stable build
-          make GOOS=darwin GOARCH=amd64 CHANNEL=stable build
-          make GOOS=darwin GOARCH=arm64 CHANNEL=stable build
+          make GOOS=linux GOARCH=amd64 CHANNEL=stable build-cli
+          make GOOS=darwin GOARCH=amd64 CHANNEL=stable build-cli
       - name: Release versioned
         uses: ncipollo/release-action@v1
         with:
