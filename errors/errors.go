@@ -34,6 +34,8 @@ const (
 	IndexAlreadyExists
 
 	UnknownPerfCommand
+
+	ValueOutOfRange
 )
 
 func NewInternalError(seq int64) PranaError {
@@ -102,6 +104,10 @@ func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName
 
 func NewUnknownLoadRunnerfCommandError(commandName string) PranaError {
 	return NewPranaErrorf(UnknownPerfCommand, "Unknown perf runner command %s", commandName)
+}
+
+func NewValueOutOfRangeError(msg string) PranaError {
+	return NewPranaErrorf(ValueOutOfRange, "Value out of range. %s", msg)
 }
 
 func getChildString(schemaName string, childMVs []string) string {

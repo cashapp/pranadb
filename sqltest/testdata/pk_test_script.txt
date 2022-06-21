@@ -1,0 +1,315 @@
+use test;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+-- BIGINT;
+
+--load data dataset_1_1;
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col0=1;
+select * from test_source_1 where col0=-9223372036854775808;
+select * from test_source_1 where col0=9223372036854775807;
+select * from test_source_1 where col0=777;
+
+--load data dataset_1_2;
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col0=1;
+select * from test_source_1 where col0=-9223372036854775808;
+select * from test_source_1 where col0=9223372036854775807;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- INT;
+
+--create topic testtopic2;
+create source test_source_2(
+    col0 int,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_2_1;
+
+select * from test_source_2 order by col0;
+select * from test_source_2 where col0=1;
+select * from test_source_2 where col0=-2147483648;
+select * from test_source_2 where col0=2147483647;
+select * from test_source_2 where col0=777;
+
+--load data dataset_2_2;
+
+select * from test_source_2 order by col0;
+select * from test_source_2 where col0=1;
+select * from test_source_2 where col0=-2147483648;
+select * from test_source_2 where col0=2147483647;
+
+drop source test_source_2;
+
+--delete topic testtopic2;
+
+-- TINYINT;
+
+--create topic testtopic3;
+create source test_source_3(
+    col0 tinyint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_3_1;
+
+select * from test_source_3 order by col0;
+select * from test_source_3 where col0=1;
+select * from test_source_3 where col0=-128;
+select * from test_source_3 where col0=127;
+select * from test_source_3 where col0=23;
+
+--load data dataset_3_2;
+
+select * from test_source_3 order by col0;
+select * from test_source_3 where col0=1;
+select * from test_source_3 where col0=-128;
+select * from test_source_3 where col0=127;
+
+drop source test_source_3;
+
+--delete topic testtopic3;
+
+-- DOUBLE;
+
+--create topic testtopic4;
+create source test_source_4(
+    col0 double,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic4",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_4_1;
+
+select * from test_source_4 order by col0;
+select * from test_source_4 where col0=1.1;
+select * from test_source_4 where col0=-1234.4321;
+select * from test_source_4 where col0=1234.4321;
+select * from test_source_4 where col0=13;
+
+--load data dataset_4_2;
+
+select * from test_source_4 order by col0;
+select * from test_source_4 where col0=1.1;
+select * from test_source_4 where col0=-1234.4321;
+select * from test_source_4 where col0=1234.4321;
+
+drop source test_source_4;
+
+--delete topic testtopic4;
+
+-- VARCHAR;
+
+--create topic testtopic5;
+create source test_source_5(
+    col0 varchar,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic5",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_5_1;
+
+select * from test_source_5 order by col0;
+select * from test_source_5 where col0='abc';
+select * from test_source_5 where col0='bcde';
+select * from test_source_5 where col0='not here';
+
+--load data dataset_5_2;
+
+select * from test_source_5 order by col0;
+select * from test_source_5 where col0='abc';
+select * from test_source_5 where col0='bcde';
+
+drop source test_source_5;
+
+--delete topic testtopic5;
+
+-- DECIMAL;
+
+--create topic testtopic6;
+create source test_source_6(
+    col0 decimal(10,2),
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic6",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_6_1;
+
+select * from test_source_6 order by col0;
+select * from test_source_6 where col0=1234.99;
+select * from test_source_6 where col0=-87654321.65;
+select * from test_source_6 where col0=78676543.86;
+select * from test_source_6 where col0=777.777;
+
+--load data dataset_6_2;
+
+select * from test_source_6 order by col0;
+select * from test_source_6 where col0=1234.99;
+select * from test_source_6 where col0=-87654321.65;
+select * from test_source_6 where col0=78676543.86;
+
+drop source test_source_6;
+
+--delete topic testtopic6;
+
+-- TIMESTAMP;
+
+--create topic testtopic7;
+create source test_source_7(
+    col0 timestamp(6),
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic7",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_7_1;
+
+select * from test_source_7 order by col0;
+select * from test_source_7 where col0='2020-01-03 01:00:00.123456';
+select * from test_source_7 where col0='2035-11-17 23:47:12.373443';
+select * from test_source_7 where col0='1971-05-25 15:23:09.474646';
+
+--load data dataset_7_2;
+
+select * from test_source_7 order by col0;
+select * from test_source_7 where col0='2020-01-03 01:00:00.123456';
+select * from test_source_7 where col0='2035-11-17 23:47:12.373443';
+
+drop source test_source_7;
+
+--delete topic testtopic7;
+
+-- COMPOSITE;
+
+--create topic testtopic8;
+create source test_source_8(
+    col0 tinyint,
+    col1 int,
+    col2 bigint,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 varchar,
+    primary key (col0, col1, col2, col3, col4, col5, col6)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic8",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+--load data dataset_8_1;
+
+set max_line_width 250;
+
+select * from test_source_8 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 and col1=500 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=8234.4321 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=8234.4321 and col4=72345678.99 order by col0,col1,col2,col3,col4,col5,col6;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=8234.4321 and col4=72345678.99 and col5='str1' order by col0,col1,col2,col3,col4,col5,col6;
+
+-- should return one row as column has no FSP;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=8234.4321 and col4=72345678.99 and col5='str1' and col6='2021-02-13 21:11:08' order by col0,col1,col2,col3,col4,col5,col6;
+-- should return zero rows as not exact match;
+select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=8234.4321 and col4=72345678.99 and col5='str1' and col6='2021-02-13 21:11:07.645465' order by col0,col1,col2,col3,col4,col5,col6;
+
+drop source test_source_8;
+
+--delete topic testtopic8;

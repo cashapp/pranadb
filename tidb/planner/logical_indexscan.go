@@ -19,10 +19,10 @@ package planner
 
 import (
 	"fmt"
+	"github.com/pingcap/parser/mysql"
 	"strings"
 
 	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/tidb/expression"
 	"github.com/squareup/pranadb/tidb/planner/property"
 	"github.com/squareup/pranadb/tidb/sessionctx"

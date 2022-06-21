@@ -8,7 +8,7 @@ import (
 func calcScanRangeKeys(scanRanges []*ScanRange, indexID uint64, indexCols []int, tableInfo *common.TableInfo,
 	shardID uint64, isIndex bool) ([]*rangeHolder, error) {
 	keyPrefix := table.EncodeTableKeyPrefix(indexID, shardID, 16)
-	if len(scanRanges) == 0 || (len(scanRanges) == 1 && scanRanges[0] == nil) {
+	if len(scanRanges) == 1 && scanRanges[0] == nil {
 		return []*rangeHolder{{rangeStart: keyPrefix, rangeEnd: table.EncodeTableKeyPrefix(indexID+1, shardID, 16)}}, nil
 	}
 	rangeHolders := make([]*rangeHolder, len(scanRanges))
@@ -26,10 +26,7 @@ func calcScanRangeKeys(scanRanges []*ScanRange, indexID uint64, indexCols []int,
 				}
 				rangeStart = append(rangeStart, 0)
 				rangeEnd = append(rangeEnd, 0)
-			} else if hv == nil {
-				// This is an open ended range
-				//rangeEnd = table.EncodeTableKeyPrefix(indexID, shardID, 16)
-			} else {
+			} else if hv != nil {
 				// This is a closed range
 				if isIndex {
 					// Only index keys have a marker byte which says whether the key element is null or not
