@@ -159,7 +159,7 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	case TypeTimestamp:
 		valTime := row.GetTimestamp(colIndex)
 		var err error
-		buffer, err = AppendTimestampToBuffer(buffer, valTime)
+		buffer, err = KeyEncodeTimestamp(buffer, valTime)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

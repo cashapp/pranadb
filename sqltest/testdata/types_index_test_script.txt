@@ -1,0 +1,105 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_1;
+
+--tinyint;
+
+create index index_tinyint on test_source_1(col1);
+select * from test_source_1 where col1 = 100;
+select * from test_source_1 where col1 > 100 order by col0;
+
+create index index_composite_tinyint on test_source_1(col1, col4);
+select * from test_source_1 where col1 = 100 and col4 = 22345678.99;
+
+drop index index_composite_tinyint on test_source_1;
+drop index index_tinyint on test_source_1;
+
+--int;
+
+create index index_int on test_source_1(col2);
+select * from test_source_1 where col2 = 6000;
+select * from test_source_1 where col2 > 6000 order by col0;
+
+create index index_composite_int on test_source_1(col2, col4);
+select * from test_source_1 where col2 = 7000 and col4 = 72345678.99;
+
+drop index index_composite_int on test_source_1;
+drop index index_int on test_source_1;
+
+--double;
+
+create index index_double on test_source_1(col3);
+select * from test_source_1 where col3 = 6234.4321;
+select * from test_source_1 where col3 > 6234.4321 order by col0;
+
+create index index_composite_double on test_source_1(col3, col4);
+select * from test_source_1 where col3 = 6234.4321 and col4 = 62345678.99;
+
+drop index index_composite_double on test_source_1;
+drop index index_double on test_source_1;
+
+--decimal;
+
+create index index_decimal on test_source_1(col4);
+select * from test_source_1 where col4 = 42345678.99;
+select * from test_source_1 where col4 > 42345678.99 order by col0;
+
+create index index_composite_decimal on test_source_1(col2, col4);
+select * from test_source_1 where col2 = 4000 and col4 = 42345678.99;
+
+drop index index_composite_decimal on test_source_1;
+drop index index_decimal on test_source_1;
+
+--varchar;
+
+create index index_varchar on test_source_1(col5);
+select * from test_source_1 where col5 = 'str7';
+select * from test_source_1 where col5 > 'str7' order by col0;
+
+create index index_composite_varchar on test_source_1(col5, col4);
+select * from test_source_1 where col5 = 'str8' and col4 = 82345678.99;
+
+drop index index_composite_varchar on test_source_1;
+drop index index_varchar on test_source_1;
+
+--timestamp;
+
+create index index_ts on test_source_1(col6);
+select * from test_source_1 where col6 = '2020-01-04 01:00:00.123454';
+select * from test_source_1 where col6 > '2020-01-04 01:00:00.123454' order by col0;
+
+create index index_composite_ts on test_source_1(col6, col4);
+select * from test_source_1 where col6 = '2020-01-04 01:00:00.123454' and col4 = 42345678.99;
+
+drop index index_composite_ts on test_source_1;
+drop index index_ts on test_source_1;
+
+drop source test_source_1;
+
+--delete topic testtopic;
