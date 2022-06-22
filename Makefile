@@ -18,6 +18,11 @@ build: protos ## builds binary and gzips it
 	go build -tags musl -o $(BIN) ./cmd/pranadb
 	gzip -9 -f $(BIN)/pranadb
 
+build-cli: protos ## builds CLI binary and gzips it
+	mkdir -p $(BIN)
+	go build -o $(BIN) ./cmd/prana
+	gzip -9 -f $(BIN)/prana
+
 test: protos
 	go test -race -short -timeout 30s ./...
 
