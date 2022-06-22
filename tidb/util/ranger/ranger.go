@@ -190,6 +190,7 @@ func appendPoints2IndexRange(sc *stmtctx.StatementContext, origin *Range, rangeP
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
+
 		less, err := validInterval(sc, startPoint, endPoint)
 		if err != nil {
 			return nil, errors.Trace(err)

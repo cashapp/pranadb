@@ -2,11 +2,11 @@ package parplan
 
 import (
 	"fmt"
+	"github.com/pingcap/parser/mysql"
 
 	"github.com/squareup/pranadb/tidb"
 
 	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/tidb/infoschema"
 )

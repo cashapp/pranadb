@@ -55,10 +55,6 @@ func AppendStringToBufferLE(buffer []byte, value string) []byte {
 	return buffPtr
 }
 
-func AppendDecimalToBuffer(buffer []byte, dec Decimal, precision, scale int) ([]byte, error) {
-	return dec.Encode(buffer, precision, scale)
-}
-
 func AppendTimestampToBuffer(buffer []byte, ts Timestamp) ([]byte, error) {
 	enc, err := ts.ToPackedUint()
 	if err != nil {
@@ -155,16 +151,19 @@ func ReadTimestampFromBuffer(buffer []byte, offset int, fsp int8) (val Timestamp
 	return ts, off, nil
 }
 
-func ReadStringFromBufferLE(buffer []byte, offset int) (val string, off int) {
-	lu, offset := ReadUint32FromBufferLE(buffer, offset)
-	l := int(lu)
-	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
-	offset += l
-	return str, offset
+func ReadTimestampFromBufferBE(buffer []byte, offset int, fsp int8) (val Timestamp, off int, err error) {
+	ts := Timestamp{}
+	enc, off := ReadUint64FromBufferBE(buffer, offset)
+	if err := ts.FromPackedUint(enc); err != nil {
+		return Timestamp{}, 0, errors.WithStack(err)
+	}
+	ts.SetType(mysql.TypeTimestamp)
+	ts.SetFsp(fsp)
+	return ts, off, nil
 }
 
-func ReadStringFromBufferBE(buffer []byte, offset int) (val string, off int) {
-	lu, offset := ReadUint32FromBufferBE(buffer, offset)
+func ReadStringFromBufferLE(buffer []byte, offset int) (val string, off int) {
+	lu, offset := ReadUint32FromBufferLE(buffer, offset)
 	l := int(lu)
 	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
 	offset += l

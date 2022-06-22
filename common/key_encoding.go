@@ -31,13 +31,33 @@ func KeyEncodeFloat64(buffer []byte, val float64) []byte {
 	return AppendUint64ToBufferBE(buffer, uVal)
 }
 
+func KeyDecodeFloat64(buffer []byte, offset int) (float64, int) {
+	u, offset := ReadUint64FromBufferBE(buffer, offset)
+	if u&SignBitMask == SignBitMask {
+		//+ve
+		u &= ^SignBitMask
+	} else {
+		u = ^u
+	}
+	return math.Float64frombits(u), offset
+}
+
 func KeyEncodeDecimal(buffer []byte, val Decimal, precision int, scale int) ([]byte, error) {
 	return val.Encode(buffer, precision, scale)
 }
 
 func KeyEncodeString(buffer []byte, val string) []byte {
-	buffer = AppendUint32ToBufferBE(buffer, uint32(len(val)))
+	uval := uint32(len(val))
+	buffer = AppendUint32ToBufferBE(buffer, uval)
 	return append(buffer, val...)
+}
+
+func KeyDecodeString(buffer []byte, offset int) (string, int) {
+	uval, offset := ReadUint32FromBufferBE(buffer, offset)
+	l := int(uval)
+	str := ByteSliceToStringZeroCopy(buffer[offset : offset+l])
+	offset += l
+	return str, offset
 }
 
 func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
@@ -211,14 +231,20 @@ func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputCol
 				rows.AppendDecimalToColumn(outputColIndex, val)
 			}
 		case TypeDouble:
-			var val float64
-			val, offset = ReadFloat64FromBufferBE(buffer, offset)
+			var u uint64
+			u, offset = ReadUint64FromBufferBE(buffer, offset)
 			if outputColIndex != -1 {
-				rows.AppendFloat64ToColumn(outputColIndex, val)
+				if u&SignBitMask == SignBitMask {
+					//+ve
+					u &= ^SignBitMask
+				} else {
+					u = ^u
+				}
+				rows.AppendFloat64ToColumn(outputColIndex, math.Float64frombits(u))
 			}
 		case TypeVarchar:
 			var val string
-			val, offset = ReadStringFromBufferBE(buffer, offset)
+			val, offset = KeyDecodeString(buffer, offset)
 			if outputColIndex != -1 {
 				rows.AppendStringToColumn(outputColIndex, val)
 			}
@@ -227,7 +253,7 @@ func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputCol
 				val Timestamp
 				err error
 			)
-			val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
+			val, offset, err = ReadTimestampFromBufferBE(buffer, offset, colType.FSP)
 			if err != nil {
 				return 0, errors.WithStack(err)
 			}

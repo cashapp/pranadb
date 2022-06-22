@@ -1,8 +1,10 @@
 package common
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/tidb/types"
+	"strings"
 )
 
 type Decimal struct {
@@ -59,6 +61,11 @@ func (d *Decimal) CompareTo(dec *Decimal) int {
 
 func (d *Decimal) Encode(buffer []byte, precision int, scale int) ([]byte, error) {
 	b, err := d.decimal.WriteBin(precision, scale, buffer)
+	if err != nil {
+		if strings.Index(err.Error(), " value is out of range in ") != -1 {
+			return nil, errors.NewValueOutOfRangeError(fmt.Sprintf("decimal(%d, %d)", precision, scale))
+		}
+	}
 	return b, errors.WithStack(err)
 }
 

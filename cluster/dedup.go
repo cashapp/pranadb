@@ -95,7 +95,7 @@ func DoDedup(shardID uint64, dedupKey []byte, dedupMap map[string]uint64) (bool,
 	prevSequence, ok := dedupMap[soid]
 	if ok {
 		if prevSequence >= sequence {
-			log.Debugf("Duplicate forward row detected in shard %d - originator id %v prev seq %d curr seq %d",
+			log.Warnf("Duplicate forward row detected in shard %d - originator id %v prev seq %d curr seq %d",
 				shardID, oid, prevSequence, sequence)
 			return true, nil
 		}

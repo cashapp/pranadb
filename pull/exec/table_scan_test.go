@@ -22,7 +22,7 @@ func TestTableScanAllRows(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)
@@ -62,7 +62,7 @@ func TestTableScanWithLimit2(t *testing.T) {
 		{5, "tokyo", 28.9, "999.99"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	expectedRows1 := [][]interface{}{
@@ -345,7 +345,7 @@ func TestTableScanNaturalOrderingCompositeKey(t *testing.T) {
 
 func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expectedRows [][]interface{}, colTypes []common.ColumnType, pkCols []int) {
 	t.Helper()
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, pkCols)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, pkCols)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)

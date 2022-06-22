@@ -44,7 +44,7 @@ func (s *locksODStateMachine) loadLocks() error {
 		return errors.WithStack(err)
 	}
 	for _, kv := range kvp {
-		sKey, _ := common.ReadStringFromBufferBE(kv.Key, 16)
+		sKey, _ := common.KeyDecodeString(kv.Key, 16)
 		s.locks[sKey] = string(kv.Value)
 	}
 	return nil

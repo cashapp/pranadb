@@ -1,0 +1,478 @@
+-- Tests for index scan with different types and composite index;
+
+use test;
+
+-- TINYINT;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_1;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = -128;
+select * from test_source_1 where col1 = -25;
+select * from test_source_1 where col1 = 0;
+select * from test_source_1 where col1 = 33;
+select * from test_source_1 where col1 = 127;
+-- should not return row;
+select * from test_source_1 where col1 = 99;
+
+select * from test_source_1 where col1 > -128 order by col0;
+select * from test_source_1 where col1 > -25 order by col0;
+select * from test_source_1 where col1 > 33 order by col0;
+select * from test_source_1 where col1 > 127 order by col0;
+
+select * from test_source_1 where col1 >= -128 order by col0;
+select * from test_source_1 where col1 >= -25 order by col0;
+select * from test_source_1 where col1 >= 33 order by col0;
+select * from test_source_1 where col1 >= 127 order by col0;
+
+select * from test_source_1 where col1 < -128 order by col0;
+select * from test_source_1 where col1 < -25 order by col0;
+select * from test_source_1 where col1 < 33 order by col0;
+select * from test_source_1 where col1 < 127 order by col0;
+
+select * from test_source_1 where col1 <= -128 order by col0;
+select * from test_source_1 where col1 <= -25 order by col0;
+select * from test_source_1 where col1 <= 33 order by col0;
+select * from test_source_1 where col1 <= 127 order by col0;
+
+select * from test_source_1 where col1 > -25 and col1 < 127 order by col0;
+select * from test_source_1 where col1 > -25 and col1 <= 127 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 < 127 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 <= 127 order by col0;
+
+select * from test_source_1 where col1 > 33 and col1 < -25 order by col0;
+
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- INT;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_2;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = -2147483648;
+select * from test_source_1 where col1 = -25;
+select * from test_source_1 where col1 = 0;
+select * from test_source_1 where col1 = 33;
+select * from test_source_1 where col1 = 2147483647;
+-- should not return row;
+select * from test_source_1 where col1 = 99;
+
+select * from test_source_1 where col1 > -2147483648 order by col0;
+select * from test_source_1 where col1 > -25 order by col0;
+select * from test_source_1 where col1 > 33 order by col0;
+select * from test_source_1 where col1 > 2147483647 order by col0;
+
+select * from test_source_1 where col1 >= -2147483648 order by col0;
+select * from test_source_1 where col1 >= -25 order by col0;
+select * from test_source_1 where col1 >= 33 order by col0;
+select * from test_source_1 where col1 >= 2147483647 order by col0;
+
+select * from test_source_1 where col1 < -2147483648 order by col0;
+select * from test_source_1 where col1 < -25 order by col0;
+select * from test_source_1 where col1 < 33 order by col0;
+select * from test_source_1 where col1 < 2147483647 order by col0;
+
+select * from test_source_1 where col1 <= -2147483648 order by col0;
+select * from test_source_1 where col1 <= -25 order by col0;
+select * from test_source_1 where col1 <= 33 order by col0;
+select * from test_source_1 where col1 <= 2147483647 order by col0;
+
+select * from test_source_1 where col1 > -25 and col1 < 2147483647 order by col0;
+select * from test_source_1 where col1 > -25 and col1 <= 2147483647 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 < 2147483647 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 <= 2147483647 order by col0;
+
+select * from test_source_1 where col1 > 33 and col1 < -25 order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- BIGINT;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_3;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = -9223372036854775808;
+select * from test_source_1 where col1 = -25;
+select * from test_source_1 where col1 = 0;
+select * from test_source_1 where col1 = 33;
+select * from test_source_1 where col1 = 9223372036854775807;
+-- should not return row;
+select * from test_source_1 where col1 = 99;
+
+select * from test_source_1 where col1 > -9223372036854775808 order by col0;
+select * from test_source_1 where col1 > -25 order by col0;
+select * from test_source_1 where col1 > 33 order by col0;
+select * from test_source_1 where col1 > 9223372036854775807 order by col0;
+
+select * from test_source_1 where col1 >= -9223372036854775808 order by col0;
+select * from test_source_1 where col1 >= -25 order by col0;
+select * from test_source_1 where col1 >= 33 order by col0;
+select * from test_source_1 where col1 >= 9223372036854775807 order by col0;
+
+select * from test_source_1 where col1 < -9223372036854775808 order by col0;
+select * from test_source_1 where col1 < -25 order by col0;
+select * from test_source_1 where col1 < 33 order by col0;
+select * from test_source_1 where col1 < 9223372036854775807 order by col0;
+
+select * from test_source_1 where col1 <= -9223372036854775808 order by col0;
+select * from test_source_1 where col1 <= -25 order by col0;
+select * from test_source_1 where col1 <= 33 order by col0;
+select * from test_source_1 where col1 <= 9223372036854775807 order by col0;
+
+select * from test_source_1 where col1 > -25 and col1 < 9223372036854775807 order by col0;
+select * from test_source_1 where col1 > -25 and col1 <= 9223372036854775807 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 < 9223372036854775807 order by col0;
+select * from test_source_1 where col1 >= -25 and col1 <= 9223372036854775807 order by col0;
+
+select * from test_source_1 where col1 > 33 and col1 < -25 order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- DOUBLE;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 double,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_4;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = -1234.4321;
+select * from test_source_1 where col1 = -0.002;
+select * from test_source_1 where col1 = 0;
+select * from test_source_1 where col1 = 0.0034;
+select * from test_source_1 where col1 = 4321.5436;
+-- should not return row;
+select * from test_source_1 where col1 = 42345.67;
+
+select * from test_source_1 where col1 > -1234.4321 order by col0;
+select * from test_source_1 where col1 > -0.002 order by col0;
+select * from test_source_1 where col1 > 0.0034 order by col0;
+select * from test_source_1 where col1 > 4321.5436 order by col0;
+
+select * from test_source_1 where col1 >= -1234.4321 order by col0;
+select * from test_source_1 where col1 >= -0.002 order by col0;
+select * from test_source_1 where col1 >= 0.0034 order by col0;
+select * from test_source_1 where col1 >= 4321.5436 order by col0;
+
+select * from test_source_1 where col1 < -1234.4321 order by col0;
+select * from test_source_1 where col1 < -0.002 order by col0;
+select * from test_source_1 where col1 < 0.0034 order by col0;
+select * from test_source_1 where col1 < 4321.5436 order by col0;
+
+select * from test_source_1 where col1 <= -1234.4321 order by col0;
+select * from test_source_1 where col1 <= -0.002 order by col0;
+select * from test_source_1 where col1 <= 0.0034 order by col0;
+select * from test_source_1 where col1 <= 4321.5436 order by col0;
+
+select * from test_source_1 where col1 > -0.002 and col1 < 4321.5436 order by col0;
+select * from test_source_1 where col1 > -0.002 and col1 <= 4321.5436 order by col0;
+select * from test_source_1 where col1 >= -0.002 and col1 < 4321.5436 order by col0;
+select * from test_source_1 where col1 >= -0.002 and col1 <= 4321.5436 order by col0;
+
+select * from test_source_1 where col1 > 33.0 and col1 < -25.12 order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- DECIMAL;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_5;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 = -99999999.99;
+select * from test_source_1 where col1 = -123.23;
+select * from test_source_1 where col1 = 0;
+select * from test_source_1 where col1 = 372.19;
+select * from test_source_1 where col1 = 99999999.99;
+-- should not return row;
+select * from test_source_1 where col1 = 42345.67;
+
+select * from test_source_1 where col1 > -99999999.99 order by col0;
+select * from test_source_1 where col1 > -123.23 order by col0;
+select * from test_source_1 where col1 > 372.19 order by col0;
+select * from test_source_1 where col1 > 99999999.99 order by col0;
+
+select * from test_source_1 where col1 >= -99999999.99 order by col0;
+select * from test_source_1 where col1 >= -123.23 order by col0;
+select * from test_source_1 where col1 >= 372.19 order by col0;
+select * from test_source_1 where col1 >= 99999999.99 order by col0;
+
+select * from test_source_1 where col1 < -99999999.99 order by col0;
+select * from test_source_1 where col1 < -123.23 order by col0;
+select * from test_source_1 where col1 < 372.19 order by col0;
+select * from test_source_1 where col1 < 99999999.99 order by col0;
+
+select * from test_source_1 where col1 <= -99999999.99 order by col0;
+select * from test_source_1 where col1 <= -123.23 order by col0;
+select * from test_source_1 where col1 <= 372.19 order by col0;
+select * from test_source_1 where col1 <= 99999999.99 order by col0;
+
+select * from test_source_1 where col1 > -123.23 and col1 < 99999999.99 order by col0;
+select * from test_source_1 where col1 > -123.23 and col1 <= 99999999.99 order by col0;
+select * from test_source_1 where col1 >= -123.23 and col1 < 99999999.99 order by col0;
+select * from test_source_1 where col1 >= -123.23 and col1 <= 99999999.99 order by col0;
+
+select * from test_source_1 where col1 > 33.0 and col1 < -25.12 order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- VARCHAR;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_6;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 order by col1;
+select * from test_source_1 where col1 = 'a';
+select * from test_source_1 where col1 = 'abc';
+select * from test_source_1 where col1 = 'abcd';
+select * from test_source_1 where col1 = 'abcz';
+select * from test_source_1 where col1 = 'z';
+-- should not return row;
+select * from test_source_1 where col1 = 'foo';
+select * from test_source_1 where col1 = '';
+
+-- Binary key encoding of VARCHAR is currenty not memcomparable, see https://github.com/cashapp/pranadb/issues/419;
+-- uncomment these tests when this is fixed;
+
+--select * from test_source_1 where col1 > 'a' order by col0;
+--select * from test_source_1 where col1 > 'abc' order by col0;
+--select * from test_source_1 where col1 > 'abcz' order by col0;
+--select * from test_source_1 where col1 > 'z' order by col0;
+
+--select * from test_source_1 where col1 >= 'a' order by col0;
+--select * from test_source_1 where col1 >= 'abc' order by col0;
+--select * from test_source_1 where col1 >= 'abcz' order by col0;
+--select * from test_source_1 where col1 >= 'z' order by col0;
+
+--select * from test_source_1 where col1 < 'a' order by col0;
+--select * from test_source_1 where col1 < 'abc' order by col0;
+--select * from test_source_1 where col1 < 'abcz' order by col0;
+--select * from test_source_1 where col1 < 'z' order by col0;
+
+--select * from test_source_1 where col1 <= 'a' order by col0;
+--select * from test_source_1 where col1 <= 'abc' order by col0;
+--select * from test_source_1 where col1 <= 'abcz' order by col0;
+--select * from test_source_1 where col1 <= 'z' order by col0;
+
+--select * from test_source_1 where col1 > 'abc' and col1 < 'z' order by col0;
+--select * from test_source_1 where col1 > 'abc' and col1 <= 'z' order by col0;
+--select * from test_source_1 where col1 >= 'abc' and col1 < 'z' order by col0;
+--select * from test_source_1 where col1 >= 'abc' and col1 <= 'z' order by col0;
+
+--select * from test_source_1 where col1 > 'z' and col1 < 'a' order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- TIMESTAMP(6);
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_10;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+-- should return row;
+select * from test_source_1 where col1 = '2001-11-27 21:34:25.575656';
+-- should not return row;
+select * from test_source_1 where col1 = '2001-11-27 21:34:25';
+
+select * from test_source_1 where col1 > '2001-11-27' order by col0;
+select * from test_source_1 where col1 > '2001-11-27 21:34:25.575656' order by col0;
+select * from test_source_1 where col1 >= '2001-11-27 21:34:25.575656' order by col0;
+select * from test_source_1 where col1 < '2020-01-01 01:00:00.123456' order by col0;
+select * from test_source_1 where col1 <= '2020-01-01 01:00:00.123456' order by col0;
+select * from test_source_1 where col1 > '1991-06-11 14:34:12.575656' and col1 < '2021-02-13 21:11:07.645465' order by col0;
+select * from test_source_1 where col1 >= '1991-06-11 14:34:12.575656' and col1 < '2021-02-13 21:11:07.645465' order by col0;
+select * from test_source_1 where col1 >= '1991-06-11 14:34:12.575656' and col1 <= '2021-02-13 21:11:07.645465' order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- TIMESTAMP;
+
+--create topic testtopic2;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+--load data dataset_10;
+
+create index index1 on test_source_1(col1);
+
+select * from test_source_1 order by col0;
+-- should return row;
+select * from test_source_1 where col1 = '2001-11-27 21:34:26';
+
+select * from test_source_1 where col1 > '2001-11-27' order by col0;
+
+select * from test_source_1 where col1 > '2001-11-27 21:34:26' order by col0;
+select * from test_source_1 where col1 >= '2001-11-27 21:34:26' order by col0;
+select * from test_source_1 where col1 < '2020-01-01 01:00:00' order by col0;
+select * from test_source_1 where col1 <= '2020-01-01 01:00:00' order by col0;
+select * from test_source_1 where col1 > '1991-06-11 14:34:13' and col1 < '2021-02-13 21:11:08' order by col0;
+select * from test_source_1 where col1 >= '1991-06-11 14:34:13' and col1 < '2021-02-13 21:11:08' order by col0;
+select * from test_source_1 where col1 >= '1991-06-11 14:34:13' and col1 <= '2021-02-13 21:11:08' order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic2;

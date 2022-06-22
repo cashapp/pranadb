@@ -29,6 +29,7 @@ type ScanRange struct {
 
 func NewPullTableScan(tableInfo *common.TableInfo, colIndexes []int, storage cluster.Cluster, shardID uint64,
 	scanRanges []*ScanRange) (*PullTableScan, error) {
+	// Note that if there are no ranges this means don't return anything
 
 	// The rows that we create for a pull query don't include hidden rows
 	// Also, we don't always select all columns, depending on whether colIndexes has been specified
