@@ -17,6 +17,7 @@ type Arguments struct {
 	Delay           time.Duration
 	NumMessages     int64
 	IndexStart      int64
+	RandSrc         int64
 	KafkaProperties map[string]string
 }
 
@@ -27,7 +28,10 @@ func main() {
 }
 
 func run(args []string) error {
-	cfg := Arguments{KafkaProperties: make(map[string]string)}
+	cfg := Arguments{
+		RandSrc:         time.Now().UTC().UnixNano(),
+		KafkaProperties: make(map[string]string),
+	}
 	parser, err := kong.New(&cfg)
 	if err != nil {
 		return errors.WithStack(err)
@@ -40,5 +44,5 @@ func run(args []string) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	return gm.ProduceMessages(cfg.GeneratorName, cfg.TopicName, cfg.Partitions, cfg.Delay, cfg.NumMessages, cfg.IndexStart, cfg.KafkaProperties)
+	return gm.ProduceMessages(cfg.GeneratorName, cfg.TopicName, cfg.Partitions, cfg.Delay, cfg.NumMessages, cfg.IndexStart, cfg.RandSrc, cfg.KafkaProperties)
 }

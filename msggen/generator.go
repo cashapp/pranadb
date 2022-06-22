@@ -2,6 +2,7 @@ package msggen
 
 import (
 	"context"
+	json2 "encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -17,9 +18,30 @@ import (
 	"github.com/squareup/pranadb/sharder"
 )
 
+type GeneratedMessage struct {
+	Key          string
+	JsonFields   map[string]interface{}
+	KafkaHeaders []kafka.MessageHeader
+	Timestamp    time.Time
+}
+
+func (m *GeneratedMessage) KafkaMessage() (*kafka.Message, error) {
+	json, err := json2.Marshal(&m.JsonFields)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &kafka.Message{
+		Key:       []byte(m.Key),
+		Value:     json,
+		TimeStamp: m.Timestamp,
+		Headers:   m.KafkaHeaders,
+	}, nil
+}
+
 // MessageGenerator - quick and dirty Kafka message generator for demos, tests etc
 type MessageGenerator interface {
 	GenerateMessage(index int64, rnd *rand.Rand) (*kafka.Message, error)
+	GenerateMessage2(index int64, rnd *rand.Rand) (*GeneratedMessage, error)
 	Name() string
 }
 
@@ -51,7 +73,7 @@ func (gm *GenManager) RegisterGenerators() error {
 }
 
 func (gm *GenManager) ProduceMessages(genName string, topicName string, partitions int, delay time.Duration,
-	numMessages int64, indexStart int64, kafkaProps map[string]string) error {
+	numMessages int64, indexStart int64, randSrc int64, kafkaProps map[string]string) error {
 	gm.lock.Lock()
 	defer gm.lock.Unlock()
 
@@ -93,9 +115,15 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			}
 		}
 	}()
-	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
+	rnd := rand.New(rand.NewSource(randSrc))
 	for i := indexStart; i < indexStart+numMessages; i++ {
-		msg, err := gen.GenerateMessage(i, rnd)
+		gmsg, err := gen.GenerateMessage2(i, rnd)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		// TODO: delete me
+		fmt.Printf("gmsg: %v\n", gmsg)
+		msg, err := gmsg.KafkaMessage()
 		if err != nil {
 			return errors.WithStack(err)
 		}
