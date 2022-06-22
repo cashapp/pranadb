@@ -34,7 +34,11 @@ type Server struct {
 type metricServer struct{}
 
 func (ms *metricServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	promhttp.Handler().ServeHTTP(w, r)
+	promhttp.InstrumentMetricHandler(
+		prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+			DisableCompression: true,
+		}),
+	).ServeHTTP(w, r)
 	dragonboat.WriteHealthMetrics(w)
 }
 
