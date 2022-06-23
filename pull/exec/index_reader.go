@@ -48,6 +48,11 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 	for i, colIndex := range colIndexes {
 		colIndexesMap[colIndex] = i
 	}
+	// And the PK cols
+	pkSet := make(map[int]struct{}, len(tableInfo.PrimaryKeyCols))
+	for _, pkCol := range tableInfo.PrimaryKeyCols {
+		pkSet[pkCol] = struct{}{}
+	}
 	var indexOutputCols, pkOutputCols []int
 	var indexColTypes, pkColTypes []common.ColumnType
 	var includedCols []bool
@@ -57,11 +62,16 @@ func NewPullIndexReader(tableInfo *common.TableInfo, //nolint:gocyclo
 		for i, indexCol := range indexInfo.IndexCols {
 			position, ok := colIndexesMap[indexCol]
 			if ok {
-				// The index col is in the output
-				indexOutputCols[i] = position
-			} else {
-				indexOutputCols[i] = -1
+				// We only count the index col if it's on a PK col. The PK cols will be added in pkOutputCols
+				// and we don't want to add a column both in indexOutputCols and pkOutputCols
+				_, ok := pkSet[indexCol]
+				if !ok {
+					// The index col is in the output
+					indexOutputCols[i] = position
+					continue
+				}
 			}
+			indexOutputCols[i] = -1
 		}
 
 		indexColTypes = make([]common.ColumnType, len(indexInfo.IndexCols))
