@@ -313,6 +313,12 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		s.globalRateLimiter.Limit()
 
 		row := rows.GetRow(i)
+		for _, pkCol := range s.sourceInfo.PrimaryKeyCols {
+			if row.IsNull(pkCol) {
+				return errors.New("cannot ingest message, null value in PK col(s)")
+			}
+		}
+
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
 		if err != nil {

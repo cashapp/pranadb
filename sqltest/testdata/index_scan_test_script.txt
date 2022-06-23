@@ -639,3 +639,48 @@ drop index index1 on test_source_1;
 drop source test_source_1;
 
 --delete topic testtopic1;
+
+-- Index scan with nulls;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 int,
+    col1 int,
+    col2 int,
+    col3 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3
+    )
+);
+
+--load data dataset_13;
+
+create index index1 on test_source_1(col0, col1, col2);
+
+select * from test_source_1 order by col0;
+select * from test_source_1 where col1 is null order by col0;
+select * from test_source_1 where col1 is not null order by col0;
+
+select * from test_source_1 where col1 is null and col2 = 5 order by col0;
+select * from test_source_1 where col1 is not null and col2 = 3 order by col0;
+
+select * from test_source_1 where col1 is null and col2 is null order by col0;
+select * from test_source_1 where col1 is not null and col2 is not null order by col0;
+
+select * from test_source_1 where col1 is null and col2 is not null order by col0;
+select * from test_source_1 where col1 is not null and col2 is null order by col0;
+
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+--delete topic testtopic1;

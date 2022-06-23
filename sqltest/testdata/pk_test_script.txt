@@ -283,12 +283,12 @@ create source test_source_8(
     valueencoding = "json",
     columnselectors = (
         meta("key").k0,
-        v1,
-        v2,
-        v3,
-        v4,
-        v5,
-        v6,
+        meta("key").k1,
+        meta("key").k2,
+        meta("key").k3,
+        meta("key").k4,
+        meta("key").k5,
+        meta("key").k6,
         v7
     )
 );
@@ -334,12 +334,12 @@ create source test_source_9(
     keyencoding = "json",
     valueencoding = "json",
     columnselectors = (
-        meta("key").k0,
-        v1,
+        v0,
+        meta("key").k1,
         v2,
-        v3,
+        meta("key").k0,
         v4,
-        v5,
+        meta("key").k2,
         v6,
         v7
     )
@@ -349,12 +349,44 @@ create source test_source_9(
 
 set max_line_width 250;
 
-select * from test_source_9 order by col3, col1, col5;
 select * from test_source_9 order by col7;
-select * from test_source_9 where col3 = 1234.4321 order by col3, col1, col5;
-select * from test_source_9 where col3 = 1234.4321 and col1 = 200 order by col3, col1, col5;
-select * from test_source_9 where col3 = 1234.4321 and col1 = 200 and col5 = 'str1' order by col3, col1, col5;
+select * from test_source_9 where col3 = 1234.4321 order by col7;
+select * from test_source_9 where col3 = 1234.4321 and col1 = 200 order by col7;
+select * from test_source_9 where col3 = 1234.4321 and col1 = 200 and col5 = 'str1' order by col7;
 
 drop source test_source_9;
 
 --delete topic testtopic9;
+
+-- nulls in PK will fail to be ingested;
+
+--create topic testtopic10;
+create source test_source_10(
+    col0 int,
+    col1 int,
+    col2 int,
+    col3 varchar,
+    primary key (col0, col1, col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic10",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        meta("key").k1,
+        meta("key").k2,
+        v3
+    )
+);
+
+--load data dataset_10 no wait;
+
+--pause 1000;
+
+select * from test_source_10;
+
+drop source test_source_10;
+
+--delete topic testtopic10;
