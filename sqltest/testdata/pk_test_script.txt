@@ -313,3 +313,48 @@ select * from test_source_8 where col0=10 and col1=500 and col2=1000 and col3=82
 drop source test_source_8;
 
 --delete topic testtopic8;
+
+-- COMPOSITE with columns in arbitrary order;
+
+--create topic testtopic9;
+create source test_source_9(
+    col0 tinyint,
+    col1 int,
+    col2 bigint,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 varchar,
+    primary key (col3, col1, col5)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic9",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+--load data dataset_9;
+
+set max_line_width 250;
+
+select * from test_source_9 order by col3, col1, col5;
+select * from test_source_9 order by col7;
+select * from test_source_9 where col3 = 1234.4321 order by col3, col1, col5;
+select * from test_source_9 where col3 = 1234.4321 and col1 = 200 order by col3, col1, col5;
+select * from test_source_9 where col3 = 1234.4321 and col1 = 200 and col5 = 'str1' order by col3, col1, col5;
+
+drop source test_source_9;
+
+--delete topic testtopic9;
