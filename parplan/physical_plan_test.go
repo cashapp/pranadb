@@ -119,6 +119,16 @@ func TestTableOrIndexScan(t *testing.T) {
 			},
 		},
 		[]int{0}, []int{1})
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col1 is null", false,
+		[]*rng{
+			{
+				lowVal:   []interface{}{nil},
+				highVal:  []interface{}{nil},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, []int{1})
 	testQueryUsesTableOrIndexScan(t, "select * from table1 where col1 = 1000 and col2=10000", false,
 		[]*rng{
 			{
