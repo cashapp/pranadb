@@ -67,16 +67,16 @@ func TestKeyEncodeString(t *testing.T) {
 	vals := []string{
 		"",
 		"a",
+		"aa",
+		"aaa",
+		"aaaa",
+		"aab",
+		"ab",
+		"abb",
+		"antelopes",
 		"b",
 		"z",
-		"aa",
-		"ab",
-		"aaa",
-		"aab",
-		"abb",
 		"zzz",
-		"aaaa",
-		"antelopes",
 	}
 	for i := 0; i < len(vals)-1; i++ {
 		checkLessThan(t, encodeString(vals[i]), encodeString(vals[i+1]))

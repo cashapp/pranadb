@@ -276,10 +276,10 @@ func TestTableScanNaturalOrderingStringCol(t *testing.T) {
 	expectedRows := [][]interface{}{
 		{0, -3.1, "", "300.111"},
 		{100, -2.1, "a", "-200.111"},
-		{-100, -1.1, "z", "-100.111"},
 		{-300, 0.0, "aaa", "-300.111"},
-		{-200, 1.1, "zzz", "0.000"},
 		{300, 2.1, "aaaa", "100.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{-200, 1.1, "zzz", "0.000"},
 		{200, 3.1, "zzzz", "200.111"},
 	}
 	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{2})

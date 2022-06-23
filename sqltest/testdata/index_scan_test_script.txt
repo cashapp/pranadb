@@ -357,35 +357,32 @@ select * from test_source_1 where col1 = 'z';
 select * from test_source_1 where col1 = 'foo';
 select * from test_source_1 where col1 = '';
 
--- Binary key encoding of VARCHAR is currenty not memcomparable, see https://github.com/cashapp/pranadb/issues/419;
--- uncomment these tests when this is fixed;
+select * from test_source_1 where col1 > 'a' order by col0;
+select * from test_source_1 where col1 > 'abc' order by col0;
+select * from test_source_1 where col1 > 'abcz' order by col0;
+select * from test_source_1 where col1 > 'z' order by col0;
 
---select * from test_source_1 where col1 > 'a' order by col0;
---select * from test_source_1 where col1 > 'abc' order by col0;
---select * from test_source_1 where col1 > 'abcz' order by col0;
---select * from test_source_1 where col1 > 'z' order by col0;
+select * from test_source_1 where col1 >= 'a' order by col0;
+select * from test_source_1 where col1 >= 'abc' order by col0;
+select * from test_source_1 where col1 >= 'abcz' order by col0;
+select * from test_source_1 where col1 >= 'z' order by col0;
 
---select * from test_source_1 where col1 >= 'a' order by col0;
---select * from test_source_1 where col1 >= 'abc' order by col0;
---select * from test_source_1 where col1 >= 'abcz' order by col0;
---select * from test_source_1 where col1 >= 'z' order by col0;
+select * from test_source_1 where col1 < 'a' order by col0;
+select * from test_source_1 where col1 < 'abc' order by col0;
+select * from test_source_1 where col1 < 'abcz' order by col0;
+select * from test_source_1 where col1 < 'z' order by col0;
 
---select * from test_source_1 where col1 < 'a' order by col0;
---select * from test_source_1 where col1 < 'abc' order by col0;
---select * from test_source_1 where col1 < 'abcz' order by col0;
---select * from test_source_1 where col1 < 'z' order by col0;
+select * from test_source_1 where col1 <= 'a' order by col0;
+select * from test_source_1 where col1 <= 'abc' order by col0;
+select * from test_source_1 where col1 <= 'abcz' order by col0;
+select * from test_source_1 where col1 <= 'z' order by col0;
 
---select * from test_source_1 where col1 <= 'a' order by col0;
---select * from test_source_1 where col1 <= 'abc' order by col0;
---select * from test_source_1 where col1 <= 'abcz' order by col0;
---select * from test_source_1 where col1 <= 'z' order by col0;
+select * from test_source_1 where col1 > 'abc' and col1 < 'z' order by col0;
+select * from test_source_1 where col1 > 'abc' and col1 <= 'z' order by col0;
+select * from test_source_1 where col1 >= 'abc' and col1 < 'z' order by col0;
+select * from test_source_1 where col1 >= 'abc' and col1 <= 'z' order by col0;
 
---select * from test_source_1 where col1 > 'abc' and col1 < 'z' order by col0;
---select * from test_source_1 where col1 > 'abc' and col1 <= 'z' order by col0;
---select * from test_source_1 where col1 >= 'abc' and col1 < 'z' order by col0;
---select * from test_source_1 where col1 >= 'abc' and col1 <= 'z' order by col0;
-
---select * from test_source_1 where col1 > 'z' and col1 < 'a' order by col0;
+select * from test_source_1 where col1 > 'z' and col1 < 'a' order by col0;
 
 drop index index1 on test_source_1;
 drop source test_source_1;
