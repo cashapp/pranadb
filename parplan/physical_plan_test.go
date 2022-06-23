@@ -17,51 +17,196 @@
 package parplan
 
 import (
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/tidb/util/ranger"
 	"testing"
 
 	planner2 "github.com/squareup/pranadb/tidb/planner"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSingleColumnPointGetUsesTableScanWithUnitaryRangeForPullQuery(t *testing.T) {
-	schema := createTestSchema()
-	planner := NewPlanner(schema)
-	physi, _, err := planner.QueryToPlan("select col0, col1, col2 from table1 where col0=123", false, true)
-	require.NoError(t, err)
-	ts, ok := physi.(*planner2.PhysicalTableScan)
-	require.True(t, ok)
-	require.Equal(t, 1, len(ts.Ranges))
-	require.Equal(t, int64(123), ts.Ranges[0].LowVal[0].GetInt64())
-	require.Equal(t, int64(123), ts.Ranges[0].HighVal[0].GetInt64())
+type rng struct {
+	lowVal   []interface{}
+	highVal  []interface{}
+	lowExcl  bool
+	highExcl bool
 }
 
-func TestSelectAllUsesTableScanForPullQuery(t *testing.T) {
-	schema := createTestSchema()
-	planner := NewPlanner(schema)
-	physi, _, err := planner.QueryToPlan("select * from table1", false, true)
-	require.NoError(t, err)
-	ts, ok := physi.(*planner2.PhysicalTableScan)
-	require.True(t, ok)
-	require.Equal(t, 1, len(ts.Ranges))
-	require.True(t, ts.Ranges[0].IsFullRange())
+func TestTableOrIndexScan(t *testing.T) {
+	testQueryUsesTableOrIndexScan(t, "select * from table1", true, []*rng{nil}, []int{0}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0=100", true,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100)},
+				highVal:  []interface{}{int64(100)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0=100 OR col0=200", true,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100)},
+				highVal:  []interface{}{int64(100)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+			{
+				lowVal:   []interface{}{int64(200)},
+				highVal:  []interface{}{int64(200)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0 in(100, 200)", true,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100)},
+				highVal:  []interface{}{int64(100)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+			{
+				lowVal:   []interface{}{int64(200)},
+				highVal:  []interface{}{int64(200)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0 > 100 and col0 < 200", true,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100)},
+				highVal:  []interface{}{int64(200)},
+				lowExcl:  true,
+				highExcl: true,
+			},
+		},
+		[]int{0}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0 >= 100 and col0 <= 200", true,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100)},
+				highVal:  []interface{}{int64(200)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, nil)
+	// This should use an *index scan*. TiDB doesn't support multi column PKs and generating multi-column table scans
+	// so we create a fake index for the PK in the case of more than one PK column, and then convert the resulting
+	// index scan back into a Prana table scan in our code
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col0 = 100 and col1 = 150", false,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(100), int64(150)},
+				highVal:  []interface{}{int64(100), int64(150)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0, 1}, nil)
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col1 = 150", false,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(150)},
+				highVal:  []interface{}{int64(150)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, []int{1})
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col1 = 1000 and col2=10000", false,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(1000), int64(10000)},
+				highVal:  []interface{}{int64(1000), int64(10000)},
+				lowExcl:  false,
+				highExcl: false,
+			},
+		},
+		[]int{0}, []int{1, 2})
+	testQueryUsesTableOrIndexScan(t, "select * from table1 where col1 = 1000 and col2>10000", false,
+		[]*rng{
+			{
+				lowVal:   []interface{}{int64(1000), int64(10000)},
+				highVal:  []interface{}{int64(1000), nil},
+				lowExcl:  true,
+				highExcl: false,
+			},
+		},
+		[]int{0}, []int{1, 2})
 }
 
-func TestMultiColumnPointGetUsesIndexScanWithCompositeRangeForPullQuery(t *testing.T) {
-	schema := createTestSchema()
+func testQueryUsesTableOrIndexScan(t *testing.T, query string, tableScan bool, expectedRanges []*rng, pkCols []int, indexCols []int) {
+	t.Helper()
+	schema := common.NewSchema("test")
+	decColumnType := common.ColumnType{
+		Type:         common.TypeDecimal,
+		DecPrecision: 10,
+		DecScale:     2,
+	}
+	table := &common.TableInfo{
+		ID:             0,
+		SchemaName:     schema.Name,
+		Name:           "table1",
+		PrimaryKeyCols: pkCols,
+		ColumnNames:    []string{"col0", "col1", "col2", "col3", "col4", "col5", "col6"},
+		ColumnTypes: []common.ColumnType{common.TinyIntColumnType, common.IntColumnType, common.BigIntColumnType, common.DoubleColumnType,
+			decColumnType, common.VarcharColumnType, common.TimestampColumnType},
+	}
+	schema.PutTable(table.Name, table)
+	if len(indexCols) > 0 {
+		indexInfo := &common.IndexInfo{
+			SchemaName: schema.Name,
+			ID:         0,
+			TableName:  "table1",
+			Name:       "index1",
+			IndexCols:  indexCols,
+		}
+		table.IndexInfos = map[string]*common.IndexInfo{
+			indexInfo.Name: indexInfo,
+		}
+	}
 	planner := NewPlanner(schema)
-	physi, _, err := planner.QueryToPlan("select * from table3 where col0=123 and col1='foo' and col2=12", false, true)
+	physi, _, err := planner.QueryToPlan(query, false, true)
 	require.NoError(t, err)
-	// The planner returns a PhysicalIndexScan which we convert into a TableScan
-	ts, ok := physi.(*planner2.PhysicalIndexScan)
-	require.True(t, ok)
-	require.Equal(t, 1, len(ts.Ranges))
-	require.Equal(t, 3, len(ts.Ranges[0].LowVal))
-	require.Equal(t, int64(123), ts.Ranges[0].LowVal[0].GetInt64())
-	require.Equal(t, int64(123), ts.Ranges[0].HighVal[0].GetInt64())
-	require.Equal(t, "foo", ts.Ranges[0].LowVal[1].GetString())
-	require.Equal(t, "foo", ts.Ranges[0].HighVal[1].GetString())
-	require.Equal(t, int64(12), ts.Ranges[0].LowVal[2].GetInt64())
-	require.Equal(t, int64(12), ts.Ranges[0].HighVal[2].GetInt64())
+	var ranges []*ranger.Range
+	if tableScan {
+		ts, ok := physi.(*planner2.PhysicalTableScan)
+		require.True(t, ok, "should be a table scan, but is a %v", physi)
+		ranges = ts.Ranges
+	} else {
+		is, ok := physi.(*planner2.PhysicalIndexScan)
+		require.True(t, ok, "should be an index scan, but is a %v", physi)
+		ranges = is.Ranges
+	}
+	if expectedRanges == nil {
+		require.Nil(t, ranges, "ranges should be nil")
+	} else {
+		require.Equal(t, len(expectedRanges), len(ranges), "ranges length expected %d actual %d", len(expectedRanges), len(ranges))
+		for i, rng := range ranges {
+			expectedRange := expectedRanges[i]
+			if expectedRange == nil {
+				require.True(t, rng.IsFullRange())
+			} else {
+				require.Equal(t, len(expectedRange.lowVal), len(rng.LowVal), "range lowval length expected %d actual %d", len(expectedRange.lowVal), len(rng.LowVal))
+				require.Equal(t, len(expectedRange.highVal), len(rng.HighVal), "range highval length expected %d actual %d", len(expectedRange.highVal), len(rng.HighVal))
+				require.Equal(t, expectedRange.lowExcl, rng.LowExclude)
+				require.Equal(t, expectedRange.highExcl, rng.HighExclude)
+				for j, expectedLowValElem := range expectedRange.lowVal {
+					expectedHighValElem := expectedRange.highVal[j]
+					actualLowValElem := rng.LowVal[j].GetValue()
+					actualHighValElem := rng.HighVal[j].GetValue()
+					require.Equal(t, expectedLowValElem, actualLowValElem)
+					require.Equal(t, expectedHighValElem, actualHighValElem)
+				}
+			}
+		}
+	}
 }
 
 func TestPointGetUsesSelectForPushQuery(t *testing.T) {
