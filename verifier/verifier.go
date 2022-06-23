@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
 	"strconv"
 
 	"github.com/google/go-cmp/cmp"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
@@ -22,10 +22,6 @@ type Verifier struct {
 func NewVerifier(genName string) (*Verifier, error) {
 	return &Verifier{gen: &msggen.PaymentGenerator{}}, nil
 }
-
-type myKey struct{}
-
-var MyKey = myKey{}
 
 func (v *Verifier) VerifyMessages(numMessages int64, indexStart int64, randSrc int64) error {
 	rnd := rand.New(rand.NewSource(randSrc))
@@ -51,7 +47,6 @@ func (v *Verifier) VerifyMessages(numMessages int64, indexStart int64, randSrc i
 	defer func() { conn.Close() }()
 	client := service.NewPranaDBServiceClient(conn)
 	if err != nil {
-		log.Println(err.Error())
 		return errors.WithStack(err)
 	}
 	c, err := client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
@@ -64,7 +59,6 @@ func (v *Verifier) VerifyMessages(numMessages int64, indexStart int64, randSrc i
 		return errors.WithStack(err)
 	}
 	receivedMap := make(map[string]map[string]interface{}, 0)
-	fmt.Printf("col: %v\n", col)
 	columns := col.GetColumns().Columns
 	for i := 0; ; i++ {
 		resp, err := c.Recv()
@@ -96,17 +90,10 @@ func (v *Verifier) VerifyMessages(numMessages int64, indexStart int64, randSrc i
 			receivedMap[paymentId] = entry
 		}
 	}
-	/*
-		receivedMap: {"payment_123": {"currency": "usd", "amount": "10.03", ... }
-		gmsgs: {'payment_123': GeneratedMessage (key/jsonMap)}
-	*/
-	for key, gmsg := range gmsgs {
-		fmt.Printf("%v\n", gmsg)
-		fmt.Printf("%v\n", receivedMap[key])
+	if !cmp.Equal(gmsgs, receivedMap) {
+		fmt.Fprintln(os.Stderr, "verification failed")
+		fmt.Fprintln(os.Stderr, cmp.Diff(gmsgs, receivedMap))
 	}
-	fmt.Println(cmp.Equal(gmsgs, receivedMap))
-
-	fmt.Println(cmp.Diff(gmsgs, receivedMap))
 
 	return nil
 }
