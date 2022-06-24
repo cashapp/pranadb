@@ -1,0 +1,34 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 tinyint,
+    col1 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+--load data dataset_1 no wait;
+--pause 500;
+
+-- should be no data;
+select * from test_source_1 order by col0;
++--------------------+
+| col0 | col1        |
++--------------------+
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic;

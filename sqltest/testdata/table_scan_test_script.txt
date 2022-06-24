@@ -85,9 +85,9 @@ select * from test_source_2 where col0 = 1 order by col0, col1, col2;
 
 select * from test_source_2 where col0 > 2 order by col0, col1, col2;
 
-select * from test_source_2 where col0 = 1 and col1 > 100 order by col0, col1, col2;
+select * from test_source_2 where col0 = 1 and col1 > 10 order by col0, col1, col2;
 
-select * from test_source_2 where col0 = 1 and col1 < 300 order by col0, col1, col2;
+select * from test_source_2 where col0 = 1 and col1 < 30 order by col0, col1, col2;
 
 drop source test_source_2;
 drop source test_source_1;

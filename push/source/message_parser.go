@@ -23,6 +23,13 @@ var (
 	kafkaDecoderString  = newKafkaDecoder(common.KafkaEncodingStringBytes)
 )
 
+const (
+	tinyIntMinVal = -128
+	tinyIntMaxVal = 127
+	IntMinVal     = -2147483648
+	IntMaxVal     = 2147483647
+)
+
 type MessageParser struct {
 	sourceInfo       *common.SourceInfo
 	rowsFactory      *common.RowsFactory
@@ -159,7 +166,14 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 	return nil
 }
 
-func (m *MessageParser) evalColumns(rows *common.Rows) error {
+func checkIntBounds(val int64, min int64, max int64, typeName string) error {
+	if val < min || val > max {
+		return errors.NewValueOutOfRangeError(fmt.Sprintf("%s value %d is of out or range %d to %d", typeName, val, min, max))
+	}
+	return nil
+}
+
+func (m *MessageParser) evalColumns(rows *common.Rows) error { //nolint:gocyclo
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
 		val, err := eval(m.evalContext.meta, m.evalContext.value)
@@ -171,7 +185,25 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			continue
 		}
 		switch colType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+		case common.TypeTinyInt:
+			ival, err := CoerceInt64(val)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if err := checkIntBounds(ival, tinyIntMinVal, tinyIntMaxVal, "TINYINT"); err != nil {
+				return err
+			}
+			rows.AppendInt64ToColumn(i, ival)
+		case common.TypeInt:
+			ival, err := CoerceInt64(val)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if err := checkIntBounds(ival, IntMinVal, IntMaxVal, "INT"); err != nil {
+				return err
+			}
+			rows.AppendInt64ToColumn(i, ival)
+		case common.TypeBigInt:
 			ival, err := CoerceInt64(val)
 			if err != nil {
 				return errors.WithStack(err)
