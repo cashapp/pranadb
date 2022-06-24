@@ -31,7 +31,7 @@ create source test_source_1(
 create materialized view test_mv_1 as select * from test_source_1 where col0 = 1;
 select * from test_mv_1;
 
-create materialized view test_mv_2 as select * from test_source_1 where col1 = 100;
+create materialized view test_mv_2 as select * from test_source_1 where col1 = 10;
 select * from test_mv_2;
 
 create materialized view test_mv_3 as select * from test_source_1 where col2 = 1000;

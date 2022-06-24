@@ -32,7 +32,7 @@ create source test_source_1(
 
 -- EQ;
 select * from test_source_1 where col0 = 3;
-select * from test_source_1 where col1 = 400;
+select * from test_source_1 where col1 = 40;
 select * from test_source_1 where col2 = 5000;
 select * from test_source_1 where col3 = 3234.4321;
 select * from test_source_1 where col4 = 22345678.99;
@@ -41,7 +41,7 @@ select * from test_source_1 where col6 = '2020-01-04 01:00:00.123456';
 
 -- GE;
 select * from test_source_1 where col0 >= 5 order by col0;
-select * from test_source_1 where col1 >= 400 order by col0;
+select * from test_source_1 where col1 >= 40 order by col0;
 select * from test_source_1 where col2 >= 5000 order by col0;
 select * from test_source_1 where col3 >= 3234.4321 order by col0;
 select * from test_source_1 where col4 >= 22345678.99 order by col0;
@@ -50,7 +50,7 @@ select * from test_source_1 where col6 >= '2020-01-04 01:00:00.123456' order by 
 
 -- GT;
 select * from test_source_1 where col0 > 5 order by col0;
-select * from test_source_1 where col1 > 400 order by col0;
+select * from test_source_1 where col1 > 40 order by col0;
 select * from test_source_1 where col2 > 5000 order by col0;
 select * from test_source_1 where col3 > 3234.4321 order by col0;
 select * from test_source_1 where col4 > 22345678.99 order by col0;
@@ -59,7 +59,7 @@ select * from test_source_1 where col6 > '2020-01-04 01:00:00.123456' order by c
 
 -- LE;
 select * from test_source_1 where col0 <= 5 order by col0;
-select * from test_source_1 where col1 <= 400 order by col0;
+select * from test_source_1 where col1 <= 40 order by col0;
 select * from test_source_1 where col2 <= 5000 order by col0;
 select * from test_source_1 where col3 <= 3234.4321 order by col0;
 select * from test_source_1 where col4 <= 22345678.99 order by col0;
@@ -68,7 +68,7 @@ select * from test_source_1 where col6 <= '2020-01-04 01:00:00.123456' order by 
 
 -- LT;
 select * from test_source_1 where col0 < 5 order by col0;
-select * from test_source_1 where col1 < 400 order by col0;
+select * from test_source_1 where col1 < 40 order by col0;
 select * from test_source_1 where col2 < 5000 order by col0;
 select * from test_source_1 where col3 < 3234.4321 order by col0;
 select * from test_source_1 where col4 < 22345678.99 order by col0;
@@ -77,7 +77,7 @@ select * from test_source_1 where col6 < '2020-01-04 01:00:00.123456' order by c
 
 -- NE;
 select * from test_source_1 where col0 <> 5 order by col0;
-select * from test_source_1 where col1 <> 400 order by col0;
+select * from test_source_1 where col1 <> 40 order by col0;
 select * from test_source_1 where col2 <> 5000 order by col0;
 select * from test_source_1 where col3 <> 3234.4321 order by col0;
 select * from test_source_1 where col4 <> 22345678.99 order by col0;
@@ -101,14 +101,14 @@ select * from test_source_1 where col5 is not null order by col0;
 select * from test_source_1 where col6 is not null order by col0;
 
 -- AND;
-select * from test_source_1 where col1 > 300 and col2 <= 9000 order by col0;
+select * from test_source_1 where col1 > 30 and col2 <= 9000 order by col0;
 
 -- OR;
-select * from test_source_1 where col1 = 800 or col5 = 'str4' order by col0;
+select * from test_source_1 where col1 = 80 or col5 = 'str4' order by col0;
 
 -- IF;
 select col0, if(col0 > 4, "bigger", "smaller"),
-if (col1 > 300, "bigger", "smaller"),
+if (col1 > 30, "bigger", "smaller"),
 if (col2 > 7000, "bigger", "smaller"),
 if (col3 = 6234.4321, "eq", "not eq"),
 if (col4 <= 82345678.99, "less", "more"),
@@ -119,8 +119,8 @@ from test_source_1 order by col0;
 -- CASE;
 select col0,
 case
-when col1 = 300 then "3 hundred"
-when col1 = 500 then "5 hundred"
+when col1 = 30 then "3 hundred"
+when col1 = 50 then "5 hundred"
 when col1 is null then "eeets null"
 else "badgers"
 end from test_source_1 order by col0;
@@ -129,7 +129,6 @@ end from test_source_1 order by col0;
 select * from test_source_1 where col2 in (4000, 7000, 3000) order by col0;
 
 --UNARY MINUS;
-select * from test_source_1 where -10 * col1 = -col2 order by col0;
 select -col0, -col1, -col2, -col3, -col4 from test_source_1 order by -col0;
 
 --UNARY NOT;

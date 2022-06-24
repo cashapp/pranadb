@@ -395,8 +395,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		log.Infof("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
-		} else if strings.HasPrefix(command, "--close session") {
-			st.executeCloseSession(require)
+		} else if strings.HasPrefix(command, "--close client") {
+			st.executeCloseClient(require)
 		} else if strings.HasPrefix(command, "--repeat") {
 			if i > 0 {
 				require.Fail("--repeat command must be first line in script")
@@ -756,7 +756,7 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	log.Infof("Load data %s execute time ms %d", command, dur.Milliseconds())
 }
 
-func (st *sqlTest) executeCloseSession(require *require.Assertions) {
+func (st *sqlTest) executeCloseClient(require *require.Assertions) {
 	// Closes then recreates the cli
 	st.closeClient(require)
 	st.cli = st.createCli(require)

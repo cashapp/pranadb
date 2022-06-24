@@ -213,5 +213,5 @@ dataset:dataset_10 test_source_10
 2,null,null,foo2
 3,null,5,foo3
 4,null,6,foo4
-5,7,3,foo5
+null,7,3,foo5
 6,7,null,foo6

@@ -31,11 +31,11 @@ create source test_source_1(
 --tinyint;
 
 create index index_tinyint on test_source_1(col1);
-select * from test_source_1 where col1 = 100;
-select * from test_source_1 where col1 > 100 order by col0;
+select * from test_source_1 where col1 = 10;
+select * from test_source_1 where col1 > 10 order by col0;
 
 create index index_composite_tinyint on test_source_1(col1, col4);
-select * from test_source_1 where col1 = 100 and col4 = 22345678.99;
+select * from test_source_1 where col1 = 10 and col4 = 22345678.99;
 
 drop index index_composite_tinyint on test_source_1;
 drop index index_tinyint on test_source_1;
