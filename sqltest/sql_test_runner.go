@@ -197,6 +197,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		}
 	}
 
+	// We override MaxVarCharLength in tests so we can test ingesting varchar fields that are too big
+	source.MaxVarCharOverride = 1000
+
 	w.startCluster()
 }
 

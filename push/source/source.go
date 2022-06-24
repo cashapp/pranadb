@@ -296,8 +296,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		return errors.WithStack(err)
 	}
 
-	// TODO where Source has no key - need to create one
-
 	// Partition the rows and send them to the appropriate shards
 	info := s.sourceInfo.TableInfo
 	pkCols := info.PrimaryKeyCols
