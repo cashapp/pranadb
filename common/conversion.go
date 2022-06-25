@@ -45,8 +45,7 @@ func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {
 	case mysql.TypeDouble:
 		return DoubleColumnType
 	case mysql.TypeNewDecimal:
-		// The TiDB expression does not calculate the right precision and scale so we just use maximum
-		return NewDecimalColumnType(65, 30)
+		return NewDecimalColumnType(columnType.Flen, columnType.Decimal)
 	case mysql.TypeVarchar, mysql.TypeVarString:
 		return VarcharColumnType
 	case mysql.TypeTimestamp:

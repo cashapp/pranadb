@@ -146,13 +146,8 @@ func (p *Engine) getPointGetShardID(ctx *execctx.ExecutionContext, ranges []*ran
 			if !ok {
 				return 0, errors.Errorf("cannot find table %s", tableName)
 			}
-			if table.GetTableInfo().ColumnTypes[table.GetTableInfo().PrimaryKeyCols[0]].Type == common.TypeDecimal {
-				// We don't currently support optimised point gets for keys of type Decimal
-				return -1, nil
-			}
 			v := common.TiDBValueToPranaValue(rng.LowVal[0].GetValue())
 			k := []interface{}{v}
-
 			key, err := common.EncodeKey(k, table.GetTableInfo().ColumnTypes, table.GetTableInfo().PrimaryKeyCols, []byte{})
 			if err != nil {
 				return 0, err
