@@ -49,7 +49,7 @@ func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {
 	case mysql.TypeVarchar, mysql.TypeVarString:
 		return VarcharColumnType
 	case mysql.TypeTimestamp:
-		return TimestampColumnType
+		return ColumnType{Type: TypeTimestamp, FSP: int8(columnType.Decimal)}
 	default:
 		panic(fmt.Sprintf("unknown colum type %d", columnType.Tp))
 	}

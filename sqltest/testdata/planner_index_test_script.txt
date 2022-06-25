@@ -55,6 +55,8 @@ select * from transactions where id > 10 order by id;
 
 select * from transactions where customer_id = 60 order by id;
 
+select * from transactions where customer_id is null order by id;
+
 select col2 from transactions where col2 = 'abc';
 
 select col2, customer_id from transactions where customer_id = 60 order by col2;
