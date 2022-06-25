@@ -36,6 +36,7 @@ const (
 	UnknownPerfCommand
 
 	ValueOutOfRange
+	VarcharTooBig
 )
 
 func NewInternalError(seq int64) PranaError {
