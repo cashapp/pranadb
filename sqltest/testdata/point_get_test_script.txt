@@ -29,6 +29,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token='cust_0007';
+-- multiple point gets;
+select * from customer_balances where customer_token in ('cust_0010','cust_0007') order by customer_token;
+select * from customer_balances where customer_token = 'cust_0010' or customer_token = 'cust_0007' order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -62,6 +65,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -95,6 +101,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -128,6 +137,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -161,6 +173,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7.0;
+-- multiple point gets;
+select * from customer_balances where customer_token in (10.0,7.0) order by customer_token;
+select * from customer_balances where customer_token = 10.0 or customer_token = 7.0 order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -194,6 +209,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7000.00;
+-- multiple point gets;
+select * from customer_balances where customer_token in (10000,7000) order by customer_token;
+select * from customer_balances where customer_token = 10000 or customer_token = 7000 order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -227,6 +245,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token='2020-01-07 21:11:06.643534';
+-- multiple point gets;
+select * from customer_balances where customer_token in ('2020-01-07 21:11:06.643534','2020-01-07 02:06:06.646966') order by customer_token;
+select * from customer_balances where customer_token = '2020-01-07 21:11:06.643534' or customer_token = '2020-01-07 02:06:06.646966' order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
@@ -260,6 +281,9 @@ create materialized view customer_balances as select customer_token, count(*), s
 select * from customer_balances order by customer_token;
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token='2020-01-07 21:11:07';
+-- multiple point gets;
+select * from customer_balances where customer_token in ('2020-01-07 21:11:07','2020-01-07 02:06:06') order by customer_token;
+select * from customer_balances where customer_token = '2020-01-07 21:11:07' or customer_token = '2020-01-07 02:06:06' order by customer_token;
 drop materialized view customer_balances;
 drop source raw_ledger_events;
 --delete topic testtopic;
