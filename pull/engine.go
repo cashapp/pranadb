@@ -63,16 +63,25 @@ func (p *Engine) SetAvailable() {
 	p.available.Set(true)
 }
 
-func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string) (exec.PullExecutor, error) {
+func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string, argTypes []common.ColumnType,
+	args []interface{}) (exec.PullExecutor, error) {
 	qi := execCtx.QueryInfo
 	qi.ExecutionID = execCtx.ID
 	qi.SchemaName = execCtx.Schema.Name
 	qi.Query = query
+	isPs := argTypes != nil
+	if isPs {
+		// It's a prepared statement
+		execCtx.Planner().SetPSArgs(args)
+		qi.PsArgTypes = argTypes
+		qi.PsArgs = args
+		qi.PreparedStatement = true
+	}
 	ast, err := execCtx.Planner().Parse(query)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	logicalPlan, err := execCtx.Planner().BuildLogicalPlan(ast, false)
+	logicalPlan, err := execCtx.Planner().BuildLogicalPlan(ast, isPs)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -107,7 +116,10 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		logic, err := s.Planner().BuildLogicalPlan(ast, true)
+		if queryInfo.PreparedStatement {
+			s.Planner().SetPSArgs(queryInfo.PsArgs)
+		}
+		logic, err := s.Planner().BuildLogicalPlan(ast, queryInfo.PreparedStatement)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -246,7 +258,7 @@ func (p *Engine) ExecuteQuery(schemaName string, query string) (rows *common.Row
 		return nil, errors.Errorf("no such schema %s", schemaName)
 	}
 	execCtx := execctx.NewExecutionContext("", schema)
-	executor, err := p.BuildPullQuery(execCtx, query)
+	executor, err := p.BuildPullQuery(execCtx, query, nil, nil)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

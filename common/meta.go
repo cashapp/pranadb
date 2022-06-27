@@ -87,26 +87,6 @@ var (
 	}
 )
 
-// InferColumnType from Go type.
-func InferColumnType(value interface{}) ColumnType {
-	switch value.(type) {
-	case string:
-		return VarcharColumnType
-	case int, int64:
-		return BigIntColumnType
-	case int16, int32:
-		return IntColumnType
-	case int8:
-		return TinyIntColumnType
-	case float64:
-		return DoubleColumnType
-	case Timestamp:
-		return TimestampColumnType
-	default:
-		panic(fmt.Sprintf("can't infer column of type %T", value))
-	}
-}
-
 func NewDecimalColumnType(precision int, scale int) ColumnType {
 	return ColumnType{
 		Type:         TypeDecimal,

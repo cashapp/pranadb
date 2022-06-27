@@ -66,7 +66,8 @@ func (e *Executor) Stop() error {
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
 //nolint:gocyclo
-func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql string) (exec.PullExecutor, error) {
+func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql string, argTypes []common.ColumnType,
+	args []interface{}) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		var perr participle.Error
@@ -78,8 +79,7 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 
 	switch {
 	case ast.Select != "":
-		execCtx.Planner().RefreshInfoSchema()
-		dag, err := e.pullEngine.BuildPullQuery(execCtx, sql)
+		dag, err := e.pullEngine.BuildPullQuery(execCtx, sql, argTypes, args)
 		return dag, errors.WithStack(err)
 	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateTableIDSequences(1)

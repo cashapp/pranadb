@@ -20,7 +20,7 @@ clean:
 	protoc --include_imports --descriptor_set_out=./descriptors/$@ $<
 
 .PHONY: lint
-lint: 
+lint:
 	buf lint
 
 # Ensure the Go protoc generators are installed.
