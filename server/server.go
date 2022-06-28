@@ -64,7 +64,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(notifClient.BroadcastSync)
-	theMetrics := metrics.NewServer(config)
+	theMetrics := metrics.NewServer(config, !config.EnableMetrics)
 	var failureInjector failinject.Injector
 	if config.EnableFailureInjector {
 		failureInjector = failinject.NewInjector()
