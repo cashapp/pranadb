@@ -136,7 +136,7 @@ func TestLoader(t *testing.T) {
 				schema := metaController.GetOrCreateSchema(ddl.schema)
 				session := executor.CreateExecutionContext(schema)
 				for _, query := range ddl.queries {
-					_, err := executor.ExecuteSQLStatement(session, query)
+					_, err := executor.ExecuteSQLStatement(session, query, nil, nil)
 					numTables++
 					require.NoError(t, err)
 				}

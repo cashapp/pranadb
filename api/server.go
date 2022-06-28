@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/squareup/pranadb/pull/exec"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -85,8 +86,8 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
-	stream service.PranaDBService_ExecuteSQLStatementServer) error {
+func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
+	stream service.PranaDBService_ExecuteStatementServer) error {
 	defer common.PanicHandler()
 	var schema *common.Schema
 	if in.Schema != "" {
@@ -96,8 +97,60 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
 	defer func() {
 		s.metaController.DeleteSchemaIfEmpty(schema)
 	}()
+	numArgs := len(in.Args)
+	args := make([]interface{}, numArgs)
+	argTypes := make([]common.ColumnType, numArgs)
+	for i, arg := range in.Args {
+		var argType common.ColumnType
+		var argValue interface{}
+		switch arg.Type {
+		case service.ColumnType_COLUMN_TYPE_TINY_INT:
+			argType = common.TinyIntColumnType
+			argValue = arg.Value.GetIntValue()
+		case service.ColumnType_COLUMN_TYPE_INT:
+			argType = common.IntColumnType
+			argValue = arg.Value.GetIntValue()
+		case service.ColumnType_COLUMN_TYPE_BIG_INT:
+			argType = common.BigIntColumnType
+			argValue = arg.Value.GetIntValue()
+		case service.ColumnType_COLUMN_TYPE_DOUBLE:
+			argType = common.DoubleColumnType
+			argValue = arg.Value.GetFloatValue()
+		case service.ColumnType_COLUMN_TYPE_DECIMAL:
+			argType = common.ColumnType{Type: common.TypeDecimal}
+			dp := arg.GetDecimalParams()
+			if dp != nil {
+				argType.DecPrecision = int(dp.DecimalPrecision)
+				argType.DecScale = int(dp.DecimalScale)
+			} else {
+				argType.DecPrecision = 65
+				argType.DecScale = 30
+			}
+			argValue = arg.Value.GetDecimalValue()
+		case service.ColumnType_COLUMN_TYPE_VARCHAR:
+			argType = common.VarcharColumnType
+			argValue = arg.Value.GetStringValue()
+		case service.ColumnType_COLUMN_TYPE_TIMESTAMP:
+			argType = common.ColumnType{Type: common.TypeTimestamp}
+			argType.FSP = 6
+			argValue = arg.Value.GetTimestampValue()
+		default:
+			return errors.Errorf("unexpected arg type %d", arg.Type)
+		}
+		argTypes[i] = argType
+		args[i] = argValue
+	}
+	stmt := in.Statement
+	sqlStmt, ok := stmt.(*service.ExecuteStatementRequest_Sql)
+	if !ok {
+		return errors.New("named statements currently not supported")
+	}
+	executor, err := s.ce.ExecuteSQLStatement(execCtx, sqlStmt.Sql, argTypes, args)
+	return s.doExecuteStatement(executor, int(in.BatchSize), err, stream)
+}
 
-	executor, err := s.ce.ExecuteSQLStatement(execCtx, in.Statement)
+func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
+	stream service.PranaDBService_ExecuteStatementServer) error {
 	if err != nil {
 		log.Errorf("failed to execute statement %+v", err)
 		var perr errors.PranaError
@@ -130,7 +183,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
 		}
 		columns.Columns = append(columns.Columns, column)
 	}
-	if err := stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Columns{Columns: columns}}); err != nil {
+	if err := stream.Send(&service.ExecuteStatementResponse{Result: &service.ExecuteStatementResponse_Columns{Columns: columns}}); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -138,7 +191,7 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
 	numCols := len(executor.ColTypes())
 	for {
 		// Transcode rows.
-		rows, err := executor.GetRows(int(in.PageSize))
+		rows, err := executor.GetRows(batchSize)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -185,10 +238,10 @@ func (s *Server) ExecuteSQLStatement(in *service.ExecuteSQLStatementRequest,
 			Count: uint64(numRows),
 			Rows:  prows,
 		}
-		if err = stream.Send(&service.ExecuteSQLStatementResponse{Result: &service.ExecuteSQLStatementResponse_Page{Page: results}}); err != nil {
+		if err = stream.Send(&service.ExecuteStatementResponse{Result: &service.ExecuteStatementResponse_Page{Page: results}}); err != nil {
 			return errors.WithStack(err)
 		}
-		if numRows < int(in.PageSize) {
+		if numRows < batchSize {
 			break
 		}
 	}

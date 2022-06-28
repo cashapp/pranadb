@@ -43,7 +43,6 @@ func (c *CreateIndexCommand) LockName() string {
 }
 
 func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
-	pl.RefreshInfoSchema()
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,

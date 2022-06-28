@@ -45,7 +45,6 @@ func (c *CreateMVCommand) LockName() string {
 }
 
 func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string, tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
-	pl.RefreshInfoSchema()
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,

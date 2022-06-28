@@ -448,8 +448,11 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
 		} else {
-			// sql statement
-			st.executeSQLStatement(require, command)
+			if strings.HasPrefix(command, "execps ") {
+				st.executePreparedStatement(require, command)
+			} else {
+				st.executeSQLStatement(require, command)
+			}
 		}
 	}
 
@@ -563,7 +566,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
 	lineExpected := fmt.Sprintf("%d rows returned", numRows)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName))
+		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName), nil)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -953,6 +956,127 @@ func (st *sqlTest) executePause(require *require.Assertions, command string) {
 	require.NoError(err)
 }
 
+func (st *sqlTest) executePreparedStatement(require *require.Assertions, command string) {
+	//--execps num_args argType argVal ... query
+	command = command[7:]
+	parts := split(command)
+	numArgs, err := strconv.Atoi(parts[0])
+	require.NoError(err)
+	pos := 1
+	psArgs := make([]*service.Arg, numArgs)
+	for i := 0; i < numArgs; i++ {
+		sArgType := strings.ToLower(parts[pos])
+		pos++
+		var psArg *service.Arg
+		switch sArgType {
+		case "tinyint":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_TINY_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "int":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "bigint":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_BIG_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "double":
+			val, err := strconv.ParseFloat(parts[pos], 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_DOUBLE,
+				Value: &service.ArgValue{Value: &service.ArgValue_FloatValue{FloatValue: val}},
+			}
+		case "varchar":
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_VARCHAR,
+				Value: &service.ArgValue{Value: &service.ArgValue_StringValue{StringValue: parts[pos]}},
+			}
+		default:
+			if strings.HasPrefix(sArgType, "decimal") {
+				var decParams *service.DecimalParams
+				if sArgType != "decimal" {
+					sParam := sArgType[8 : len(sArgType)-1]
+					argsParts := strings.Split(sParam, ",")
+					prec, err := strconv.ParseInt(argsParts[0], 10, 64)
+					require.NoError(err)
+					scale, err := strconv.ParseInt(argsParts[1], 10, 64)
+					require.NoError(err)
+					decParams = &service.DecimalParams{DecimalScale: uint32(scale), DecimalPrecision: uint32(prec)}
+				}
+				psArg = &service.Arg{
+					Type:          service.ColumnType_COLUMN_TYPE_DECIMAL,
+					Value:         &service.ArgValue{Value: &service.ArgValue_DecimalValue{DecimalValue: parts[pos]}},
+					DecimalParams: decParams,
+				}
+			} else if strings.HasPrefix(sArgType, "timestamp") {
+				var fsp uint32 = 6
+				if sArgType != "timestamp" {
+					f, err := strconv.ParseInt(sArgType[10:len(sArgType)-1], 10, 64)
+					require.NoError(err)
+					fsp = uint32(f)
+				}
+				psArg = &service.Arg{
+					Type:            service.ColumnType_COLUMN_TYPE_TIMESTAMP,
+					Value:           &service.ArgValue{Value: &service.ArgValue_TimestampValue{TimestampValue: parts[pos]}},
+					TimestampParams: &service.TimestampParams{FractionalSecondsPrecision: fsp},
+				}
+			}
+		}
+		pos++
+		psArgs[i] = psArg
+	}
+	start := time.Now()
+	resChan, err := st.cli.ExecuteStatement(parts[pos], psArgs)
+	require.NoError(err)
+	for line := range resChan {
+		log.Infof("output:%s", line)
+		st.output.WriteString(line + "\n")
+	}
+	end := time.Now()
+	dur := end.Sub(start)
+	log.Infof("Prepared statement execute time ms %d", dur.Milliseconds())
+}
+
+func split(str string) []string {
+	var res []string
+	var cb *strings.Builder
+	inQuote := false
+	for _, b := range str {
+		if b == ' ' && !inQuote {
+			if cb != nil {
+				res = append(res, cb.String())
+				cb = nil
+			}
+		} else if b == '"' {
+			if cb == nil {
+				inQuote = true
+			} else {
+				inQuote = false
+			}
+		} else {
+			if cb == nil {
+				cb = &strings.Builder{}
+			}
+			cb.WriteRune(b)
+		}
+	}
+	if cb != nil {
+		res = append(res, cb.String())
+	}
+	return res
+}
+
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 	log.Debug("Waiting for processing to complete")
 	for _, prana := range st.testSuite.pranaCluster {
@@ -974,7 +1098,7 @@ func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
 	isUse := strings.HasPrefix(statement, "use ")
-	resChan, err := st.cli.ExecuteStatement(statement)
+	resChan, err := st.cli.ExecuteStatement(statement, nil)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {

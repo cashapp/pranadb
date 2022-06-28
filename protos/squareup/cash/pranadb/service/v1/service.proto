@@ -19,8 +19,13 @@ enum ColumnType {
 }
 
 message DecimalParams {
-  uint32 decimal_precision = 3;
-  uint32 decimal_scale = 4;
+  uint32 decimal_precision = 1;
+  uint32 decimal_scale = 2;
+}
+
+message TimestampParams {
+  // 0 (default) = whole seconds. 6 = microseconds.
+  uint32 fractional_seconds_precision = 1;
 }
 
 message Column {
@@ -29,12 +34,31 @@ message Column {
   optional DecimalParams decimal_params = 3;
 }
 
-// Issue a query.
-message ExecuteSQLStatementRequest {
+message ExecuteStatementRequest {
   string schema = 1;
-  string statement = 2;
-  // Size of each page of results returned when paginating.
-  int32 page_size = 3;
+  oneof statement {
+    string name = 2;
+    string sql = 3;
+  }
+  int32 batch_size = 4;
+  repeated Arg args = 5;
+}
+
+message Arg {
+  ColumnType type = 1;
+  ArgValue value = 2;
+  optional DecimalParams decimal_params = 3;
+  optional TimestampParams timestamp_params = 4;
+}
+
+message ArgValue {
+  oneof value {
+    int64 int_value = 1;
+    double float_value = 2;
+    string string_value = 3;
+    string decimal_value = 4;
+    string timestamp_value = 5;
+  }
 }
 
 // Column definitions sent prior to a set of Pages.
@@ -61,7 +85,7 @@ message Page {
   repeated Row rows = 2;
 }
 
-message ExecuteSQLStatementResponse {
+message ExecuteStatementResponse {
   oneof result {
     Columns columns = 1; // Present in first response.
     Page page = 2;
@@ -73,6 +97,6 @@ message RegisterProtobufsRequest {
 }
 
 service PranaDBService {
-  rpc ExecuteSQLStatement(ExecuteSQLStatementRequest) returns (stream ExecuteSQLStatementResponse);
+  rpc ExecuteStatement(ExecuteStatementRequest) returns (stream ExecuteStatementResponse);
   rpc RegisterProtobufs(RegisterProtobufsRequest) returns (google.protobuf.Empty);
 }

@@ -559,7 +559,6 @@ func (d *Dragon) deleteAllDataInRangeForShardsLocally(startPrefix []byte, endPre
 		endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, shardID)
 		endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
 
-		log.Debugf("Deleting all data in range %v to %v", startPrefixWithShard, endPrefixWithShard)
 		if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
 			return errors.WithStack(err)
 		}
@@ -876,7 +875,6 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 			}
 			if !exists {
 				for _, prefix := range batch.Prefixes {
-					log.Debugf("Deleting all local data with prefix %s", common.DumpDataKey(prefix))
 					endPrefix := common.IncrementBytesBigEndian(prefix)
 					if err := d.deleteAllDataInRangeLocally(pBatch, prefix, endPrefix); err != nil {
 						return err

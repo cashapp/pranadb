@@ -27,21 +27,20 @@ const (
 
 // Client is a simple client used for executing statements against PranaDB, it used by the CLI and elsewhere
 type Client struct {
-	lock             sync.Mutex
-	started          bool
-	serverAddress    string
-	conn             *grpc.ClientConn
-	client           service.PranaDBServiceClient
-	currentStatement string
-	pageSize         int
-	currentSchema    string
-	maxLineWidth     int
+	lock          sync.Mutex
+	started       bool
+	serverAddress string
+	conn          *grpc.ClientConn
+	client        service.PranaDBServiceClient
+	batchSize     int
+	currentSchema string
+	maxLineWidth  int
 }
 
 func NewClient(serverAddress string) *Client {
 	return &Client{
 		serverAddress: serverAddress,
-		pageSize:      10000,
+		batchSize:     10000,
 		maxLineWidth:  defaultMaxLineWidth,
 	}
 }
@@ -75,23 +74,19 @@ func (c *Client) Stop() error {
 func (c *Client) SetPageSize(pageSize int) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.pageSize = pageSize
+	c.batchSize = pageSize
 }
 
 // ExecuteStatement executes a Prana statement. Lines of output will be received on the channel that is returned.
 // When the channel is closed, the results are complete
-func (c *Client) ExecuteStatement(statement string) (chan string, error) {
+func (c *Client) ExecuteStatement(statement string, args []*service.Arg) (chan string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.started {
 		return nil, errors.Error("not started")
 	}
-	if c.currentStatement != "" {
-		return nil, errors.Errorf("statement currently executing: %s", c.currentStatement)
-	}
 	ch := make(chan string, maxBufferedLines)
-	c.currentStatement = statement
-	go c.doExecuteStatement(statement, ch)
+	go c.doExecuteStatement(statement, args, ch)
 	return ch, nil
 }
 
@@ -99,16 +94,13 @@ func (c *Client) sendErrorToChannel(ch chan string, err error) {
 	ch <- err.Error()
 }
 
-func (c *Client) doExecuteStatement(statement string, ch chan string) {
-	if rc, err := c.doExecuteStatementWithError(statement, ch); err != nil {
+func (c *Client) doExecuteStatement(statement string, args []*service.Arg, ch chan string) {
+	if rc, err := c.doExecuteStatementWithError(statement, args, ch); err != nil {
 		c.sendErrorToChannel(ch, err)
 	} else {
 		ch <- fmt.Sprintf("%d rows returned", rc)
 	}
-	c.lock.Lock()
-	c.currentStatement = ""
 	close(ch)
-	c.lock.Unlock()
 }
 
 func (c *Client) handleSetCommand(statement string) error {
@@ -122,6 +114,8 @@ func (c *Client) handleSetCommand(statement string) error {
 		if err != nil || width < minLineWidth {
 			return errors.Errorf("Invalid %s value: %s", maxLineWidthPropName, propVal)
 		}
+		c.lock.Lock()
+		defer c.lock.Unlock()
 		c.maxLineWidth = width
 	} else {
 		return errors.Errorf("Unknown property: %s", propName)
@@ -129,12 +123,10 @@ func (c *Client) handleSetCommand(statement string) error {
 	return nil
 }
 
-func (c *Client) doExecuteStatementWithError(statement string, ch chan string) (int, error) { //nolint:gocyclo
-
+func (c *Client) doExecuteStatementWithError(statement string, args []*service.Arg, ch chan string) (int, error) {
 	if statement == "set" || strings.HasPrefix(strings.ToLower(statement), "set ") {
 		return 0, c.handleSetCommand(statement)
 	}
-
 	ast, err := parser.Parse(statement)
 	if err != nil {
 		return 0, errors.Errorf("Failed to execute statement: %s", errors.NewInvalidStatementError(err.Error()).Error())
@@ -146,16 +138,19 @@ func (c *Client) doExecuteStatementWithError(statement string, ch chan string) (
 	if c.currentSchema == "" && !(ast.Show != nil && ast.Show.Schemas != "") {
 		return 0, errors.NewSchemaNotInUseError()
 	}
-
-	stream, err := c.client.ExecuteSQLStatement(context.Background(), &service.ExecuteSQLStatementRequest{
+	stream, err := c.client.ExecuteStatement(context.Background(), &service.ExecuteStatementRequest{
 		Schema:    c.currentSchema,
-		Statement: statement,
-		PageSize:  int32(c.pageSize),
+		Statement: &service.ExecuteStatementRequest_Sql{statement},
+		BatchSize: int32(c.batchSize),
+		Args:      args,
 	})
 	if err != nil {
 		return 0, errors.WithStack(err)
 	}
+	return c.readStream(stream, ch)
+}
 
+func (c *Client) readStream(stream service.PranaDBService_ExecuteStatementClient, ch chan string) (int, error) {
 	// Receive column metadata and page data until the result of the query is fully returned.
 	var (
 		columnNames  []string
@@ -176,7 +171,7 @@ func (c *Client) doExecuteStatementWithError(statement string, ch chan string) (
 			return 0, stripgRPCPrefix(err)
 		}
 		switch result := resp.Result.(type) {
-		case *service.ExecuteSQLStatementResponse_Columns:
+		case *service.ExecuteStatementResponse_Columns:
 			if !wroteHeader {
 				columnNames, columnTypes = toColumnTypes(result.Columns)
 				if len(columnTypes) > 0 {
@@ -201,7 +196,7 @@ func (c *Client) doExecuteStatementWithError(statement string, ch chan string) (
 					ch <- headerLine
 				}
 			}
-		case *service.ExecuteSQLStatementResponse_Page:
+		case *service.ExecuteStatementResponse_Page:
 			if columnTypes == nil {
 				return 0, errors.New("out of order response from server - column definitions should be first package not page data")
 			}

@@ -62,7 +62,7 @@ func TestKafkaIntegration(t *testing.T) {
 		"bootstrap.servers": "localhost:9092",
 	}
 
-	ch, err := cli.ExecuteStatement("use test")
+	ch, err := cli.ExecuteStatement("use test", nil)
 	require.NoError(t, err)
 	res := <-ch
 	require.Equal(t, "0 rows returned", res)
@@ -95,12 +95,12 @@ create source payments(
     properties = ()
 )
 `, paymentTopicName)
-	ch, err = cli.ExecuteStatement(createSourceSQL)
+	ch, err = cli.ExecuteStatement(createSourceSQL, nil)
 	require.NoError(t, err)
 	res = <-ch
 	require.Equal(t, "0 rows returned", res)
 
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
 	require.NoError(t, err)
 	res = <-ch
 	res = <-ch
@@ -113,7 +113,7 @@ create source payments(
 
 	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
 
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
 	require.NoError(t, err)
 	lastLine := ""
 	for line := range ch {
@@ -127,7 +127,7 @@ create source payments(
 
 	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
 
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id")
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
 	require.NoError(t, err)
 
 	for line := range ch {

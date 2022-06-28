@@ -28,11 +28,11 @@ func TestSessionTimeout(t *testing.T) {
 		err = cli.Stop()
 		require.NoError(t, err)
 	}()
-	ch, err := cli.ExecuteStatement("use sys")
+	ch, err := cli.ExecuteStatement("use sys", nil)
 	require.NoError(t, err)
 	for range ch {
 	}
-	ch, err = cli.ExecuteStatement("select * from sys.tables")
+	ch, err = cli.ExecuteStatement("select * from sys.tables", nil)
 	require.NoError(t, err)
 	for range ch {
 	}
