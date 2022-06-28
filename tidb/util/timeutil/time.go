@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/uber-go/atomic"
+	"go.uber.org/atomic"
 )
 
 // init initializes `locCache`.

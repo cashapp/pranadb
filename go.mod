@@ -2,8 +2,6 @@ module github.com/squareup/pranadb
 
 go 1.16
 
-replace github.com/uber-go/atomic => github.com/uber-go/atomic v1.4.0
-
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.5.0 // indirect
@@ -46,7 +44,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/twinj/uuid v1.0.0
 	github.com/twmb/murmur3 v1.1.6
-	github.com/uber-go/atomic v0.0.0-00010101000000-000000000000
+	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.15.0
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
