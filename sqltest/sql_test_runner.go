@@ -1029,7 +1029,7 @@ func (st *sqlTest) executePreparedStatement(require *require.Assertions, command
 				psArg = &service.Arg{
 					Type:            service.ColumnType_COLUMN_TYPE_TIMESTAMP,
 					Value:           &service.ArgValue{Value: &service.ArgValue_TimestampValue{TimestampValue: parts[pos]}},
-					TimestampParans: &service.TimestampParams{Fsp: fsp},
+					TimestampParams: &service.TimestampParams{FractionalSecondsPrecision: fsp},
 				}
 			}
 		}
