@@ -222,6 +222,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 
 	var (
 		headerEncoding, keyEncoding, valueEncoding common.KafkaEncoding
+		ingestFilter                               string
 		propsMap                                   map[string]string
 		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
@@ -243,6 +244,8 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			if valueEncoding.Encoding == common.EncodingUnknown {
 				return nil, errors.NewPranaErrorf(errors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.ValueEncoding)
 			}
+		case opt.IngestFilter != "":
+			ingestFilter = opt.IngestFilter
 		case opt.Properties != nil:
 			propsMap = make(map[string]string, len(opt.Properties))
 			for _, prop := range opt.Properties {
@@ -287,6 +290,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		HeaderEncoding: headerEncoding,
 		KeyEncoding:    keyEncoding,
 		ValueEncoding:  valueEncoding,
+		IngestFilter:   ingestFilter,
 		ColSelectors:   colSelectors,
 		Properties:     propsMap,
 	}

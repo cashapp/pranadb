@@ -37,6 +37,7 @@ const (
 
 	ValueOutOfRange
 	VarcharTooBig
+	InvalidIngestFilter
 )
 
 func NewInternalError(seq int64) PranaError {

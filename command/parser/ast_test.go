@@ -50,6 +50,7 @@ func TestParse(t *testing.T) {
 			headerencoding = "json",
 			keyencoding = "json",
 			valueencoding = "json",
+            ingestfilter = "where sensor_id=1",
 			columnselectors = (
 				meta("key").k0,
 				v1,
@@ -75,6 +76,7 @@ func TestParse(t *testing.T) {
 					{HeaderEncoding: "json"},
 					{KeyEncoding: "json"},
 					{ValueEncoding: "json"},
+					{IngestFilter: "where sensor_id=1"},
 					{ColSelectors: []*selector.ColumnSelectorAST{
 						{MetaKey: stringRef("key"), Next: &selector.SelectorAST{Field: "k0"}},
 						{Field: stringRef("v1")},

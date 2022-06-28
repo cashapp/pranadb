@@ -66,6 +66,7 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
+	ingestExpressions       []*common.Expression
 }
 
 var (
@@ -91,7 +92,7 @@ var (
 	}, []string{"source"})
 )
 
-func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
+func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
 	globalRateLimiter IngestLimiter) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
@@ -157,6 +158,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		globalRateLimiter:       globalRateLimiter,
+		ingestExpressions:       ingestExpressions,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -305,12 +307,35 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	forwardBatches := make(map[uint64]*cluster.WriteBatch)
 
 	totBatchSizeBytes := 0
+	rowsIngested := 0
 	for i := 0; i < rows.RowCount(); i++ {
+		row := rows.GetRow(i)
+
+		filtered := false
+		if s.ingestExpressions != nil {
+			// We filter out any rows which don't match the optional ingest filter
+			for _, predicate := range s.ingestExpressions {
+				accept, isNull, err := predicate.EvalBoolean(&row)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if isNull {
+					return errors.Error("null returned from evaluating select predicate")
+				}
+				if !accept {
+					filtered = true
+					break
+				}
+			}
+		}
+		if filtered {
+			continue
+		}
+
 		// We throttle the global ingest to prevent the node getting overloaded - it's easy otherwise to saturate the
 		// disk throughput which can make the node unstable
 		s.globalRateLimiter.Limit()
 
-		row := rows.GetRow(i)
 		for _, pkCol := range s.sourceInfo.PrimaryKeyCols {
 			if row.IsNull(pkCol) {
 				return errors.New("cannot ingest message, null value in PK col(s)")
@@ -350,6 +375,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		l := len(valueBuff)
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
+		rowsIngested++
 	}
 
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
@@ -359,7 +385,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
 	s.ingestDurationHistogram.Observe(float64(ingestTimeNanos))
-	s.rowsIngestedCounter.Add(float64(rows.RowCount()))
+	s.rowsIngestedCounter.Add(float64(rowsIngested))
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 

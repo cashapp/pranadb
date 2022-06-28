@@ -324,6 +324,7 @@ type TopicInfo struct {
 	HeaderEncoding KafkaEncoding
 	ColSelectors   []selector.ColumnSelector
 	Properties     map[string]string
+	IngestFilter   string
 }
 
 type KafkaEncoding struct {

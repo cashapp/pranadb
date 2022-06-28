@@ -105,6 +105,7 @@ type TopicInformation struct {
 	HeaderEncoding string                        `|"HeaderEncoding" "=" @String`
 	KeyEncoding    string                        `|"KeyEncoding" "=" @String`
 	ValueEncoding  string                        `|"ValueEncoding" "=" @String`
+	IngestFilter   string                        `|"IngestFilter" "=" @String`
 	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
 	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
