@@ -71,12 +71,12 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			pointGetShardID, err := p.getPointGetShardID(ctx, op.Ranges, op.Table.Name.L)
+			pointGetShardIDs, err := p.getPointGetShardIDs(ctx, op.Ranges, op.Table.Name.L)
 			if err != nil {
 				return nil, err
 			}
 			executor = exec.NewRemoteExecutor(remoteDag, ctx.QueryInfo, colNames, colTypes, ctx.Schema.Name, p.cluster,
-				pointGetShardID)
+				pointGetShardIDs)
 		}
 	case *planner.PhysicalIndexScan:
 		if remote {
@@ -102,7 +102,7 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 				return nil, err
 			}
 			executor = exec.NewRemoteExecutor(remoteDag, ctx.QueryInfo, colNames, colTypes, ctx.Schema.Name, p.cluster,
-				-1)
+				nil)
 		}
 	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, ctx.Planner().SessionContext())
@@ -133,20 +133,22 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 	return executor, nil
 }
 
-func (p *Engine) getPointGetShardID(ctx *execctx.ExecutionContext, ranges []*ranger.Range, tableName string) (int64, error) {
-	var pointGetShardID int64 = -1
-	// TODO support multiple point gets to different shards when there are multiple ranges (e.g. with an IN)
-	if len(ranges) == 1 {
-		rng := ranges[0]
+func (p *Engine) getPointGetShardIDs(ctx *execctx.ExecutionContext, ranges []*ranger.Range, tableName string) ([]uint64, error) {
+	var pointGetShardIDs []uint64
+	shardIDMap := map[uint64]struct{}{}
+	// There can be multiple point gets for a single query.
+	// E.g. select * from foo where pk_col in (1, 7, 10, 15)
+	// select * from foo where pk_col=1 or pk_col=7 or pk_col=10 or pk_col=15
+	for _, rng := range ranges {
 		if rng.IsPoint(ctx.Planner().StatementContext()) {
 			table, ok := ctx.Schema.GetTable(tableName)
 			if !ok {
-				return 0, errors.Errorf("cannot find table %s", tableName)
+				return nil, errors.Errorf("cannot find table %s", tableName)
 			}
 			ti := table.GetTableInfo()
 			lpk := len(ti.PrimaryKeyCols)
 			if len(rng.LowVal) != lpk {
-				return 0, errors.New("point get range elements not same as num pk cols")
+				return nil, errors.New("point get range elements not same as num pk cols")
 			}
 			k := make([]interface{}, lpk)
 			for i, rngElem := range rng.LowVal {
@@ -154,16 +156,21 @@ func (p *Engine) getPointGetShardID(ctx *execctx.ExecutionContext, ranges []*ran
 			}
 			key, err := common.EncodeKey(k, ti.ColumnTypes, ti.PrimaryKeyCols, []byte{})
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 			pgsid, err := p.shrder.CalculateShard(sharder.ShardTypeHash, key)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
-			pointGetShardID = int64(pgsid)
+			// deduplicate shard ids
+			_, ok = shardIDMap[pgsid]
+			if !ok {
+				pointGetShardIDs = append(pointGetShardIDs, pgsid)
+				shardIDMap[pgsid] = struct{}{}
+			}
 		}
 	}
-	return pointGetShardID, nil
+	return pointGetShardIDs, nil
 }
 
 func (p *Engine) createPullTableScan(schema *common.Schema, tableName string, ranges []*ranger.Range, columns []*model.ColumnInfo, shardID uint64) (exec.PullExecutor, error) {

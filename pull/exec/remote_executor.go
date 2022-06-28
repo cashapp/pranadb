@@ -14,18 +14,18 @@ import (
 
 type RemoteExecutor struct {
 	pullExecutorBase
-	clusterGetters    []*clusterGetter
-	schemaName        string
-	cluster           cluster.Cluster
-	completeCount     int
-	queryInfo         *cluster.QueryExecutionInfo
-	RemoteDag         PullExecutor
-	ShardIDs          []uint64
-	pointGetQueryInfo *cluster.QueryExecutionInfo
+	clusterGetters          []*clusterGetter
+	schemaName              string
+	cluster                 cluster.Cluster
+	completeCount           int
+	queryInfo               *cluster.QueryExecutionInfo
+	RemoteDag               PullExecutor
+	ShardIDs                []uint64
+	singlePointGetQueryInfo *cluster.QueryExecutionInfo
 }
 
 func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecutionInfo, colNames []string,
-	colTypes []common.ColumnType, schemaName string, clust cluster.Cluster, pointGetShardID int64) *RemoteExecutor {
+	colTypes []common.ColumnType, schemaName string, clust cluster.Cluster, pointGetShardIDs []uint64) *RemoteExecutor {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:    colNames,
@@ -38,7 +38,6 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 		cluster:          clust,
 		queryInfo:        queryInfo,
 		RemoteDag:        remoteDAG,
-		ShardIDs:         clust.GetAllShardIDs(),
 	}
 
 	// The tables table is a special case and always gets stored in a single shard cluster.SystemSchemaShardID
@@ -48,15 +47,21 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 		lq := strings.ToLower(re.queryInfo.Query)
 		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
 			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {
-			re.pointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, cluster.SystemSchemaShardID)
+			re.singlePointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, cluster.SystemSchemaShardID)
 			return &re
 		}
 	}
-	if pointGetShardID != -1 {
-		// It's a point get
-		re.pointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, uint64(pointGetShardID))
+	numPointGets := len(pointGetShardIDs)
+	if numPointGets == 1 {
+		// It's a single point get
+		re.singlePointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, pointGetShardIDs[0])
+	} else if numPointGets > 1 {
+		// Multiple point get
+		re.ShardIDs = pointGetShardIDs
+		re.createGetters()
 	} else {
 		// Not a point get
+		re.ShardIDs = clust.GetAllShardIDs()
 		re.createGetters()
 	}
 	return &re
@@ -100,10 +105,11 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 		return nil, errors.Errorf("invalid limit %d", limit)
 	}
 
-	if re.pointGetQueryInfo != nil {
-		// It's a point get so we only talk to one shard
-		re.pointGetQueryInfo.Limit = uint32(limit)
-		return re.cluster.ExecuteRemotePullQuery(re.pointGetQueryInfo, re.rowsFactory)
+	if re.singlePointGetQueryInfo != nil {
+		// It's a single point get so we only talk to one shard - we optimise this special case by calling directly
+		// and not running on different goroutines
+		re.singlePointGetQueryInfo.Limit = uint32(limit)
+		return re.cluster.ExecuteRemotePullQuery(re.singlePointGetQueryInfo, re.rowsFactory)
 	}
 
 	numGetters := len(re.clusterGetters)
@@ -164,9 +170,8 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 }
 
 func (re *RemoteExecutor) createGetters() {
-	shardIDs := re.ShardIDs
-	re.clusterGetters = make([]*clusterGetter, len(shardIDs))
-	for i, shardID := range shardIDs {
+	re.clusterGetters = make([]*clusterGetter, len(re.ShardIDs))
+	for i, shardID := range re.ShardIDs {
 		qei := re.createGetterQueryExecInfo(re.queryInfo, shardID)
 		cg := &clusterGetter{
 			shardID:       shardID,

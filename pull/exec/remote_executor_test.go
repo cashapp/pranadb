@@ -98,11 +98,12 @@ func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colNames, colTypes, "sys", tc, -1)
-	require.NotNil(t, re.pointGetQueryInfo)
-	require.Equal(t, re.pointGetQueryInfo.ShardID, cluster.SystemSchemaShardID)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)},
+		colNames, colTypes, "sys", tc, nil)
+	require.NotNil(t, re.singlePointGetQueryInfo)
+	require.Equal(t, re.singlePointGetQueryInfo.ShardID, cluster.SystemSchemaShardID)
 
-	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc, -1)
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc, nil)
 	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
@@ -144,7 +145,7 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory) (PullEx
 
 	queryInfo := &cluster.QueryExecutionInfo{}
 
-	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, -1), allRows, tc
+	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, nil), allRows, tc
 }
 
 func generateRow(t *testing.T, index int, rows *common.Rows) {
