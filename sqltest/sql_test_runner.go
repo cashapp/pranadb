@@ -510,7 +510,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			return num == 0, nil
 		}, 5*time.Second, 10*time.Millisecond)
 		require.NoError(err)
-		require.True(ok, "timed out waiting for num remote sessions to get to zero")
+		require.True(ok, "timed out waiting for num remote execution contexts to get to zero")
 
 		topicNames := st.testSuite.fakeKafka.GetTopicNames()
 		if len(topicNames) > 0 {

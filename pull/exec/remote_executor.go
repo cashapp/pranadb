@@ -117,7 +117,6 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 
 	rows = re.rowsFactory.NewRows(100)
 
-	// TODO this algorithm can be improved
 	// We execute these in parallel
 	for re.completeCount < numGetters {
 
@@ -167,6 +166,18 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 	}
 
 	return rows, nil
+}
+
+// Close - We override the Close method for PullExecutor and we call our remote shards with limit zero.
+// This signals them to release any resources.
+// Close is only called when the query is closed before all rows are returned - e.g. if a limit has been provided on
+// the query and has been reached
+func (re *RemoteExecutor) Close() {
+	for _, getter := range re.clusterGetters {
+		if !getter.isComplete() {
+			getter.GetRows(0)
+		}
+	}
 }
 
 func (re *RemoteExecutor) createGetters() {

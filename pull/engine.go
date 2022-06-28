@@ -105,29 +105,29 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 	if queryInfo.ExecutionID == "" {
 		panic("empty execution id")
 	}
-	s, ok := p.getCachedExecCtx(queryInfo.ExecutionID)
+	execCtx, ok := p.getCachedExecCtx(queryInfo.ExecutionID)
 	newExecution := false
 	if !ok {
 		schema := p.metaController.GetOrCreateSchema(queryInfo.SchemaName)
-		s = execctx.NewExecutionContext(queryInfo.ExecutionID, schema)
+		execCtx = execctx.NewExecutionContext(queryInfo.ExecutionID, schema)
 		newExecution = true
-		s.QueryInfo = queryInfo
-		ast, err := s.Planner().Parse(queryInfo.Query)
+		execCtx.QueryInfo = queryInfo
+		ast, err := execCtx.Planner().Parse(queryInfo.Query)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		if queryInfo.PreparedStatement {
-			s.Planner().SetPSArgs(queryInfo.PsArgs)
+			execCtx.Planner().SetPSArgs(queryInfo.PsArgs)
 		}
-		logic, err := s.Planner().BuildLogicalPlan(ast, queryInfo.PreparedStatement)
+		logic, err := execCtx.Planner().BuildLogicalPlan(ast, queryInfo.PreparedStatement)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		physicalPlan, err := s.Planner().BuildPhysicalPlan(logic, true)
+		physicalPlan, err := execCtx.Planner().BuildPhysicalPlan(logic, true)
 		if err != nil {
 			return nil, err
 		}
-		dag, err := p.buildPullDAG(s, physicalPlan, true)
+		dag, err := p.buildPullDAG(execCtx, physicalPlan, true)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -136,21 +136,26 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		if scan == nil {
 			return nil, errors.Error("cannot find scan")
 		}
-		s.CurrentQuery = scan
-	} else if s.QueryInfo.Query != queryInfo.Query {
+		execCtx.CurrentQuery = scan
+	} else if execCtx.QueryInfo.Query != queryInfo.Query {
 		// Sanity check
-		panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", s.QueryInfo.Query, queryInfo.Query))
+		panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", execCtx.QueryInfo.Query, queryInfo.Query))
 	}
-	rows, err := p.getRowsFromCurrentQuery(s, int(queryInfo.Limit))
+	if queryInfo.Limit == 0 {
+		// Zero signals that the query should be closed
+		p.execCtxCache().Delete(queryInfo.ExecutionID)
+		return CurrentQuery(execCtx).RowsFactory().NewRows(0), nil
+	}
+	rows, err := p.getRowsFromCurrentQuery(execCtx, int(queryInfo.Limit))
 	if err != nil {
 		// Make sure we remove current query in case of error
-		s.CurrentQuery = nil
+		execCtx.CurrentQuery = nil
 		return nil, errors.WithStack(err)
 	}
-	if newExecution && s.CurrentQuery != nil {
+	if newExecution && execCtx.CurrentQuery != nil {
 		// We only need to store the ctx for later if there are more rows to return
-		p.execCtxCache().Store(queryInfo.ExecutionID, s)
-	} else if s.CurrentQuery == nil {
+		p.execCtxCache().Store(queryInfo.ExecutionID, execCtx)
+	} else if execCtx.CurrentQuery == nil {
 		// We can delete the exec ctx if current query is complete
 		p.execCtxCache().Delete(queryInfo.ExecutionID)
 	}
