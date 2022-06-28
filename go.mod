@@ -39,12 +39,12 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/segmentio/kafka-go v0.4.17
-	github.com/sergi/go-diff v1.1.0
+	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/twinj/uuid v1.0.0
 	github.com/twmb/murmur3 v1.1.6
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.15.0
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf // indirect
