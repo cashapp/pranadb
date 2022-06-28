@@ -59,22 +59,22 @@ set max_line_width 50;
 0 rows returned
 
 set foo 123;
-Unknown property: foo
+Failed to execute statement: Unknown property: foo
 
 set max_line_width oranges;
-Invalid max_line_width value: oranges
+Failed to execute statement: Invalid max_line_width value: oranges
 
 set max_line_width 0;
-Invalid max_line_width value: 0
+Failed to execute statement: Invalid max_line_width value: 0
 
 set max_line_width -1;
-Invalid max_line_width value: -1
+Failed to execute statement: Invalid max_line_width value: -1
 
 set bar;
-Invalid set command. Should be set <prop_name> <prop_value>
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
 
 set;
-Invalid set command. Should be set <prop_name> <prop_value>
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
 
 set max_line_width 80;
 0 rows returned

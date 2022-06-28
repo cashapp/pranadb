@@ -40,6 +40,10 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 				return nil
 			}
 			if err != nil {
+				if err.Error() == "Interrupt" {
+					// This occurs when CTRL-C is pressed - we should exit silently
+					return nil
+				}
 				return errors.WithStack(err)
 			}
 			line = strings.TrimSpace(line)
