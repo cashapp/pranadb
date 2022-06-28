@@ -207,18 +207,6 @@ func testTableScanWithRange(t *testing.T, scanRanges []*ScanRange, expectedRows 
 var naturalOrderingColTypes = []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType,
 	common.VarcharColumnType, common.NewDecimalColumnType(10, 3)}
 
-/*
-	expectedRows := [][]interface{}{
-		{-300, 0.0, "str3", "-300.111"},
-		{-200, 1.1, "str7", "0.000"},
-		{-100, -1.1, "str1", "-100.111"},
-		{0, -3.1, "str4", "300.111"},
-		{100, -2.1, "str6", "-200.111"},
-		{200, 3.1, "str5", "200.111"},
-		{300, 2.1, "str2", "100.111"},
-	}
-*/
-
 func TestTableScanNaturalOrderingBigIntCol(t *testing.T) {
 	inpRows := [][]interface{}{
 		{-200, 1.1, "str7", "0.000"},

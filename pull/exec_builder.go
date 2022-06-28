@@ -135,20 +135,24 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 
 func (p *Engine) getPointGetShardID(ctx *execctx.ExecutionContext, ranges []*ranger.Range, tableName string) (int64, error) {
 	var pointGetShardID int64 = -1
+	// TODO support multiple point gets to different shards when there are multiple ranges (e.g. with an IN)
 	if len(ranges) == 1 {
 		rng := ranges[0]
 		if rng.IsPoint(ctx.Planner().StatementContext()) {
-			if len(rng.LowVal) != 1 {
-				// Composite ranges not supported yet
-				return -1, nil
-			}
 			table, ok := ctx.Schema.GetTable(tableName)
 			if !ok {
 				return 0, errors.Errorf("cannot find table %s", tableName)
 			}
-			v := common.TiDBValueToPranaValue(rng.LowVal[0].GetValue())
-			k := []interface{}{v}
-			key, err := common.EncodeKey(k, table.GetTableInfo().ColumnTypes, table.GetTableInfo().PrimaryKeyCols, []byte{})
+			ti := table.GetTableInfo()
+			lpk := len(ti.PrimaryKeyCols)
+			if len(rng.LowVal) != lpk {
+				return 0, errors.New("point get range elements not same as num pk cols")
+			}
+			k := make([]interface{}, lpk)
+			for i, rngElem := range rng.LowVal {
+				k[i] = common.TiDBValueToPranaValue(rngElem.GetValue())
+			}
+			key, err := common.EncodeKey(k, ti.ColumnTypes, ti.PrimaryKeyCols, []byte{})
 			if err != nil {
 				return 0, err
 			}
