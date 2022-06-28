@@ -81,6 +81,7 @@ func (p *pullExecutorBase) Close() {
 }
 
 func ConnectPullExecutors(childExecutors []PullExecutor, parent PullExecutor) {
+	
 	for _, child := range childExecutors {
 		child.SetParent(parent)
 		parent.AddChild(child)
