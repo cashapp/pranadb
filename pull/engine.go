@@ -115,15 +115,16 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		if err != nil {
 			return nil, err
 		}
-		dag, err := p.buildPullDAG(s, physicalPlan, false)
+		dag, err := p.buildPullDAG(s, physicalPlan, true)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		remExecutor := p.findRemoteExecutor(dag)
-		if remExecutor == nil {
-			return nil, errors.Error("cannot find remote executor")
+		// We only execute the scan on the remote nodes, the rest is done on the originating node
+		scan := p.findTableOrIndexScan(dag)
+		if scan == nil {
+			return nil, errors.Error("cannot find scan")
 		}
-		s.CurrentQuery = remExecutor.RemoteDag
+		s.CurrentQuery = scan
 	} else if s.QueryInfo.Query != queryInfo.Query {
 		// Sanity check
 		panic(fmt.Sprintf("Already executing query is %s but passed in query is %s", s.QueryInfo.Query, queryInfo.Query))
@@ -168,14 +169,17 @@ func (p *Engine) getCachedExecCtx(ctxID string) (*execctx.ExecutionContext, bool
 	return s, true
 }
 
-func (p *Engine) findRemoteExecutor(executor exec.PullExecutor) *exec.RemoteExecutor {
-	// We only execute the part of the dag beyond the table reader - this is the remote part
-	remExecutor, ok := executor.(*exec.RemoteExecutor)
+func (p *Engine) findTableOrIndexScan(executor exec.PullExecutor) exec.PullExecutor {
+	ts, ok := executor.(*exec.PullTableScan)
 	if ok {
-		return remExecutor
+		return ts
+	}
+	is, ok := executor.(*exec.PullIndexReader)
+	if ok {
+		return is
 	}
 	for _, child := range executor.GetChildren() {
-		remExecutor := p.findRemoteExecutor(child)
+		remExecutor := p.findTableOrIndexScan(child)
 		if remExecutor != nil {
 			return remExecutor
 		}
