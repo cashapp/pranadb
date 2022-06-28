@@ -66,3 +66,11 @@ func (c *PullChain) ColTypes() []common.ColumnType {
 func (c *PullChain) SetColNames(colNames []string) {
 	c.colNames = colNames
 }
+
+func (c *PullChain) RowsFactory() *common.RowsFactory {
+	return c.first().RowsFactory()
+}
+
+func (c *PullChain) Close() {
+	c.first().Close()
+}
