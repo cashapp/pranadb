@@ -189,7 +189,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
-			cnf.RaftRTTMs = 10
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)

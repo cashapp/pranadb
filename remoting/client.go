@@ -171,9 +171,6 @@ func (c *client) BroadcastSync(notificationMessage ClusterMessage) error {
 		return errors.Error("channel was closed")
 	}
 	c.responseChannels.Delete(nf.sequence)
-	if err != nil {
-		log.Errorf("broadcast sync returned err %v", err)
-	}
 	return err
 }
 
@@ -370,7 +367,6 @@ func (r *responseInfo) responseReceived(conn *clientConnection, resp *ClusterRes
 	} else {
 		if !resp.ok {
 			// The server received the cluster message but sent back an error response
-			log.Printf("broadcast sync received response err errcode %d errmsg %s", resp.errCode, resp.errMsg)
 			err := errors.NewPranaError(errors.ErrorCode(resp.errCode), resp.errMsg)
 			r.broadcastRespChan <- err
 		} else {
