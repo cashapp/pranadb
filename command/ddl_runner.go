@@ -117,7 +117,7 @@ func (d *DDLCommandRunner) HandleNotification(notification remoting.ClusterMessa
 		return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 	}
 	err := com.OnPhase(phase)
-	if phase == int32(com.NumPhases()-1) {
+	if phase == int32(com.NumPhases()-1) || err != nil {
 		// Final phase so delete the command
 		delete(d.commands, skey)
 	}

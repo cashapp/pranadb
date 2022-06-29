@@ -186,11 +186,10 @@ func (i *IndexInfo) ContainsColIndex(colIndex int) bool {
 
 type Schema struct {
 	// Schema can be mutated from different goroutines so we need to lock to protect access to it's maps
-	lock    sync.RWMutex
-	Name    string
-	tables  map[string]Table
-	sinks   map[string]*SinkInfo
-	deleted bool
+	lock   sync.RWMutex
+	Name   string
+	tables map[string]Table
+	sinks  map[string]*SinkInfo
 }
 
 func NewSchema(name string) *Schema {
@@ -278,20 +277,6 @@ func (s *Schema) Equal(other *Schema) bool {
 	other.lock.RLock()
 	defer other.lock.RUnlock()
 	return reflect.DeepEqual(s, other)
-}
-
-func (s *Schema) SetDeleted() {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	s.deleted = true
-}
-
-func (s *Schema) IsDeleted() bool {
-	// Schema cna become deleted if all tables are removed, but sessions might still have it cached
-	// checking isDeleted() allows sessions to refresh the schema if necessary
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.deleted
 }
 
 type SourceInfo struct {

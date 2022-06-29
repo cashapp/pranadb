@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/squareup/pranadb/meta"
@@ -157,13 +156,7 @@ func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, e
 		if errors.As(err, &perr) {
 			return perr
 		}
-		// For internal errors we don't return internal error messages to the CLI as this would leak
-		// server implementation details. Instead, we generate a sequence number and add that to the message
-		// and log the internal error in the server logs with the sequence number so it can be looked up
-		seq := atomic.AddInt64(&s.errorSequence, 1)
-		perr = errors.NewInternalError(seq)
-		log.Errorf("internal error occurred with sequence number %d\n%v", seq, err)
-		return perr
+		return common.LogInternalError(err)
 	}
 
 	// First send column definitions.

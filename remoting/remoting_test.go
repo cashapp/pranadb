@@ -91,61 +91,6 @@ func TestNotificationStopServer(t *testing.T) {
 	require.Equal(t, 0, len(listener1.Notifications()))
 }
 
-//func TestNotificationsRetryConnections(t *testing.T) {
-//	servers, _ := startServers(t, 3)
-//	defer stopServers(t, servers...)
-//
-//	var listenAddresses []string
-//	for _, server := range servers {
-//		listenAddresses = append(listenAddresses, server.ListenAddress())
-//	}
-//	client := newClient(heartbeatInterval, listenAddresses...)
-//	err := client.Start()
-//	require.NoError(t, err)
-//	defer stopClient(t, client)
-//
-//	numSent := 0
-//	err = client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-//	require.NoError(t, err)
-//	numSent++
-//	require.Equal(t, 3, client.numAvailableServers())
-//	require.Equal(t, 0, client.numUnavailableServers())
-//
-//	err = servers[1].Stop()
-//	require.NoError(t, err)
-//	start := time.Now()
-//	for time.Now().Sub(start) < 5*time.Second {
-//		err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-//		require.NoError(t, err)
-//		numSent++
-//
-//		if client.numUnavailableServers() == 1 {
-//			break
-//		}
-//	}
-//	// One server should become unavailable
-//	require.Equal(t, 1, client.numUnavailableServers())
-//	require.Equal(t, 2, client.numAvailableServers())
-//
-//	// Now restart the server
-//	err = servers[1].Start()
-//	require.NoError(t, err)
-//
-//	start = time.Now()
-//	for time.Now().Sub(start) < 5*time.Second {
-//		err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: fmt.Sprintf("foo%d", numSent)})
-//		require.NoError(t, err)
-//		numSent++
-//
-//		if client.numUnavailableServers() == 0 {
-//			break
-//		}
-//	}
-//	// All servers should be available now
-//	require.Equal(t, 0, client.numUnavailableServers())
-//	require.Equal(t, 3, client.numAvailableServers())
-//}
-
 func sendAndReceiveNotif(t *testing.T, client *client, notif string, listeners []*notifListener) {
 	t.Helper()
 	err := client.BroadcastOneway(&notifications.NotificationTestMessage{SessionId: notif})
@@ -339,22 +284,35 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 		SessionId: "requestMessage",
 	}
 
-	listeners[1].SetReturnErrMsg("some error")
-
+	listeners[1].SetReturnError(errors.New("some error"))
 	err = client.BroadcastSync(notif)
 	require.Error(t, err)
-	require.Equal(t, "some error", err.Error())
+	perr, ok := err.(errors.PranaError)
+	require.True(t, ok)
+	require.Equal(t, "some error", perr.Error())
+	require.Equal(t, errors.InternalError, int(perr.Code))
 
-	listeners[1].SetReturnErrMsg("")
+	listeners[1].SetReturnError(errors.NewPranaError(errors.InvalidStatement, "avocados"))
+	err = client.BroadcastSync(notif)
+	require.Error(t, err)
+	perr, ok = err.(errors.PranaError)
+	require.True(t, ok)
+	require.Equal(t, "avocados", perr.Error())
+	require.Equal(t, errors.InvalidStatement, int(perr.Code))
+
+	listeners[1].SetReturnError(nil)
 	err = client.BroadcastSync(notif)
 	require.NoError(t, err)
 
 	for i := 0; i < numServers; i++ {
-		listeners[i].SetReturnErrMsg("some other error")
+		listeners[i].SetReturnError(errors.NewPranaError(errors.InvalidIngestFilter, "tomatoes"))
 	}
 	err = client.BroadcastSync(notif)
 	require.Error(t, err)
-	require.Equal(t, "some other error", err.Error())
+	perr, ok = err.(errors.PranaError)
+	require.True(t, ok)
+	require.Equal(t, "tomatoes", perr.Error())
+	require.Equal(t, errors.InvalidIngestFilter, int(perr.Code))
 }
 
 func TestSendRequest(t *testing.T) {
@@ -519,7 +477,7 @@ func TestSendRequestWithError(t *testing.T) {
 	defer stopServers(t, server)
 	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
-	nListener.SetReturnErrMsg("some request error")
+	nListener.SetReturnError(errors.NewPranaError(errors.UnknownIndexColumn, "some request error"))
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -537,7 +495,10 @@ func TestSendRequestWithError(t *testing.T) {
 	_, err = client.SendRequest(req, 10*time.Second)
 	require.Error(t, err)
 
-	require.Equal(t, "some request error", err.Error())
+	perr, ok := err.(errors.PranaError)
+	require.True(t, ok)
+	require.Equal(t, "some request error", perr.Error())
+	require.Equal(t, errors.UnknownIndexColumn, int(perr.Code))
 }
 
 func waitForNotifications(t *testing.T, notifListeners []*notifListener, numNotificatiuons int) {
@@ -592,16 +553,16 @@ func startServers(t *testing.T, numServers int) ([]*server, []*notifListener) {
 }
 
 type notifListener struct {
-	returnVal    ClusterMessage
-	returnErrMsg string
-	notifs       []ClusterMessage
-	lock         sync.Mutex
+	returnVal ClusterMessage
+	returnErr error
+	notifs    []ClusterMessage
+	lock      sync.Mutex
 }
 
-func (n *notifListener) SetReturnErrMsg(errMsg string) {
+func (n *notifListener) SetReturnError(err error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
-	n.returnErrMsg = errMsg
+	n.returnErr = err
 }
 
 func (n *notifListener) SetReturnVal(retVal ClusterMessage) {
@@ -614,8 +575,8 @@ func (n *notifListener) HandleMessage(notification ClusterMessage) (ClusterMessa
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	n.notifs = append(n.notifs, notification)
-	if n.returnErrMsg != "" {
-		return nil, errors.New(n.returnErrMsg)
+	if n.returnErr != nil {
+		return nil, n.returnErr
 	}
 	if n.returnVal != nil {
 		return n.returnVal, nil

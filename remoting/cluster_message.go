@@ -98,6 +98,7 @@ type ClusterRequest struct {
 type ClusterResponse struct {
 	sequence        int64
 	ok              bool
+	errCode         int
 	errMsg          string
 	responseMessage ClusterMessage
 }
@@ -148,6 +149,7 @@ func (n *ClusterResponse) serialize(buff []byte) ([]byte, error) {
 	}
 	buff = append(buff, bok)
 	if !n.ok {
+		buff = common.AppendUint32ToBufferLE(buff, uint32(n.errCode))
 		buff = common.AppendStringToBufferLE(buff, n.errMsg)
 	}
 	buff = common.AppendUint64ToBufferLE(buff, uint64(n.sequence))
@@ -172,6 +174,9 @@ func (n *ClusterResponse) deserialize(buff []byte) error {
 	}
 	offset++
 	if !n.ok {
+		var code uint32
+		code, offset = common.ReadUint32FromBufferLE(buff, offset)
+		n.errCode = int(code)
 		n.errMsg, offset = common.ReadStringFromBufferLE(buff, offset)
 	}
 	seq, offset := common.ReadUint64FromBufferLE(buff, offset)
