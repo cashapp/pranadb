@@ -3,8 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/command/parser"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,13 +87,16 @@ func (c *Client) ExecuteStatement(statement string, args []*service.Arg) (chan s
 	if !c.started {
 		return nil, errors.Error("not started")
 	}
+	if strings.HasSuffix(statement, ";") {
+		statement = statement[:len(statement)-1]
+	}
 	ch := make(chan string, maxBufferedLines)
 	go c.doExecuteStatement(statement, args, ch)
 	return ch, nil
 }
 
 func (c *Client) sendErrorToChannel(ch chan string, err error) {
-	ch <- err.Error()
+	ch <- fmt.Sprintf("Failed to execute statement: %s", err.Error())
 }
 
 func (c *Client) doExecuteStatement(statement string, args []*service.Arg, ch chan string) {
@@ -129,7 +134,7 @@ func (c *Client) doExecuteStatementWithError(statement string, args []*service.A
 	}
 	ast, err := parser.Parse(statement)
 	if err != nil {
-		return 0, errors.Errorf("Failed to execute statement: %s", errors.NewInvalidStatementError(err.Error()).Error())
+		return 0, errors.NewInvalidStatementError(err.Error())
 	}
 	if ast.Use != "" {
 		c.currentSchema = ast.Use
@@ -145,7 +150,7 @@ func (c *Client) doExecuteStatementWithError(statement string, args []*service.A
 		Args:      args,
 	})
 	if err != nil {
-		return 0, errors.WithStack(err)
+		return 0, checkErrorAndMaybeExit(err)
 	}
 	return c.readStream(stream, ch)
 }
@@ -168,7 +173,7 @@ func (c *Client) readStream(stream service.PranaDBService_ExecuteStatementClient
 			}
 			break
 		} else if err != nil {
-			return 0, stripgRPCPrefix(err)
+			return 0, checkErrorAndMaybeExit(err)
 		}
 		switch result := resp.Result.(type) {
 		case *service.ExecuteStatementResponse_Columns:
@@ -358,14 +363,30 @@ func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProt
 	return errors.WithStack(err)
 }
 
+func checkErrorAndMaybeExit(err error) error {
+	stripped := stripgRPCPrefix(err)
+	if strings.HasPrefix(stripped.Error(), "PDB") {
+		// It's a Prana error
+		return stripped
+	}
+	log.Errorf("Connection error. Will exit. %v", stripped)
+	os.Exit(1)
+	return nil
+}
+
 func stripgRPCPrefix(err error) error {
 	// Strip out the gRPC internal crap from the error message
 	ind := strings.Index(err.Error(), "PDB")
 	if ind != -1 {
 		msg := err.Error()[ind:]
-		//Error string needs to be capitalized as this is what is displayed to the user in the CLI
-		//nolint:stylecheck
-		return errors.Errorf("Failed to execute statement: %s", msg)
+		return errors.Error(msg)
+	}
+	grpcCrap := "rpc error: code = Unavailable desc = connection error: desc = \""
+	ind = strings.Index(err.Error(), grpcCrap)
+	if ind != -1 {
+		str := err.Error()
+		msg := str[ind+len(grpcCrap) : len(str)-1]
+		return errors.Error(msg)
 	}
 	return errors.WithStack(err)
 }
