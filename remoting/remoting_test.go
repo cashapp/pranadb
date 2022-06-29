@@ -4,6 +4,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -289,7 +290,7 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	require.Error(t, err)
 	perr, ok := err.(errors.PranaError)
 	require.True(t, ok)
-	require.Equal(t, "some error", perr.Error())
+	require.True(t, strings.HasPrefix(perr.Error(), "PDB0000 - Internal error - reference:"))
 	require.Equal(t, errors.InternalError, int(perr.Code))
 
 	listeners[1].SetReturnError(errors.NewPranaError(errors.InvalidStatement, "avocados"))
