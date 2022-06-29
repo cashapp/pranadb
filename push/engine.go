@@ -5,7 +5,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/util"
+	"github.com/squareup/pranadb/tidb/planner"
 	"go.uber.org/ratelimit"
 	"math/rand"
 	"sync"
@@ -571,11 +573,71 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	ingestFilter := sourceInfo.TopicInfo.IngestFilter
+	var ingestExpressions []*common.Expression
+	if ingestFilter != "" {
+		// To create the ingest filter we create a fake table in the meta-store with the same columns as the real source
+		// then we create a push query plan from that for a query formed from the ingest filter.
+		// We then extract the filter expressions from the select in that physical plan.
+		// The filter expressions are then executed against the row when it's ingested.
+		tmpID, err := p.cluster.GenerateClusterSequence("table")
+		if err != nil {
+			return nil, err
+		}
+		schemaName := fmt.Sprintf("tmp_schema_%d", tmpID)
+		schema := p.meta.GetOrCreateSchema(schemaName)
+		defer func() {
+			p.meta.DeleteSchemaIfEmpty(schema)
+		}()
+		tabName := fmt.Sprintf("tmp_source_filter_%d", tmpID)
+		tabInfo := &common.TableInfo{
+			ID:             tmpID,
+			SchemaName:     schemaName,
+			Name:           tabName,
+			PrimaryKeyCols: sourceInfo.PrimaryKeyCols,
+			ColumnNames:    sourceInfo.ColumnNames,
+			ColumnTypes:    sourceInfo.ColumnTypes,
+		}
+		tmpSourceInfo := &common.SourceInfo{
+			TableInfo: tabInfo,
+			TopicInfo: nil,
+		}
+		if err := p.meta.RegisterSource(tmpSourceInfo); err != nil {
+			return nil, err
+		}
+		defer func() {
+			// Make sure we unregister the tmp source
+			if err := p.meta.UnregisterSource(schemaName, tabName); err != nil {
+				log.Errorf("failed to unregister tmp source %v", err)
+			}
+		}()
+		pl := parplan.NewPlanner(schema)
+		query := fmt.Sprintf("select * from %s where %s", tabName, ingestFilter)
+		phys, _, err := pl.QueryToPlan(query, false, false)
+		var sel *planner.PhysicalSelection
+		if err == nil {
+			var ok bool
+			sel, ok = phys.(*planner.PhysicalSelection)
+			if !ok {
+				log.Errorf(" ingest filter %s on %s.%s gave invalid physical plan %v", ingestFilter,
+					sourceInfo.SchemaName, sourceInfo.Name, phys)
+			}
+		}
+		if err != nil || sel == nil {
+			return nil, errors.NewPranaErrorf(errors.InvalidIngestFilter, "invalid ingest filter \"%s\"", ingestFilter)
+		}
+		ingestExpressions = make([]*common.Expression, len(sel.Conditions))
+		for i, expr := range sel.Conditions {
+			ingestExpressions[i] = common.NewExpression(expr, sel.SCtx())
+		}
+	}
+
 	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster)
 
 	src, err := source.NewSource(
 		sourceInfo,
 		tableExecutor,
+		ingestExpressions,
 		p.sharder,
 		p.cluster,
 		p.cfg,

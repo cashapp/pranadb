@@ -17,7 +17,7 @@ const (
 	DefaultRemotingHeartbeatInterval   = 10 * time.Second
 	DefaultRemotingHeartbeatTimeout    = 5 * time.Second
 	DefaultGlobalIngestLimitRowsPerSec = 1000
-	DefaultRaftRTTMs                   = 100
+	DefaultRaftRTTMs                   = 50
 	DefaultRaftHeartbeatRTT            = 30
 	DefaultRaftElectionRTT             = 300
 )

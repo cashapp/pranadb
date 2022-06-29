@@ -37,10 +37,11 @@ const (
 
 	ValueOutOfRange
 	VarcharTooBig
+	InvalidIngestFilter
 )
 
-func NewInternalError(seq int64) PranaError {
-	return NewPranaErrorf(InternalError, "Internal error - sequence %d please consult server logs for details", seq)
+func NewInternalError(errReference string) PranaError {
+	return NewPranaErrorf(InternalError, "Internal error - reference: %s please consult server logs for details", errReference)
 }
 
 func NewSchemaNotInUseError() PranaError {

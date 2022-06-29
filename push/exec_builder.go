@@ -42,7 +42,6 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	return dag, internalTables, nil
 }
 
-// TODO: extract functions and break apart giant switch
 // nolint: gocyclo
 func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {

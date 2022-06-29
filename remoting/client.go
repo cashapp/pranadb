@@ -121,7 +121,7 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 				c.responseChannels.Delete(nf.sequence)
 				if !resp.ok {
 					// An error was signalled from the other end
-					return nil, errors.New(resp.errMsg)
+					return nil, errors.NewPranaError(errors.ErrorCode(resp.errCode), resp.errMsg)
 				}
 				return resp.responseMessage, nil
 			}
@@ -367,7 +367,8 @@ func (r *responseInfo) responseReceived(conn *clientConnection, resp *ClusterRes
 	} else {
 		if !resp.ok {
 			// The server received the cluster message but sent back an error response
-			r.broadcastRespChan <- errors.Error(resp.errMsg)
+			err := errors.NewPranaError(errors.ErrorCode(resp.errCode), resp.errMsg)
+			r.broadcastRespChan <- err
 		} else {
 			r.addToConnCount(-1)
 		}

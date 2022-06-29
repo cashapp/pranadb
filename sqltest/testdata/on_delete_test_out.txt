@@ -62,7 +62,7 @@ select * from test_source_1 order by col0;
 --activate failpoint create_mv_1 -1;
 
 create materialized view test_mv_1 as select * from test_source_1;
-Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+Failed to execute statement: PDB0000 - Internal error - reference: 97ec17be-4eb8-44de-9908-d7888de7d56b please consult server logs for details
 
 --deactivate failpoint create_mv_1 -1;
 --restart cluster;
@@ -81,7 +81,7 @@ Failed to execute statement: PDB0002 - Table 'test.test_mv_1' doesn't exist
 --activate failpoint create_mv_2 -1;
 
 create materialized view test_mv_2 as select * from test_source_1;
-Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+Failed to execute statement: PDB0000 - Internal error - reference: 9c7cecd9-d64e-4204-b489-67a460d8fd8a please consult server logs for details
 
 --deactivate failpoint create_mv_2 -1;
 --restart cluster;
@@ -116,7 +116,7 @@ drop materialized view test_mv_2;
 --activate failpoint fill_to_1 2;
 
 create materialized view test_mv_3 as select * from test_source_1;
-Failed to execute statement: PDB0000 - Internal error - sequence 1 please consult server logs for details
+Failed to execute statement: PDB0000 - Internal error - reference: 8989f8b0-af5c-4f88-95c9-63f6f2584cec please consult server logs for details
 
 --deactivate failpoint fill_to_1 2;
 --restart cluster;
