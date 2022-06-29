@@ -290,7 +290,7 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	require.Error(t, err)
 	perr, ok := err.(errors.PranaError)
 	require.True(t, ok)
-	require.True(t, strings.HasPrefix(perr.Error(), "PDB0000 - Internal error - reference:"))
+	require.True(t, strings.HasPrefix(perr.Error(), "PDB5000 - Internal error - reference:"))
 	require.Equal(t, errors.InternalError, int(perr.Code))
 
 	listeners[1].SetReturnError(errors.NewPranaError(errors.InvalidStatement, "avocados"))
@@ -306,14 +306,14 @@ func TestSyncBroadcastWithFailingNotif(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := 0; i < numServers; i++ {
-		listeners[i].SetReturnError(errors.NewPranaError(errors.InvalidIngestFilter, "tomatoes"))
+		listeners[i].SetReturnError(errors.NewPranaError(errors.InvalidStatement, "tomatoes"))
 	}
 	err = client.BroadcastSync(notif)
 	require.Error(t, err)
 	perr, ok = err.(errors.PranaError)
 	require.True(t, ok)
 	require.Equal(t, "tomatoes", perr.Error())
-	require.Equal(t, errors.InvalidIngestFilter, int(perr.Code))
+	require.Equal(t, errors.InvalidStatement, int(perr.Code))
 }
 
 func TestSendRequest(t *testing.T) {
@@ -478,7 +478,7 @@ func TestSendRequestWithError(t *testing.T) {
 	defer stopServers(t, server)
 	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
 
-	nListener.SetReturnError(errors.NewPranaError(errors.UnknownIndexColumn, "some request error"))
+	nListener.SetReturnError(errors.NewPranaError(errors.InvalidStatement, "some request error"))
 
 	err := server.Start()
 	require.NoError(t, err)
@@ -499,7 +499,7 @@ func TestSendRequestWithError(t *testing.T) {
 	perr, ok := err.(errors.PranaError)
 	require.True(t, ok)
 	require.Equal(t, "some request error", perr.Error())
-	require.Equal(t, errors.UnknownIndexColumn, int(perr.Code))
+	require.Equal(t, errors.InvalidStatement, int(perr.Code))
 }
 
 func waitForNotifications(t *testing.T, notifListeners []*notifListener, numNotificatiuons int) {

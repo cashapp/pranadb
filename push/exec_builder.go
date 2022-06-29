@@ -18,7 +18,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
-	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false, false)
+	physicalPlan, logicalPlan, _, err := pl.QueryToPlan(query, false, false)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -85,7 +85,7 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
 			default:
-				return nil, nil, errors.Errorf("unexpected aggregate function %s", aggFunc.Name)
+				return nil, nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported aggregate function %s", aggFunc.Name)
 			}
 			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
 			af := &exec.AggregateFunctionInfo{

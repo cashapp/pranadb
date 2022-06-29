@@ -204,8 +204,16 @@ func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error 
 }
 
 func (c *Controller) existsTable(schema *common.Schema, name string) error {
-	if _, ok := schema.GetTable(name); ok {
-		return errors.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
+	if tbl, ok := schema.GetTable(name); ok {
+		_, isSource := tbl.(*common.SourceInfo)
+		_, isMV := tbl.(*common.MaterializedViewInfo)
+		if isSource {
+			return errors.NewPranaErrorf(errors.SourceAlreadyExists, "Source %s.%s already exists", schema.Name, name)
+		} else if isMV {
+			return errors.NewPranaErrorf(errors.MaterializedViewAlreadyExists, "Materialized view %s.%s already exists", schema.Name, name)
+		} else {
+			return errors.Errorf("Table %s.%s already exists", schema.Name, name)
+		}
 	}
 	return nil
 }

@@ -98,16 +98,13 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.TopicInfo
-	if ti == nil {
-		// TODO not sure if we need this... parser should catch it?
-		return nil, errors.NewPranaErrorf(errors.MissingTopicInfo, "No topic info configured for source %s", sourceInfo.Name)
+	var brokerConf conf.BrokerConfig
+	var ok bool
+	if cfg.KafkaBrokers != nil {
+		brokerConf, ok = cfg.KafkaBrokers[ti.BrokerName]
 	}
-	if cfg.KafkaBrokers == nil {
-		return nil, errors.NewPranaError(errors.MissingKafkaBrokers, "No Kafka brokers configured")
-	}
-	brokerConf, ok := cfg.KafkaBrokers[ti.BrokerName]
-	if !ok {
-		return nil, errors.NewPranaErrorf(errors.UnknownBrokerName, "Unknown broker. Name: %s", ti.BrokerName)
+	if !ok || cfg.KafkaBrokers == nil {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
 	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
@@ -121,7 +118,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
-		return nil, errors.NewPranaErrorf(errors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
 	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.TopicInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {

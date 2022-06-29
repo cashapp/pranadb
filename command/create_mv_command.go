@@ -95,10 +95,11 @@ func (c *CreateMVCommand) Before() error {
 		return errors.WithStack(err)
 	}
 	c.mv = mv
-	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
-	if ok {
-		return errors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
+
+	if err := c.e.metaController.ExistsMvOrSource(c.schema, mv.Info.Name); err != nil {
+		return err
 	}
+
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
 	if err != nil {

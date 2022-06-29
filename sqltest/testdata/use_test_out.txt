@@ -271,11 +271,11 @@ select * from test_mv_3 order by col0;
 
 --should fail;
 select * from test_source_2 order by col0;
-Failed to execute statement: PDB0002 - Table 'test2.test_source_2' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test2.test_source_2' doesn't exist
 select * from test_mv_2 order by col0;
-Failed to execute statement: PDB0002 - Table 'test2.test_mv_2' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test2.test_mv_2' doesn't exist
 drop materialized view test_source_2;
-Failed to execute statement: PDB0006 - Unknown materialized view: test2.test_source_2
+Failed to execute statement: PDB1003 - Unknown materialized view: test2.test_source_2
 
 use test1;
 0 rows returned
@@ -315,11 +315,11 @@ select * from test_mv_1 order by col0;
 
 --should fail;
 select * from test_source_3 order by col0;
-Failed to execute statement: PDB0002 - Table 'test1.test_source_3' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test1.test_source_3' doesn't exist
 select * from test_mv_3 order by col0;
-Failed to execute statement: PDB0002 - Table 'test1.test_mv_3' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test1.test_mv_3' doesn't exist
 drop materialized view test_mv_3;
-Failed to execute statement: PDB0006 - Unknown materialized view: test1.test_mv_3
+Failed to execute statement: PDB1003 - Unknown materialized view: test1.test_mv_3
 
 use test2;
 0 rows returned
@@ -391,9 +391,9 @@ select * from test_mv_3 order by col0;
 
 --should fail;
 select * from test_source_2 order by col0;
-Failed to execute statement: PDB0002 - Table 'test2.test_source_2' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test2.test_source_2' doesn't exist
 select * from test_mv_2 order by col0;
-Failed to execute statement: PDB0002 - Table 'test2.test_mv_2' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test2.test_mv_2' doesn't exist
 
 drop materialized view test_mv_3;
 0 rows returned

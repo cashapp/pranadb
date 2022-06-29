@@ -76,9 +76,9 @@ func (c *CreateSourceCommand) Before() error {
 }
 
 func (c *CreateSourceCommand) validate() error {
-	_, ok := c.e.metaController.GetSource(c.schemaName, c.sourceInfo.Name)
-	if ok {
-		return errors.NewSourceAlreadyExistsError(c.schemaName, c.sourceInfo.Name)
+	schema := c.e.metaController.GetOrCreateSchema(c.schemaName)
+	if err := c.e.metaController.ExistsMvOrSource(schema, c.sourceInfo.Name); err != nil {
+		return err
 	}
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.sourceInfo.SchemaName, c.sourceInfo.Name, meta.TableKindSource))
@@ -97,18 +97,18 @@ func (c *CreateSourceCommand) validate() error {
 		}
 		_, err := c.e.protoRegistry.FindDescriptorByName(protoreflect.FullName(enc.SchemaName))
 		if err != nil {
-			return errors.NewPranaErrorf(errors.UnknownTopicEncoding, "proto message %q not registered", enc.SchemaName)
+			return errors.NewPranaErrorf(errors.InvalidStatement, "Proto message %q not registered", enc.SchemaName)
 		}
 	}
 
 	for _, sel := range topicInfo.ColSelectors {
 		if sel.MetaKey == nil && len(sel.Selector) == 0 {
-			return errors.NewPranaErrorf(errors.InvalidSelector, "invalid column selector %q", sel)
+			return errors.NewPranaErrorf(errors.InvalidStatement, "Invalid column selector %q", sel)
 		}
 		if sel.MetaKey != nil {
 			f := *sel.MetaKey
 			if !(f == "header" || f == "key" || f == "timestamp") {
-				return errors.NewPranaErrorf(errors.InvalidSelector, `invalid metadata key in column selector %q. Valid values are "header", "key", "timestamp".`, sel)
+				return errors.NewPranaErrorf(errors.InvalidStatement, `Invalid metadata key in column selector %q. Valid values are "header", "key", "timestamp".`, sel)
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			for _, pk := range option.PrimaryKey {
 				index, ok := colIndex[pk]
 				if !ok {
-					return nil, errors.Errorf("invalid primary key column %q", option.PrimaryKey)
+					return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Invalid primary key column %q", option.PrimaryKey)
 				}
 				pkCols = append(pkCols, index)
 			}
@@ -232,17 +232,17 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		case opt.HeaderEncoding != "":
 			headerEncoding = common.KafkaEncodingFromString(opt.HeaderEncoding)
 			if headerEncoding.Encoding == common.EncodingUnknown {
-				return nil, errors.NewPranaErrorf(errors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.HeaderEncoding)
+				return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown topic encoding %s", opt.HeaderEncoding)
 			}
 		case opt.KeyEncoding != "":
 			keyEncoding = common.KafkaEncodingFromString(opt.KeyEncoding)
 			if keyEncoding.Encoding == common.EncodingUnknown {
-				return nil, errors.NewPranaErrorf(errors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.KeyEncoding)
+				return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown topic encoding %s", opt.KeyEncoding)
 			}
 		case opt.ValueEncoding != "":
 			valueEncoding = common.KafkaEncodingFromString(opt.ValueEncoding)
 			if valueEncoding.Encoding == common.EncodingUnknown {
-				return nil, errors.NewPranaErrorf(errors.UnknownTopicEncoding, "Unknown topic encoding %s", opt.ValueEncoding)
+				return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown topic encoding %s", opt.ValueEncoding)
 			}
 		case opt.IngestFilter != "":
 			ingestFilter = opt.IngestFilter
@@ -264,24 +264,34 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
-		return nil, errors.NewPranaError(errors.InvalidStatement, "headerEncoding is required")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "headerEncoding is required")
 	}
 	if keyEncoding == common.KafkaEncodingUnknown {
-		return nil, errors.NewPranaError(errors.InvalidStatement, "keyEncoding is required")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "keyEncoding is required")
 	}
 	if valueEncoding == common.KafkaEncodingUnknown {
-		return nil, errors.NewPranaError(errors.InvalidStatement, "valueEncoding is required")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "valueEncoding is required")
 	}
 	if brokerName == "" {
-		return nil, errors.NewPranaError(errors.InvalidStatement, "brokerName is required")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "brokerName is required")
 	}
 	if topicName == "" {
-		return nil, errors.NewPranaError(errors.InvalidStatement, "topicName is required")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "topicName is required")
 	}
-	lc := len(colSelectors)
-	if lc > 0 && lc != len(colTypes) {
-		return nil, errors.NewPranaErrorf(errors.WrongNumberColumnSelectors,
-			"Number of column selectors (%d) must match number of columns (%d)", lc, len(colTypes))
+	if len(colSelectors) != len(colTypes) {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement,
+			"Number of column selectors (%d) must match number of columns (%d)", len(colSelectors), len(colTypes))
+	}
+	if len(pkCols) == 0 {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Primary key is required")
+	}
+
+	pkMap := make(map[int]struct{}, len(pkCols))
+	for _, pkCol := range pkCols {
+		pkMap[pkCol] = struct{}{}
+	}
+	if len(pkMap) != len(pkCols) {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Primary key cannot contain same column multiple times")
 	}
 
 	topicInfo := &common.TopicInfo{

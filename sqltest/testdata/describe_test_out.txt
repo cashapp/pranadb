@@ -2,7 +2,7 @@ use test;
 0 rows returned
 
 describe foo;
-Failed to execute statement: PDB0019 - Unknown source or materialized view: test.foo
+Failed to execute statement: PDB1005 - Unknown source or materialized view: test.foo
 
 --create topic testtopic;
 
@@ -65,11 +65,11 @@ describe test_mv;
 drop materialized view test_mv;
 0 rows returned
 describe test_mv;
-Failed to execute statement: PDB0019 - Unknown source or materialized view: test.test_mv
+Failed to execute statement: PDB1005 - Unknown source or materialized view: test.test_mv
 
 drop source test_source;
 0 rows returned
 describe test_source;
-Failed to execute statement: PDB0019 - Unknown source or materialized view: test.test_source
+Failed to execute statement: PDB1005 - Unknown source or materialized view: test.test_source
 
 --delete topic testtopic;

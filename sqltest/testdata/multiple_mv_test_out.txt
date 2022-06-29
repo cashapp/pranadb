@@ -248,22 +248,22 @@ select * from test_mv_3 order by col0_3;
 
 --try and create mv with same name;
 create materialized view test_mv_3 as select * from test_source_3;
-Failed to execute statement: PDB0009 - Materialized view already exists: test.test_mv_3
+Failed to execute statement: PDB1007 - Materialized view test.test_mv_3 already exists
 
 drop materialized view test_mv_3;
 0 rows returned
 select * from test_mv3 order by col0_3;
-Failed to execute statement: PDB0002 - Table 'test.test_mv3' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test.test_mv3' doesn't exist
 
 drop materialized view test_mv_2;
 0 rows returned
 select * from test_mv2 order by col0_2;
-Failed to execute statement: PDB0002 - Table 'test.test_mv2' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test.test_mv2' doesn't exist
 
 drop materialized view test_mv_1;
 0 rows returned
 select * from test_mv1 order by col0_1;
-Failed to execute statement: PDB0002 - Table 'test.test_mv1' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test.test_mv1' doesn't exist
 
 --recreate mv;
 create materialized view test_mv_1 as select * from test_source_1;
@@ -301,7 +301,7 @@ drop materialized view test_mv_1;
 
 --try and drop it again;
 drop materialized view test_mv_1;
-Failed to execute statement: PDB0006 - Unknown materialized view: test.test_mv_1
+Failed to execute statement: PDB1003 - Unknown materialized view: test.test_mv_1
 
 drop source test_source_2;
 0 rows returned

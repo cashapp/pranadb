@@ -47,9 +47,9 @@ create index index1 on test_mv_1 (col1);
 
 -- try and create index with same name on same tables - this should fail;
 create index index1 on test_source_1 (col1);
-Failed to execute statement: PDB0021 - Index index1 already exists on test.test_source_1
+Failed to execute statement: PDB1008 - Index index1 already exists on test.test_source_1
 create index index1 on test_mv_1 (col1);
-Failed to execute statement: PDB0021 - Index index1 already exists on test.test_mv_1
+Failed to execute statement: PDB1008 - Index index1 already exists on test.test_mv_1
 
 -- create a couple more indexes;
 create index index2 on test_source_1 (col1);
@@ -69,9 +69,9 @@ drop index index2 on test_mv_1;
 
 -- try and drop some non existent indexes - should fail;
 drop index indexx on test_source_1;
-Failed to execute statement: PDB0005 - Unknown index: test.test_source_1.indexx
+Failed to execute statement: PDB1004 - Unknown index: test.test_source_1.indexx
 drop index indexx on test_mv_1;
-Failed to execute statement: PDB0005 - Unknown index: test.test_mv_1.indexx
+Failed to execute statement: PDB1004 - Unknown index: test.test_mv_1.indexx
 
 -- recreate indexes with same name;
 create index index1 on test_source_1 (col1);
@@ -91,9 +91,9 @@ drop index index1 on test_mv_1;
 
 -- drop the source and mv - should fail as index2 needs to be explicitly deleted;
 drop materialized view test_mv_1;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_1 it has the following children test.test_mv_1.index2
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_1 it has the following children test.test_mv_1.index2
 drop source test_source_1;
-Failed to execute statement: PDB0010 - Cannot drop source test.test_source_1 it has the following children test.test_mv_1, test.test_source_1.index2
+Failed to execute statement: PDB1009 - Cannot drop source test.test_source_1 it has the following children test.test_mv_1, test.test_source_1.index2
 
 drop index index2 on test_source_1;
 0 rows returned

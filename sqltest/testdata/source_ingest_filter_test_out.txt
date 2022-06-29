@@ -77,5 +77,5 @@ create source test_source_1(
         v6
     )
 );
-Failed to execute statement: PDB0025 - invalid ingest filter "wtf is this?"
+Failed to execute statement: PDB1000 - invalid ingest filter "wtf is this?"
 --delete topic testtopic;

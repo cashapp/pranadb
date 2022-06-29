@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/alecthomas/participle/v2"
 	"github.com/squareup/pranadb/pull/exec"
 	"net"
 	"sync"
@@ -151,10 +152,13 @@ func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
 func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
 	stream service.PranaDBService_ExecuteStatementServer) error {
 	if err != nil {
-		log.Errorf("failed to execute statement %+v", err)
 		var perr errors.PranaError
 		if errors.As(err, &perr) {
 			return perr
+		}
+		var participleErr participle.Error
+		if errors.As(err, &participleErr) {
+			return errors.NewInvalidStatementError(participleErr.Error())
 		}
 		return common.LogInternalError(err)
 	}

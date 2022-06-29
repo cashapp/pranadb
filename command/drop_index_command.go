@@ -147,6 +147,9 @@ func (c *DropIndexCommand) getIndexInfo() (*common.IndexInfo, error) {
 		c.indexName = ast.Drop.Name
 		c.tableName = ast.Drop.TableName
 	}
+	if c.tableName == "" {
+		return nil, errors.NewInvalidStatementError("Drop index requires a table")
+	}
 	indexInfo, ok := c.e.metaController.GetIndex(c.schemaName, c.tableName, c.indexName)
 	if !ok {
 		return nil, errors.NewUnknownIndexError(c.schemaName, c.tableName, c.indexName)
