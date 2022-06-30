@@ -9,6 +9,7 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
+	"strings"
 	"sync"
 )
 
@@ -194,7 +195,7 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {
-	mvName := ast.Name.String()
+	mvName := strings.ToLower(ast.Name.String())
 	querySQL := ast.Query.String()
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()

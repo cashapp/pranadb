@@ -1129,7 +1129,7 @@ func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
-	isUse := strings.HasPrefix(statement, "use ")
+	isUse := strings.HasPrefix(strings.ToLower(statement), "use ")
 	resChan, err := st.cli.ExecuteStatement(statement, nil)
 	require.NoError(err)
 	lastLine := ""
@@ -1139,7 +1139,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 		lastLine = line
 	}
 	if isUse && strings.HasPrefix(lastLine, "0 rows returned") {
-		st.currentSchema = statement[4:]
+		st.currentSchema = strings.ToLower(statement[4:])
 	}
 	end := time.Now()
 	dur := end.Sub(start)

@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/alecthomas/repr"
@@ -46,6 +47,7 @@ func (c *CreateSourceCommand) LockName() string {
 }
 
 func NewOriginatingCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64, ast *parser.CreateSource) *CreateSourceCommand {
+	ast.Name = strings.ToLower(ast.Name)
 	return &CreateSourceCommand{
 		e:              e,
 		schemaName:     schemaName,
@@ -198,8 +200,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		case option.Column != nil:
 			// Convert AST column definition to a ColumnType.
 			col := option.Column
-			colIndex[col.Name] = i
-			colNames = append(colNames, col.Name)
+			cName := strings.ToLower(col.Name)
+			colIndex[cName] = i
+			colNames = append(colNames, cName)
 			colType, err := col.ToColumnType()
 			if err != nil {
 				return nil, errors.WithStack(err)
@@ -208,7 +211,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 
 		case len(option.PrimaryKey) > 0:
 			for _, pk := range option.PrimaryKey {
-				index, ok := colIndex[pk]
+				index, ok := colIndex[strings.ToLower(pk)]
 				if !ok {
 					return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Invalid primary key column %q", option.PrimaryKey)
 				}
@@ -284,6 +287,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 	if len(pkCols) == 0 {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Primary key is required")
+	}
+	if len(colIndex) != len(colNames) {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Duplicate column names")
 	}
 
 	pkMap := make(map[int]struct{}, len(pkCols))

@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -44,7 +45,7 @@ func NewOriginatingDropSourceCommand(e *Executor, schemaName string, sql string,
 		e:          e,
 		schemaName: schemaName,
 		sql:        sql,
-		sourceName: sourceName,
+		sourceName: strings.ToLower(sourceName),
 	}
 }
 

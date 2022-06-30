@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -46,7 +47,7 @@ func NewOriginatingDropMVCommand(e *Executor, schemaName string, sql string, mvN
 		e:          e,
 		schemaName: schemaName,
 		sql:        sql,
-		mvName:     mvName,
+		mvName:     strings.ToLower(mvName),
 	}
 }
 

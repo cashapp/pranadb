@@ -1,0 +1,221 @@
+--create topic testtopic;
+
+-- check schema is not case sensitive;
+
+use test;
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+use TEST;
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+use TeSt;
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+show schemas;
+
+-- check source names are not case sensitive;
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+create source TEST_SOURCE_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+create source TeSt_SoUrCe_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+
+show tables;
+
+-- check materialized view names are not case sensitive;
+
+create materialized view test_mv1 as select * from test_source_1;
+
+create materialized view TEST_MV1 as select * from test_source_1;
+
+create materialized view tEsT_mV1 as select * from test_source_1;
+
+show tables;
+
+-- check index names are not case sensitive;
+
+create index index1 on test_source_1(col0);
+
+create index INDEX1 on test_source_1(col0);
+
+create index InDeX1 on test_source_1(col0);
+
+drop materialized view test_mv1;
+drop index index1 on test_source_1;
+drop source test_source_1;
+
+-- check statements are not case sensitive;
+
+uSe TeST2;
+
+ShOW SCHeMas;
+
+cReAtE SoURCE bar (
+  col0 BiGinT,
+  col1 DOuBLE,
+  PrimAry kEY (col0)
+) with (
+  bRoKerName = "testbroker",
+  tOpIcNAMe = "testtopic",
+  hEaDeREncODINg = "json",
+  kEyEncODInG = "json",
+  VaLueEnCODiNg = "json",
+  CoLUmnSElEctORs = (
+      v0,
+      v1
+  )
+);
+
+cReAtE MaTeriAlIzEd VieW foo AS sElEcT * FrOM BAr;
+
+--load data dataset_2;
+
+select * from foo order by col0;
+
+ShOw TABLeS;
+
+DeScRiBE BaR;
+
+-- check column names are case sensitive;
+
+-- should fail;
+create source bar2(
+    apples bigint,
+    APPLES double,
+    AppLEs decimal(10,2),
+    primary key (apples)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+--create topic testtopic2;
+
+create source bar2(
+    apples bigint,
+    pEaRs double,
+    primary key (APPLES)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_1;
+
+select * from bar2 order by apples;
+select apples, PEARS from bar2 order by apples;
+select APPLES, pears from bar2 order by apples;
+select APPles, PeaRs from bar2 order by apples;
+
+ShOw TABLeS;
+
+DeScRiBE BaR2;
+
+-- queries;
+
+SELECT * FROM BAR2 WHERE APPLES=1;
+select * from bar2 where apples=1;
+sElECT * FrOM BaR2 WhErE APPleS=1;
+
+-- drop;
+
+DROP Materialized View Foo;
+DrOp sourcE BAR;
+drOp souRce baR2;
+
+-- try again, should fail;
+drop source bar2;
+
+--delete topic testtopic2;
+--delete topic testtopic;
