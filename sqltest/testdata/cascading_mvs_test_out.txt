@@ -211,15 +211,15 @@ select * from test_mv_6 order by col0;
 
 --now try and drop mvs when they stil have children - this should fail;
 drop materialized view test_mv_5;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_5 it has the following children test.test_mv_6
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_5 it has the following children test.test_mv_6
 drop materialized view test_mv_4;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_4 it has the following children test.test_mv_5
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_4 it has the following children test.test_mv_5
 drop materialized view test_mv_3;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_3 it has the following children test.test_mv_4
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_3 it has the following children test.test_mv_4
 drop materialized view test_mv_2;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_2 it has the following children test.test_mv_3
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_2 it has the following children test.test_mv_3
 drop materialized view test_mv_1;
-Failed to execute statement: PDB0011 - Cannot drop materialized view test.test_mv_1 it has the following children test.test_mv_2
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.test_mv_1 it has the following children test.test_mv_2
 
 --now restart - they should be recreated properly on restart;
 --restart cluster;

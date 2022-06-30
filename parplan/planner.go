@@ -48,24 +48,32 @@ func (p *Planner) SetPSArgs(args []interface{}) {
 	p.sessionCtx.SetArgs(args)
 }
 
-func (p *Planner) Parse(query string) (AstHandle, error) {
+func (p *Planner) Parse(query string) (AstHandle, int, error) {
 	return p.parser.Parse(query)
 }
 
-func (p *Planner) QueryToPlan(query string, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, error) {
-	ast, err := p.Parse(query)
+func (p *Planner) QueryToPlan(query string, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, int, error) {
+	phys, log, paramCount, err := p.doQueryToPlan(query, prepare, pullQuery)
 	if err != nil {
-		return nil, nil, errors.WithStack(err)
+		return nil, nil, 0, errors.MaybeConvertToPranaErrorf(err, errors.InvalidStatement, err.Error())
+	}
+	return phys, log, paramCount, nil
+}
+
+func (p *Planner) doQueryToPlan(query string, prepare bool, pullQuery bool) (planner.PhysicalPlan, planner.LogicalPlan, int, error) {
+	ast, paramCount, err := p.Parse(query)
+	if err != nil {
+		return nil, nil, 0, err
 	}
 	logic, err := p.BuildLogicalPlan(ast, prepare)
 	if err != nil {
-		return nil, nil, errors.WithStack(err)
+		return nil, nil, 0, err
 	}
 	physical, err := p.BuildPhysicalPlan(logic, pullQuery)
 	if err != nil {
-		return nil, nil, errors.WithStack(err)
+		return nil, nil, 0, err
 	}
-	return physical, logic, nil
+	return physical, logic, paramCount, nil
 }
 
 func (p *Planner) BuildLogicalPlan(stmt AstHandle, prepare bool) (planner.LogicalPlan, error) {

@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/tidb/sessionctx"
 	"strings"
 
@@ -115,7 +116,8 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
 		executor = exec.NewPullChain(limit, sort)
 	default:
-		return nil, errors.Errorf("unexpected plan type %T", plan)
+		log.Errorf("unexpected plan type %T", plan)
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, ctx.QueryInfo.Query)
 	}
 
 	var childExecutors []exec.PullExecutor

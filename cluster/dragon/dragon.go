@@ -195,7 +195,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		if bytes[0] == 0 {
 			if time.Now().Sub(start) > pullQueryRetryTimeout {
 				msg := string(bytes[1:])
-				return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
+				return nil, errors.Errorf("failed to execute remote query %v", msg)
 			}
 			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
 			// initialised until after the cluster is active

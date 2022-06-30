@@ -62,17 +62,17 @@ select * from test_mv_1 order by col0;
 
 -- try and drop the source before the MV is dropped - this should fail;
 drop source test_source_1;
-Failed to execute statement: PDB0010 - Cannot drop source test.test_source_1 it has the following children test.test_mv_1
+Failed to execute statement: PDB1009 - Cannot drop source test.test_source_1 it has the following children test.test_mv_1
 
 drop materialized view test_mv_1;
 0 rows returned
 
 select * from test_mv_1 order by col0;
-Failed to execute statement: PDB0002 - Table 'test.test_mv_1' doesn't exist
+Failed to execute statement: PDB1000 - Table 'test.test_mv_1' doesn't exist
 
 -- try and drop it again;
 drop materialized view test_mv_1;
-Failed to execute statement: PDB0006 - Unknown materialized view: test.test_mv_1
+Failed to execute statement: PDB1003 - Unknown materialized view: test.test_mv_1
 
 drop source test_source_1;
 0 rows returned

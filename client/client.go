@@ -25,6 +25,7 @@ const (
 	minLineWidth         = 10
 	minColWidth          = 5
 	maxLineWidthPropName = "max_line_width"
+	maxLineWidth         = 10000
 )
 
 // Client is a simple client used for executing statements against PranaDB, it used by the CLI and elsewhere
@@ -116,7 +117,7 @@ func (c *Client) handleSetCommand(statement string) error {
 	if propName := parts[1]; propName == maxLineWidthPropName {
 		propVal := parts[2]
 		width, err := strconv.Atoi(propVal)
-		if err != nil || width < minLineWidth {
+		if err != nil || width < minLineWidth || width > maxLineWidth {
 			return errors.Errorf("Invalid %s value: %s", maxLineWidthPropName, propVal)
 		}
 		c.lock.Lock()

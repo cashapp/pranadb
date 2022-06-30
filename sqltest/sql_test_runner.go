@@ -555,42 +555,45 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.NoError(err)
 		expectedLines := strings.Split(string(b), "\n")
 		actualLines := strings.Split(st.output.String(), "\n")
-		require.Equal(len(expectedLines), len(actualLines), "expected and actual output number of lines not equal. expected %d actual %d",
-			len(expectedLines), len(actualLines))
-		// We compare the lines one by one because there are special lines that we compare by prefix not exactly
-		// E.g. internal error contains a UUID which is different each time so we can't exact compare
 		ok := true
-		for i, expected := range expectedLines {
-			actual := actualLines[i]
-			hasPrefix := false
-			for _, prefix := range prefixCompareLines {
-				if strings.HasPrefix(expected, prefix) {
-					if !strings.HasPrefix(actual, prefix) {
-						ok = false
+		if len(expectedLines) != len(actualLines) {
+			ok = false
+		} else {
+			// We compare the lines one by one because there are special lines that we compare by prefix not exactly
+			// E.g. internal error contains a UUID which is different each time so we can't exact compare
+			for i, expected := range expectedLines {
+				actual := actualLines[i]
+				hasPrefix := false
+				for _, prefix := range prefixCompareLines {
+					if strings.HasPrefix(expected, prefix) {
+						if !strings.HasPrefix(actual, prefix) {
+							ok = false
+						}
+						hasPrefix = true
+						break
 					}
-					hasPrefix = true
+				}
+				if !ok {
 					break
 				}
-			}
-			if !ok {
-				break
-			}
-			if !hasPrefix && actual != expected {
-				ok = false
-				break
+				a := strings.TrimRight(actual, " ")
+				e := strings.TrimRight(expected, " ")
+				if !hasPrefix && a != e {
+					ok = false
+					break
+				}
 			}
 		}
 		if !ok {
 			require.Equal(string(b), st.output.String())
 		}
 	}
-
 	dur := time.Now().Sub(start)
 	log.Infof("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
 
-var prefixCompareLines = []string{"Failed to execute statement: PDB0000 - Internal error - reference:"}
+var prefixCompareLines = []string{"Failed to execute statement: PDB5000 - Internal error - reference:"}
 
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
 	lineExpected := fmt.Sprintf("%d rows returned", numRows)

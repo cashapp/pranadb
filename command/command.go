@@ -240,7 +240,7 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 		return nil, errors.WithStack(err)
 	}
 	if rows.RowCount() == 0 {
-		return nil, errors.NewUnknownSourceOrMaterializedViewError(execCtx.Schema.Name, tableName)
+		return nil, errors.NewUnknownTableError(execCtx.Schema.Name, tableName)
 	}
 	if rows.RowCount() != 1 {
 		panic(fmt.Sprintf("multiple matches for table: '%s.%s'", execCtx.Schema.Name, tableName))

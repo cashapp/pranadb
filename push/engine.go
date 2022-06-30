@@ -272,7 +272,7 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 	if !ok {
 		mvInfo, ok := p.meta.GetMaterializedView(indexInfo.SchemaName, indexInfo.TableName)
 		if !ok {
-			return nil, errors.NewUnknownSourceOrMaterializedViewError(indexInfo.SchemaName, indexInfo.TableName)
+			return nil, errors.NewUnknownTableError(indexInfo.SchemaName, indexInfo.TableName)
 		}
 		mv, err := p.GetMaterializedView(mvInfo.ID)
 		if err != nil {
@@ -613,7 +613,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		}()
 		pl := parplan.NewPlanner(schema)
 		query := fmt.Sprintf("select * from %s where %s", tabName, ingestFilter)
-		phys, _, err := pl.QueryToPlan(query, false, false)
+		phys, _, _, err := pl.QueryToPlan(query, false, false)
 		var sel *planner.PhysicalSelection
 		if err == nil {
 			var ok bool
@@ -624,7 +624,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 			}
 		}
 		if err != nil || sel == nil {
-			return nil, errors.NewPranaErrorf(errors.InvalidIngestFilter, "invalid ingest filter \"%s\"", ingestFilter)
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, "invalid ingest filter \"%s\"", ingestFilter)
 		}
 		ingestExpressions = make([]*common.Expression, len(sel.Conditions))
 		for i, expr := range sel.Conditions {

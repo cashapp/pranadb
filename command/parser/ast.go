@@ -73,13 +73,27 @@ func (c *ColumnDef) ToColumnType() (common.ColumnType, error) {
 	switch c.Type {
 	case common.TypeDecimal:
 		if len(c.Parameters) != 2 {
-			return common.ColumnType{}, participle.Errorf(c.Pos, "expected DECIMAL(precision, scale)")
+			return common.ColumnType{}, participle.Errorf(c.Pos, "Expected DECIMAL(precision, scale)")
+		}
+		prec := c.Parameters[0]
+		scale := c.Parameters[1]
+		if prec > 65 || prec < 1 {
+			return common.ColumnType{}, participle.Errorf(c.Pos, "Decimal precision must be > 0 and <= 65")
+		}
+		if scale > 30 || scale < 0 {
+			return common.ColumnType{}, participle.Errorf(c.Pos, "decimal scale must be >= 0 and <= 30")
+		}
+		if scale > prec {
+			return common.ColumnType{}, participle.Errorf(c.Pos, "Decimal scale must be <= precision")
 		}
 		return common.NewDecimalColumnType(c.Parameters[0], c.Parameters[1]), nil
 	case common.TypeTimestamp:
 		var fsp int8 = DefaultFSP
 		if len(c.Parameters) == 1 {
 			fsp = int8(c.Parameters[0])
+			if fsp < 0 || fsp > 6 {
+				return common.ColumnType{}, participle.Errorf(c.Pos, "Timestamp fsp must be >= 0 and <= 6")
+			}
 		}
 		return common.NewTimestampColumnType(fsp), nil
 	default:

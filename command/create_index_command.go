@@ -147,7 +147,7 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 	if !ok {
 		tab, ok = c.e.metaController.GetMaterializedView(c.SchemaName(), ast.TableName)
 		if !ok {
-			return nil, errors.NewUnknownSourceOrMaterializedViewError(c.SchemaName(), ast.TableName)
+			return nil, errors.NewUnknownTableError(c.SchemaName(), ast.TableName)
 		}
 	}
 	tabInfo := tab.GetTableInfo()
@@ -164,12 +164,18 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 		colMap[colName] = colIndex
 	}
 	indexCols := make([]int, len(ast.ColumnNames))
+	indexColMap := make(map[int]struct{}, len(ast.ColumnNames))
 	for i, colName := range ast.ColumnNames {
 		colIndex, ok := colMap[colName.Name]
 		if !ok {
-			return nil, errors.NewUnknownIndexColumn(c.SchemaName(), ast.TableName, colName.Name)
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown column %s in %s.%s",
+				colName.Name, c.SchemaName(), ast.TableName)
 		}
 		indexCols[i] = colIndex
+		indexColMap[colIndex] = struct{}{}
+	}
+	if len(indexColMap) != len(ast.ColumnNames) {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Index cannot contain same column multiple times")
 	}
 	info := &common.IndexInfo{
 		SchemaName: c.SchemaName(),

@@ -42,7 +42,7 @@ create source test_source_1(
         v1,
     )
 );
-Failed to execute statement: PDB0002 - 13:11: unexpected token "," (expected ")")
+Failed to execute statement: PDB1000 - 13:11: unexpected token "," (expected ")")
 
 -- TEST3 - invalid meta key on column selector;
 ------------------------------------------------------------;
@@ -62,7 +62,7 @@ create source test_source_1(
         v1
     )
 );
-Failed to execute statement: PDB0018 - invalid metadata key in column selector "meta(\"notvalid\").k0". Valid values are "header", "key", "timestamp".
+Failed to execute statement: PDB1000 - Invalid metadata key in column selector "meta(\"notvalid\").k0". Valid values are "header", "key", "timestamp".
 
 -- TEST4 - protobuf not registered;
 ------------------------------------------------------------;
@@ -82,7 +82,6 @@ create source test_source_1(
         v1
     )
 );
-Failed to execute statement: PDB0016 - proto message "foo.bar.MissingType" not registered
+Failed to execute statement: PDB1000 - Proto message "foo.bar.MissingType" not registered
 
 --delete topic testtopic;
-;

@@ -178,7 +178,7 @@ func testLogicalPlan(t *testing.T, query string, expectedPlan string) {
 	t.Helper()
 	schema := createTestSchema()
 	planner := NewPlanner(schema)
-	ast, err := planner.parser.Parse(query)
+	ast, _, err := planner.parser.Parse(query)
 	require.NoError(t, err)
 	err = planner.preprocess(ast.stmt, false)
 	require.NoError(t, err)

@@ -2,6 +2,7 @@ package pull
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/sharder"
 	"strings"
 	"sync"
@@ -69,7 +70,7 @@ func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string,
 	qi.ExecutionID = execCtx.ID
 	qi.SchemaName = execCtx.Schema.Name
 	qi.Query = query
-	isPs := argTypes != nil
+	isPs := len(argTypes) != 0
 	if isPs {
 		// It's a prepared statement
 		execCtx.Planner().SetPSArgs(args)
@@ -77,13 +78,18 @@ func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string,
 		qi.PsArgs = args
 		qi.PreparedStatement = true
 	}
-	ast, err := execCtx.Planner().Parse(query)
+	ast, paramCount, err := execCtx.Planner().Parse(query)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		log.Errorf("failed to parse query %v", err)
+		return nil, errors.MaybeConvertToPranaErrorf(err, errors.InvalidStatement, "Invalid statement %s - %s", query, err.Error())
+	}
+	if paramCount != len(argTypes) {
+		return nil, errors.NewPranaErrorf(errors.InvalidParamCount, "Statement has %d param markers but %d param(s) supplied",
+			paramCount, len(argTypes))
 	}
 	logicalPlan, err := execCtx.Planner().BuildLogicalPlan(ast, isPs)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, errors.MaybeConvertToPranaErrorf(err, errors.InvalidStatement, "Invalid statement %s - %s", query, err.Error())
 	}
 	physicalPlan, err := execCtx.Planner().BuildPhysicalPlan(logicalPlan, true)
 	if err != nil {
@@ -112,7 +118,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		execCtx = execctx.NewExecutionContext(queryInfo.ExecutionID, schema)
 		newExecution = true
 		execCtx.QueryInfo = queryInfo
-		ast, err := execCtx.Planner().Parse(queryInfo.Query)
+		ast, _, err := execCtx.Planner().Parse(queryInfo.Query)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
