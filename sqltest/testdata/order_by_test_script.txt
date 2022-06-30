@@ -1,0 +1,254 @@
+use test;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_1;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_2;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_3;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 double,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_4;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_5;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_6;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_7;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+--load data dataset_8;
+
+select col1 from test_source_1 order by col1;
+select col1 from test_source_1 order by col1 asc;
+select col1 from test_source_1 order by col1 desc;
+
+drop source test_source_1;
+--delete topic testtopic;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    col2 int,
+    col3 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3
+    )
+);
+
+--load data dataset_9;
+
+select col1, col2, col3 from test_source_1 order by col1, col2, col3;
+
+select col1, col2, col3 from test_source_1 order by col1 asc, col2 asc, col3 asc;
+
+select col1, col2, col3 from test_source_1 order by col1 asc, col2 asc, col3 desc;
+
+select col1, col2, col3 from test_source_1 order by col1 asc, col2 desc, col3 asc;
+
+select col1, col2, col3 from test_source_1 order by col1 asc, col2 desc, col3 desc;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 asc, col3 asc;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 asc, col3 desc;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 asc;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
+
+
+drop source test_source_1;
+--delete topic testtopic;
