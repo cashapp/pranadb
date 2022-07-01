@@ -161,8 +161,10 @@ type Drop struct {
 
 // Show statement
 type Show struct {
-	Tables  string `  @"TABLES"`
-	Schemas string `| @"SCHEMAS"`
+	Tables    bool   `(  @"TABLES"`
+	Schemas   bool   `| @"SCHEMAS"`
+	Indexes   bool   `| @"INDEXES" )`
+	TableName string `("ON" @Ident)?`
 }
 
 // AST root.
