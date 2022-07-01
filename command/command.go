@@ -191,7 +191,7 @@ func (e *Executor) execShowTables(execCtx *execctx.ExecutionContext) (exec.PullE
 		return nil, errors.WithStack(err)
 	}
 
-	staticRows, err := exec.NewStaticRows([]string{"table", "kind"}, rows)
+	staticRows, err := exec.NewStaticRows([]string{fmt.Sprintf("tables_in_%s", execCtx.Schema.Name), "table_type"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 
@@ -225,7 +225,7 @@ func describeRows(tableInfo *common.TableInfo) (exec.PullExecutor, error) {
 		resultRows.AppendStringToColumn(0, columnName)
 		resultRows.AppendStringToColumn(1, tableInfo.ColumnTypes[columnIndex].String())
 		if tableInfo.IsPrimaryKeyCol(columnIndex) {
-			resultRows.AppendStringToColumn(2, "pk")
+			resultRows.AppendStringToColumn(2, "pri")
 		} else {
 			resultRows.AppendStringToColumn(2, "")
 		}
