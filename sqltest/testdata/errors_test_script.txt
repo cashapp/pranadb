@@ -657,7 +657,7 @@ create source bar(
     col0 bigint,
     primary key (col0)
 ) with (
-    broke rname = "testbroker",
+    brokername = "testbroker",
     topicname = "testtopic",
     headerencoding = "json",
     keyencoding = "json",
