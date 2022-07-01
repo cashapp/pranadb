@@ -45,7 +45,8 @@ func (c *CreateMVCommand) LockName() string {
 	return c.schema.Name + "/"
 }
 
-func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string, tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
+func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string,
+	tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,

@@ -163,7 +163,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 		if ast.Drop == nil && !ast.Drop.Source {
 			return nil, errors.Errorf("not a drop source command %s", c.sql)
 		}
-		c.sourceName = ast.Drop.Name
+		c.sourceName = strings.ToLower(ast.Drop.Name)
 	}
 	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {

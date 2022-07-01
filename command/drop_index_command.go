@@ -145,8 +145,8 @@ func (c *DropIndexCommand) getIndexInfo() (*common.IndexInfo, error) {
 		if ast.Drop == nil && !ast.Drop.Index {
 			return nil, errors.Errorf("not a drop index command %s", c.sql)
 		}
-		c.indexName = ast.Drop.Name
-		c.tableName = ast.Drop.TableName
+		c.indexName = strings.ToLower(ast.Drop.Name)
+		c.tableName = strings.ToLower(ast.Drop.TableName)
 	}
 	if c.tableName == "" {
 		return nil, errors.NewInvalidStatementError("Drop index requires a table")

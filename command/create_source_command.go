@@ -189,6 +189,7 @@ func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 
 // nolint: gocyclo
 func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.SourceInfo, error) {
+	ast.Name = strings.ToLower(ast.Name)
 	var (
 		colNames []string
 		colTypes []common.ColumnType

@@ -43,7 +43,8 @@ func (c *CreateIndexCommand) LockName() string {
 	return c.schema.Name + "/"
 }
 
-func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
+func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string,
+	tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
