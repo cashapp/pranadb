@@ -132,7 +132,9 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	d.commands[commandKey] = command
 	d.lock.Unlock()
 	defer func() {
+		d.lock.Lock()
 		delete(d.commands, commandKey)
+		d.lock.Unlock()
 	}()
 	ddlInfo := &notifications.DDLStatementInfo{
 		OriginatingNodeId: int64(d.ce.cluster.GetNodeID()), // TODO do we need this?
