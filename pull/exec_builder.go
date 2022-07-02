@@ -38,7 +38,10 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 	colNames := make([]string, 0, len(cols))
 	for _, col := range cols {
 		colType := col.GetType()
-		pranaType := common.ConvertTiDBTypeToPranaType(colType)
+		pranaType, err := common.ConvertTiDBTypeToPranaType(colType)
+		if err != nil {
+			return nil, err
+		}
 		colTypes = append(colTypes, pranaType)
 		colNames = append(colNames, col.OrigName)
 	}

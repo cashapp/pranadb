@@ -7,9 +7,9 @@ import (
 )
 
 func LogInternalError(err error) errors.PranaError {
-	id, err := uuid.NewRandom()
+	id, err2 := uuid.NewRandom()
 	var errRef string
-	if err != nil {
+	if err2 != nil {
 		log.Errorf("failed to generate uuid %v", err)
 		errRef = ""
 	} else {
@@ -19,6 +19,6 @@ func LogInternalError(err error) errors.PranaError {
 	// server implementation details. Instead, we generate a random UUID and add that to the message
 	// and log the internal error in the server logs with the UUID so it can be looked up
 	perr := errors.NewInternalError(errRef)
-	log.Errorf("internal error occurred with reference %s\n%v", errRef, err)
+	log.Errorf("internal error occurred with reference %s\n%+v", errRef, err)
 	return perr
 }
