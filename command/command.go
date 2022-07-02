@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -136,14 +137,20 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
-	case ast.Show != nil && ast.Show.Tables != "":
+	case ast.Show != nil && ast.Show.Tables:
 		rows, err := e.execShowTables(execCtx)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
-	case ast.Show != nil && ast.Show.Schemas != "":
+	case ast.Show != nil && ast.Show.Schemas:
 		rows, err := e.execShowSchemas()
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return rows, nil
+	case ast.Show != nil && ast.Show.Indexes:
+		rows, err := e.execShowIndexes(execCtx.Schema.Name, ast.Show.TableName)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -205,6 +212,47 @@ func (e *Executor) execShowSchemas() (exec.PullExecutor, error) {
 		rows.AppendStringToColumn(0, schemaName)
 	}
 	staticRows, err := exec.NewStaticRows([]string{"schema"}, rows)
+	return staticRows, errors.WithStack(err)
+}
+
+func (e *Executor) execShowIndexes(schemaName string, tableName string) (exec.PullExecutor, error) {
+	var tableInfo *common.TableInfo
+	src, ok := e.metaController.GetSource(schemaName, tableName)
+	if !ok {
+		mv, ok := e.metaController.GetMaterializedView(schemaName, tableName)
+		if !ok {
+			return nil, errors.NewPranaErrorf(errors.UnknownTable, "Unknown table %s.%s", schemaName, tableName)
+		}
+		tableInfo = mv.GetTableInfo()
+	} else {
+		tableInfo = src.GetTableInfo()
+	}
+	rowsFactory := common.NewRowsFactory(
+		[]common.ColumnType{common.VarcharColumnType, common.VarcharColumnType},
+	)
+	rows := rowsFactory.NewRows(len(tableInfo.IndexInfos))
+
+	// Sort the index names
+	var indNames []string
+	for indexName := range tableInfo.IndexInfos {
+		indNames = append(indNames, indexName)
+	}
+	sort.Strings(indNames)
+
+	for _, indexName := range indNames {
+		indexInfo := tableInfo.IndexInfos[indexName]
+		rows.AppendStringToColumn(0, indexName)
+		sb := strings.Builder{}
+		for i, index := range indexInfo.IndexCols {
+			colName := tableInfo.ColumnNames[index]
+			sb.WriteString(colName)
+			if i != len(indexInfo.IndexCols)-1 {
+				sb.WriteString(", ")
+			}
+		}
+		rows.AppendStringToColumn(1, sb.String())
+	}
+	staticRows, err := exec.NewStaticRows([]string{fmt.Sprintf("indexes_on_%s", tableName), "columns"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 

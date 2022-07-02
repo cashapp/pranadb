@@ -142,7 +142,7 @@ func (c *Client) doExecuteStatementWithError(statement string, args []*service.A
 		c.currentSchema = strings.ToLower(ast.Use)
 		return 0, nil
 	}
-	if c.currentSchema == "" && !(ast.Show != nil && ast.Show.Schemas != "") {
+	if c.currentSchema == "" && !(ast.Show != nil && ast.Show.Schemas) {
 		return 0, errors.NewSchemaNotInUseError()
 	}
 	stream, err := c.client.ExecuteStatement(context.Background(), &service.ExecuteStatementRequest{

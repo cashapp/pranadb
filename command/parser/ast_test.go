@@ -107,11 +107,15 @@ func TestParse(t *testing.T) {
 		},
 		{
 			"ShowTables", `SHOW TABLES`,
-			&AST{Show: &Show{Tables: "TABLES"}}, "",
+			&AST{Show: &Show{Tables: true}}, "",
 		},
 		{
 			"ShowSchemas", `SHOW SCHEMAS`,
-			&AST{Show: &Show{Schemas: "SCHEMAS"}}, "",
+			&AST{Show: &Show{Schemas: true}}, "",
+		},
+		{
+			"ShowIndexes", `SHOW INDEXES on test_mv1`,
+			&AST{Show: &Show{Indexes: true, TableName: "test_mv1"}}, "",
 		},
 	}
 	for _, test := range tests {
