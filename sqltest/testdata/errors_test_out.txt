@@ -710,6 +710,37 @@ create source bar(
 );
 Failed to execute statement: PDB1000 - Number of column selectors (0) must match number of columns (2)
 
+-- duplicate column name;
+create source bar(
+    col0 bigint,
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Duplicate column names
+
+-- no columns;
+create source bar(
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+    )
+);
+Failed to execute statement: PDB1000 - 2:1: unexpected token ")" (expected TableOption ("," TableOption)* ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+
 --errors in drop source;
 
 drop source who;

@@ -651,6 +651,35 @@ create source bar(
     valueencoding = "json"
 );
 
+-- duplicate column name;
+create source bar(
+    col0 bigint,
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+-- no columns;
+create source bar(
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+    )
+);
+
 --errors in drop source;
 
 drop source who;

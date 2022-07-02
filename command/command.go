@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/squareup/pranadb/failinject"
@@ -148,7 +149,7 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		}
 		return rows, nil
 	case ast.Describe != "":
-		rows, err := e.execDescribe(execCtx, ast.Describe)
+		rows, err := e.execDescribe(execCtx, strings.ToLower(ast.Describe))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

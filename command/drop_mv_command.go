@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -46,7 +47,7 @@ func NewOriginatingDropMVCommand(e *Executor, schemaName string, sql string, mvN
 		e:          e,
 		schemaName: schemaName,
 		sql:        sql,
-		mvName:     mvName,
+		mvName:     strings.ToLower(mvName),
 	}
 }
 
@@ -159,7 +160,7 @@ func (c *DropMVCommand) getMV() (*push.MaterializedView, error) {
 		if ast.Drop == nil && !ast.Drop.MaterializedView {
 			return nil, errors.Errorf("not a drop materialized view command %s", c.sql)
 		}
-		c.mvName = ast.Drop.Name
+		c.mvName = strings.ToLower(ast.Drop.Name)
 	}
 
 	mvInfo, ok := c.e.metaController.GetMaterializedView(c.schemaName, c.mvName)

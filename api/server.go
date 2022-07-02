@@ -7,6 +7,7 @@ import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/squareup/pranadb/pull/exec"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,7 +92,7 @@ func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
 	defer common.PanicHandler()
 	var schema *common.Schema
 	if in.Schema != "" {
-		schema = s.metaController.GetOrCreateSchema(in.Schema)
+		schema = s.metaController.GetOrCreateSchema(strings.ToLower(in.Schema))
 	}
 	execCtx := s.ce.CreateExecutionContext(schema)
 	defer func() {

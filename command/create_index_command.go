@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -42,7 +43,8 @@ func (c *CreateIndexCommand) LockName() string {
 	return c.schema.Name + "/"
 }
 
-func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
+func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string,
+	tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
@@ -142,6 +144,7 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {
+	ast.Name = strings.ToLower(ast.Name)
 	var tab common.Table
 	tab, ok := c.e.metaController.GetSource(c.SchemaName(), ast.TableName)
 	if !ok {

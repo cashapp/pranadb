@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -44,7 +45,7 @@ func NewOriginatingDropSourceCommand(e *Executor, schemaName string, sql string,
 		e:          e,
 		schemaName: schemaName,
 		sql:        sql,
-		sourceName: sourceName,
+		sourceName: strings.ToLower(sourceName),
 	}
 }
 
@@ -162,7 +163,7 @@ func (c *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 		if ast.Drop == nil && !ast.Drop.Source {
 			return nil, errors.Errorf("not a drop source command %s", c.sql)
 		}
-		c.sourceName = ast.Drop.Name
+		c.sourceName = strings.ToLower(ast.Drop.Name)
 	}
 	sourceInfo, ok := c.e.metaController.GetSource(c.schemaName, c.sourceName)
 	if !ok {

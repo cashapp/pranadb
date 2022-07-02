@@ -130,15 +130,16 @@ func (c *Client) handleSetCommand(statement string) error {
 }
 
 func (c *Client) doExecuteStatementWithError(statement string, args []*service.Arg, ch chan string) (int, error) {
-	if statement == "set" || strings.HasPrefix(strings.ToLower(statement), "set ") {
-		return 0, c.handleSetCommand(statement)
+	lowerStat := strings.ToLower(statement)
+	if lowerStat == "set" || strings.HasPrefix(strings.ToLower(lowerStat), "set ") {
+		return 0, c.handleSetCommand(lowerStat)
 	}
 	ast, err := parser.Parse(statement)
 	if err != nil {
 		return 0, errors.NewInvalidStatementError(err.Error())
 	}
 	if ast.Use != "" {
-		c.currentSchema = ast.Use
+		c.currentSchema = strings.ToLower(ast.Use)
 		return 0, nil
 	}
 	if c.currentSchema == "" && !(ast.Show != nil && ast.Show.Schemas != "") {
