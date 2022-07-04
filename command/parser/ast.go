@@ -49,8 +49,13 @@ func (r *Ref) String() string {
 
 // CreateMaterializedView statement.
 type CreateMaterializedView struct {
-	Name  *Ref      `@@ "AS"`
-	Query *RawQuery `@@`
+	Name  *Ref      `@@`
+	OriginInformation []*MaterializedViewOriginInformation `("WITH" "(" @@ ("," @@)* ")")?`
+	Query *RawQuery `"AS" @@`
+}
+
+type MaterializedViewOriginInformation struct {
+	InitialState   string                        `"InitialState" "=" @String`
 }
 
 type ColumnDef struct {
@@ -108,18 +113,18 @@ type TableOption struct {
 
 type CreateSource struct {
 	Name string `@Ident`
-	// TODO: Add selection of columns from source. Inline in the column type definitions? Separate clause?
 	Options          []*TableOption      `"(" @@ ("," @@)* ")"` // Table options.
-	TopicInformation []*TopicInformation `"WITH" "(" @@ ("," @@)* ")"`
+	OriginInformation []*SourceOriginInformation `"WITH" "(" @@ ("," @@)* ")"`
 }
 
-type TopicInformation struct {
+type SourceOriginInformation struct {
 	BrokerName     string                        `"BrokerName" "=" @String`
 	TopicName      string                        `|"TopicName" "=" @String`
 	HeaderEncoding string                        `|"HeaderEncoding" "=" @String`
 	KeyEncoding    string                        `|"KeyEncoding" "=" @String`
 	ValueEncoding  string                        `|"ValueEncoding" "=" @String`
 	IngestFilter   string                        `|"IngestFilter" "=" @String`
+	InitialState   string                        `|"InitialState" "=" @String`
 	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
 	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }

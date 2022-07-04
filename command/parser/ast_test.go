@@ -70,7 +70,7 @@ func TestParse(t *testing.T) {
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 80, Line: 5, Column: 4}, Name: "temperature", Type: common.Type(4)}},
 					{PrimaryKey: []string{"sensor_id", "location"}},
 				},
-				TopicInformation: []*TopicInformation{
+				OriginInformation: []*SourceOriginInformation{
 					{BrokerName: "testbroker"},
 					{TopicName: "testtopic"},
 					{HeaderEncoding: "json"},

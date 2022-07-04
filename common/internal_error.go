@@ -7,9 +7,9 @@ import (
 )
 
 func LogInternalError(err error) errors.PranaError {
-	id, err := uuid.NewRandom()
+	id, err2 := uuid.NewRandom()
 	var errRef string
-	if err != nil {
+	if err2 != nil {
 		log.Errorf("failed to generate uuid %v", err)
 		errRef = ""
 	} else {

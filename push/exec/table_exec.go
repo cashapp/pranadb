@@ -14,7 +14,7 @@ import (
 )
 
 const lockAndLoadMaxRows = 10
-const fillMaxBatchSize = 1000
+const fillMaxBatchSize = 10000
 
 // TableExecutor updates the changes into the associated table - used to persist state
 // of a materialized view or source

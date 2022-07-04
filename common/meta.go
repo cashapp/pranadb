@@ -281,7 +281,7 @@ func (s *Schema) Equal(other *Schema) bool {
 
 type SourceInfo struct {
 	*TableInfo
-	TopicInfo *TopicInfo
+	OriginInfo *SourceOriginInfo
 }
 
 func (i *SourceInfo) String() string {
@@ -301,7 +301,7 @@ func (i *MetaTableInfo) String() string {
 	return "meta_" + i.TableInfo.String()
 }
 
-type TopicInfo struct {
+type SourceOriginInfo struct {
 	BrokerName     string
 	TopicName      string
 	KeyEncoding    KafkaEncoding
@@ -310,6 +310,7 @@ type TopicInfo struct {
 	ColSelectors   []selector.ColumnSelector
 	Properties     map[string]string
 	IngestFilter   string
+	InitialState   string
 }
 
 type KafkaEncoding struct {
@@ -388,7 +389,12 @@ func EncodingFormatFromString(str string) Encoding {
 
 type MaterializedViewInfo struct {
 	*TableInfo
+	OriginInfo *MaterializedViewOriginInfo
 	Query string
+}
+
+type MaterializedViewOriginInfo struct {
+	InitialState   string
 }
 
 type InternalTableInfo struct {
@@ -404,5 +410,5 @@ func (i *MaterializedViewInfo) String() string {
 type SinkInfo struct {
 	Name      string
 	Query     string
-	TopicInfo *TopicInfo
+	TopicInfo *SourceOriginInfo
 }

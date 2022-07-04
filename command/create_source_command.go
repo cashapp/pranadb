@@ -91,9 +91,15 @@ func (c *CreateSourceCommand) validate() error {
 		return errors.Errorf("source with name %s.%s already exists in storage", c.sourceInfo.SchemaName, c.sourceInfo.Name)
 	}
 
-	topicInfo := c.sourceInfo.TopicInfo
+	origInfo := c.sourceInfo.OriginInfo
+	if origInfo.InitialState != "" {
+		err := validateInitState(origInfo.InitialState, c.sourceInfo.TableInfo, c.e.metaController)
+		if err != nil {
+			return err
+		}
+	}
 
-	for _, enc := range []common.KafkaEncoding{topicInfo.HeaderEncoding, topicInfo.KeyEncoding, topicInfo.ValueEncoding} {
+	for _, enc := range []common.KafkaEncoding{origInfo.HeaderEncoding, origInfo.KeyEncoding, origInfo.ValueEncoding} {
 		if enc.Encoding != common.EncodingProtobuf {
 			continue
 		}
@@ -103,7 +109,7 @@ func (c *CreateSourceCommand) validate() error {
 		}
 	}
 
-	for _, sel := range topicInfo.ColSelectors {
+	for _, sel := range origInfo.ColSelectors {
 		if sel.MetaKey == nil && len(sel.Selector) == 0 {
 			return errors.NewPranaErrorf(errors.InvalidStatement, "Invalid column selector %q", sel)
 		}
@@ -137,8 +143,8 @@ func (c *CreateSourceCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// If receiving on prepare from broadcast on the originating node, mvInfo will already be set
-	// this means we do not have to parse the ast twice!
+	// If phase0 on the originating node, mvInfo will already be set
+	// this means we do not have to parse the ast twice
 	if c.sourceInfo == nil {
 		ast, err := parser.Parse(c.sql)
 		if err != nil {
@@ -154,9 +160,22 @@ func (c *CreateSourceCommand) onPhase0() error {
 	}
 
 	// Create source in push engine so it can receive forwarded rows, do not activate consumers yet
-	src, err := c.e.pushEngine.CreateSource(c.sourceInfo)
+	var initTable *common.TableInfo
+	if c.sourceInfo.OriginInfo.InitialState != "" {
+		var err error
+		initTable, err = getInitialiseFromTable(c.schemaName, c.sourceInfo.OriginInfo.InitialState, c.e.metaController)
+		if err != nil {
+			return err
+		}
+	}
+	src, err := c.e.pushEngine.CreateSource(c.sourceInfo, initTable)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+	if initTable != nil {
+		if err := c.e.pushEngine.LoadInitialStateForTable(c.e.pushEngine.GetLocalLeaderShards(), initTable.ID, c.sourceInfo.ID); err != nil {
+			return err
+		}
 	}
 	c.source = src
 	return err
@@ -218,7 +237,6 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 				}
 				pkCols = append(pkCols, index)
 			}
-
 		default:
 			panic(repr.String(option))
 		}
@@ -230,8 +248,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		propsMap                                   map[string]string
 		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
+		initialiseFrom string
 	)
-	for _, opt := range ast.TopicInformation {
+	for _, opt := range ast.OriginInformation {
 		switch {
 		case opt.HeaderEncoding != "":
 			headerEncoding = common.KafkaEncodingFromString(opt.HeaderEncoding)
@@ -265,6 +284,8 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			brokerName = opt.BrokerName
 		case opt.TopicName != "":
 			topicName = opt.TopicName
+		case opt.InitialState != "":
+			initialiseFrom = opt.InitialState
 		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
@@ -301,7 +322,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Primary key cannot contain same column multiple times")
 	}
 
-	topicInfo := &common.TopicInfo{
+	originInfo := &common.SourceOriginInfo{
 		BrokerName:     brokerName,
 		TopicName:      topicName,
 		HeaderEncoding: headerEncoding,
@@ -310,6 +331,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		IngestFilter:   ingestFilter,
 		ColSelectors:   colSelectors,
 		Properties:     propsMap,
+		InitialState: initialiseFrom,
 	}
 	tableInfo := common.TableInfo{
 		ID:             c.tableSequences[0],
@@ -321,7 +343,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		IndexInfos:     nil,
 	}
 	return &common.SourceInfo{
-		TableInfo: &tableInfo,
-		TopicInfo: topicInfo,
+		TableInfo:  &tableInfo,
+		OriginInfo: originInfo,
 	}, nil
 }

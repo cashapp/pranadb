@@ -22,7 +22,7 @@ type MaterializedView struct {
 
 // CreateMaterializedView creates the materialized view but does not register it in memory
 func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
-	tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
+	initTable string, tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
 
 	mv := MaterializedView{
 		pe:      pe,
@@ -47,6 +47,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 	mvInfo := common.MaterializedViewInfo{
 		Query:     query,
 		TableInfo: &tableInfo,
+		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
 	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)

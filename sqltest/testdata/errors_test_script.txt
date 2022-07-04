@@ -985,3 +985,91 @@ execps 1 bigint 23 "select * from bar where col0 = $";
 drop source bar;
 
 --delete topic testtopic;
+
+-- backfill errors;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "foo",
+    columnselectors = (v0)
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (v0,v1,v2)
+);
+
+create source test_source_3(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    col3 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate="test_source_1",
+    columnselectors = (v0,v1,v2,v3)
+);
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+
+create materialized view test_mv_1 with (initialstate = "bar") as select * from test_source_2;
+
+create materialized view test_mv_1 with (initialstate = "test_source_1") as select * from test_source_2;
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+create materialized view test_mv_2 with (initialstate = "test_mv_1") as select * from test_source_2;
+
+drop materialized view test_mv_1;
+drop source test_source_2;
+drop source test_source_1;
+--delete topic testtopic;

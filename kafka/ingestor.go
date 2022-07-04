@@ -14,7 +14,7 @@ var timestampBase = time.Date(2021, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
 
 // IngestRows ingests rows given schema and source name - convenience method for use in tests
 func IngestRows(f *FakeKafka, sourceInfo *common.SourceInfo, colTypes []common.ColumnType, rows *common.Rows, encoder MessageEncoder) error {
-	topicName := sourceInfo.TopicInfo.TopicName
+	topicName := sourceInfo.OriginInfo.TopicName
 	topic, ok := f.GetTopic(topicName)
 	if !ok {
 		return errors.Errorf("cannot find topic %s", topicName)
