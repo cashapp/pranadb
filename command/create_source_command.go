@@ -248,7 +248,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		propsMap                                   map[string]string
 		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
-		initialiseFrom string
+		initialiseFrom                             string
 	)
 	for _, opt := range ast.OriginInformation {
 		switch {
@@ -331,7 +331,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		IngestFilter:   ingestFilter,
 		ColSelectors:   colSelectors,
 		Properties:     propsMap,
-		InitialState: initialiseFrom,
+		InitialState:   initialiseFrom,
 	}
 	tableInfo := common.TableInfo{
 		ID:             c.tableSequences[0],

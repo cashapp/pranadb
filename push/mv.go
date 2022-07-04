@@ -45,8 +45,8 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		IndexInfos:     nil,
 	}
 	mvInfo := common.MaterializedViewInfo{
-		Query:     query,
-		TableInfo: &tableInfo,
+		Query:      query,
+		TableInfo:  &tableInfo,
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo

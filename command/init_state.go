@@ -20,7 +20,7 @@ func validateInitState(initTable string, thisState *common.TableInfo, metaContro
 			if thisColType != tabInfo.ColumnTypes[i] {
 				break
 			}
-			if i == len(thisState.ColumnTypes) - 1 {
+			if i == len(thisState.ColumnTypes)-1 {
 				matches = true
 			}
 		}
@@ -30,7 +30,6 @@ func validateInitState(initTable string, thisState *common.TableInfo, metaContro
 	}
 	return nil
 }
-
 
 func getInitialiseFromTable(schemaName string, tabName string, metaController *meta.Controller) (*common.TableInfo, error) {
 	var tabInfo *common.TableInfo
@@ -59,5 +58,3 @@ func structureNotMatchMsg(initialStateStructure *common.TableInfo, sourceStructu
 	return fmt.Sprintf("initialState table structure does not match. initial structure: (%s) source structure: (%s)",
 		strings.Join(initTypes, ","), strings.Join(sourceTypes, ","))
 }
-
-

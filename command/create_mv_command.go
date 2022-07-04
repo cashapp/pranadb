@@ -110,9 +110,8 @@ func (c *CreateMVCommand) Before() error {
 	if rows.RowCount() != 0 {
 		return errors.Errorf("materialized view with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
 	}
-	origInfo := mv.Info.OriginInfo
-	if origInfo.InitialState != "" {
-		err := validateInitState(origInfo.InitialState, mv.Info.TableInfo, c.e.metaController)
+	if mv.Info.OriginInfo.InitialState != "" {
+		err := validateInitState(mv.Info.OriginInfo.InitialState, mv.Info.TableInfo, c.e.metaController)
 		if err != nil {
 			return err
 		}

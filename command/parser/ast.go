@@ -49,13 +49,13 @@ func (r *Ref) String() string {
 
 // CreateMaterializedView statement.
 type CreateMaterializedView struct {
-	Name  *Ref      `@@`
+	Name              *Ref                                 `@@`
 	OriginInformation []*MaterializedViewOriginInformation `("WITH" "(" @@ ("," @@)* ")")?`
-	Query *RawQuery `"AS" @@`
+	Query             *RawQuery                            `"AS" @@`
 }
 
 type MaterializedViewOriginInformation struct {
-	InitialState   string                        `"InitialState" "=" @String`
+	InitialState string `"InitialState" "=" @String`
 }
 
 type ColumnDef struct {
@@ -112,8 +112,8 @@ type TableOption struct {
 }
 
 type CreateSource struct {
-	Name string `@Ident`
-	Options          []*TableOption      `"(" @@ ("," @@)* ")"` // Table options.
+	Name              string                     `@Ident`
+	Options           []*TableOption             `"(" @@ ("," @@)* ")"` // Table options.
 	OriginInformation []*SourceOriginInformation `"WITH" "(" @@ ("," @@)* ")"`
 }
 

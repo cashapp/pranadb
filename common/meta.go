@@ -390,11 +390,11 @@ func EncodingFormatFromString(str string) Encoding {
 type MaterializedViewInfo struct {
 	*TableInfo
 	OriginInfo *MaterializedViewOriginInfo
-	Query string
+	Query      string
 }
 
 type MaterializedViewOriginInfo struct {
-	InitialState   string
+	InitialState string
 }
 
 type InternalTableInfo struct {

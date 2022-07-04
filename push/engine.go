@@ -668,7 +668,7 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 	log.Debugf("loading initial state for table %d from %d", targetTableID, initTableID)
 	for _, shardID := range shardIDs {
 		scanStart := table.EncodeTableKeyPrefix(initTableID, shardID, 16)
-		scanEnd := table.EncodeTableKeyPrefix(initTableID + 1, shardID, 16)
+		scanEnd := table.EncodeTableKeyPrefix(initTableID+1, shardID, 16)
 		newKeyPrefix := table.EncodeTableKeyPrefix(targetTableID, shardID, 64)
 		skipFirst := false
 		for {
@@ -694,7 +694,7 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			if len(pairs) < initBatchSize {
 				break
 			}
-			scanStart = pairs[len(pairs) - 1].Key
+			scanStart = pairs[len(pairs)-1].Key
 			skipFirst = true
 		}
 	}
