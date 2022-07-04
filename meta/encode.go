@@ -75,7 +75,7 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 // DecodeMaterializedViewInfoRow decodes a database row into a common.MaterializedViewInfo.
 func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo {
 	info := common.MaterializedViewInfo{
-		Query: row.GetString(6),
+		Query:      row.GetString(6),
 		OriginInfo: &common.MaterializedViewOriginInfo{},
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
