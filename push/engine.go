@@ -702,12 +702,6 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 	return nil
 }
 
-func (p *Engine) GetLocalLeaderShards() []uint64 {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	return p.localLeaderShards
-}
-
 func (p *Engine) createMaps() {
 	p.remoteConsumers = sync.Map{}
 	p.sources = make(map[uint64]*source.Source)

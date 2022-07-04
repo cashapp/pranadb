@@ -173,7 +173,7 @@ func (c *CreateSourceCommand) onPhase0() error {
 		return errors.WithStack(err)
 	}
 	if initTable != nil {
-		if err := c.e.pushEngine.LoadInitialStateForTable(c.e.pushEngine.GetLocalLeaderShards(), initTable.ID, c.sourceInfo.ID); err != nil {
+		if err := c.e.pushEngine.LoadInitialStateForTable(c.e.cluster.GetLocalShardIDs(), initTable.ID, c.sourceInfo.ID); err != nil {
 			return err
 		}
 	}

@@ -150,7 +150,7 @@ func (c *CreateMVCommand) onPhase0() error {
 		if err != nil {
 			return err
 		}
-		shardIDs := c.e.pushEngine.GetLocalLeaderShards()
+		shardIDs := c.e.cluster.GetLocalShardIDs()
 		if err := c.e.pushEngine.LoadInitialStateForTable(shardIDs, initTable.ID, c.mv.Info.ID); err != nil {
 			return err
 		}
