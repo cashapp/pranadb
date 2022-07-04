@@ -76,6 +76,7 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo {
 	info := common.MaterializedViewInfo{
 		Query: row.GetString(6),
+		OriginInfo: &common.MaterializedViewOriginInfo{},
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
 	return &info
