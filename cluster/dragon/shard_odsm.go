@@ -328,8 +328,6 @@ func (s *ShardOnDiskStateMachine) PrepareSnapshot() (interface{}, error) {
 }
 
 func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, _ <-chan struct{}) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	log.Debugf("data shard %d saving snapshot", s.shardID)
 	snapshot, ok := i.(*pebble.Snapshot)
 	if !ok {
