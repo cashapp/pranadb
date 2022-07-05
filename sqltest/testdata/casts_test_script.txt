@@ -1,0 +1,234 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    col7 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+--load data dataset_1;
+
+set max_line_width 300;
+
+select * from test_source_1 order by col0;
+
+-- simple verification that we can create an MV using casted columns;
+create materialized view mv1 as select
+cast(col0 as char) as c0,
+cast(col1 as char) as c1,
+cast(col2 as char) as c2,
+cast(col3 as char) as c3,
+cast(col4 as char) as c4,
+cast(col5 as char) as c5,
+cast(col6 as char) as c6,
+cast(col7 as char) as c7,
+cast(null as char) as c8,
+cast(null as signed) as c9,
+cast(null as signed) as c10,
+cast(null as decimal(20,4)) as c11
+from test_source_1;
+
+describe mv1;
+
+select * from mv1 order by c0;
+
+drop materialized view mv1;
+drop source test_source_1;
+
+
+-- test all combinations of cast we support;
+
+--create topic testtopic2;
+create source dummy(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 varchar,
+    col7 timestamp(6),
+    col8 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7,
+        v8
+    )
+);
+
+--load data dataset_3;
+
+-- cast to char;
+
+create materialized view mv_1 as select cast(col0 as char) from dummy;
+describe mv_1;
+select * from mv_1;
+
+create materialized view mv_2 as select cast(col1 as char) from dummy;
+describe mv_2;
+select * from mv_2;
+
+create materialized view mv_3 as select cast(col2 as char) from dummy;
+describe mv_3;
+select * from mv_3;
+
+create materialized view mv_4 as select cast(col3 as char) from dummy;
+describe mv_4;
+select * from mv_4;
+
+create materialized view mv_5 as select cast(col4 as char) from dummy;
+describe mv_5;
+select * from mv_5;
+
+create materialized view mv_6 as select cast(col5 as char) from dummy;
+describe mv_6;
+select * from mv_6;
+
+create materialized view mv_7 as select cast(col6 as char) from dummy;
+describe mv_7;
+select * from mv_7;
+
+create materialized view mv_8 as select cast(col7 as char) from dummy;
+describe mv_8;
+select * from mv_8;
+
+create materialized view mv_9 as select cast(col8 as char) from dummy;
+describe mv_9;
+select * from mv_9;
+
+drop materialized view mv_9;
+drop materialized view mv_8;
+drop materialized view mv_7;
+drop materialized view mv_6;
+drop materialized view mv_5;
+drop materialized view mv_4;
+drop materialized view mv_3;
+drop materialized view mv_2;
+drop materialized view mv_1;
+
+-- cast to signed;
+
+create materialized view mv_1 as select cast(col0 as signed) from dummy;
+describe mv_1;
+select * from mv_1;
+
+create materialized view mv_2 as select cast(col1 as signed) from dummy;
+describe mv_2;
+select * from mv_2;
+
+create materialized view mv_3 as select cast(col2 as signed) from dummy;
+describe mv_3;
+select * from mv_3;
+
+create materialized view mv_4 as select cast(col3 as signed) from dummy;
+describe mv_4;
+select * from mv_4;
+
+create materialized view mv_5 as select cast(col4 as signed) from dummy;
+describe mv_5;
+select * from mv_5;
+
+create materialized view mv_6 as select cast(col5 as signed) from dummy;
+describe mv_6;
+select * from mv_6;
+
+create materialized view mv_8 as select cast(col7 as signed) from dummy;
+describe mv_8;
+select * from mv_8;
+
+create materialized view mv_9 as select cast(col8 as signed) from dummy;
+describe mv_9;
+select * from mv_9;
+
+drop materialized view mv_9;
+drop materialized view mv_8;
+drop materialized view mv_6;
+drop materialized view mv_5;
+drop materialized view mv_4;
+drop materialized view mv_3;
+drop materialized view mv_2;
+drop materialized view mv_1;
+
+-- cast to decimal;
+
+create materialized view mv_1 as select cast(col0 as decimal(20,4)) from dummy;
+describe mv_1;
+select * from mv_1;
+
+create materialized view mv_2 as select cast(col1 as decimal(20,4)) from dummy;
+describe mv_2;
+select * from mv_2;
+
+create materialized view mv_3 as select cast(col2 as decimal(20,4)) from dummy;
+describe mv_3;
+select * from mv_3;
+
+create materialized view mv_4 as select cast(col3 as decimal(20,4)) from dummy;
+describe mv_4;
+select * from mv_4;
+
+create materialized view mv_5 as select cast(col4 as decimal(20,4)) from dummy;
+describe mv_5;
+select * from mv_5;
+
+create materialized view mv_6 as select cast(col5 as decimal(20,4)) from dummy;
+describe mv_6;
+select * from mv_6;
+
+create materialized view mv_8 as select cast(col7 as decimal(20,4)) from dummy;
+describe mv_8;
+select * from mv_8;
+
+create materialized view mv_9 as select cast(col8 as decimal(20,4)) from dummy;
+describe mv_9;
+select * from mv_9;
+
+drop materialized view mv_9;
+drop materialized view mv_8;
+drop materialized view mv_6;
+drop materialized view mv_5;
+drop materialized view mv_4;
+drop materialized view mv_3;
+drop materialized view mv_2;
+drop materialized view mv_1;
+
+
+drop source dummy;
+
+--delete topic testtopic2;
+--delete topic testtopic;

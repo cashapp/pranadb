@@ -24,10 +24,16 @@ func (e *Expression) ReturnType(colTypes []ColumnType) (ColumnType, error) {
 			colIndex := op.Index
 			e.returnType = &colTypes[colIndex]
 		case *expression.Constant:
-			colType := ConvertTiDBTypeToPranaType(op.RetType)
+			colType, err := ConvertTiDBTypeToPranaType(op.RetType)
+			if err != nil {
+				return ColumnType{}, err
+			}
 			e.returnType = &colType
 		case *expression.ScalarFunction:
-			colType := ConvertTiDBTypeToPranaType(op.RetType)
+			colType, err := ConvertTiDBTypeToPranaType(op.RetType)
+			if err != nil {
+				return ColumnType{}, err
+			}
 			e.returnType = &colType
 		default:
 			return UnknownColumnType, errors.Errorf("unexpected expr type %v", op)

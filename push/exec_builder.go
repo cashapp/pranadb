@@ -87,7 +87,10 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			default:
 				return nil, nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported aggregate function %s", aggFunc.Name)
 			}
-			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
+			colType, err := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
+			if err != nil {
+				return nil, nil, err
+			}
 			af := &exec.AggregateFunctionInfo{
 				FuncType:   funcType,
 				Distinct:   aggFunc.HasDistinct,
