@@ -8,7 +8,6 @@ import (
 	"github.com/squareup/pranadb/push"
 	"io/ioutil"
 	"math/rand"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -92,11 +91,6 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 
 func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int) {
 	t.Helper()
-
-	go func() {
-		// Start a profiling server
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
 
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors:            true,

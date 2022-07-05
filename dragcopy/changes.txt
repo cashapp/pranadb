@@ -1,0 +1,3 @@
+This is dragonboat v3.3.5
+
+We changed tcp.go a little bit to remove the read timeouts because they were causing it to fail on CI under load

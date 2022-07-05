@@ -2,6 +2,8 @@ module github.com/squareup/pranadb
 
 go 1.16
 
+replace github.com/lni/dragonboat/v3 => ./dragcopy
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.5.0 // indirect
