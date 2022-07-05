@@ -1,0 +1,231 @@
+--create topic testtopic;
+use test;
+
+set max_line_width 250;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+--create topic testtopic2;
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+select * from test_source_1 order by col0;
+
+select * from test_source_2 order by col0;
+
+--load data dataset_2;
+
+select * from test_source_1 order by col0;
+
+select * from test_source_2 order by col0;
+
+drop source test_source_2;
+drop source test_source_1;
+--delete topic testtopic2;
+--delete topic testtopic;
+
+--create topic testtopic;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+--load data dataset_1;
+
+--create topic testtopic2;
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+-- test_source_2 has some of the same keys as test_source_1 - initial state should be loaded first followed by it's source state;
+--load data dataset_3;
+
+create materialized view test_mv_1 with (initialstate="test_source_1") as select * from test_source_2;
+
+select * from test_mv_1 order by col0;
+
+--load data dataset_2;
+
+select * from test_mv_1 order by col0;
+
+--create topic testtopic3;
+create source test_source_3(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+create materialized view test_mv_2 with (initialstate="test_mv_1") as select * from test_source_3;
+
+select * from test_mv_2 order by col0;
+
+--create topic testtopic4;
+create source test_source_4(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    col7 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_mv_2",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7
+    )
+);
+
+select * from test_source_4 order by col0;
+
+drop materialized view test_mv_2;
+drop materialized view test_mv_1;
+drop source test_source_4;
+drop source test_source_3;
+drop source test_source_2;
+drop source test_source_1;
+--delete topic testtopic4;
+--delete topic testtopic3;
+--delete topic testtopic2;
+--delete topic testtopic;
+
+-- error tests are in errors SQL test;

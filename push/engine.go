@@ -568,12 +568,14 @@ func (p *Engine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
 	return sched, ok
 }
 
-func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
+const initBatchSize = 3
+
+func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.TableInfo) (*source.Source, error) {
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	ingestFilter := sourceInfo.TopicInfo.IngestFilter
+	ingestFilter := sourceInfo.OriginInfo.IngestFilter
 	var ingestExpressions []*common.Expression
 	if ingestFilter != "" {
 		// To create the ingest filter we create a fake table in the meta-store with the same columns as the real source
@@ -599,8 +601,8 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 			ColumnTypes:    sourceInfo.ColumnTypes,
 		}
 		tmpSourceInfo := &common.SourceInfo{
-			TableInfo: tabInfo,
-			TopicInfo: nil,
+			TableInfo:  tabInfo,
+			OriginInfo: nil,
 		}
 		if err := p.meta.RegisterSource(tmpSourceInfo); err != nil {
 			return nil, err
@@ -658,7 +660,46 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 	}
 	p.remoteConsumers.Store(sourceInfo.TableInfo.ID, rc)
 	p.sources[sourceInfo.TableInfo.ID] = src
+
 	return src, nil
+}
+
+func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64, targetTableID uint64) error {
+	log.Debugf("loading initial state for table %d from %d", targetTableID, initTableID)
+	for _, shardID := range shardIDs {
+		scanStart := table.EncodeTableKeyPrefix(initTableID, shardID, 16)
+		scanEnd := table.EncodeTableKeyPrefix(initTableID+1, shardID, 16)
+		newKeyPrefix := table.EncodeTableKeyPrefix(targetTableID, shardID, 64)
+		skipFirst := false
+		for {
+			pairs, err := p.cluster.LocalScan(scanStart, scanEnd, initBatchSize)
+			if err != nil {
+				return err
+			}
+			log.Printf("loaded %d pairs", len(pairs))
+			wb := cluster.NewWriteBatch(shardID)
+			for i, kv := range pairs {
+				if skipFirst && i == 0 {
+					continue
+				}
+				key := make([]byte, 0, len(kv.Key))
+				key = append(key, newKeyPrefix...)
+				key = append(key, kv.Key[16:]...)
+				wb.AddPut(key, kv.Value)
+				log.Printf("inserted %v %v", key, kv.Value)
+			}
+			if err := p.cluster.WriteBatchLocally(wb); err != nil {
+				return err
+			}
+			if len(pairs) < initBatchSize {
+				break
+			}
+			scanStart = pairs[len(pairs)-1].Key
+			skipFirst = true
+		}
+	}
+	log.Debugf("loaded initial state for table %d from %d", targetTableID, initTableID)
+	return nil
 }
 
 func (p *Engine) createMaps() {

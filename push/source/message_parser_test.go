@@ -418,7 +418,7 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 	}
 	selectors, err := compileSelectors(colSelectors)
 	require.NoError(t, err)
-	topicInfo := &common.TopicInfo{
+	topicInfo := &common.SourceOriginInfo{
 		BrokerName:     "test_broker",
 		TopicName:      "test_topic",
 		HeaderEncoding: headerEncoding,
@@ -428,8 +428,8 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		Properties:     nil,
 	}
 	sourceInfo := &common.SourceInfo{
-		TableInfo: tableInfo,
-		TopicInfo: topicInfo,
+		TableInfo:  tableInfo,
+		OriginInfo: topicInfo,
 	}
 	mp, err := NewMessageParser(sourceInfo, protolib.EmptyRegistry)
 	require.NoError(t, err)

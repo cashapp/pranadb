@@ -108,7 +108,13 @@ func (c *CreateMVCommand) Before() error {
 		return errors.WithStack(err)
 	}
 	if rows.RowCount() != 0 {
-		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+		return errors.Errorf("materialized view with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+	}
+	if mv.Info.OriginInfo.InitialState != "" {
+		err := validateInitState(mv.Info.OriginInfo.InitialState, mv.Info.TableInfo, c.e.metaController)
+		if err != nil {
+			return err
+		}
 	}
 
 	return err
@@ -118,8 +124,8 @@ func (c *CreateMVCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// If receiving on prepare from broadcast on the originating node, mv will already be set
-	// this means we do not have to parse the ast twice!
+	// If phase0 on the originating node, mv will already be set
+	// this means we do not have to parse the ast twice
 	if c.mv == nil {
 		mv, err := c.createMV()
 		if err != nil {
@@ -134,6 +140,20 @@ func (c *CreateMVCommand) onPhase0() error {
 	c.toDeleteBatch, err = storeToDeleteBatch(c.mv.Info.ID, c.e.cluster)
 	if err != nil {
 		return err
+	}
+
+	// We can now load initial state from initial state table (if any)
+	var initTable *common.TableInfo
+	if c.mv.Info.OriginInfo.InitialState != "" {
+		var err error
+		initTable, err = getInitialiseFromTable(c.mv.Info.SchemaName, c.mv.Info.OriginInfo.InitialState, c.e.metaController)
+		if err != nil {
+			return err
+		}
+		shardIDs := c.e.cluster.GetLocalShardIDs()
+		if err := c.e.pushEngine.LoadInitialStateForTable(shardIDs, initTable.ID, c.mv.Info.ID); err != nil {
+			return err
+		}
 	}
 
 	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
@@ -200,7 +220,16 @@ func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*
 	querySQL := ast.Query.String()
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()
-	return push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
+	var initTable string
+	if ast.OriginInformation != nil {
+		for _, info := range ast.OriginInformation {
+			if info.InitialState != "" {
+				initTable = info.InitialState
+				break
+			}
+		}
+	}
+	return push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, initTable, tableID, seqGenerator)
 }
 
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {

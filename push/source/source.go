@@ -97,7 +97,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	globalRateLimiter IngestLimiter) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
-	ti := sourceInfo.TopicInfo
+	ti := sourceInfo.OriginInfo
 	var brokerConf conf.BrokerConfig
 	var ok bool
 	if cfg.KafkaBrokers != nil {
@@ -120,15 +120,15 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	default:
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
-	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.TopicInfo.Properties, defaultNumConsumersPerSource)
+	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.TopicInfo.Properties, defaultPollTimeoutMs)
+	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.TopicInfo.Properties, defaultMaxPollMessages)
+	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

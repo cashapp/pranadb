@@ -27,7 +27,7 @@ func setupMessageParserJSON() *MessageParser {
 	if err != nil {
 		panic(err)
 	}
-	topicInfo := &common.TopicInfo{
+	topicInfo := &common.SourceOriginInfo{
 		BrokerName:    "test_broker",
 		TopicName:     "test_topic",
 		KeyEncoding:   common.KafkaEncodingJSON,
@@ -37,8 +37,8 @@ func setupMessageParserJSON() *MessageParser {
 	}
 
 	sourceInfo := &common.SourceInfo{
-		TableInfo: tableInfo,
-		TopicInfo: topicInfo,
+		TableInfo:  tableInfo,
+		OriginInfo: topicInfo,
 	}
 	mp, err := NewMessageParser(sourceInfo, protolib.EmptyRegistry)
 	if err != nil {

@@ -43,7 +43,7 @@ type MessageParser struct {
 }
 
 func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver) (*MessageParser, error) {
-	selectors := sourceInfo.TopicInfo.ColSelectors
+	selectors := sourceInfo.OriginInfo.ColSelectors
 	selectEvals := make([]evaluable, len(selectors))
 	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
 	// don't use them
@@ -53,7 +53,7 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 
 		err error
 	)
-	topic := sourceInfo.TopicInfo
+	topic := sourceInfo.OriginInfo
 	for i, selector := range selectors {
 		selector := selector
 		selectEvals[i] = selector.Select

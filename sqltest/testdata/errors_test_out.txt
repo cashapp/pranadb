@@ -157,7 +157,7 @@ create source bar(
         meta("key").k0
     )
 );
-Failed to execute statement: PDB1000 - 2:5: unexpected token "23123" (expected TableOption ("," TableOption)* ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 2:5: unexpected token "23123" (expected TableOption ("," TableOption)* ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 create source bar(
     col0 ginormousint,
@@ -292,7 +292,7 @@ create source bar(
         meta("key").k0
     )
 );
-Failed to execute statement: PDB1000 - 2:17: unexpected token "(" (expected ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 2:17: unexpected token "(" (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 create source bar(
     col0 decimal(45),
@@ -352,7 +352,7 @@ create source bar(
         meta("key").k0
     )
 );
-Failed to execute statement: PDB1000 - 3:5: unexpected token "primary" (expected ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 3:5: unexpected token "primary" (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 create source bar(
     col0 bigint,
@@ -367,7 +367,7 @@ create source bar(
         meta("key").k0
     )
 );
-Failed to execute statement: PDB1000 - 3:23: unexpected token "," (expected ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 3:23: unexpected token "," (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 create source bar(
     col0 bigint,
@@ -447,7 +447,7 @@ create source bar(
         v1
     )
 );
-Failed to execute statement: PDB1000 - 6:5: unexpected token "broke" (expected TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 6:5: unexpected token "broke" (expected SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 create source bar(
     col0 bigint,
@@ -739,7 +739,7 @@ create source bar(
     columnselectors = (
     )
 );
-Failed to execute statement: PDB1000 - 2:1: unexpected token ")" (expected TableOption ("," TableOption)* ")" "WITH" "(" TopicInformation ("," TopicInformation)* ")")
+Failed to execute statement: PDB1000 - 2:1: unexpected token ")" (expected TableOption ("," TableOption)* ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
 
 --errors in drop source;
 
@@ -1130,4 +1130,104 @@ Failed to execute statement: PDB1011 - Statement has 0 param markers but 1 param
 drop source bar;
 0 rows returned
 
+--delete topic testtopic;
+
+-- backfill errors;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "foo",
+    columnselectors = (v0)
+);
+Failed to execute statement: PDB1005 - Unknown table or materialized view test.foo
+
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+0 rows returned
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (v0,v1,v2)
+);
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+create source test_source_3(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    col3 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate="test_source_1",
+    columnselectors = (v0,v1,v2,v3)
+);
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (bigint,int,varchar,int)
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+0 rows returned
+
+create materialized view test_mv_1 with (initialstate = "bar") as select * from test_source_2;
+Failed to execute statement: PDB1005 - Unknown table or materialized view test.bar
+
+create materialized view test_mv_1 with (initialstate = "test_source_1") as select * from test_source_2;
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+create materialized view test_mv_2 with (initialstate = "test_mv_1") as select * from test_source_2;
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_2;
+0 rows returned
+drop source test_source_1;
+0 rows returned
 --delete topic testtopic;
