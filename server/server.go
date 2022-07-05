@@ -56,7 +56,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
 		notifClient = remoting.NewClient(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
-		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteRaftReadHandler())
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessagePullQueryReadRequest, drag.GetRemotePullQueryReadHandler())
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)

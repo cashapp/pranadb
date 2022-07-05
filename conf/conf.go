@@ -58,6 +58,7 @@ type Config struct {
 	RaftRTTMs                        int
 	RaftElectionRTT                  int
 	RaftHeartbeatRTT                 int
+	ExecutePullQueriesThroughRaft    bool
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo

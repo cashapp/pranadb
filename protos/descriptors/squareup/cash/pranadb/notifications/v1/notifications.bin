@@ -1,5 +1,5 @@
 
-½
+”
 :squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -25,4 +25,7 @@ session_id (	R	sessionId"
 shard_id (RshardId!
 request_body (RrequestBody":
 ClusterReadResponse#
-response_body (RresponseBodyBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3
+response_body (RresponseBody"U
+ClusterOOBReadRequest
+shard_id (RshardId!
+request_body (RrequestBodyBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

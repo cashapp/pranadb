@@ -3,7 +3,6 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/cznic/mathutil"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
 	"math/rand"
@@ -44,8 +43,6 @@ const (
 
 	toDeleteShardID uint64 = 4
 
-	requestClientMaxPoolSize = 100
-
 	nodeHostStartTimeout = 10 * time.Second
 
 	pullQueryRetryTimeout = 10 * time.Second
@@ -55,11 +52,9 @@ func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	requestClientMaxPoolSize := mathutil.Min(requestClientMaxPoolSize, cnf.NumShards)
 	return &Dragon{
-		cnf:               cnf,
-		shardSMs:          make(map[uint64]struct{}),
-		requestClientPool: make([]remoting.Client, requestClientMaxPoolSize, requestClientMaxPoolSize),
+		cnf:      cnf,
+		shardSMs: make(map[uint64]struct{}),
 	}, nil
 }
 
@@ -81,8 +76,7 @@ type Dragon struct {
 	shardSMsLock                 sync.Mutex
 	shardSMs                     map[uint64]struct{}
 	requestClientMap             sync.Map
-	requestClientPool            []remoting.Client
-	requestClientPoolLock        sync.Mutex
+	requestClientsLock           sync.Mutex
 	healthChecker                *remoting.HealthChecker
 }
 
@@ -162,7 +156,7 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 	return d.localDataShards
 }
 
-func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (d *Dragon) ExecutePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
 	d.lock.RLock()
 	defer d.lock.RUnlock()
@@ -175,26 +169,82 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		panic("invalid shard cluster id")
 	}
 
+	if !d.cnf.ExecutePullQueriesThroughRaft {
+		return d.executePullQueryOutOfBand(queryInfo, rowsFactory)
+	}
+
+	return d.executePullQueryViaRaft(queryInfo, rowsFactory)
+}
+
+func (d *Dragon) executePullQueryOutOfBand(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+
+	// We favour executing locally if we can
+	_, ok := d.localShardsMap[queryInfo.ShardID]
+	if ok {
+		return d.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
+	}
+	requestClient, err := d.getRequestClient(queryInfo.ShardID)
+	if err != nil {
+		return nil, err
+	}
+	requestBody, err := queryInfo.Serialize(nil)
+	if err != nil {
+		return nil, err
+	}
+	request := &notifications.ClusterOOBReadRequest{
+		ShardId:     int64(queryInfo.ShardID),
+		RequestBody: requestBody,
+	}
+
 	start := time.Now()
-	var bytes []byte
+	var respBytes []byte
 	for {
-		var buff []byte
-		buff = append(buff, shardStateMachineLookupQuery)
-		queryRequest, err := queryInfo.Serialize(buff)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		bytes, err = d.executeRead(queryInfo.ShardID, queryRequest)
-
+		resp, err := requestClient.SendRequest(request, 10*time.Minute) // FIXME - check this timeout
 		if err != nil {
 			err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
 			return nil, errors.WithStack(err)
 		}
-
-		if bytes[0] == 0 {
+		clusterResp, ok := resp.(*notifications.ClusterReadResponse)
+		if !ok {
+			panic("not a notifications.ClusterReadResponse")
+		}
+		respBytes = clusterResp.ResponseBody
+		if respBytes[0] == 0 {
 			if time.Now().Sub(start) > pullQueryRetryTimeout {
-				msg := string(bytes[1:])
+				msg := string(respBytes[1:])
+				return nil, errors.Errorf("failed to execute remote query %v", msg)
+			}
+			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
+			// initialised until after the cluster is active
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	rows := rowsFactory.NewRows(100)
+	rows.Deserialize(respBytes[1:])
+	return rows, nil
+}
+
+func (d *Dragon) executePullQueryViaRaft(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+
+	buff := append([]byte(nil), shardStateMachineLookupQuery)
+	queryRequest, err := queryInfo.Serialize(buff)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	start := time.Now()
+	var respBytes []byte
+	for {
+		respBytes, err = d.executeRead(queryInfo.ShardID, queryRequest)
+		if err != nil {
+			err = errors.WithStack(errors.Errorf("failed to execute query on node %d %s %v", d.cnf.NodeID, queryInfo.Query, err))
+			return nil, errors.WithStack(err)
+		}
+		if respBytes[0] == 0 {
+			if time.Now().Sub(start) > pullQueryRetryTimeout {
+				msg := string(respBytes[1:])
 				return nil, errors.Errorf("failed to execute remote query %v", msg)
 			}
 			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
@@ -205,8 +255,8 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		}
 	}
 
-	rows := rowsFactory.NewRows(1)
-	rows.Deserialize(bytes[1:])
+	rows := rowsFactory.NewRows(100)
+	rows.Deserialize(respBytes[1:])
 	return rows, nil
 }
 
@@ -412,16 +462,18 @@ func (d *Dragon) Stop() error {
 		d.started = false
 	}
 	log.Debug("stopped pebble")
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	for i, cl := range d.requestClientPool {
-		if cl != nil {
-			if err := cl.Stop(); err != nil {
-				log.Errorf("failed to stop client %v", err)
-			}
-			d.requestClientPool[i] = nil
+	d.requestClientsLock.Lock()
+	defer d.requestClientsLock.Unlock()
+	d.requestClientMap.Range(func(_, v interface{}) bool {
+		cl, ok := v.(remoting.Client)
+		if !ok {
+			panic("not a remoting.Client")
 		}
-	}
+		if err := cl.Stop(); err != nil {
+			log.Errorf("failed to stop client %v", err)
+		}
+		return true
+	})
 	d.requestClientMap = sync.Map{} // clear the cache
 	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
 	return errors.WithStack(err)
@@ -1001,7 +1053,6 @@ func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
 	if !ok {
 		panic("can't find shard allocs")
 	}
-	// TODO sort with leader first - this could give better perf - currently we don't know the leader
 	ln := len(nids)
 	serverAddresses := make([]string, ln, ln)
 	for i, nid := range nids {
@@ -1040,9 +1091,9 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 }
 
 func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
 	return d.getOrCreateRequestClient(shardID)
 }
@@ -1050,35 +1101,30 @@ func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
 func (d *Dragon) doGetRequestClient(shardID uint64) remoting.Client {
 	c, ok := d.requestClientMap.Load(shardID)
 	if ok {
-		client, ok := c.(remoting.Client)
+		cl, ok := c.(remoting.Client)
 		if !ok {
 			panic("not a remoting.Client")
 		}
-		return client
+		return cl
 	}
 	return nil
 }
 
 func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, error) {
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	d.requestClientsLock.Lock()
+	defer d.requestClientsLock.Unlock()
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
-	index := int(shardID % uint64(len(d.requestClientPool)))
-	client = d.requestClientPool[index]
-	if client == nil {
-		serverAddresses := d.getServerAddressesForShard(shardID)
-		client = remoting.NewClient(serverAddresses...)
-		if err := client.Start(); err != nil {
-			return nil, err
-		}
-		d.healthChecker.AddAvailabilityListener(client.AvailabilityListener())
-		d.requestClientPool[index] = client
+	serverAddresses := d.getServerAddressesForShard(shardID)
+	cl = remoting.NewClient(serverAddresses...)
+	if err := cl.Start(); err != nil {
+		return nil, err
 	}
-	d.requestClientMap.Store(shardID, client)
-	return client, nil
+	d.healthChecker.AddAvailabilityListener(cl.AvailabilityListener())
+	d.requestClientMap.Store(shardID, cl)
+	return cl, nil
 }
 
 func (d *Dragon) GetRemoteProposeHandler() remoting.ClusterMessageHandler {
@@ -1097,8 +1143,12 @@ func (p *proposeHandler) HandleMessage(notification remoting.ClusterMessage) (re
 	return p.d.handleRemoteProposeRequest(req)
 }
 
-func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
-	return &readHandler{d: d}
+func (d *Dragon) GetRemoteRaftReadHandler() remoting.ClusterMessageHandler {
+	return &raftReadHandler{d: d}
+}
+
+func (d *Dragon) GetRemotePullQueryReadHandler() remoting.ClusterMessageHandler {
+	return &pullQueryReadHandler{d: d}
 }
 
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
@@ -1119,19 +1169,19 @@ func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterPropos
 	return resp, nil
 }
 
-type readHandler struct {
+type raftReadHandler struct {
 	d *Dragon
 }
 
-func (p *readHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+func (p *raftReadHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
 	req, ok := notification.(*notifications.ClusterReadRequest)
 	if !ok {
 		panic("not a *notifications.ClusterReadRequest")
 	}
-	return p.d.handleRemoteReadRequest(req)
+	return p.d.handleRemoteRaftReadRequest(req)
 }
 
-func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
+func (d *Dragon) handleRemoteRaftReadRequest(request *notifications.ClusterReadRequest) (*notifications.ClusterReadResponse, error) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	if err := d.ensureNodeHostAvailable(); err != nil {
@@ -1145,6 +1195,38 @@ func (d *Dragon) handleRemoteReadRequest(request *notifications.ClusterReadReque
 		ResponseBody: respBody,
 	}
 	return resp, nil
+}
+
+type pullQueryReadHandler struct {
+	d *Dragon
+}
+
+func (p *pullQueryReadHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := notification.(*notifications.ClusterOOBReadRequest)
+	if !ok {
+		panic("not a *notifications.ClusterOOBReadRequest")
+	}
+	return p.d.handlePullQueryRequest(req)
+}
+
+func (d *Dragon) handlePullQueryRequest(request *notifications.ClusterOOBReadRequest) (*notifications.ClusterReadResponse, error) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	if err := d.ensureNodeHostAvailable(); err != nil {
+		return nil, err
+	}
+	queryInfo := &cluster.QueryExecutionInfo{}
+	if err := queryInfo.Deserialize(request.RequestBody); err != nil {
+		return nil, err
+	}
+	rows, err := d.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
+	if err != nil {
+		return nil, err
+	}
+	respBytes := make([]byte, 0, 32*1024) // TODO optimise this
+	respBytes = append(respBytes, 1)      // Signifies ok
+	respBytes = append(respBytes, rows.Serialize()...)
+	return &notifications.ClusterReadResponse{ResponseBody: respBytes}, nil
 }
 
 // Waits until the node host is available - is called with the lock RLock held and always returns with it held

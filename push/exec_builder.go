@@ -120,25 +120,13 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 		partialTableID := seqGenerator.GenerateSequence()
 		partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
 		aggSequence++
-		partialTableInfo := &common.TableInfo{
-			ID:             partialTableID,
-			SchemaName:     schema.Name,
-			Name:           partialTableName,
-			PrimaryKeyCols: pkCols,
-			IndexInfos:     nil, // TODO
-			Internal:       true,
-		}
+		partialTableInfo := common.NewTableInfo(partialTableID, schema.Name, partialTableName, pkCols, nil, nil, nil)
+		partialTableInfo.Internal = true
 		fullTableID := seqGenerator.GenerateSequence()
 		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
 		aggSequence++
-		fullTableInfo := &common.TableInfo{
-			ID:             fullTableID,
-			SchemaName:     schema.Name,
-			Name:           fullTableName,
-			PrimaryKeyCols: pkCols,
-			IndexInfos:     nil, // TODO
-			Internal:       true,
-		}
+		fullTableInfo := common.NewTableInfo(fullTableID, schema.Name, fullTableName, pkCols, nil, nil, nil)
+		fullTableInfo.Internal = true
 		partialAggInfo := &common.InternalTableInfo{
 			TableInfo:            partialTableInfo,
 			MaterializedViewName: mvName,
