@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/push"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -143,6 +144,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			},
 		},
 	}
+	// We set the table initialisation batch size to be a small number to exercise the batching logic
+	push.SetInitBatchSize(3)
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
 		cnf := conf.NewDefaultConfig()

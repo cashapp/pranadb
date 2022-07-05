@@ -568,7 +568,20 @@ func (p *Engine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
 	return sched, ok
 }
 
-const initBatchSize = 3
+var initBatchSize = 10000
+var initBatchSizeLock = sync.RWMutex{}
+
+func getInitBatchSize() int {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	return initBatchSize
+}
+
+func SetInitBatchSize(batchSize int) {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	initBatchSize = batchSize
+}
 
 func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.TableInfo) (*source.Source, error) {
 
@@ -666,13 +679,14 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 
 func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64, targetTableID uint64) error {
 	log.Debugf("loading initial state for table %d from %d", targetTableID, initTableID)
+	batchSize := getInitBatchSize()
 	for _, shardID := range shardIDs {
 		scanStart := table.EncodeTableKeyPrefix(initTableID, shardID, 16)
 		scanEnd := table.EncodeTableKeyPrefix(initTableID+1, shardID, 16)
 		newKeyPrefix := table.EncodeTableKeyPrefix(targetTableID, shardID, 64)
 		skipFirst := false
 		for {
-			pairs, err := p.cluster.LocalScan(scanStart, scanEnd, initBatchSize)
+			pairs, err := p.cluster.LocalScan(scanStart, scanEnd, batchSize)
 			if err != nil {
 				return err
 			}
@@ -691,7 +705,7 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			if err := p.cluster.WriteBatchLocally(wb); err != nil {
 				return err
 			}
-			if len(pairs) < initBatchSize {
+			if len(pairs) < batchSize {
 				break
 			}
 			scanStart = pairs[len(pairs)-1].Key
