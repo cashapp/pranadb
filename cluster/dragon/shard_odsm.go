@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -328,7 +329,7 @@ func (s *ShardOnDiskStateMachine) PrepareSnapshot() (interface{}, error) {
 }
 
 func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, _ <-chan struct{}) error {
-	log.Debugf("data shard %d saving snapshot", s.shardID)
+	log.Debugf("data shard %d saving snapshot on node id %d", s.shardID, s.dragon.cnf.NodeID)
 	snapshot, ok := i.(*pebble.Snapshot)
 	if !ok {
 		panic("not a snapshot")
@@ -336,15 +337,24 @@ func (s *ShardOnDiskStateMachine) SaveSnapshot(i interface{}, writer io.Writer, 
 	prefix := make([]byte, 0, 8)
 	prefix = common.AppendUint64ToBufferBE(prefix, s.shardID)
 	log.Debugf("Saving data snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, s.shardID, prefix)
-	err := saveSnapshotDataToWriter(snapshot, prefix, writer, s.shardID)
-	log.Debugf("data shard %d save snapshot done", s.shardID)
-	return err
+	err := saveSnapshotDataToWriter(s.dragon.pebble, snapshot, prefix, writer, s.shardID)
+	atomic.AddInt64(&s.dragon.saveSnapshotCount, 1)
+	if err != nil {
+		// According to the docs for IOnDiskStateMachine we should return ErrSnapshotStreaming
+		if errors.Is(err, statemachine.ErrSnapshotStreaming) {
+			return err
+		}
+		log.Errorf("failure in streaming snapshot %+v", err)
+		return statemachine.ErrSnapshotStreaming
+	}
+	log.Debugf("data shard %d save snapshot done on node id %d", s.shardID, s.dragon.cnf.NodeID)
+	return nil
 }
 
 func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan struct{}) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	log.Debugf("data shard %d recover from snapshot", s.shardID)
+	log.Debugf("data shard %d recover from snapshot on node %d", s.shardID, s.dragon.cnf.NodeID)
 	s.dedupSequences = make(map[string]uint64)
 	startPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID)
 	endPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), s.shardID+1)
@@ -357,7 +367,8 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 		return err
 	}
 	s.maybeTriggerRemoteWriteOccurred()
-	log.Debugf("data shard %d recover from snapshot done", s.shardID)
+	log.Debugf("data shard %d recover from snapshot done on node %d", s.shardID, s.dragon.cnf.NodeID)
+	atomic.AddInt64(&s.dragon.restoreSnapshotCount, 1)
 	return nil
 }
 

@@ -41,7 +41,7 @@ func TestSaveRestoreSnapshot(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	snapshotPrefix := table.EncodeTableKeyPrefix(tableID, shardIDs[1], 20)
-	require.NoError(t, saveSnapshotDataToWriter(srcDB.NewSnapshot(), snapshotPrefix, buf, shardIDToSnapshot))
+	require.NoError(t, saveSnapshotDataToWriter(srcDB, srcDB.NewSnapshot(), snapshotPrefix, buf, shardIDToSnapshot))
 
 	startPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), shardIDToSnapshot)
 	endPrefix := common.AppendUint64ToBufferBE(make([]byte, 0, 8), shardIDToSnapshot+1)
