@@ -33,10 +33,3 @@ jobs:
         run: make -C protos lint
       - name: Test
         run: go test -race -count=1 -timeout 1h -failfast -p 1 -tags integration ./...
-      - name: Bump version and push tag
-        id: bump_version
-        uses: anothrNick/github-tag-action@1.39.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: true
-          DEFAULT_BUMP: patch
