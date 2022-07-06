@@ -1,6 +1,7 @@
 package dragon
 
 import (
+	"bufio"
 	"io"
 	"io/ioutil"
 	"math"
@@ -18,11 +19,21 @@ import (
 var syncWriteOptions = &pebble.WriteOptions{Sync: true}
 var nosyncWriteOptions = &pebble.WriteOptions{Sync: false}
 
-func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer io.Writer, shardID uint64) error {
+const (
+	saveSnapshotBufferSize    = 32 * 1024
+	restoreSnapshotBufferSize = 32 * 1024
+)
+
+func saveSnapshotDataToWriter(peb *pebble.DB, snapshot *pebble.Snapshot, prefix []byte, writer io.Writer, shardID uint64) error {
 	var w writeCloseSyncer
 	w, ok := writer.(writeCloseSyncer)
 	if !ok {
-		w = &nopWriteCloseSyncer{writer}
+		// We use our own buffered writer so we can increase buffer size and also sync
+		bufWriter := bufio.NewWriterSize(writer, saveSnapshotBufferSize)
+		w = &snapshotWriteCloseSyncer{
+			peb:       peb,
+			bufWriter: bufWriter,
+		}
 	}
 	tbl := sstable.NewWriter(w, sstable.WriterOptions{})
 	upper := common.IncrementBytesBigEndian(prefix)
@@ -53,6 +64,9 @@ func saveSnapshotDataToWriter(snapshot *pebble.Snapshot, prefix []byte, writer i
 			return errors.WithStack(err)
 		}
 	}
+	if err := iter.Close(); err != nil {
+		return errors.WithStack(err)
+	}
 	if err := tbl.Close(); err != nil {
 		return errors.WithStack(err)
 	}
@@ -79,7 +93,8 @@ func restoreSnapshotDataFromReader(peb *pebble.DB, startPrefix []byte, endPrefix
 	}()
 
 	log.Info("Copying reader to temp file")
-	if _, err := io.Copy(f, reader); err != nil {
+	bufReader := bufio.NewReaderSize(reader, restoreSnapshotBufferSize)
+	if _, err := io.Copy(f, bufReader); err != nil {
 		return errors.WithStack(err)
 	}
 	if err := f.Sync(); err != nil {
@@ -149,12 +164,34 @@ type writeCloseSyncer interface {
 	Sync() error
 }
 
-type nopWriteCloseSyncer struct{ io.Writer }
+type snapshotWriteCloseSyncer struct {
+	peb        *pebble.DB
+	bufWriter  *bufio.Writer
+	needsFlush bool
+}
 
-func (w *nopWriteCloseSyncer) Close() error {
+func (w *snapshotWriteCloseSyncer) Write(p []byte) (n int, err error) {
+	n, err = w.bufWriter.Write(p)
+	if err == nil {
+		w.needsFlush = true
+	}
+	return
+}
+
+func (w *snapshotWriteCloseSyncer) Close() error {
+	if w.needsFlush {
+		w.needsFlush = false
+		return w.bufWriter.Flush()
+	}
 	return nil
 }
 
-func (w *nopWriteCloseSyncer) Sync() error {
-	return nil
+func (w *snapshotWriteCloseSyncer) Sync() error {
+	if w.needsFlush {
+		if err := w.bufWriter.Flush(); err != nil {
+			return err
+		}
+		w.needsFlush = false
+	}
+	return syncPebble(w.peb)
 }
