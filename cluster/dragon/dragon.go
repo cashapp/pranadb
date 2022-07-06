@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lni/dragonboat/v3/logger"
@@ -84,6 +85,8 @@ type Dragon struct {
 	requestClientPool            []remoting.Client
 	requestClientPoolLock        sync.Mutex
 	healthChecker                *remoting.HealthChecker
+	saveSnapshotCount            int64
+	restoreSnapshotCount         int64
 }
 
 type snapshot struct {
@@ -1166,4 +1169,12 @@ func (d *Dragon) ensureNodeHostAvailable() error {
 		d.lock.RUnlock()
 	}
 	return nil
+}
+
+func (d *Dragon) SaveSnapshotCount() int64 {
+	return atomic.LoadInt64(&d.saveSnapshotCount)
+}
+
+func (d *Dragon) RestoreSnapshotCount() int64 {
+	return atomic.LoadInt64(&d.restoreSnapshotCount)
 }
