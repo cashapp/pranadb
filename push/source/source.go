@@ -243,7 +243,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 		return
 		//panic("Got consumer error but souce is not started")
 	}
-	log.Errorf("Failure in consumer, source will be stopped: %+v. ", err)
+	log.Errorf("Failure in consumer, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
 	if err2 := s.stop(); err2 != nil {
 		return
 	}
