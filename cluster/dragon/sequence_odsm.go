@@ -92,7 +92,7 @@ func (s *sequenceODStateMachine) SaveSnapshot(i interface{}, writer io.Writer, i
 	}
 	prefix := table.EncodeTableKeyPrefix(common.SequenceGeneratorTableID, tableSequenceClusterID, 16)
 	log.Printf("Saving sequence snapshot on node id %d for shard id %d prefix is %v", s.dragon.cnf.NodeID, tableSequenceClusterID, prefix)
-	err := saveSnapshotDataToWriter(snapshot, prefix, writer, tableSequenceClusterID)
+	err := saveSnapshotDataToWriter(s.dragon.pebble, snapshot, prefix, writer, tableSequenceClusterID)
 	log.Info("sequence shard save snapshot done")
 	return err
 }
