@@ -1056,7 +1056,9 @@ func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
 	ln := len(nids)
 	serverAddresses := make([]string, ln, ln)
 	for i, nid := range nids {
-		serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		if nid != d.cnf.NodeID { // We don't call ourselves
+			serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		}
 	}
 	return serverAddresses
 }
