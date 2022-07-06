@@ -34,23 +34,15 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	tableInfo := common.TableInfo{
-		ID:             tableID,
-		SchemaName:     schema.Name,
-		Name:           mvName,
-		PrimaryKeyCols: dag.KeyCols(),
-		ColumnNames:    dag.ColNames(),
-		ColumnTypes:    dag.ColTypes(),
-		ColsVisible:    dag.ColsVisible(),
-		IndexInfos:     nil,
-	}
+	tableInfo := common.NewTableInfo(tableID, schema.Name, mvName, dag.KeyCols(), dag.ColNames(), dag.ColTypes(), nil)
+	tableInfo.ColsVisible = dag.ColsVisible()
 	mvInfo := common.MaterializedViewInfo{
 		Query:      query,
-		TableInfo:  &tableInfo,
+		TableInfo:  tableInfo,
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)
+	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil

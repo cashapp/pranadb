@@ -80,7 +80,7 @@ func (c *clusterGetter) GetRows(limit int) (resultChan chan cluster.RemoteQueryR
 		var rows *common.Rows
 		var err error
 		c.queryExecInfo.Limit = uint32(limit)
-		rows, err = c.re.cluster.ExecuteRemotePullQuery(c.queryExecInfo, c.re.rowsFactory)
+		rows, err = c.re.cluster.ExecutePullQuery(c.queryExecInfo, c.re.rowsFactory)
 		if err == nil {
 			c.complete.Store(rows.RowCount() < limit)
 		}
@@ -109,7 +109,7 @@ func (re *RemoteExecutor) GetRows(limit int) (rows *common.Rows, err error) {
 		// It's a single point get so we only talk to one shard - we optimise this special case by calling directly
 		// and not running on different goroutines
 		re.singlePointGetQueryInfo.Limit = uint32(limit)
-		return re.cluster.ExecuteRemotePullQuery(re.singlePointGetQueryInfo, re.rowsFactory)
+		return re.cluster.ExecutePullQuery(re.singlePointGetQueryInfo, re.rowsFactory)
 	}
 
 	numGetters := len(re.clusterGetters)

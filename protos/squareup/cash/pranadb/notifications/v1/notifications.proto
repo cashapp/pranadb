@@ -39,3 +39,8 @@ message ClusterReadRequest {
 message ClusterReadResponse {
   bytes response_body = 1;
 }
+
+message ClusterOOBReadRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}

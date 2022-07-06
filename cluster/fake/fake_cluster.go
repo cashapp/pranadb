@@ -117,7 +117,7 @@ func (f *FakeCluster) Dump() string {
 	return builder.String()
 }
 
-func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (f *FakeCluster) ExecutePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 

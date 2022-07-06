@@ -254,7 +254,7 @@ func (t *testCluster) GenerateClusterSequence(sequenceName string) (uint64, erro
 	panic("should not be called")
 }
 
-func (t *testCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (t *testCluster) ExecutePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	rows := t.rowsByShard[queryInfo.ShardID]

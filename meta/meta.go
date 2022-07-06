@@ -22,13 +22,13 @@ const (
 )
 
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
-var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.SchemaTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           TableDefTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
-	ColumnTypes: []common.ColumnType{
+var TableDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.SchemaTableID,
+	SystemSchemaName,
+	TableDefTableName,
+	[]int{0},
+	[]string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
+	[]common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
@@ -38,35 +38,35 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 	},
-}}
+	nil)}
 
-var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.IndexTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           IndexDefTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "schema_name", "name", "index_info", "table_name"},
-	ColumnTypes: []common.ColumnType{
+var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.IndexTableID,
+	SystemSchemaName,
+	IndexDefTableName,
+	[]int{0},
+	[]string{"id", "schema_name", "name", "index_info", "table_name"},
+	[]common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 	},
-}}
+	nil)}
 
 // ProtobufTableInfo is a static definition of the table schema for the table schema table.
-var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.ProtobufTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           ProtobufTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"path", "fd"},
-	ColumnTypes: []common.ColumnType{
+var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.ProtobufTableID,
+	SystemSchemaName,
+	ProtobufTableName,
+	[]int{0},
+	[]string{"path", "fd"},
+	[]common.ColumnType{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 	},
-}}
+	nil)}
 
 type Controller struct {
 	lock     sync.RWMutex

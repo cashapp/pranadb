@@ -333,17 +333,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		Properties:     propsMap,
 		InitialState:   initialiseFrom,
 	}
-	tableInfo := common.TableInfo{
-		ID:             c.tableSequences[0],
-		SchemaName:     c.schemaName,
-		Name:           ast.Name,
-		PrimaryKeyCols: pkCols,
-		ColumnNames:    colNames,
-		ColumnTypes:    colTypes,
-		IndexInfos:     nil,
-	}
+	tableInfo := common.NewTableInfo(c.tableSequences[0], c.schemaName, ast.Name, pkCols, colNames, colTypes, nil)
 	return &common.SourceInfo{
-		TableInfo:  &tableInfo,
+		TableInfo:  tableInfo,
 		OriginInfo: originInfo,
 	}, nil
 }

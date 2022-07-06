@@ -50,7 +50,7 @@ type Cluster interface {
 
 	RegisterShardListenerFactory(factory ShardListenerFactory)
 
-	ExecuteRemotePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
+	ExecutePullQuery(queryInfo *QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error)
 
 	DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error
 
