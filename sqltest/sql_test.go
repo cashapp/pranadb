@@ -13,10 +13,19 @@ func TestSQLFakeCluster(t *testing.T) {
 	testSQL(t, true, 1, 0)
 }
 
-func TestSQLClusteredThreeNodes(t *testing.T) {
+func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3)
+
+	log.Info("Running TestSQLClusteredFiveNodes")
+	testSQL(t, false, 5, 3)
 }
+
+//func TestSQLClusteredThreeNodes(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredThreeNodes")
+//	testSQL(t, false, 3, 3)
+//}
