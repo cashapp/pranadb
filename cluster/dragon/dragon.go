@@ -3,7 +3,6 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/cznic/mathutil"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
 	"math/rand"
@@ -45,8 +44,6 @@ const (
 
 	toDeleteShardID uint64 = 4
 
-	requestClientMaxPoolSize = 100
-
 	nodeHostStartTimeout = 10 * time.Second
 
 	pullQueryRetryTimeout = 10 * time.Second
@@ -56,11 +53,9 @@ func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	requestClientMaxPoolSize := mathutil.Min(requestClientMaxPoolSize, cnf.NumShards)
 	return &Dragon{
-		cnf:               cnf,
-		shardSMs:          make(map[uint64]struct{}),
-		requestClientPool: make([]remoting.Client, requestClientMaxPoolSize, requestClientMaxPoolSize),
+		cnf:      cnf,
+		shardSMs: make(map[uint64]struct{}),
 	}, nil
 }
 
@@ -82,8 +77,7 @@ type Dragon struct {
 	shardSMsLock                 sync.Mutex
 	shardSMs                     map[uint64]struct{}
 	requestClientMap             sync.Map
-	requestClientPool            []remoting.Client
-	requestClientPoolLock        sync.Mutex
+	requestClientsLock           sync.Mutex
 	healthChecker                *remoting.HealthChecker
 	saveSnapshotCount            int64
 	restoreSnapshotCount         int64
@@ -414,18 +408,16 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
-	log.Debug("stopped pebble")
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	for i, cl := range d.requestClientPool {
-		if cl != nil {
-			if err := cl.Stop(); err != nil {
-				log.Errorf("failed to stop client %v", err)
-			}
-			d.requestClientPool[i] = nil
+	d.requestClientMap.Range(func(key, value interface{}) bool {
+		cl, ok := value.(remoting.Client)
+		if !ok {
+			panic("not a remoting.Client")
 		}
-	}
-	d.requestClientMap = sync.Map{} // clear the cache
+		if err := cl.Stop(); err != nil {
+			log.Warnf("failed to stop client %v", err)
+		}
+		return true
+	})
 	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
 	return errors.WithStack(err)
 }
@@ -1004,11 +996,12 @@ func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
 	if !ok {
 		panic("can't find shard allocs")
 	}
-	// TODO sort with leader first - this could give better perf - currently we don't know the leader
 	ln := len(nids)
 	serverAddresses := make([]string, ln, ln)
 	for i, nid := range nids {
-		serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		if nid != d.cnf.NodeID {
+			serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		}
 	}
 	return serverAddresses
 }
@@ -1043,9 +1036,9 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 }
 
 func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
 	return d.getOrCreateRequestClient(shardID)
 }
@@ -1053,35 +1046,30 @@ func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
 func (d *Dragon) doGetRequestClient(shardID uint64) remoting.Client {
 	c, ok := d.requestClientMap.Load(shardID)
 	if ok {
-		client, ok := c.(remoting.Client)
+		cl, ok := c.(remoting.Client)
 		if !ok {
 			panic("not a remoting.Client")
 		}
-		return client
+		return cl
 	}
 	return nil
 }
 
 func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, error) {
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	d.requestClientsLock.Lock()
+	defer d.requestClientsLock.Unlock()
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
-	index := int(shardID % uint64(len(d.requestClientPool)))
-	client = d.requestClientPool[index]
-	if client == nil {
-		serverAddresses := d.getServerAddressesForShard(shardID)
-		client = remoting.NewClient(serverAddresses...)
-		if err := client.Start(); err != nil {
-			return nil, err
-		}
-		d.healthChecker.AddAvailabilityListener(client.AvailabilityListener())
-		d.requestClientPool[index] = client
+	serverAddresses := d.getServerAddressesForShard(shardID)
+	cl = remoting.NewClient(serverAddresses...)
+	if err := cl.Start(); err != nil {
+		return nil, err
 	}
-	d.requestClientMap.Store(shardID, client)
-	return client, nil
+	d.healthChecker.AddAvailabilityListener(cl.AvailabilityListener())
+	d.requestClientMap.Store(shardID, cl)
+	return cl, nil
 }
 
 func (d *Dragon) GetRemoteProposeHandler() remoting.ClusterMessageHandler {
