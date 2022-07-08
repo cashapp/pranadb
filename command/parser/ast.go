@@ -179,5 +179,6 @@ type AST struct {
 	Drop     *Drop   ` | "DROP" @@ `
 	Create   *Create ` | "CREATE" @@ `
 	Show     *Show   ` | "SHOW" @@ `
-	Describe string  ` | "DESCRIBE" @Ident ) ";"?`
+	Describe string  ` | "DESCRIBE" @Ident `
+	ResetDdl string  ` | "RESET" "DDL" @Ident ) ';'?`
 }

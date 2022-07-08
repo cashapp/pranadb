@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
@@ -200,7 +201,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 	return nil
 }
 
-func (m *MaterializedView) Fill() error {
+func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
 	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
 	if err != nil {
 		return errors.WithStack(err)
@@ -221,7 +222,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject)
+			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
 			ch <- err
 		}()
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
@@ -23,6 +24,7 @@ type CreateMVCommand struct {
 	mv             *push.MaterializedView
 	ast            *parser.CreateMaterializedView
 	toDeleteBatch  *cluster.ToDeleteBatch
+	interruptor    interruptor.Interruptor
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -41,8 +43,8 @@ func (c *CreateMVCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateMVCommand) LockName() string {
-	return c.schema.Name + "/"
+func (c *CreateMVCommand) Cancel() {
+	c.interruptor.Interrupt()
 }
 
 func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string,
@@ -151,7 +153,7 @@ func (c *CreateMVCommand) onPhase0() error {
 			return err
 		}
 		shardIDs := c.e.cluster.GetLocalShardIDs()
-		if err := c.e.pushEngine.LoadInitialStateForTable(shardIDs, initTable.ID, c.mv.Info.ID); err != nil {
+		if err := c.e.pushEngine.LoadInitialStateForTable(shardIDs, initTable.ID, c.mv.Info.ID, &c.interruptor); err != nil {
 			return err
 		}
 	}
@@ -167,7 +169,7 @@ func (c *CreateMVCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Fill the MV from it's feeding sources and MVs
-	return c.mv.Fill()
+	return c.mv.Fill(&c.interruptor)
 }
 
 func (c *CreateMVCommand) onPhase2() error {
@@ -213,6 +215,18 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 		return c.e.metaController.PersistMaterializedView(c.mv.Info, c.mv.InternalTables)
 	}
 	return nil
+}
+
+func (c *CreateMVCommand) Cleanup() {
+	if c.mv == nil {
+		return
+	}
+	if err := c.mv.Disconnect(); err != nil {
+		// Ignore
+	}
+	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
+		// Ignore
+	}
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {

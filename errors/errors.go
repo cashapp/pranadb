@@ -22,6 +22,8 @@ const (
 	SourceHasChildren
 	MaterializedViewHasChildren
 	InvalidParamCount
+	Timeout
+	DdlCancelled
 )
 
 // Ingest errors

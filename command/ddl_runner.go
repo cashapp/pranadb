@@ -1,11 +1,11 @@
 package command
 
 import (
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
@@ -13,9 +13,24 @@ import (
 )
 
 const (
-	schemaLockAttemptTimeout = 30 * time.Second
-	schemaLockRetryDelay     = 1 * time.Second
+	defaultSchemaLockAttemptTimeout = 30 * time.Second
+	schemaLockRetryDelay            = 1 * time.Second
 )
+
+var schemaLockAttemptTimeout = defaultSchemaLockAttemptTimeout
+var schemaLockAttemptTimeoutLock = sync.Mutex{}
+
+func getSchemaLockAttemptTimeout() time.Duration {
+	schemaLockAttemptTimeoutLock.Lock()
+	defer schemaLockAttemptTimeoutLock.Unlock()
+	return schemaLockAttemptTimeout
+}
+
+func SetSchemaLockAttemptTimeout(timeout time.Duration) {
+	schemaLockAttemptTimeoutLock.Lock()
+	defer schemaLockAttemptTimeoutLock.Unlock()
+	schemaLockAttemptTimeout = timeout
+}
 
 type DDLCommand interface {
 	CommandType() DDLCommandType
@@ -35,10 +50,15 @@ type DDLCommand interface {
 	// AfterPhase is called on the originating node once successful responses from the specified phase have been returned
 	AfterPhase(phase int32) error
 
-	LockName() string
-
 	// NumPhases returns the number of phases in the command
 	NumPhases() int
+
+	// Cancel cancels the command
+	Cancel()
+
+	// Cleanup will be called if an error occurs during execution of the command, it should perform any clean up logic
+	// to leave the system in a clean state
+	Cleanup()
 }
 
 type DDLCommandType int
@@ -54,9 +74,8 @@ const (
 
 func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	return &DDLCommandRunner{
-		ce:       ce,
-		commands: make(map[string]DDLCommand),
-		idSeq:    -1,
+		ce:    ce,
+		idSeq: -1,
 	}
 }
 
@@ -80,9 +99,8 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 }
 
 type DDLCommandRunner struct {
-	lock     sync.Mutex
 	ce       *Executor
-	commands map[string]DDLCommand
+	commands sync.Map
 	idSeq    int64
 }
 
@@ -93,16 +111,95 @@ func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint6
 	return string(key)
 }
 
-func (d *DDLCommandRunner) HandleNotification(notification remoting.ClusterMessage) error {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+type ddlHandler struct {
+	runner *DDLCommandRunner
+}
 
+func (d *ddlHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, d.runner.HandleDdlMessage(notification)
+}
+
+type cancelHandler struct {
+	runner *DDLCommandRunner
+}
+
+func (a *cancelHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, a.runner.HandleCancelMessage(notification)
+}
+
+func (d *DDLCommandRunner) DdlHandler() remoting.ClusterMessageHandler {
+	return &ddlHandler{runner: d}
+}
+
+func (d *DDLCommandRunner) CancelHandler() remoting.ClusterMessageHandler {
+	return &cancelHandler{runner: d}
+}
+
+func (d *DDLCommandRunner) HandleCancelMessage(notification remoting.ClusterMessage) error {
+	cancelMsg, ok := notification.(*notifications.DDLCancelMessage)
+	if !ok {
+		panic("not a cancel msg")
+	}
+	return d.cancelCommandsForSchema(cancelMsg.SchemaName)
+}
+
+func (d *DDLCommandRunner) cancelCommandsForSchema(schemaName string) error {
+	d.commands.Range(func(key, value interface{}) bool {
+		command, ok := value.(DDLCommand)
+		if !ok {
+			panic("not a ddl command")
+		}
+		if command.SchemaName() == schemaName {
+			d.commands.Delete(key)
+			command.Cancel()
+			command.Cleanup()
+		}
+		return true
+	})
+	return nil
+}
+
+// Cancel stops any running DDL and broadcasts all nodes to do the same
+func (d *DDLCommandRunner) Cancel(schemaName string) error {
+
+	lockName := getLockName(schemaName)
+
+	// Get the lock if it isn't already held
+	_, err := d.ce.cluster.GetLock(lockName)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	defer func() {
+		_, err := d.ce.cluster.ReleaseLock(getLockName(schemaName))
+		if err != nil {
+			log.Errorf("failed to release ddl lock %+v", err)
+		}
+	}()
+
+	// Broadcast cancel to other nodes
+	// We need to use a different client as broadcast on a remoting client currently only supports one broadcast at
+	// a time, and one could be in progress
+	return d.broadcastCancel(schemaName)
+}
+
+func getLockName(schemaName string) string {
+	return schemaName + "/"
+}
+
+func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage) error {
 	ddlInfo, ok := notification.(*notifications.DDLStatementInfo)
 	if !ok {
 		panic("not a ddl statement info")
 	}
 	skey := d.generateCommandKey(uint64(ddlInfo.GetOriginatingNodeId()), uint64(ddlInfo.GetCommandId()))
-	com, ok := d.commands[skey]
+	c, ok := d.commands.Load(skey)
+	var com DDLCommand
+	if ok {
+		com, ok = c.(DDLCommand)
+		if !ok {
+			panic("not a ddl command")
+		}
+	}
 	phase := ddlInfo.GetPhase()
 	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
 	if phase == 0 {
@@ -111,31 +208,29 @@ func (d *DDLCommandRunner) HandleNotification(notification remoting.ClusterMessa
 				return errors.Errorf("cannot find command with id %d:%d on originating node", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 			}
 			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(), ddlInfo.GetTableSequences())
-			d.commands[skey] = com
+			d.commands.Store(skey, com)
 		}
 	} else if !ok {
-		return errors.Errorf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+		// This can happen if notification comes in after commands are cancelled
+		log.Warnf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+		return nil
 	}
 	err := com.OnPhase(phase)
-	if phase == int32(com.NumPhases()-1) || err != nil {
+	if phase == int32(com.NumPhases()-1) {
 		// Final phase so delete the command
-		delete(d.commands, skey)
+		d.commands.Delete(skey)
 	}
 	return err
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
-	lockName := command.LockName()
+	lockName := getLockName(command.SchemaName())
+	if err := d.getLock(lockName); err != nil {
+		return errors.WithStack(err)
+	}
 	id := atomic.AddInt64(&d.idSeq, 1)
 	commandKey := d.generateCommandKey(uint64(d.ce.cluster.GetNodeID()), uint64(id))
-	d.lock.Lock()
-	d.commands[commandKey] = command
-	d.lock.Unlock()
-	defer func() {
-		d.lock.Lock()
-		delete(d.commands, commandKey)
-		d.lock.Unlock()
-	}()
+	d.commands.Store(commandKey, command)
 	ddlInfo := &notifications.DDLStatementInfo{
 		OriginatingNodeId: int64(d.ce.cluster.GetNodeID()), // TODO do we need this?
 		CommandId:         id,
@@ -144,38 +239,42 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		Sql:               command.SQL(),
 		TableSequences:    command.TableSequences(),
 	}
-	if err := d.getLock(lockName); err != nil {
-		return errors.WithStack(err)
-	}
 	err := d.RunWithLock(command, ddlInfo)
 	// We release the lock even if we got an error
-	d.releaseLock(lockName)
-	return errors.WithStack(err)
-}
-
-func (d *DDLCommandRunner) releaseLock(lockName string) {
-	ok, err := d.ce.cluster.ReleaseLock(lockName)
+	if _, err2 := d.ce.cluster.ReleaseLock(getLockName(command.SchemaName())); err2 != nil {
+		log.Errorf("failed to release lock %+v", err2)
+	}
 	if err != nil {
-		log.Errorf("error in releasing DDL lock %+v", err)
+		return errors.WithStack(err)
 	}
-	if !ok {
-		log.Errorf("failed to release ddl lock %s", lockName)
-	}
+	return nil
 }
 
 func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
 	if err := command.Before(); err != nil {
+		if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
+			// Ignore
+		}
 		return errors.WithStack(err)
 	}
 	for phase := 0; phase < command.NumPhases(); phase++ {
-		if err := d.broadcastDDL(int32(phase), ddlInfo); err != nil {
-			return errors.WithStack(err)
+		err := d.broadcastDDL(int32(phase), ddlInfo)
+		if err == nil {
+			err = command.AfterPhase(int32(phase))
 		}
-		if err := command.AfterPhase(int32(phase)); err != nil {
+		if err != nil {
+			// Broadcast a cancel to clean up command state across the cluster
+			if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
+				// Ignore
+			}
 			return errors.WithStack(err)
 		}
 	}
 	return nil
+}
+
+func (d *DDLCommandRunner) broadcastCancel(schemaName string) error {
+	return d.ce.ddlResetClient.BroadcastSync(&notifications.DDLCancelMessage{SchemaName: schemaName})
 }
 
 func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLStatementInfo) error {
@@ -185,6 +284,7 @@ func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLS
 }
 
 func (d *DDLCommandRunner) getLock(lockName string) error {
+	timeout := getSchemaLockAttemptTimeout()
 	start := time.Now()
 	for {
 		ok, err := d.ce.cluster.GetLock(lockName)
@@ -194,21 +294,19 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 		if ok {
 			return nil
 		}
-		if time.Now().Sub(start) > schemaLockAttemptTimeout {
-			return errors.Errorf("timed out waiting to get ddl schema lock for schema %s", lockName)
+		if time.Now().Sub(start) > timeout {
+			return errors.NewPranaErrorf(errors.Timeout,
+				"Timed out waiting to execute DDL on schema: %s. Is there another DDL operation running?", lockName[:len(lockName)-1])
 		}
 		time.Sleep(schemaLockRetryDelay)
 	}
 }
 
-func (d *DDLCommandRunner) runningCommands() int {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	return len(d.commands)
-}
-
-func (d *DDLCommandRunner) clear() {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	d.commands = make(map[string]DDLCommand)
+func (d *DDLCommandRunner) empty() bool {
+	count := 0
+	d.commands.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count == 0
 }

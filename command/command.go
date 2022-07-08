@@ -28,42 +28,49 @@ type Executor struct {
 	metaController    *meta.Controller
 	pushEngine        *push.Engine
 	pullEngine        *pull.Engine
-	notifClient       remoting.Client
 	protoRegistry     protolib.Resolver
 	execCtxIDSequence int64
 	ddlRunner         *DDLCommandRunner
 	failureInjector   failinject.Injector
+	notifClient       remoting.Client
+	ddlResetClient    remoting.Client
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
-	cluster cluster.Cluster, notifClient remoting.Client, protoRegistry protolib.Resolver,
+	cluster cluster.Cluster, notifClient remoting.Client, ddlResetClient remoting.Client, protoRegistry protolib.Resolver,
 	failureInjector failinject.Injector) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
 		pullEngine:        pullEngine,
-		notifClient:       notifClient,
 		protoRegistry:     protoRegistry,
 		execCtxIDSequence: -1,
 		failureInjector:   failureInjector,
+		notifClient:       notifClient,
+		ddlResetClient:    ddlResetClient,
 	}
 	commandRunner := NewDDLCommandRunner(ex)
 	ex.ddlRunner = commandRunner
 	return ex
 }
 
-func (e *Executor) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	return nil, e.ddlRunner.HandleNotification(notification)
+func (e *Executor) DDlCommandRunner() *DDLCommandRunner {
+	return e.ddlRunner
 }
 
 func (e *Executor) Start() error {
-	return e.notifClient.Start()
+	if err := e.notifClient.Start(); err != nil {
+		return err
+	}
+	return e.ddlResetClient.Start()
 }
 
 func (e *Executor) Stop() error {
-	e.ddlRunner.clear()
-	return e.notifClient.Stop()
+	if err := e.notifClient.Stop(); err != nil {
+		return err
+	}
+	return e.ddlResetClient.Stop()
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
@@ -161,6 +168,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
+	case ast.ResetDdl != "":
+		if err := e.DDlCommandRunner().Cancel(ast.ResetDdl); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
@@ -312,8 +324,8 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 	return describeRows(tableInfo)
 }
 
-func (e *Executor) RunningCommands() int {
-	return e.ddlRunner.runningCommands()
+func (e *Executor) Empty() bool {
+	return e.ddlRunner.empty()
 }
 
 func (e *Executor) FailureInjector() failinject.Injector {

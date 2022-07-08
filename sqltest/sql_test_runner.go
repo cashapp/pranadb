@@ -5,6 +5,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/interruptor"
+	pranalog "github.com/squareup/pranadb/log"
 	"github.com/squareup/pranadb/push"
 	"io/ioutil"
 	"math/rand"
@@ -103,6 +106,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 		DisableQuote:           true,
 		FullTimestamp:          true,
 		DisableLevelTruncation: true,
+		TimestampFormat:        pranalog.TimestampFormat,
 	})
 
 	// Make sure we don't run tests in parallel
@@ -202,6 +206,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 
 	// We override MaxVarCharLength in tests so we can test ingesting varchar fields that are too big
 	source.MaxVarCharOverride = 1000
+
+	interruptor.ActivateTestInterruptManager()
 
 	w.startCluster()
 }
@@ -447,6 +453,16 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			}
 		} else if strings.HasPrefix(command, "--pause") {
 			st.executePause(require, command)
+		} else if strings.HasPrefix(command, "--get ddl lock") {
+			st.executeGetDdlLock(require)
+		} else if strings.HasPrefix(command, "--set ddl lock timeout") {
+			st.executeSetDdlLockTimeout(require, command)
+		} else if strings.HasPrefix(command, "--activate interrupt") {
+			st.executeActivateInterrupt(command)
+		} else if strings.HasPrefix(command, "--deactivate interrupt") {
+			st.executeDeactivateInterrupt(command)
+		} else if strings.HasPrefix(command, "--async reset ddl") {
+			st.executeAsyncResetDdl(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -544,7 +560,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		require.Equal(0, indexRows.RowCount(), "Rows in sys.indexes at end of test run")
 
-		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
+		require.True(prana.GetCommandExecutor().Empty(), "DDL state left at end of test run")
 	}
 
 	if *updateFlag {
@@ -989,6 +1005,53 @@ func (st *sqlTest) executePause(require *require.Assertions, command string) {
 	log.Debugf("Pausing for %d ms", pauseTime)
 	time.Sleep(time.Duration(pauseTime) * time.Millisecond)
 	require.NoError(err)
+}
+
+func (st *sqlTest) executeGetDdlLock(require *require.Assertions) {
+	//choose a random Prana
+	prana := st.choosePrana()
+	ok, err := prana.GetCluster().GetLock(st.currentSchema + "/")
+	require.NoError(err)
+	st.output.WriteString(fmt.Sprintf("Get lock returned: %t", ok))
+}
+
+func (st *sqlTest) executeSetDdlLockTimeout(require *require.Assertions, com string) {
+	timeout, err := strconv.ParseInt(com[23:], 10, 64)
+	require.NoError(err)
+	command.SetSchemaLockAttemptTimeout(time.Duration(timeout) * time.Second)
+}
+
+func (st *sqlTest) executeActivateInterrupt(com string) {
+	parts := strings.Split(com, " ")
+	interruptName := parts[2]
+	st.interruptManager().ActivateDelay(interruptName)
+}
+
+func (st *sqlTest) executeDeactivateInterrupt(com string) {
+	parts := strings.Split(com, " ")
+	interruptName := parts[2]
+	st.interruptManager().DeactivateDelay(interruptName)
+}
+
+func (st *sqlTest) interruptManager() *interruptor.DelayingInterruptManager {
+	i, ok := interruptor.GetInterruptManager().(*interruptor.DelayingInterruptManager)
+	if !ok {
+		panic("not a *interruptor.DelayingInterruptManager")
+	}
+	return i
+}
+
+func (st *sqlTest) executeAsyncResetDdl(require *require.Assertions, com string) {
+	parts := strings.Split(com, " ")
+	schemaName := parts[3]
+	go func() {
+		// Execute the reset ddl command asynchronously after a short delay
+		time.Sleep(1 * time.Second)
+		resChan, err := st.cli.ExecuteStatement(fmt.Sprintf("reset ddl %s", schemaName), nil)
+		require.NoError(err)
+		for range resChan {
+		}
+	}()
 }
 
 func (st *sqlTest) executePreparedStatement(require *require.Assertions, command string) {
