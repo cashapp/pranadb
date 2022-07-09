@@ -218,6 +218,9 @@ func (c *CreateSourceCommand) Cleanup() {
 	if _, err := c.e.pushEngine.RemoveSource(c.sourceInfo); err != nil {
 		// Ignore
 	}
+	if err := c.e.metaController.DeleteSource(c.sourceInfo.ID); err != nil {
+		// Ignore
+	}
 }
 
 // nolint: gocyclo
