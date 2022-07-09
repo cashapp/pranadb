@@ -40,12 +40,14 @@ func NewServer(config conf.Config) (*Server, error) {
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
 	var notifClient remoting.Client
+	var ddlResetClient remoting.Client
 	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
 		fakeNotifier := remoting.NewFakeServer()
 		notifClient = fakeNotifier
 		remotingServer = fakeNotifier
+		ddlResetClient = fakeNotifier
 	} else {
 		var err error
 		drag, err := dragon.NewDragon(config)
@@ -55,6 +57,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
 		notifClient = remoting.NewClient(config.NotifListenAddresses...)
+		ddlResetClient = remoting.NewClient(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
@@ -73,9 +76,10 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient,
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, ddlResetClient,
 		protoRegistry, failureInjector)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)

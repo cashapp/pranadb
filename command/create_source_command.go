@@ -2,6 +2,8 @@ package command
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/interruptor"
 	"strings"
 	"sync"
 
@@ -24,6 +26,7 @@ type CreateSourceCommand struct {
 	ast            *parser.CreateSource
 	sourceInfo     *common.SourceInfo
 	source         *source.Source
+	interruptor    interruptor.Interruptor
 }
 
 func (c *CreateSourceCommand) CommandType() DDLCommandType {
@@ -42,8 +45,8 @@ func (c *CreateSourceCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateSourceCommand) LockName() string {
-	return c.schemaName + "/"
+func (c *CreateSourceCommand) Cancel() {
+	c.interruptor.Interrupt()
 }
 
 func NewOriginatingCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64, ast *parser.CreateSource) *CreateSourceCommand {
@@ -173,7 +176,8 @@ func (c *CreateSourceCommand) onPhase0() error {
 		return errors.WithStack(err)
 	}
 	if initTable != nil {
-		if err := c.e.pushEngine.LoadInitialStateForTable(c.e.cluster.GetLocalShardIDs(), initTable.ID, c.sourceInfo.ID); err != nil {
+		if err := c.e.pushEngine.LoadInitialStateForTable(c.e.cluster.GetLocalShardIDs(), initTable.ID,
+			c.sourceInfo.ID, &c.interruptor); err != nil {
 			return err
 		}
 	}
@@ -204,6 +208,19 @@ func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 		return c.e.metaController.PersistSource(c.sourceInfo)
 	}
 	return nil
+}
+
+func (c *CreateSourceCommand) Cleanup() {
+	if c.sourceInfo == nil {
+		return
+	}
+	log.Printf("Calling remove source for source %s with id %d", c.sourceInfo.Name, c.sourceInfo.ID)
+	if _, err := c.e.pushEngine.RemoveSource(c.sourceInfo); err != nil {
+		// Ignore
+	}
+	if err := c.e.metaController.DeleteSource(c.sourceInfo.ID); err != nil {
+		// Ignore
+	}
 }
 
 // nolint: gocyclo

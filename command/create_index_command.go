@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/interruptor"
 	"strings"
 	"sync"
 
@@ -21,6 +22,7 @@ type CreateIndexCommand struct {
 	indexInfo      *common.IndexInfo
 	ast            *parser.CreateIndex
 	toDeleteBatch  *cluster.ToDeleteBatch
+	interruptor    interruptor.Interruptor
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -39,8 +41,8 @@ func (c *CreateIndexCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateIndexCommand) LockName() string {
-	return c.schema.Name + "/"
+func (c *CreateIndexCommand) Cancel() {
+	c.interruptor.Interrupt()
 }
 
 func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string,
@@ -118,7 +120,7 @@ func (c *CreateIndexCommand) onPhase0() error {
 	}
 
 	// We create the index but we don't register it yet
-	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
+	return c.e.pushEngine.CreateIndex(c.indexInfo, true, &c.interruptor)
 }
 
 func (c *CreateIndexCommand) onPhase1() error {
@@ -138,9 +140,20 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	if phase == 0 {
 		// We persist the index after it's been filled but *before* it's been registered - otherwise in case of
 		// failure the index can disappear after it has been used
-		return c.e.metaController.PersistIndex(c.indexInfo)
+		if err := c.e.metaController.PersistIndex(c.indexInfo); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (c *CreateIndexCommand) Cleanup() {
+	if c.indexInfo == nil {
+		return
+	}
+	if err := c.e.pushEngine.UnattachIndex(c.indexInfo); err != nil {
+		// Ignore
+	}
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {

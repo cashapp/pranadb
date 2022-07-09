@@ -5,6 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/tidb/planner"
@@ -223,7 +224,7 @@ func (p *Engine) RegisterMV(mv *MaterializedView) error {
 	return nil
 }
 
-func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
+func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor *interruptor.Interruptor) error {
 
 	schedulers, err := p.GetLocalLeaderSchedulers()
 	if err != nil {
@@ -240,8 +241,9 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
+		log.Println("Filling index")
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject, interruptor); err != nil {
 			return err
 		}
 	} else {
@@ -251,13 +253,20 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool) error {
 	return nil
 }
 
-func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo) error {
+func (p *Engine) UnattachIndex(indexInfo *common.IndexInfo) error {
 	te, err := p.getTableExecutorForIndex(indexInfo)
 	if err != nil {
 		return err
 	}
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	te.RemoveConsumingNode(consumerName)
+	return nil
+}
+
+func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo) error {
+	if err := p.UnattachIndex(indexInfo); err != nil {
+		return err
+	}
 
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
@@ -677,15 +686,20 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 	return src, nil
 }
 
-func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64, targetTableID uint64) error {
+func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64, targetTableID uint64,
+	inter *interruptor.Interruptor) error {
 	log.Debugf("loading initial state for table %d from %d", targetTableID, initTableID)
 	batchSize := getInitBatchSize()
+	delayer := interruptor.GetInterruptManager()
 	for _, shardID := range shardIDs {
 		scanStart := table.EncodeTableKeyPrefix(initTableID, shardID, 16)
 		scanEnd := table.EncodeTableKeyPrefix(initTableID+1, shardID, 16)
 		newKeyPrefix := table.EncodeTableKeyPrefix(targetTableID, shardID, 64)
 		skipFirst := false
 		for {
+			if delayer.MaybeInterrupt("initial_state", inter) {
+				return errors.NewPranaErrorf(errors.DdlCancelled, "Loading initial state for table cancelled")
+			}
 			pairs, err := p.cluster.LocalScan(scanStart, scanEnd, batchSize)
 			if err != nil {
 				return err

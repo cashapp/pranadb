@@ -1,19 +1,17 @@
 package remoting
 
 import (
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
 
 func NewFakeServer() *FakeServer {
-	return &FakeServer{
-		messageHandlers: make(map[ClusterMessageType]ClusterMessageHandler),
-	}
+	return &FakeServer{}
 }
 
 type FakeServer struct {
-	lock            sync.Mutex
-	messageHandlers map[ClusterMessageType]ClusterMessageHandler
+	messageHandlers sync.Map
 }
 
 func (f *FakeServer) AvailabilityListener() AvailabilityListener {
@@ -29,24 +27,29 @@ func (f *FakeServer) Stop() error {
 }
 
 func (f *FakeServer) RegisterMessageHandler(notificationType ClusterMessageType, listener ClusterMessageHandler) {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	f.messageHandlers[notificationType] = listener
+	f.messageHandlers.Store(notificationType, listener)
 }
 
 func (f *FakeServer) BroadcastOneway(notif ClusterMessage) error {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	listener, ok := f.messageHandlers[TypeForClusterMessage(notif)]
-	if !ok {
-		panic("no notification listener")
-	}
-	_, err := listener.HandleMessage(notif)
-	return err
+	go func() {
+		if err := f.BroadcastSync(notif); err != nil {
+			log.Errorf("failed to handle notification %+v", err)
+		}
+	}()
+	return nil
 }
 
 func (f *FakeServer) BroadcastSync(notif ClusterMessage) error {
-	return f.BroadcastOneway(notif)
+	l, ok := f.messageHandlers.Load(TypeForClusterMessage(notif))
+	if !ok {
+		panic("no notification listener")
+	}
+	listener, ok := l.(ClusterMessageHandler)
+	if !ok {
+		panic("not a ClusterMessageHandler")
+	}
+	_, err := listener.HandleMessage(notif)
+	return err
 }
 
 func (f *FakeServer) ConnectionCount() int {

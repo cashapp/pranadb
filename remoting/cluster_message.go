@@ -14,6 +14,7 @@ type ClusterMessageType int32
 const (
 	ClusterMessageTypeUnknown ClusterMessageType = iota + 1
 	ClusterMessageDDLStatement
+	ClusterMessageDDLCancel
 	ClusterMessageReloadProtobuf
 	ClusterMessageClusterProposeRequest
 	ClusterMessageClusterReadRequest
@@ -26,6 +27,8 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 	switch notification.(type) {
 	case *notifications.DDLStatementInfo:
 		return ClusterMessageDDLStatement
+	case *notifications.DDLCancelMessage:
+		return ClusterMessageDDLCancel
 	case *notifications.ReloadProtobuf:
 		return ClusterMessageReloadProtobuf
 	case *notifications.ClusterProposeRequest:
@@ -71,6 +74,8 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.ClusterReadResponse{}
 	case ClusterMessageDDLStatement:
 		msg = &notifications.DDLStatementInfo{}
+	case ClusterMessageDDLCancel:
+		msg = &notifications.DDLCancelMessage{}
 	case ClusterMessageReloadProtobuf:
 		msg = &notifications.ReloadProtobuf{}
 	case ClusterMessageNotificationTestMessage:

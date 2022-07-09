@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/failinject"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/table"
@@ -28,6 +29,7 @@ type TableExecutor struct {
 	lastSequences      sync.Map
 	fillTableID        uint64
 	uncommittedBatches sync.Map
+	delayer            interruptor.InterruptManager
 }
 
 func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
@@ -42,6 +44,7 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *Table
 		TableInfo:      tableInfo,
 		store:          store,
 		consumingNodes: make(map[string]PushExecutor),
+		delayer:        interruptor.GetInterruptManager(),
 	}
 }
 
@@ -227,7 +230,7 @@ func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint
 // are in sync then the operation completes
 //nolint:gocyclo
 func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID uint64,
-	schedulers map[uint64]*sched.ShardScheduler, failInject failinject.Injector) error {
+	schedulers map[uint64]*sched.ShardScheduler, failInject failinject.Injector, interruptor *interruptor.Interruptor) error {
 
 	log.Debug("Starting table executor fill")
 
@@ -258,7 +261,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	t.fillTableID = fillTableID
 
 	// start the fill - this takes a snapshot and fills from there
-	ch, err := t.startReplayFromSnapshot(pe, schedulers)
+	ch, err := t.startReplayFromSnapshot(pe, schedulers, interruptor)
 	if err != nil {
 		t.lock.Unlock()
 		return errors.WithStack(err)
@@ -283,6 +286,10 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	startSeqs := make(map[uint64]int64)
 	lockAndLoad := false
 	for !lockAndLoad {
+
+		if t.delayer.MaybeInterrupt("mv_replay", interruptor) {
+			return errors.NewPranaErrorf(errors.DdlCancelled, "Loading initial state cancelled")
+		}
 
 		// Lock again and get the latest fill sequence
 		t.lock.Lock()
@@ -378,7 +385,8 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	return nil
 }
 
-func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler) (chan error, error) {
+func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
+	interruptor *interruptor.Interruptor) (chan error, error) {
 	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
@@ -386,7 +394,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := t.performReplayFromSnapshot(snapshot, pe, schedulers)
+		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, interruptor)
 		snapshot.Close()
 		ch <- err
 		log.Trace("Replay from snapshot complete")
@@ -395,7 +403,8 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	return ch, nil
 }
 
-func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler) error {
+func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
+	interruptor *interruptor.Interruptor) error {
 	numRows := 0
 	chans := make([]chan error, 0, len(schedulers))
 
@@ -412,6 +421,10 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 			startPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID, theShardID, 16)
 			endPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID+1, theShardID, 16)
 			for {
+				if t.delayer.MaybeInterrupt("fill_snapshot", interruptor) {
+					ch <- errors.NewPranaErrorf(errors.DdlCancelled, "Loading initial state cancelled")
+					return
+				}
 				kvp, err := t.store.LocalScanWithSnapshot(snapshot, startPrefix, endPrefix, fillMaxBatchSize)
 				if err != nil {
 					ch <- err
@@ -435,16 +448,24 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 			}
 		}()
 	}
+	var err error
 	for _, ch := range chans {
-		err, ok := <-ch
+		var ok bool
+		err, ok = <-ch
 		if !ok {
 			return errors.Error("channel was closed")
 		}
 		if err != nil {
-			return errors.WithStack(err)
+			perr, ok := err.(errors.PranaError)
+			if !ok || perr.Code != errors.DdlCancelled {
+				// Return immediately
+				return errors.WithStack(err)
+			}
+			// Otherwise we wait for all goroutines to cancel before returning
+			log.Println("Waiting for all snapshot fill goroutines to complete")
 		}
 	}
-	return nil
+	return errors.WithStack(err)
 }
 
 func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair) error {
