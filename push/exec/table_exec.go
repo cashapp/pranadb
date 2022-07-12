@@ -481,7 +481,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	if err := pe.HandleRows(NewCurrentRowsBatch(rows), ctx); err != nil {
 		return errors.WithStack(err)
 	}
-	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
+	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store, nil); err != nil {
 		return err
 	}
 	return t.store.WriteBatch(wb)

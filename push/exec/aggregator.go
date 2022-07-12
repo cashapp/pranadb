@@ -103,7 +103,10 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			// The state holder id is generated using a sequence deterministically for each batch processed
 			// We create the sequence value for the dedup key by combining both into a uint64
 			// The main thing here is that the same dup key is generated if the same batch is processed again
-			dupSeq := uint64(ctx.BatchSequence)<<32 | uint64(i)
+
+			seq := 0
+			// FIXME
+			dupSeq := uint64(seq)<<32 | uint64(i)
 
 			forwardKey := util.EncodeKeyForForwardAggregation(ctx.EnableDuplicateDetection, a.PartialAggTableInfo.ID,
 				ctx.WriteBatch.ShardID, dupSeq, a.FullAggTableInfo.ID)

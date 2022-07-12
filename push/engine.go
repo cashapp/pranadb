@@ -7,7 +7,9 @@ import (
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/push/util"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
 	"go.uber.org/ratelimit"
 	"math/rand"
@@ -36,25 +38,28 @@ import (
 )
 
 type Engine struct {
-	lock                      sync.RWMutex
-	localShardsLock           sync.RWMutex
-	started                   bool
-	schedulers                map[uint64]*sched.ShardScheduler
-	sources                   map[uint64]*source.Source
-	materializedViews         map[uint64]*MaterializedView
-	remoteConsumers           sync.Map
-	localLeaderShards         []uint64
-	cluster                   cluster.Cluster
-	sharder                   *sharder.Sharder
-	meta                      *meta.Controller
-	rnd                       *rand.Rand
-	cfg                       *conf.Config
-	queryExec                 common.SimpleQueryExec
-	protoRegistry             protolib.Resolver
-	readyToReceive            common.AtomicBool
+	lock              sync.RWMutex
+	localShardsLock   sync.RWMutex
+	started           bool
+	schedulers        map[uint64]*sched.ShardScheduler
+	sources           map[uint64]*source.Source
+	materializedViews map[uint64]*MaterializedView
+	remoteConsumers   sync.Map
+	localLeaderShards []uint64
+	cluster           cluster.Cluster
+	sharder           *sharder.Sharder
+	meta              *meta.Controller
+	rnd               *rand.Rand
+	cfg               *conf.Config
+	queryExec         common.SimpleQueryExec
+	protoRegistry     protolib.Resolver
+	//readyToReceive            common.AtomicBool
 	processBatchTimeHistogram metrics.Observer
 	globalRateLimiter         ratelimit.Limiter
 	failInject                failinject.Injector
+	lagsBroadcastClient       remoting.Client
+	lagsTimer                 *time.Timer
+	shardLags                 sync.Map
 }
 
 var (
@@ -92,6 +97,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 	} else {
 		rl = nil
 	}
+	lagsBroadcastClient := remoting.NewClient(cfg.NotifListenAddresses...)
 	engine := Engine{
 		cluster:                   cluster,
 		sharder:                   sharder,
@@ -103,6 +109,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
 		globalRateLimiter:         rl,
 		failInject:                failInject,
+		lagsBroadcastClient:       lagsBroadcastClient,
 	}
 	engine.createMaps()
 	return &engine
@@ -114,15 +121,32 @@ func (p *Engine) Start() error {
 	if p.started {
 		return nil
 	}
-
+	p.cluster.AddHealthcheckListener(p.lagsBroadcastClient.AvailabilityListener())
+	if err := p.lagsBroadcastClient.Start(); err != nil {
+		return err
+	}
+	p.broadcastLagsNoLock()
 	p.started = true
 	return nil
 }
 
 // Ready signals that the push engine is now ready to receive any incoming data
 func (p *Engine) Ready() error {
-	p.readyToReceive.Set(true)
-	return p.checkForPendingData()
+
+	p.localShardsLock.Lock()
+	defer p.localShardsLock.Unlock()
+
+	// We must first process any rows in the receiver table which might have remained after a previous crash
+	if err := p.checkForPendingData(); err != nil {
+		return err
+	}
+
+	// Now we can activate the schedulers
+	for _, shardID := range p.localLeaderShards {
+		shard := p.schedulers[shardID]
+		shard.Start()
+	}
+	return nil
 }
 
 func (p *Engine) Stop() error {
@@ -131,7 +155,13 @@ func (p *Engine) Stop() error {
 	if !p.started {
 		return nil
 	}
-	p.readyToReceive.Set(false)
+	if p.lagsTimer != nil {
+		p.lagsTimer.Stop()
+	}
+	if err := p.lagsBroadcastClient.Stop(); err != nil {
+		return err
+	}
+	//p.readyToReceive.Set(false)
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
 			return errors.WithStack(err)
@@ -268,7 +298,7 @@ func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo) error {
 		return err
 	}
 
-	// Delete the table data
+	// Delete the table dataf
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID+1)
 	return p.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
@@ -299,12 +329,12 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 }
 
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
+	log.Printf("creating new scheduler for shard %d", shardID)
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
 	defer p.localShardsLock.Unlock()
-	sh := sched.NewShardScheduler(shardID)
-	sh.Start()
+	sh := sched.NewShardScheduler(shardID, p)
 	p.schedulers[shardID] = sh
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
 	return &shardListener{
@@ -314,27 +344,35 @@ func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	}
 }
 
-func (s *shardListener) RemoteWriteOccurred() {
-	if !s.p.readyToReceive.Get() {
-		return
+func (s *shardListener) RemoteWriteOccurred(forwardRows []cluster.ForwardRow) {
+	//if !s.p.readyToReceive.Get() {
+	//	return
+	//}
+	s.sched.AddRows(forwardRows)
+}
+
+func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow) error {
+	rawRows := make(map[uint64][][]byte)
+
+	receiveBatch := &receiveBatch{
+		writeBatch: cluster.NewWriteBatch(shardID),
 	}
-	s.scheduleHandleRemoteBatch()
-}
 
-func (s *shardListener) scheduleHandleRemoteBatch() {
-	s.p.MaybeHandleRemoteBatch(s.sched)
-}
-
-func (p *Engine) MaybeHandleRemoteBatch(scheduler *sched.ShardScheduler) {
-	scheduler.ScheduleActionFireAndForget(func() error {
-		start := time.Now()
-		if err := p.HandleReceivedRows(scheduler.ShardID()); err != nil {
-			return errors.WithStack(err)
+	nr := len(rowsBatch)
+	for _, row := range rowsBatch {
+		consumerRows, ok := rawRows[row.RemoteConsumerID]
+		if !ok {
+			consumerRows = make([][]byte, 0, nr)
 		}
-		durNanos := time.Now().Sub(start).Nanoseconds()
-		p.processBatchTimeHistogram.Observe(float64(durNanos))
-		return nil
-	})
+		consumerRows = append(consumerRows, row.RowBytes)
+		rawRows[row.RemoteConsumerID] = consumerRows
+		// TODO we can delete range instead of deleting one by one
+		receiveBatch.writeBatch.AddDelete(row.KeyBytes)
+	}
+
+	receiveBatch.rawRows = rawRows
+
+	return p.processReceiveBatch(receiveBatch)
 }
 
 func (s *shardListener) Close() {
@@ -360,62 +398,43 @@ func (p *Engine) removeScheduler(shardID uint64) {
 }
 
 type receiveBatch struct {
-	batchSequence uint32
-	writeBatch    *cluster.WriteBatch
-	rawRows       map[uint64][][]byte
+	writeBatch *cluster.WriteBatch
+	rawRows    map[uint64][][]byte
 }
 
-// HandleReceivedRows - load batches of rows from the Receiver table and process them
-func (p *Engine) HandleReceivedRows(receivingShardID uint64) error {
+func (p *Engine) loadPendingReceivedRows(receivingShardID uint64) error {
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
 
+	// Format of key is:
+	// shard_id|receiver_table_id|receiver_sequence|remote_consumer_id|
 	kvPairs, err := p.cluster.LocalScan(keyStartPrefix, keyEndPrefix, -1)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	var receiveBatches []*receiveBatch
-	var currBatch *receiveBatch
-	var prevBatchSequence uint32
+	batch := &receiveBatch{
+		writeBatch: cluster.NewWriteBatch(receivingShardID),
+		rawRows:    make(map[uint64][][]byte),
+	}
 
-	// Format of key is:
-	// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id|
-
-	// We iterate through the pairs and create a receiveBatch for each value of batchSequence
 	for _, kvPair := range kvPairs {
-		batchSequence, _ := common.ReadUint32FromBufferBE(kvPair.Key, 16)
-		if currBatch == nil || batchSequence != prevBatchSequence {
-			currBatch = &receiveBatch{
-				batchSequence: batchSequence,
-				writeBatch:    cluster.NewWriteBatch(receivingShardID),
-				rawRows:       make(map[uint64][][]byte),
-			}
-			receiveBatches = append(receiveBatches, currBatch)
-			prevBatchSequence = batchSequence
-		}
-
-		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 28)
-		rows, ok := currBatch.rawRows[remoteConsumerID]
-		if !ok {
-			rows = make([][]byte, 0)
-		}
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 24)
+		rows := batch.rawRows[remoteConsumerID]
 		rows = append(rows, kvPair.Value)
-		currBatch.rawRows[remoteConsumerID] = rows
-		currBatch.writeBatch.AddDelete(kvPair.Key)
+		batch.rawRows[remoteConsumerID] = rows
+		batch.writeBatch.AddDelete(kvPair.Key)
 	}
 
-	for _, receiveBatch := range receiveBatches {
-		if err := p.processReceiveBatch(receiveBatch); err != nil {
-			return errors.WithStack(err)
-		}
+	if err := p.processReceiveBatch(batch); err != nil {
+		return err
 	}
+	log.Printf("shard %d processed %d pending rows", receivingShardID, len(kvPairs))
 	return nil
 }
 
 func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	ctx := exec.NewExecutionContext(batch.writeBatch, true)
-	ctx.BatchSequence = batch.batchSequence
 	for entityID, rawRows := range batch.rawRows {
 		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
@@ -469,7 +488,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 		}
 	}
 	// Now send any remote forward batches - e.g. from aggregations
-	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster); err != nil {
+	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster, nil); err != nil {
 		return errors.WithStack(err)
 	}
 	// Maybe inject an error after we have forwarded remote batches but before we have committed local batch
@@ -483,25 +502,36 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 }
 
 func (p *Engine) checkForPendingData() error {
-	log.Debug("Checking for data in receiver table")
 	// If the node failed previously or received messages it was unable to handle as it was starting up then
 	// there could be rows in the receiver table
 	// we check and process these, if there are any
-	for _, scheduler := range p.schedulers {
-		p.MaybeHandleRemoteBatch(scheduler)
+	chans := make([]chan error, len(p.localLeaderShards))
+	for i, shardID := range p.localLeaderShards {
+		ch := make(chan error)
+		chans[i] = ch
+		theShardID := shardID
+		go func() {
+			ch <- p.loadPendingReceivedRows(theShardID)
+		}()
 	}
-	return nil
+	var err error
+	for _, ch := range chans {
+		err = <-ch
+	}
+	return err
 }
 
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *Engine) WaitForProcessingToComplete() error {
 
+	log.Println("waiting for schedulers")
 	err := p.WaitForSchedulers()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	// Wait for no rows in the receiver table
+	log.Println("waiting for no rows in receiver")
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
 		return errors.WithStack(err)
@@ -519,10 +549,7 @@ func (p *Engine) WaitForSchedulers() error {
 	for _, sched := range p.schedulers {
 		ch := make(chan struct{}, 1)
 		chans = append(chans, ch)
-		sched.ScheduleAction(func() error {
-			ch <- struct{}{}
-			return nil
-		})
+		sched.WaitForProcessingToComplete(ch)
 	}
 	for _, ch := range chans {
 		_, ok := <-ch
@@ -538,11 +565,28 @@ func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, errors.WithStack(err)
-	}, 30*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 	if !ok {
+		log.Printf("Rows in table %d", tableID)
+		p.dumpRowsInTable(tableID, shardIDs)
 		return errors.Error("timed out waiting for condition")
 	}
 	return errors.WithStack(err)
+}
+
+func (p *Engine) dumpRowsInTable(tableID uint64, localShards []uint64) {
+	for _, shardID := range localShards {
+		startPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
+		endPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
+		kvPairs, err := p.cluster.LocalScan(startPrefix, endPrefix, 1)
+		if err != nil {
+			panic(err)
+		}
+		for _, pair := range kvPairs {
+			sid, _ := common.ReadUint64FromBufferBE(pair.Key, 0)
+			log.Printf("shardid%d key:%v value:%v", sid, pair.Key, pair.Value)
+		}
+	}
 }
 
 func (p *Engine) ExistRowsInLocalTable(tableID uint64, localShards []uint64) (bool, error) {
@@ -668,6 +712,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		p.queryExec,
 		p.protoRegistry,
 		p,
+		p,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -704,7 +749,6 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			if err != nil {
 				return err
 			}
-			log.Printf("loaded %d pairs", len(pairs))
 			wb := cluster.NewWriteBatch(shardID)
 			for i, kv := range pairs {
 				if skipFirst && i == 0 {
@@ -714,7 +758,6 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 				key = append(key, newKeyPrefix...)
 				key = append(key, kv.Key[16:]...)
 				wb.AddPut(key, kv.Value)
-				log.Printf("inserted %v %v", key, kv.Value)
 			}
 			if err := p.cluster.WriteBatchLocally(wb); err != nil {
 				return err
@@ -766,4 +809,70 @@ func (p *Engine) Limit() {
 	if p.globalRateLimiter != nil {
 		p.globalRateLimiter.Take()
 	}
+}
+
+func (p *Engine) getLagsMessage() *notifications.LagsMessage {
+	p.localShardsLock.Lock()
+	defer p.localShardsLock.Unlock()
+
+	lags := make([]*notifications.LagEntry, len(p.localLeaderShards))
+	now := time.Now()
+	for i, shardID := range p.localLeaderShards {
+		sh := p.schedulers[shardID]
+		lag := sh.GetLag(now)
+		lagEntry := &notifications.LagEntry{
+			ShardId: int64(shardID),
+			Lag:     int64(lag),
+		}
+		lags[i] = lagEntry
+	}
+	return &notifications.LagsMessage{Lags: lags}
+}
+
+func (p *Engine) broadcastLags() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if !p.started {
+		return
+	}
+	p.broadcastLagsNoLock()
+}
+
+func (p *Engine) broadcastLagsNoLock() {
+	p.lagsTimer = time.AfterFunc(1*time.Second, func() {
+		msg := p.getLagsMessage()
+		if err := p.lagsBroadcastClient.BroadcastOneway(msg); err != nil {
+			log.Errorf("failed to broadcast lags %+v", err)
+		} else {
+			p.broadcastLags()
+		}
+	})
+}
+
+func (p *Engine) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	lags, ok := notification.(*notifications.LagsMessage)
+	if !ok {
+		panic("not a LagsMessage")
+	}
+	for _, lagEntry := range lags.Lags {
+		shardID := uint64(lagEntry.ShardId)
+		lag := time.Duration(lagEntry.Lag)
+		//if lag > 2 * time.Second {
+		//	log.Warnf("shard %d is lagging by %d ms", shardID, lag.Milliseconds())
+		//}
+		p.shardLags.Store(shardID, lag)
+	}
+	return nil, nil
+}
+
+func (p *Engine) GetLag(shardID uint64) time.Duration {
+	l, ok := p.shardLags.Load(shardID)
+	if !ok {
+		return time.Duration(0)
+	}
+	lag, ok := l.(time.Duration)
+	if !ok {
+		panic("not a time.Duration")
+	}
+	return lag
 }

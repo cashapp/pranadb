@@ -1166,3 +1166,7 @@ func (d *Dragon) SaveSnapshotCount() int64 {
 func (d *Dragon) RestoreSnapshotCount() int64 {
 	return atomic.LoadInt64(&d.restoreSnapshotCount)
 }
+
+func (d *Dragon) AddHealthcheckListener(listener remoting.AvailabilityListener) {
+	d.healthChecker.AddAvailabilityListener(listener)
+}
