@@ -81,12 +81,6 @@ func (s *ShardScheduler) GetLagNoLock(now time.Time) time.Duration {
 	return time.Duration(0)
 }
 
-func (s *ShardScheduler) SetFailed() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	s.failed = true
-}
-
 func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -106,6 +100,10 @@ func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 func (s *ShardScheduler) WaitForProcessingToComplete(ch chan struct{}) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.failed {
+		ch <- struct{}{}
+		return
+	}
 	lastQueued := s.lastQueuedReceiverSeq
 	go func() {
 		start := time.Now()
@@ -158,6 +156,7 @@ func (s *ShardScheduler) runLoop() {
 		}
 		if err := s.batchHandler.HandleBatch(s.shardID, rows); err != nil {
 			log.Errorf("failed to process batch: %+v", err)
+			s.failed = true
 			return
 		}
 		atomic.StoreUint64(&s.lastProcessedReceiverSeq, rows[len(rows)-1].ReceiverSequence)
