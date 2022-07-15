@@ -46,7 +46,7 @@ import (
 
 const (
 	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
-	ExcludedTestPrefixes = "redelivery_prana_restart,aggregation_forward_failure"
+	ExcludedTestPrefixes = ""
 	TestClusterID        = 12345678
 	ProtoDescriptorDir   = "../protos"
 )

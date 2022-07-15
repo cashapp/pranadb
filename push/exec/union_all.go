@@ -81,7 +81,7 @@ func (u *UnionAll) HandleRowsWithIndex(index int, rowsBatch RowsBatch, ctx *Exec
 			ci = rc
 			rc++
 		}
-		entries[i] = NewRowsEntry(pi, ci)
+		entries[i] = NewRowsEntry(pi, ci, rowsBatch.ReceiverIndex(i))
 	}
 
 	return u.parent.HandleRows(NewRowsBatch(out, entries), ctx)

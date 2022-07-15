@@ -351,8 +351,13 @@ func (s *shardListener) RemoteWriteOccurred(forwardRows []cluster.ForwardRow) {
 	s.sched.AddRows(forwardRows)
 }
 
+type RawRow struct {
+	ReceiverSequence uint64
+	Row              []byte
+}
+
 func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow) error {
-	rawRows := make(map[uint64][][]byte)
+	rawRows := make(map[uint64][]RawRow)
 
 	receiveBatch := &receiveBatch{
 		writeBatch: cluster.NewWriteBatch(shardID),
@@ -362,9 +367,12 @@ func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow) err
 	for _, row := range rowsBatch {
 		consumerRows, ok := rawRows[row.RemoteConsumerID]
 		if !ok {
-			consumerRows = make([][]byte, 0, nr)
+			consumerRows = make([]RawRow, 0, nr)
 		}
-		consumerRows = append(consumerRows, row.RowBytes)
+		consumerRows = append(consumerRows, RawRow{
+			ReceiverSequence: row.ReceiverSequence,
+			Row:              row.RowBytes,
+		})
 		rawRows[row.RemoteConsumerID] = consumerRows
 		// TODO we can delete range instead of deleting one by one
 		receiveBatch.writeBatch.AddDelete(row.KeyBytes)
@@ -399,7 +407,7 @@ func (p *Engine) removeScheduler(shardID uint64) {
 
 type receiveBatch struct {
 	writeBatch *cluster.WriteBatch
-	rawRows    map[uint64][][]byte
+	rawRows    map[uint64][]RawRow
 }
 
 func (p *Engine) loadPendingReceivedRows(receivingShardID uint64) error {
@@ -415,13 +423,17 @@ func (p *Engine) loadPendingReceivedRows(receivingShardID uint64) error {
 
 	batch := &receiveBatch{
 		writeBatch: cluster.NewWriteBatch(receivingShardID),
-		rawRows:    make(map[uint64][][]byte),
+		rawRows:    make(map[uint64][]RawRow),
 	}
 
 	for _, kvPair := range kvPairs {
+		receiverSequence, _ := common.ReadUint64FromBufferBE(kvPair.Key, 16)
 		remoteConsumerID, _ := common.ReadUint64FromBufferBE(kvPair.Key, 24)
 		rows := batch.rawRows[remoteConsumerID]
-		rows = append(rows, kvPair.Value)
+		rows = append(rows, RawRow{
+			ReceiverSequence: receiverSequence,
+			Row:              kvPair.Value,
+		})
 		batch.rawRows[remoteConsumerID] = rows
 		batch.writeBatch.AddDelete(kvPair.Key)
 	}
@@ -460,27 +472,27 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 		entries := make([]exec.RowsEntry, len(rawRows))
 		rc := 0
 		for i, row := range rawRows {
-			lpvb, _ := common.ReadUint32FromBufferLE(row, 0)
+			lpvb, _ := common.ReadUint32FromBufferLE(row.Row, 0)
 			pi := -1
 			if lpvb != 0 {
-				prevBytes := row[4 : 4+lpvb]
+				prevBytes := row.Row[4 : 4+lpvb]
 				if err := common.DecodeRow(prevBytes, remoteConsumer.ColTypes, rows); err != nil {
 					return errors.WithStack(err)
 				}
 				pi = rc
 				rc++
 			}
-			lcvb, _ := common.ReadUint32FromBufferLE(row, int(4+lpvb))
+			lcvb, _ := common.ReadUint32FromBufferLE(row.Row, int(4+lpvb))
 			ci := -1
 			if lcvb != 0 {
-				currBytes := row[8+lpvb:]
+				currBytes := row.Row[8+lpvb:]
 				if err := common.DecodeRow(currBytes, remoteConsumer.ColTypes, rows); err != nil {
 					return errors.WithStack(err)
 				}
 				ci = rc
 				rc++
 			}
-			entries[i] = exec.NewRowsEntry(pi, ci)
+			entries[i] = exec.NewRowsEntry(pi, ci, int64(row.ReceiverSequence))
 		}
 		rowsBatch := exec.NewRowsBatch(rows, entries)
 		if err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, ctx); err != nil {

@@ -41,7 +41,6 @@ func EncodeKeyForForwardAggregation(enableDupDetection bool, partialAggTableID u
 	sequence uint64, remoteConsumerID uint64) []byte {
 
 	buff := make([]byte, 0, 33)
-
 	// First byte is whether duplicate detection is enabled or not
 	if enableDupDetection {
 		buff = append(buff, 1)

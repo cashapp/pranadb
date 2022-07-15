@@ -154,27 +154,29 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 
 		var key []byte
 		if forward {
-			//enableDupDetection := kvPair.Key[0] == 1
-			//dedupKey := kvPair.Key[1:25]           // Next 24 bytes is the dedup key
+			enableDupDetection := kvPair.Key[0] == 1
+			dedupKey := kvPair.Key[1:25] // Next 24 bytes is the dedup key
 
-			//if enableDupDetection {
-			//	ignore, err := s.checkDedup(dedupKey, batch)
-			//	if err != nil {
-			//		return err
-			//	}
-			//	if ignore {
-			//		continue
-			//	}
-			//}
+			if enableDupDetection {
+				ignore, err := s.checkDedup(dedupKey, batch)
+				if err != nil {
+					return err
+				}
+				if ignore {
+					continue
+				}
+			}
 
 			remoteConsumerBytes := kvPair.Key[25:] // The rest is just the remote consumer id
+
+			// We increment before using - receiver sequence must start at 1
+			s.receiverSequence++
 
 			// For a write into the receiver table (forward write) the key is constructed as follows:
 			// shard_id|receiver_table_id|receiver_sequence|remote_consumer_id
 			key = table.EncodeTableKeyPrefix(common.ReceiverTableID, s.shardID, 40)
 			key = common.AppendUint64ToBufferBE(key, s.receiverSequence)
 			key = append(key, remoteConsumerBytes...)
-			s.receiverSequence++
 
 			if s.processor {
 				remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)

@@ -109,6 +109,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 	for i := 0; i < numEntries; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
+		receiverIndex := rowsBatch.ReceiverIndex(i)
 
 		if currentRow != nil {
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
@@ -135,6 +136,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			rc++
 			entries[i].prevIndex = pi
 			entries[i].currIndex = ci
+			entries[i].receiverIndex = receiverIndex
 			var valueBuff []byte
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
@@ -151,6 +153,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			outRows.AppendRow(*prevRow)
 			entries[i].prevIndex = rc
 			entries[i].currIndex = -1
+			entries[i].receiverIndex = receiverIndex
 			rc++
 			ctx.WriteBatch.AddDelete(keyBuff)
 		}

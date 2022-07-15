@@ -188,29 +188,32 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 		receiverSequence = 0
 	}
 	filteredBatch := cluster.NewWriteBatch(batch.ShardID)
-	//dedupMap, ok := f.dedupMaps[batch.ShardID]
-	//if !ok {
-	//	dedupMap := make(map[string]uint64)
-	//	f.dedupMaps[batch.ShardID] = dedupMap
-	//}
+	dedupMap, ok := f.dedupMaps[batch.ShardID]
+	if !ok {
+		dedupMap = make(map[string]uint64)
+		f.dedupMaps[batch.ShardID] = dedupMap
+	}
 	var forwardRows []cluster.ForwardRow
 	timestamp := int64(time.Now().Sub(common.UnixStart))
 	if err := batch.ForEachPut(func(key []byte, value []byte) error {
 
-		//enableDupDetection := key[0] == 1
+		enableDupDetection := key[0] == 1
 
-		//dedupKey := key[1:25]           // Next 24 bytes is the dedup key
+		dedupKey := key[1:25]           // Next 24 bytes is the dedup key
 		remoteConsumerBytes := key[25:] // The rest is just the remote consumer id
 
-		//if enableDupDetection {
-		//	ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
-		//	if err != nil {
-		//		return err
-		//	}
-		//	if ignore {
-		//		return nil
-		//	}
-		//}
+		if enableDupDetection {
+			ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
+			if err != nil {
+				return err
+			}
+			if ignore {
+				return nil
+			}
+		}
+
+		// We increment before using - receiver sequence must start at 1
+		receiverSequence++
 
 		// For a write into the receiver table (forward write) the key is constructed as follows:
 		// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
@@ -218,11 +221,11 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 		key = common.AppendUint64ToBufferBE(key, receiverSequence)
 		key = append(key, remoteConsumerBytes...)
 
-		receiverSequence++
 		filteredBatch.AddPut(key, value)
 
 		remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)
 		forwardRows = append(forwardRows, cluster.ForwardRow{
+			ReceiverSequence: receiverSequence,
 			RemoteConsumerID: remoteConsumerID,
 			KeyBytes:         key,
 			RowBytes:         value,
