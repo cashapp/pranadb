@@ -67,6 +67,8 @@ type Source struct {
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
 	ingestExpressions       []*common.Expression
+	lagProvider             util.LagProvider
+	offsetsForPartition     sync.Map
 }
 
 var (
@@ -94,7 +96,7 @@ var (
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	globalRateLimiter IngestLimiter) (*Source, error) {
+	globalRateLimiter IngestLimiter, lagProvider util.LagProvider) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.OriginInfo
@@ -156,6 +158,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		globalRateLimiter:       globalRateLimiter,
 		ingestExpressions:       ingestExpressions,
+		lagProvider:             lagProvider,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -329,10 +332,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 			continue
 		}
 
-		// We throttle the global ingest to prevent the node getting overloaded - it's easy otherwise to saturate the
-		// disk throughput which can make the node unstable
-		s.globalRateLimiter.Limit()
-
 		for _, pkCol := range s.sourceInfo.PrimaryKeyCols {
 			if row.IsNull(pkCol) {
 				return errors.New("cannot ingest message, null value in PK col(s)")
@@ -358,7 +357,20 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 		kMsg := messages[i]
 		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
-			uint64(kMsg.PartInfo.Offset), tableID)
+			uint64(kMsg.PartInfo.Offset+1), tableID)
+
+		// Sanity check
+		v, ok := s.offsetsForPartition.Load(kMsg.PartInfo.PartitionID)
+		if ok {
+			prevOffset, ok := v.(int64)
+			if !ok {
+				panic("not an int64")
+			}
+			if kMsg.PartInfo.Offset != prevOffset+1 {
+				panic(fmt.Sprintf("offset out of sequence expected %d got %d", prevOffset+1, kMsg.PartInfo.Offset))
+			}
+			s.offsetsForPartition.Store(kMsg.PartInfo.PartitionID, kMsg.PartInfo.Offset)
+		}
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
@@ -373,6 +385,10 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
 		rowsIngested++
+	}
+
+	if !util.MaybeThrottleIfLagging(s.cluster.GetAllShardIDs(), s.lagProvider, 2*time.Second) {
+		// TODO consider stopping sources
 	}
 
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {

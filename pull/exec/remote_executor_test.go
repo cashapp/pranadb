@@ -165,6 +165,9 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
+}
+
 func (t *testCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
 	return nil
 }

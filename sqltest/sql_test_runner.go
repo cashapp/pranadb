@@ -45,10 +45,10 @@ import (
 )
 
 const (
-	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
-	ExcludedTestPrefix = ""
-	TestClusterID      = 12345678
-	ProtoDescriptorDir = "../protos"
+	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	ExcludedTestPrefixes = ""
+	TestClusterID        = 12345678
+	ProtoDescriptorDir   = "../protos"
 )
 
 var (
@@ -196,6 +196,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
+			cnf.RaftRTTMs = 25
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
@@ -243,8 +244,18 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor i
 		if TestPrefix != "" && (strings.Index(fileName, TestPrefix) != 0) {
 			continue
 		}
-		if ExcludedTestPrefix != "" && (strings.Index(fileName, ExcludedTestPrefix) == 0) {
-			continue
+		if ExcludedTestPrefixes != "" {
+			exclude := false
+			excluded := strings.Split(ExcludedTestPrefixes, ",")
+			for _, excl := range excluded {
+				if strings.Index(fileName, excl) == 0 {
+					exclude = true
+					break
+				}
+			}
+			if exclude {
+				continue
+			}
 		}
 		if file.IsDir() {
 			continue

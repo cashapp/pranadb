@@ -51,7 +51,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)
+	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster, pe)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -107,17 +107,17 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 		}
 	case *exec.Aggregator:
 		if disconnect {
-			err := m.pe.UnregisterRemoteConsumer(op.FullAggTableInfo.ID)
+			err := m.pe.UnregisterRemoteConsumer(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
 		}
 		if deleteData {
-			err := m.deleteTableData(op.PartialAggTableInfo.ID)
+			err := m.deleteTableData(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = m.deleteTableData(op.FullAggTableInfo.ID)
+			err = m.deleteTableData(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -185,14 +185,14 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 		}
 	case *exec.Aggregator:
 		if registerRemote {
-			colTypes := op.FullAggTableInfo.ColumnTypes
+			colTypes := op.GetChildren()[0].ColTypes()
 			rf := common.NewRowsFactory(colTypes)
 			rc := &RemoteConsumer{
 				RowsFactory: rf,
 				ColTypes:    colTypes,
 				RowsHandler: op,
 			}
-			err := m.pe.RegisterRemoteConsumer(op.FullAggTableInfo.ID, rc)
+			err := m.pe.RegisterRemoteConsumer(op.AggTableInfo.ID, rc)
 			if err != nil {
 				return errors.WithStack(err)
 			}

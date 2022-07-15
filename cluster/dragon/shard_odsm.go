@@ -13,6 +13,7 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -48,72 +49,79 @@ type ShardOnDiskStateMachine struct {
 	nodeIDs          []int
 	processor        bool
 	shardListener    cluster.ShardListener
-	dedupSequences   map[string]uint64 // TODO use byteslicemap or similar
+	dedupSequences   map[string]uint64
 	receiverSequence uint64
-	batchSequence    uint32
+	forwardRows      []cluster.ForwardRow
 	lock             sync.Mutex
+	lastIndex        uint64
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	log.Infof("shard state machine %d open", s.shardID)
 	s.dragon.registerShardSM(s.shardID)
 	if err := s.loadDedupCache(); err != nil {
 		return 0, err
 	}
-	lastRaftIndex, receiverSequence, batchSequence, err := s.loadSequences(s.dragon.pebble, s.shardID)
+	lastRaftIndex, receiverSequence, err := s.loadSequences(s.dragon.pebble, s.shardID)
 	if err != nil {
 		return 0, err
 	}
 	s.receiverSequence = receiverSequence
-	s.batchSequence = batchSequence
 	return lastRaftIndex, nil
 }
 
-func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, uint32, error) {
+func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, error) {
 	// read the index of the last persisted log entry and the last written receiver sequence
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, shardID, 16)
 	vb, closer, err := peb.Get(key)
 	defer common.InvokeCloser(closer)
 	if err == pebble.ErrNotFound {
-		return 0, 0, 0, nil
+		return 0, 0, nil
 	}
 	if err != nil {
-		return 0, 0, 0, errors.WithStack(err)
+		return 0, 0, errors.WithStack(err)
 	}
 	lastRaftIndex, _ := common.ReadUint64FromBufferLE(vb, 0)
 	receiverSequence, _ := common.ReadUint64FromBufferLE(vb, 8)
-	batchSequence, _ := common.ReadUint32FromBufferLE(vb, 16)
-	return lastRaftIndex, receiverSequence, batchSequence, nil
+	return lastRaftIndex, receiverSequence, nil
 }
 
 func (s *ShardOnDiskStateMachine) writeSequences(batch *pebble.Batch, lastRaftIndex uint64,
-	receiverSequence uint64, batchSequence uint32, shardID uint64) error {
+	receiverSequence uint64, shardID uint64) error {
 	// We store the last received and persisted log entry and the last written receiver sequence
 	key := table.EncodeTableKeyPrefix(common.LastLogIndexReceivedTableID, shardID, 16)
 	vb := make([]byte, 0, 16)
 	vb = common.AppendUint64ToBufferLE(vb, lastRaftIndex)
 	vb = common.AppendUint64ToBufferLE(vb, receiverSequence)
-	vb = common.AppendUint32ToBufferLE(vb, batchSequence)
 	return batch.Set(key, vb, nil)
 }
 
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	hasForward := false //nolint:ifshort
+	if s.lastIndex != 0 && s.lastIndex != entries[0].Index-1 {
+		log.Warnf("shard state machine %d entries are being replayed expected %d got %d", s.shardID,
+			s.lastIndex+1, entries[0].Index)
+		s.lastIndex = entries[len(entries)-1].Index
+	}
 	batch := s.dragon.pebble.NewBatch()
+	timestamp := int64(time.Now().Sub(common.UnixStart))
 	for i, entry := range entries {
 		cmdBytes := entry.Cmd
 		command := cmdBytes[0]
 		switch command {
 		case shardStateMachineCommandForwardWrite:
-			if err := s.handleWrite(batch, cmdBytes, true); err != nil {
-				return nil, errors.WithStack(err)
+			if s.forwardRows == nil && s.processor {
+				// Most likely the entries will be all forward writes
+				s.forwardRows = make([]cluster.ForwardRow, 0, len(entries))
 			}
-			hasForward = true
+			if err := s.handleWrite(batch, cmdBytes, true, timestamp); err != nil {
+				return nil, err
+			}
 		case shardStateMachineCommandWrite:
-			if err := s.handleWrite(batch, cmdBytes, false); err != nil {
+			if err := s.handleWrite(batch, cmdBytes, false, timestamp); err != nil {
 				return nil, errors.WithStack(err)
 			}
 		default:
@@ -130,7 +138,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	if err := batch.Set(key, vb, nil); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	if err := s.writeSequences(batch, lastLogIndex, s.receiverSequence, s.batchSequence, s.shardID); err != nil {
+	if err := s.writeSequences(batch, lastLogIndex, s.receiverSequence, s.shardID); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -140,74 +148,67 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 
 	// A forward write is a write which forwards a batch of rows from one shard to another
 	// In this case we want to trigger processing of those rows, if we're the processor
-	if hasForward {
-		s.maybeTriggerRemoteWriteOccurred()
+	if len(s.forwardRows) > 0 {
+		s.shardListener.RemoteWriteOccurred(s.forwardRows)
+		s.forwardRows = nil
 	}
 	return entries, nil
 }
 
-func (s *ShardOnDiskStateMachine) maybeTriggerRemoteWriteOccurred() {
-	// A forward write is a write which forwards a batch of rows from one shard to another
-	// In this case we want to trigger processing of those rows, if we're the processor
-	if s.processor {
-		s.shardListener.RemoteWriteOccurred()
-	}
-}
-
-func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool) error {
+func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp int64) error {
 	puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
-
 	for _, kvPair := range puts {
 
 		var key []byte
 		if forward {
-			enableDupDetection := kvPair.Key[0] == 1
-			dedupKey := kvPair.Key[1:25]           // Next 24 bytes is the dedup key
-			remoteConsumerBytes := kvPair.Key[25:] // The rest is just the remote consumer id
 
-			if enableDupDetection {
-				ignore, err := s.checkDedup(dedupKey, batch)
-				if err != nil {
-					return err
-				}
-				if ignore {
-					continue
-				}
+			dedupKey := kvPair.Key[:24] // Next 24 bytes is the dedup key
+
+			ignore, err := s.checkDedup(dedupKey, batch)
+			if err != nil {
+				return err
+			}
+			if ignore {
+				continue
 			}
 
+			remoteConsumerBytes := kvPair.Key[24:] // The rest is just the remote consumer id
+
+			// We increment before using - receiver sequence must start at 1
+			s.receiverSequence++
+
 			// For a write into the receiver table (forward write) the key is constructed as follows:
-			// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
+			// shard_id|receiver_table_id|receiver_sequence|remote_consumer_id
 			key = table.EncodeTableKeyPrefix(common.ReceiverTableID, s.shardID, 40)
-			key = common.AppendUint32ToBufferBE(key, s.batchSequence)
 			key = common.AppendUint64ToBufferBE(key, s.receiverSequence)
 			key = append(key, remoteConsumerBytes...)
-			s.receiverSequence++
+
+			if s.processor {
+				remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)
+				s.forwardRows = append(s.forwardRows, cluster.ForwardRow{
+					ReceiverSequence: s.receiverSequence,
+					RemoteConsumerID: remoteConsumerID,
+					KeyBytes:         key,
+					RowBytes:         kvPair.Value,
+					WriteTime:        timestamp,
+				})
+			}
+
 		} else {
 			key = kvPair.Key
 			s.checkKey(key)
 		}
 
-		err := batch.Set(key, kvPair.Value, nil)
-		if err != nil {
+		if err := batch.Set(key, kvPair.Value, nil); err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	// We record rows arriving from the same client batch as having the same batch number, when we read rows from the
-	// receiver table we process them through the DAG a batch at a time - this is important, because when forwarding
-	// partial aggregations from one node to another, on recovery after failure we must ensure that the same batch
-	// is attempted again after failure, or duplicate detection won't be able to detect it.
-	// In the future we can make a single batch contain writes from many client batches - all that matters is each
-	// replica deterministically calculates the same batch id. We could, say, only generate a new batch every x ms and
-	// make sure reading of the receiver table doesn't occur until a new batch is created. This would enable more
-	// efficient, larger batches under load.
-	s.batchSequence++
 	if forward && len(deletes) != 0 {
 		panic("deletes not supported for forward write")
 	}
 	for _, k := range deletes {
 		s.checkKey(k)
-		err := batch.Delete(k, nil)
-		if err != nil {
+		if err := batch.Delete(k, nil); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -366,7 +367,11 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 	if err := s.loadDedupCache(); err != nil {
 		return err
 	}
-	s.maybeTriggerRemoteWriteOccurred()
+	_, receiverSequence, err := s.loadSequences(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return err
+	}
+	s.receiverSequence = receiverSequence
 	log.Debugf("data shard %d recover from snapshot done on node %d", s.shardID, s.dragon.cnf.NodeID)
 	atomic.AddInt64(&s.dragon.restoreSnapshotCount, 1)
 	return nil

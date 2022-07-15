@@ -117,17 +117,17 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			pkCols[i] = i + nonFirstRowFuncs
 		}
 
-		partialTableID := seqGenerator.GenerateSequence()
-		partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
-		aggSequence++
-		partialTableInfo := &common.TableInfo{
-			ID:             partialTableID,
-			SchemaName:     schema.Name,
-			Name:           partialTableName,
-			PrimaryKeyCols: pkCols,
-			IndexInfos:     nil, // TODO
-			Internal:       true,
-		}
+		//partialTableID := seqGenerator.GenerateSequence()
+		//partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
+		//aggSequence++
+		//partialTableInfo := &common.TableInfo{
+		//	ID:             partialTableID,
+		//	SchemaName:     schema.Name,
+		//	Name:           partialTableName,
+		//	PrimaryKeyCols: pkCols,
+		//	IndexInfos:     nil, // TODO
+		//	Internal:       true,
+		//}
 		fullTableID := seqGenerator.GenerateSequence()
 		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
 		aggSequence++
@@ -139,17 +139,17 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			IndexInfos:     nil, // TODO
 			Internal:       true,
 		}
-		partialAggInfo := &common.InternalTableInfo{
-			TableInfo:            partialTableInfo,
-			MaterializedViewName: mvName,
-		}
-		internalTables = append(internalTables, partialAggInfo)
+		//partialAggInfo := &common.InternalTableInfo{
+		//	TableInfo:            partialTableInfo,
+		//	MaterializedViewName: mvName,
+		//}
+		//internalTables = append(internalTables, partialAggInfo)
 		fullAggInfo := &common.InternalTableInfo{
 			TableInfo:            fullTableInfo,
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, fullAggInfo)
-		executor, err = exec.NewAggregator(pkCols, aggFuncs, partialTableInfo, fullTableInfo, groupByCols, m.cluster, m.sharder)
+		executor, err = exec.NewAggregator(pkCols, aggFuncs, fullTableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}

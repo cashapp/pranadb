@@ -1,5 +1,5 @@
 
-ò
+€
 :squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -28,4 +28,9 @@ session_id (	R	sessionId"
 shard_id (RshardId!
 request_body (RrequestBody":
 ClusterReadResponse#
-response_body (RresponseBodyBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3
+response_body (RresponseBody"S
+LagsMessageD
+lags (20.squareup.cash.pranadb.notifications.v1.LagEntryRlags"7
+LagEntry
+shard_id (RshardId
+lag (RlagBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

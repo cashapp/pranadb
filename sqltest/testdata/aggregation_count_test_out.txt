@@ -329,6 +329,32 @@ select * from test_mv_24 order by country, city;
 +---------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
+-- count(*) and count(const);
+
+create materialized view test_mv_25 as select count(*) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_25;
++----------------------+
+| count(*)             |
++----------------------+
+| 10                   |
++----------------------+
+1 rows returned
+
+create materialized view test_mv_26 as select count(1) from latest_sensor_readings;
+0 rows returned
+select * from test_mv_26;
++----------------------+
+| count(1)             |
++----------------------+
+| 10                   |
++----------------------+
+1 rows returned
+
+drop materialized view test_mv_26;
+0 rows returned
+drop materialized view test_mv_25;
+0 rows returned
 drop materialized view test_mv_24;
 0 rows returned
 drop materialized view test_mv_23;

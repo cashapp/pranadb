@@ -76,6 +76,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageLags, pushEngine)
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, ddlResetClient,
 		protoRegistry, failureInjector)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
@@ -183,24 +184,24 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) logNumGoroutines() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if !s.started {
-		return
-	}
-	log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	log.Infof("Alloc = %v MiB", bytesToMB(m.Alloc))
-	log.Infof("\tTotalAlloc = %v MiB", bytesToMB(m.TotalAlloc))
-	log.Infof("\tSys = %v MiB", bytesToMB(m.Sys))
-	log.Infof("\tNumGC = %v\n", m.NumGC)
-	s.scheduleLogGoroutinesTimer()
+	//s.lock.Lock()
+	//defer s.lock.Unlock()
+	//if !s.started {
+	//	return
+	//}
+	//log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
+	//var m runtime.MemStats
+	//runtime.ReadMemStats(&m)
+	//log.Infof("Alloc = %v MiB", bytesToMB(m.Alloc))
+	//log.Infof("\tTotalAlloc = %v MiB", bytesToMB(m.TotalAlloc))
+	//log.Infof("\tSys = %v MiB", bytesToMB(m.Sys))
+	//log.Infof("\tNumGC = %v\n", m.NumGC)
+	//s.scheduleLogGoroutinesTimer()
 }
 
-func bytesToMB(bytes uint64) uint64 {
-	return bytes / 1024 / 1024
-}
+//func bytesToMB(bytes uint64) uint64 {
+//	return bytes / 1024 / 1024
+//}
 
 func (s *Server) scheduleLogGoroutinesTimer() {
 	s.logGoroutinesTimer = time.AfterFunc(30*time.Second, s.logNumGoroutines)

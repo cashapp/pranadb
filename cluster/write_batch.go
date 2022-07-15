@@ -41,6 +41,10 @@ func (wb *WriteBatch) HasWrites() bool {
 	return len(wb.Puts) > 0 || len(wb.Deletes) > 0
 }
 
+func (wb *WriteBatch) HasPuts() bool {
+	return len(wb.Puts) > 0
+}
+
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
 	buff = append(buff, wb.Puts...)

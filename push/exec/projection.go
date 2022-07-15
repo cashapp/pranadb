@@ -96,7 +96,7 @@ func (p *PushProjection) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) 
 			ci = rc
 			rc++
 		}
-		entries[i] = RowsEntry{prevIndex: pi, currIndex: ci}
+		entries[i] = NewRowsEntry(pi, ci, rowsBatch.ReceiverIndex(i))
 	}
 	return p.parent.HandleRows(NewRowsBatch(result, entries), ctx)
 }

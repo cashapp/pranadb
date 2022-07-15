@@ -12,12 +12,6 @@ type AggregateFunction interface {
 	EvalTimestamp(value common.Timestamp, null bool, aggState *AggState, index int, reverse bool) error
 	EvalDecimal(value common.Decimal, null bool, aggState *AggState, index int, reverse bool) error
 
-	MergeInt64(latestState *AggState, aggState *AggState, index int, reverse bool) error
-	MergeFloat64(latestState *AggState, aggState *AggState, index int, reverse bool) error
-	MergeString(latestState *AggState, aggState *AggState, index int, reverse bool) error
-	MergeTimestamp(latestState *AggState, aggState *AggState, index int, reverse bool) error
-	MergeDecimal(latestState *AggState, aggState *AggState, index int, reverse bool) error
-
 	ValueType() common.ColumnType
 	ArgExpression() *common.Expression
 	RequiresExtraState() bool
@@ -45,26 +39,6 @@ func (b *aggregateFunctionBase) EvalTimestamp(value common.Timestamp, null bool,
 }
 
 func (b *aggregateFunctionBase) EvalDecimal(value common.Decimal, null bool, aggState *AggState, index int, reverse bool) error {
-	panic("should not be called")
-}
-
-func (b *aggregateFunctionBase) MergeInt64(latestState *AggState, aggState *AggState, index int, reverse bool) error {
-	panic("should not be called")
-}
-
-func (b *aggregateFunctionBase) MergeFloat64(latestState *AggState, aggState *AggState, index int, reverse bool) error {
-	panic("should not be called")
-}
-
-func (b *aggregateFunctionBase) MergeString(latestState *AggState, aggState *AggState, index int, reverse bool) error {
-	panic("should not be called")
-}
-
-func (b *aggregateFunctionBase) MergeTimestamp(latestState *AggState, aggState *AggState, index int, reverse bool) error {
-	panic("should not be called")
-}
-
-func (b *aggregateFunctionBase) MergeDecimal(latestState *AggState, aggState *AggState, index int, reverse bool) error {
 	panic("should not be called")
 }
 
