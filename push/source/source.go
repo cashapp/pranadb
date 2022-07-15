@@ -33,7 +33,6 @@ const (
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
 	pollTimeoutPropName           = "prana.source.polltimeoutms"
 	maxPollMessagesPropName       = "prana.source.maxpollmessages"
-	acceptableLag                 = 5 * time.Second
 )
 
 type RowProcessor interface {
@@ -69,6 +68,7 @@ type Source struct {
 	globalRateLimiter       IngestLimiter
 	ingestExpressions       []*common.Expression
 	lagProvider             util.LagProvider
+	offsetsForPartition     sync.Map
 }
 
 var (
@@ -357,7 +357,20 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 		kMsg := messages[i]
 		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
-			uint64(kMsg.PartInfo.Offset), tableID)
+			uint64(kMsg.PartInfo.Offset+1), tableID)
+
+		// Sanity check
+		v, ok := s.offsetsForPartition.Load(kMsg.PartInfo.PartitionID)
+		if ok {
+			prevOffset, ok := v.(int64)
+			if !ok {
+				panic("not an int64")
+			}
+			if kMsg.PartInfo.Offset != prevOffset+1 {
+				panic(fmt.Sprintf("offset out of sequence expected %d got %d", prevOffset+1, kMsg.PartInfo.Offset))
+			}
+			s.offsetsForPartition.Store(kMsg.PartInfo.PartitionID, kMsg.PartInfo.Offset)
+		}
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
@@ -374,9 +387,11 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		rowsIngested++
 	}
 
-	s.maybeThrottleIfLagging()
+	if !util.MaybeThrottleIfLagging(s.cluster.GetAllShardIDs(), s.lagProvider, 2*time.Second) {
+		// TODO consider stopping sources
+	}
 
-	if err := util.SendForwardBatches(forwardBatches, s.cluster, s.lagProvider); err != nil {
+	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
 		log.Errorf("failed to send ingest forward batches %+v", err)
 		return err
 	}
@@ -388,31 +403,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
 	return nil
-}
-
-func (s *Source) maybeThrottleIfLagging() {
-	// We have to wait for the lag of ALL shards to go down as messages sent can update aggregations which causes
-	// further sends to different shards
-	allShards := s.cluster.GetAllShardIDs()
-	for _, shardID := range allShards {
-		st := time.Now()
-		for {
-			lag := s.lagProvider.GetLag(shardID)
-			if lag <= acceptableLag {
-				break
-			}
-			log.Warnf("shard %d is lagging - lag time is %d ms", shardID, lag.Milliseconds())
-			time.Sleep(10 * time.Millisecond)
-			if time.Now().Sub(st) > 10*time.Second {
-				log.Warnf("timed out in waiting for lag on shard id %d to get lower, current lag is %d - source will be stopped",
-					shardID, lag.Milliseconds())
-				if err := s.Stop(); err != nil {
-					log.Errorf("failed to stop source %+v", err)
-				}
-				break
-			}
-		}
-	}
 }
 
 func (s *Source) TableExecutor() *exec.TableExecutor {

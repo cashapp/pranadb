@@ -111,6 +111,16 @@ select * from test_mv_23 order by country, city;
 create materialized view test_mv_24 as select country, city from latest_sensor_readings group by country, city having count(reading_3) > 1;
 select * from test_mv_24 order by country, city;
 
+-- count(*) and count(const);
+
+create materialized view test_mv_25 as select count(*) from latest_sensor_readings;
+select * from test_mv_25;
+
+create materialized view test_mv_26 as select count(1) from latest_sensor_readings;
+select * from test_mv_26;
+
+drop materialized view test_mv_26;
+drop materialized view test_mv_25;
 drop materialized view test_mv_24;
 drop materialized view test_mv_23;
 drop materialized view test_mv_22;

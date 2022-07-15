@@ -21,17 +21,17 @@ type PushExecutor interface {
 	ColsVisible() []bool
 }
 
-func NewExecutionContext(writeBatch *cluster.WriteBatch, enableDuplicateDetection bool) *ExecutionContext {
+func NewExecutionContext(writeBatch *cluster.WriteBatch, fillTableID int64) *ExecutionContext {
 	return &ExecutionContext{
-		WriteBatch:               writeBatch,
-		EnableDuplicateDetection: enableDuplicateDetection,
+		WriteBatch:  writeBatch,
+		FillTableID: fillTableID,
 	}
 }
 
 type ExecutionContext struct {
-	WriteBatch               *cluster.WriteBatch
-	RemoteBatches            map[uint64]*cluster.WriteBatch
-	EnableDuplicateDetection bool
+	WriteBatch    *cluster.WriteBatch
+	RemoteBatches map[uint64]*cluster.WriteBatch
+	FillTableID   int64
 }
 
 func (e *ExecutionContext) AddToForwardBatch(shardID uint64, key []byte, value []byte) {

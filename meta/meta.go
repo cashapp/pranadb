@@ -343,7 +343,7 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 }
 
 func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
-	log.Debugf("Registering internal tabe %s with id %d", info.Name, info.ID)
+	log.Debugf("Registering internal table %s with id %d", info.Name, info.ID)
 	if err := c.checkTableID(info.ID); err != nil {
 		return errors.WithStack(err)
 	}

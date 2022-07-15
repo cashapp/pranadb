@@ -17,6 +17,7 @@
 package util
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -24,10 +25,10 @@ import (
 )
 
 func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint64, remoteConsumerID uint64) []byte {
-	buff := make([]byte, 0, 33)
-	buff = append(buff, 1) // This byte means duplicated detection is enabled
+	buff := make([]byte, 0, 32)
 	// The first 24 bytes is the dedup key and comprises [originator_id (16 bytes), sequence (8 bytes)]
 	// Originator id for an ingest from Kafka comprises [source_id (8 bytes), partition_id (8 bytes) ]
+	// The sequence is the offset in the Kafka partition
 	buff = common.AppendUint64ToBufferBE(buff, sourceID)
 	buff = common.AppendUint64ToBufferBE(buff, partitionID)
 	buff = common.AppendUint64ToBufferBE(buff, offset)
@@ -37,20 +38,15 @@ func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint6
 	return buff
 }
 
-func EncodeKeyForForwardAggregation(enableDupDetection bool, partialAggTableID uint64, sendingShardID uint64,
+func EncodeKeyForForwardAggregation(originatorTableID uint64, sendingShardID uint64,
 	sequence uint64, remoteConsumerID uint64) []byte {
 
-	buff := make([]byte, 0, 33)
-	// First byte is whether duplicate detection is enabled or not
-	if enableDupDetection {
-		buff = append(buff, 1)
-	} else {
-		buff = append(buff, 0)
-	}
+	buff := make([]byte, 0, 32)
 
 	// The next 24 bytes is the dedup key and comprises [originator_id (16 bytes), sequence (8 bytes)]
-	// Originator id for forward of partial aggregation is [partial_agg_table_id (8 bytes), sending_shard_id (8 bytes) ]
-	buff = common.AppendUint64ToBufferBE(buff, partialAggTableID)
+	// Originator id for forward of partial aggregation is [agg_table_id (8 bytes), sending_shard_id (8 bytes) ]
+	// The sequence is the receiver sequence
+	buff = common.AppendUint64ToBufferBE(buff, originatorTableID)
 	buff = common.AppendUint64ToBufferBE(buff, sendingShardID)
 	buff = common.AppendUint64ToBufferBE(buff, sequence)
 	// And remote consumer id goes on the end
@@ -74,23 +70,15 @@ type LagProvider interface {
 	GetLag(shardID uint64) time.Duration
 }
 
-func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster, lagProvider LagProvider) error {
+func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster) error {
 	lb := len(forwardBatches)
 	chs := make([]chan error, 0, lb)
-
 	for _, b := range forwardBatches {
 		ch := make(chan error, 1)
 		chs = append(chs, ch)
 		theBatch := b
 		go func() {
-			if lagProvider != nil {
-				lag := lagProvider.GetLag(theBatch.ShardID)
-				if lag > 1*time.Second {
-					time.Sleep(lag)
-				}
-			}
-			err := clust.WriteForwardBatch(theBatch)
-			if err != nil {
+			if err := clust.WriteForwardBatch(theBatch); err != nil {
 				ch <- err
 				return
 			}
@@ -107,4 +95,28 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		}
 	}
 	return nil
+}
+
+func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, acceptableLag time.Duration) bool {
+	// We have to wait for the lag of ALL shards to go down as messages sent can update aggregations which causes
+	// further sends to different shards
+	st := time.Now()
+	for {
+		ok := true
+		for _, shardID := range allShards {
+			lag := lagProvider.GetLag(shardID)
+			if lag > acceptableLag {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+		if time.Now().Sub(st) > 60*time.Second {
+			log.Warn("timed out in waiting for acceptable lags")
+			return false
+		}
+	}
 }

@@ -38,7 +38,7 @@ const (
 
 	retryDelay = 1000 * time.Millisecond
 
-	retryTimeout = 10 * time.Minute
+	retryTimeout = 15 * time.Minute
 
 	callTimeout = 10 * time.Second
 
@@ -758,9 +758,10 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		}
 		if time.Now().Sub(start) >= timeout {
 			// If we timeout, then something is seriously wrong - we should just exit
-			log.Errorf("timeout in making dragonboat calls %+v", err)
+			log.Errorf("error in making dragonboat calls %+v", err)
 			return nil, err
 		}
+		log.Warnf("executeWithRetry failed, will be retried: %v", err)
 		var delay time.Duration
 		if err == dragonboat.ErrTimeout {
 			delay = retryDelay

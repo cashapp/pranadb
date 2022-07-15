@@ -49,15 +49,17 @@ type ShardOnDiskStateMachine struct {
 	nodeIDs          []int
 	processor        bool
 	shardListener    cluster.ShardListener
-	dedupSequences   map[string]uint64 // TODO use byteslicemap or similar
+	dedupSequences   map[string]uint64
 	receiverSequence uint64
 	forwardRows      []cluster.ForwardRow
 	lock             sync.Mutex
+	lastIndex        uint64
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	log.Infof("shard state machine %d open", s.shardID)
 	s.dragon.registerShardSM(s.shardID)
 	if err := s.loadDedupCache(); err != nil {
 		return 0, err
@@ -99,6 +101,11 @@ func (s *ShardOnDiskStateMachine) writeSequences(batch *pebble.Batch, lastRaftIn
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.lastIndex != 0 && s.lastIndex != entries[0].Index-1 {
+		log.Warnf("shard state machine %d entries are being replayed expected %d got %d", s.shardID,
+			s.lastIndex+1, entries[0].Index)
+		s.lastIndex = entries[len(entries)-1].Index
+	}
 	batch := s.dragon.pebble.NewBatch()
 	timestamp := int64(time.Now().Sub(common.UnixStart))
 	for i, entry := range entries {
@@ -154,20 +161,18 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 
 		var key []byte
 		if forward {
-			enableDupDetection := kvPair.Key[0] == 1
-			dedupKey := kvPair.Key[1:25] // Next 24 bytes is the dedup key
 
-			if enableDupDetection {
-				ignore, err := s.checkDedup(dedupKey, batch)
-				if err != nil {
-					return err
-				}
-				if ignore {
-					continue
-				}
+			dedupKey := kvPair.Key[:24] // Next 24 bytes is the dedup key
+
+			ignore, err := s.checkDedup(dedupKey, batch)
+			if err != nil {
+				return err
+			}
+			if ignore {
+				continue
 			}
 
-			remoteConsumerBytes := kvPair.Key[25:] // The rest is just the remote consumer id
+			remoteConsumerBytes := kvPair.Key[24:] // The rest is just the remote consumer id
 
 			// We increment before using - receiver sequence must start at 1
 			s.receiverSequence++
@@ -362,6 +367,11 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 	if err := s.loadDedupCache(); err != nil {
 		return err
 	}
+	_, receiverSequence, err := s.loadSequences(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return err
+	}
+	s.receiverSequence = receiverSequence
 	log.Debugf("data shard %d recover from snapshot done on node %d", s.shardID, s.dragon.cnf.NodeID)
 	atomic.AddInt64(&s.dragon.restoreSnapshotCount, 1)
 	return nil
