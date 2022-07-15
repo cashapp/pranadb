@@ -21,6 +21,7 @@ const (
 	ClusterMessageClusterProposeResponse
 	ClusterMessageClusterReadResponse
 	ClusterMessageNotificationTestMessage
+	ClusterMessageLags
 )
 
 func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
@@ -41,6 +42,8 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 		return ClusterMessageClusterReadResponse
 	case *notifications.NotificationTestMessage:
 		return ClusterMessageNotificationTestMessage
+	case *notifications.LagsMessage:
+		return ClusterMessageLags
 	default:
 		return ClusterMessageTypeUnknown
 	}
@@ -80,6 +83,8 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.ReloadProtobuf{}
 	case ClusterMessageNotificationTestMessage:
 		msg = &notifications.NotificationTestMessage{}
+	case ClusterMessageLags:
+		msg = &notifications.LagsMessage{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}

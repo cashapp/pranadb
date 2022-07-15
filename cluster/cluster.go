@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/remoting"
 )
 
 const (
@@ -69,6 +70,8 @@ type Cluster interface {
 	Stop() error
 
 	PostStartChecks(queryExec common.SimpleQueryExec) error
+
+	AddHealthcheckListener(listener remoting.AvailabilityListener)
 }
 
 type ToDeleteBatch struct {
@@ -245,8 +248,14 @@ type ShardListenerFactory interface {
 	CreateShardListener(shardID uint64) ShardListener
 }
 
-type ShardListener interface {
-	RemoteWriteOccurred()
+type ForwardRow struct {
+	ReceiverSequence uint64
+	RemoteConsumerID uint64
+	KeyBytes         []byte
+	RowBytes         []byte
+	WriteTime        int64
+}
 
-	Close()
+type ShardListener interface {
+	RemoteWriteOccurred(forwardRows []ForwardRow)
 }

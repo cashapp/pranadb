@@ -20,9 +20,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/squareup/pranadb/errors"
 
@@ -45,7 +47,6 @@ type FakeCluster struct {
 	locks                        map[string]struct{}
 	dedupMaps                    map[uint64]map[string]uint64
 	receiverSequences            map[uint64]uint64
-	batchSequences               map[uint64]uint32
 }
 
 type snapshot struct {
@@ -95,7 +96,6 @@ func NewFakeCluster(nodeID int, numShards int) *FakeCluster {
 		locks:             make(map[string]struct{}),
 		dedupMaps:         make(map[uint64]map[string]uint64),
 		receiverSequences: make(map[uint64]uint64),
-		batchSequences:    make(map[uint64]uint32),
 	}
 }
 
@@ -187,53 +187,60 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 	if !ok {
 		receiverSequence = 0
 	}
-	batchSequence, ok := f.batchSequences[batch.ShardID]
-	if !ok {
-		batchSequence = 0
-	}
 	filteredBatch := cluster.NewWriteBatch(batch.ShardID)
-	dedupMap, ok := f.dedupMaps[batch.ShardID]
-	if !ok {
-		dedupMap = make(map[string]uint64)
-		f.dedupMaps[batch.ShardID] = dedupMap
-	}
+	//dedupMap, ok := f.dedupMaps[batch.ShardID]
+	//if !ok {
+	//	dedupMap := make(map[string]uint64)
+	//	f.dedupMaps[batch.ShardID] = dedupMap
+	//}
+	var forwardRows []cluster.ForwardRow
+	timestamp := int64(time.Now().Sub(common.UnixStart))
 	if err := batch.ForEachPut(func(key []byte, value []byte) error {
 
-		enableDupDetection := key[0] == 1
+		//enableDupDetection := key[0] == 1
 
-		dedupKey := key[1:25]           // Next 24 bytes is the dedup key
+		//dedupKey := key[1:25]           // Next 24 bytes is the dedup key
 		remoteConsumerBytes := key[25:] // The rest is just the remote consumer id
 
-		if enableDupDetection {
-			ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
-			if err != nil {
-				return err
-			}
-			if ignore {
-				return nil
-			}
-		}
+		//if enableDupDetection {
+		//	ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
+		//	if err != nil {
+		//		return err
+		//	}
+		//	if ignore {
+		//		return nil
+		//	}
+		//}
 
 		// For a write into the receiver table (forward write) the key is constructed as follows:
 		// shard_id|receiver_table_id|batch_sequence|receiver_sequence|remote_consumer_id
 		key = table.EncodeTableKeyPrefix(common.ReceiverTableID, batch.ShardID, 40)
-		key = common.AppendUint32ToBufferBE(key, batchSequence)
 		key = common.AppendUint64ToBufferBE(key, receiverSequence)
 		key = append(key, remoteConsumerBytes...)
 
 		receiverSequence++
 		filteredBatch.AddPut(key, value)
+
+		remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)
+		forwardRows = append(forwardRows, cluster.ForwardRow{
+			RemoteConsumerID: remoteConsumerID,
+			KeyBytes:         key,
+			RowBytes:         value,
+			WriteTime:        timestamp,
+		})
+
 		return nil
 	}); err != nil {
 		return err
 	}
 	f.receiverSequences[batch.ShardID] = receiverSequence
-	batchSequence++
-	f.batchSequences[batch.ShardID] = batchSequence
-	if batch.NumDeletes != 0 {
-		panic("deletes not supported in forward batch")
+	if filteredBatch.HasPuts() {
+		if batch.NumDeletes != 0 {
+			panic("deletes not supported in forward batch")
+		}
+		return f.writeBatchInternal(filteredBatch, true, forwardRows)
 	}
-	return f.writeBatchInternal(filteredBatch, true)
+	return nil
 }
 
 func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
@@ -243,13 +250,13 @@ func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
 func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.writeBatchInternal(batch, false); err != nil {
+	if err := f.writeBatchInternal(batch, false, nil); err != nil {
 		return err
 	}
 	return batch.AfterCommit()
 }
 
-func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool) error {
+func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool, forwardRows []cluster.ForwardRow) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
@@ -271,7 +278,7 @@ func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool
 	}
 	if forward {
 		shardListener := f.shardListeners[batch.ShardID]
-		go shardListener.RemoteWriteOccurred()
+		shardListener.RemoteWriteOccurred(forwardRows)
 	}
 	return nil
 }
@@ -423,4 +430,7 @@ func (f *FakeCluster) RemoveToDeleteBatch(batch *cluster.ToDeleteBatch) error {
 
 func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 	return nil
+}
+
+func (f *FakeCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }

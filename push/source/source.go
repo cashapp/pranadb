@@ -33,6 +33,7 @@ const (
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
 	pollTimeoutPropName           = "prana.source.polltimeoutms"
 	maxPollMessagesPropName       = "prana.source.maxpollmessages"
+	acceptableLag                 = 5 * time.Second
 )
 
 type RowProcessor interface {
@@ -67,6 +68,7 @@ type Source struct {
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
 	ingestExpressions       []*common.Expression
+	lagProvider             util.LagProvider
 }
 
 var (
@@ -94,7 +96,7 @@ var (
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	globalRateLimiter IngestLimiter) (*Source, error) {
+	globalRateLimiter IngestLimiter, lagProvider util.LagProvider) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.OriginInfo
@@ -156,6 +158,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		globalRateLimiter:       globalRateLimiter,
 		ingestExpressions:       ingestExpressions,
+		lagProvider:             lagProvider,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -329,10 +332,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 			continue
 		}
 
-		// We throttle the global ingest to prevent the node getting overloaded - it's easy otherwise to saturate the
-		// disk throughput which can make the node unstable
-		s.globalRateLimiter.Limit()
-
 		for _, pkCol := range s.sourceInfo.PrimaryKeyCols {
 			if row.IsNull(pkCol) {
 				return errors.New("cannot ingest message, null value in PK col(s)")
@@ -375,7 +374,9 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		rowsIngested++
 	}
 
-	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
+	s.maybeThrottleIfLagging()
+
+	if err := util.SendForwardBatches(forwardBatches, s.cluster, s.lagProvider); err != nil {
 		log.Errorf("failed to send ingest forward batches %+v", err)
 		return err
 	}
@@ -387,6 +388,31 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
 	return nil
+}
+
+func (s *Source) maybeThrottleIfLagging() {
+	// We have to wait for the lag of ALL shards to go down as messages sent can update aggregations which causes
+	// further sends to different shards
+	allShards := s.cluster.GetAllShardIDs()
+	for _, shardID := range allShards {
+		st := time.Now()
+		for {
+			lag := s.lagProvider.GetLag(shardID)
+			if lag <= acceptableLag {
+				break
+			}
+			log.Warnf("shard %d is lagging - lag time is %d ms", shardID, lag.Milliseconds())
+			time.Sleep(10 * time.Millisecond)
+			if time.Now().Sub(st) > 10*time.Second {
+				log.Warnf("timed out in waiting for lag on shard id %d to get lower, current lag is %d - source will be stopped",
+					shardID, lag.Milliseconds())
+				if err := s.Stop(); err != nil {
+					log.Errorf("failed to stop source %+v", err)
+				}
+				break
+			}
+		}
+	}
 }
 
 func (s *Source) TableExecutor() *exec.TableExecutor {

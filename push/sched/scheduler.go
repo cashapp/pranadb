@@ -2,29 +2,41 @@ package sched
 
 import (
 	log "github.com/sirupsen/logrus"
-	"sync"
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/common"
+	"sync/atomic"
+	"time"
 )
 
+const maxProcessBatchRows = 500
+
 type ShardScheduler struct {
-	shardID uint64
-	actions chan *actionHolder
-	lock    sync.Mutex
-	started bool
-	paused  bool
+	shardID                  uint64
+	actions                  chan struct{}
+	started                  bool
+	failed                   bool
+	lock                     common.SpinLock
+	processorRunning         bool
+	forwardRows              []cluster.ForwardRow
+	batchHandler             RowsBatchHandler
+	lastQueuedReceiverSeq    uint64
+	lastProcessedReceiverSeq uint64
 }
 
-type Action func() error
-
-type actionHolder struct {
-	action  Action
-	errChan chan error
-	exit    bool
+type RowsBatchHandler interface {
+	HandleBatch(shardID uint64, rows []cluster.ForwardRow) error
 }
 
-func NewShardScheduler(shardID uint64) *ShardScheduler {
+type BatchEntry struct {
+	WriteTime time.Time
+	Seq       uint32
+}
+
+func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler) *ShardScheduler {
 	return &ShardScheduler{
-		shardID: shardID,
-		actions: make(chan *actionHolder, 1000), // TODO make configurable
+		shardID:      shardID,
+		actions:      make(chan struct{}, 10),
+		batchHandler: batchHandler,
 	}
 }
 
@@ -34,8 +46,13 @@ func (s *ShardScheduler) Start() {
 	if s.started {
 		return
 	}
-	go s.runLoop()
+	if len(s.forwardRows) > 0 {
+		// There are some rows queued before start waiting to be processed - trigger processing
+		s.actions <- struct{}{}
+		s.processorRunning = true
+	}
 	s.started = true
+	go s.runLoop()
 }
 
 func (s *ShardScheduler) Stop() {
@@ -45,93 +62,107 @@ func (s *ShardScheduler) Stop() {
 		// If already stopped do nothing
 		return
 	}
-	s.exitRunLoop()
 	close(s.actions)
 	s.started = false
 }
 
-func (s *ShardScheduler) Pause() {
+func (s *ShardScheduler) GetLag(now time.Time) time.Duration {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if !s.started {
-		return
-	}
-	if s.paused {
-		return
-	}
-	s.exitRunLoop()
-	s.paused = true
+	return s.GetLagNoLock(now)
 }
 
-func (s *ShardScheduler) exitRunLoop() {
-	ch := make(chan error, 1)
-	s.actions <- &actionHolder{
-		action: func() error {
-			return nil
-		},
-		errChan: ch,
-		exit:    true,
+func (s *ShardScheduler) GetLagNoLock(now time.Time) time.Duration {
+	if len(s.forwardRows) > 0 {
+		nowUnix := now.Sub(common.UnixStart)
+		writeTime := time.Duration(s.forwardRows[0].WriteTime)
+		return nowUnix - writeTime
 	}
-	<-ch
+	return time.Duration(0)
 }
 
-func (s *ShardScheduler) Resume() {
+func (s *ShardScheduler) SetFailed() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.failed = true
+}
+
+func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.forwardRows = append(s.forwardRows, rows...)
+	s.lastQueuedReceiverSeq = rows[len(rows)-1].ReceiverSequence
 	if !s.started {
+		// We allow rows to be queued before the scheduler is started
 		return
 	}
-	if !s.paused {
-		return
-	}
-	go s.runLoop()
-	s.paused = false
-}
-
-func (s *ShardScheduler) runLoop() {
-	for {
-		holder, ok := <-s.actions
-		if !ok {
-			break
-		}
-		if holder.exit {
-			holder.errChan <- nil
-			break
-		}
-		err := holder.action()
-		if holder.errChan != nil {
-			holder.errChan <- err
-		} else if err != nil {
-			log.Errorf("Failed to execute action: %+v", err)
-		}
+	if !s.processorRunning {
+		s.actions <- struct{}{}
+		s.processorRunning = true
 	}
 }
 
-func (s *ShardScheduler) ScheduleAction(action Action) chan error {
-	// Channel size is 1 - we don't want writer to block waiting for reader
-	ch := make(chan error, 1)
-	s.submitAction(&actionHolder{
-		action:  action,
-		errChan: ch,
-	})
-	return ch
-}
-
-func (s *ShardScheduler) ScheduleActionFireAndForget(action Action) {
-	s.submitAction(&actionHolder{
-		action: action,
-	})
+func (s *ShardScheduler) WaitForProcessingToComplete(ch chan struct{}) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	lastQueued := s.lastQueuedReceiverSeq
+	go func() {
+		start := time.Now()
+		for {
+			lastProcessed := atomic.LoadUint64(&s.lastProcessedReceiverSeq)
+			if lastProcessed == lastQueued {
+				ch <- struct{}{}
+				return
+			}
+			time.Sleep(1 * time.Millisecond)
+			if time.Now().Sub(start) > 10*time.Second {
+				log.Warnf("timed out waiting for shard %d processing to complete", s.shardID)
+				ch <- struct{}{}
+				return
+			}
+		}
+	}()
 }
 
 func (s *ShardScheduler) ShardID() uint64 {
 	return s.shardID
 }
 
-func (s *ShardScheduler) submitAction(action *actionHolder) {
+func (s *ShardScheduler) getRowBatch() ([]cluster.ForwardRow, bool) {
 	s.lock.Lock()
-	if !s.started {
-		return
+	defer s.lock.Unlock()
+
+	numRows := len(s.forwardRows)
+	if numRows > maxProcessBatchRows {
+		numRows = maxProcessBatchRows
 	}
-	s.actions <- action
-	s.lock.Unlock()
+	rows := s.forwardRows[:numRows]
+	s.forwardRows = s.forwardRows[numRows:]
+	more := len(s.forwardRows) > 0
+	if !more {
+		s.processorRunning = false
+	}
+	return rows, more
+}
+
+func (s *ShardScheduler) runLoop() {
+	for {
+		_, ok := <-s.actions
+		if !ok {
+			break
+		}
+		rows, more := s.getRowBatch()
+		if len(rows) == 0 {
+			panic("expected rows")
+		}
+		if err := s.batchHandler.HandleBatch(s.shardID, rows); err != nil {
+			log.Errorf("failed to process batch: %+v", err)
+			return
+		}
+		atomic.StoreUint64(&s.lastProcessedReceiverSeq, rows[len(rows)-1].ReceiverSequence)
+		if more {
+			s.actions <- struct{}{}
+		}
+	}
 }

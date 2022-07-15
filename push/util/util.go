@@ -20,6 +20,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"time"
 )
 
 func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint64, remoteConsumerID uint64) []byte {
@@ -70,7 +71,11 @@ func EncodePrevAndCurrentRow(prevValueBuff []byte, currValueBuff []byte) []byte 
 	return buff
 }
 
-func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster) error {
+type LagProvider interface {
+	GetLag(shardID uint64) time.Duration
+}
+
+func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster, lagProvider LagProvider) error {
 	lb := len(forwardBatches)
 	chs := make([]chan error, 0, lb)
 
@@ -79,6 +84,12 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		chs = append(chs, ch)
 		theBatch := b
 		go func() {
+			if lagProvider != nil {
+				lag := lagProvider.GetLag(theBatch.ShardID)
+				if lag > 1*time.Second {
+					time.Sleep(lag)
+				}
+			}
 			err := clust.WriteForwardBatch(theBatch)
 			if err != nil {
 				ch <- err
