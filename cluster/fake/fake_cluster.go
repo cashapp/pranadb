@@ -197,19 +197,15 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 	timestamp := int64(time.Now().Sub(common.UnixStart))
 	if err := batch.ForEachPut(func(key []byte, value []byte) error {
 
-		enableDupDetection := key[0] == 1
+		dedupKey := key[:24]            // Next 24 bytes is the dedup key
+		remoteConsumerBytes := key[24:] // The rest is just the remote consumer id
 
-		dedupKey := key[1:25]           // Next 24 bytes is the dedup key
-		remoteConsumerBytes := key[25:] // The rest is just the remote consumer id
-
-		if enableDupDetection {
-			ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
-			if err != nil {
-				return err
-			}
-			if ignore {
-				return nil
-			}
+		ignore, err := cluster.DoDedup(batch.ShardID, dedupKey, dedupMap)
+		if err != nil {
+			return err
+		}
+		if ignore {
+			return nil
 		}
 
 		// We increment before using - receiver sequence must start at 1

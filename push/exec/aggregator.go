@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -17,6 +18,7 @@ type Aggregator struct {
 	groupByCols  []int // The group by column indexes in the child
 	storage      cluster.Cluster
 	sharder      *sharder.Sharder
+	soloAggShard int64
 }
 
 type AggregateFunctionInfo struct {
@@ -35,14 +37,14 @@ type aggStateHolder struct {
 	row             *common.Row
 }
 
-func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, fullAggTableInfo *common.TableInfo,
-	groupByCols []int, storage cluster.Cluster, sharder *sharder.Sharder) (*Aggregator, error) {
+func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo,
+	groupByCols []int, storage cluster.Cluster, shrdr *sharder.Sharder) (*Aggregator, error) {
 
 	colTypes := make([]common.ColumnType, len(aggFunctions))
 	for i, aggFunc := range aggFunctions {
 		colTypes[i] = aggFunc.ReturnType
 	}
-	fullAggTableInfo.ColumnTypes = colTypes
+	aggTableInfo.ColumnTypes = colTypes
 	rf := common.NewRowsFactory(colTypes)
 	pushBase := pushExecutorBase{
 		colTypes:    colTypes,
@@ -53,13 +55,29 @@ func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, fullAggT
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	var soloAggShard int64
+	if len(groupByCols) == 0 {
+		// There are no group by cols - e.g. count(*) of all rows
+		// In this case we don't want to hash a nil []byte - this will work but will mean every non group by
+		// aggregation would end up on the same shard - and get very hot! So we instead pre-choose the which shard is
+		// going to get the aggregation by hashing the generated table name
+		remoteShardID, err := shrdr.CalculateShard(sharder.ShardTypeHash,
+			[]byte(fmt.Sprintf("%s.%s", aggTableInfo.SchemaName, aggTableInfo.Name)))
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		soloAggShard = int64(remoteShardID)
+	} else {
+		soloAggShard = -1
+	}
 	return &Aggregator{
 		pushExecutorBase: pushBase,
 		aggFuncs:         aggFuncs,
-		AggTableInfo:     fullAggTableInfo,
+		AggTableInfo:     aggTableInfo,
 		groupByCols:      groupByCols,
 		storage:          storage,
-		sharder:          sharder,
+		sharder:          shrdr,
+		soloAggShard:     soloAggShard,
 	}, nil
 }
 
@@ -82,17 +100,24 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			row = prevRow
 		}
 		colTypes := a.GetChildren()[0].ColTypes()
-		keyBytes, err := common.EncodeKeyCols(row, a.groupByCols, colTypes, nil)
-		if err != nil {
-			return err
-		}
-		remoteShardID, err := a.sharder.CalculateShard(sharder.ShardTypeHash, keyBytes)
-		if err != nil {
-			return errors.WithStack(err)
+
+		var remoteShardID uint64
+		if a.soloAggShard != -1 {
+			remoteShardID = uint64(a.soloAggShard)
+		} else {
+			keyBytes, err := common.EncodeKeyCols(row, a.groupByCols, colTypes, nil)
+			if err != nil {
+				return err
+			}
+			remoteShardID, err = a.sharder.CalculateShard(sharder.ShardTypeHash, keyBytes)
+			if err != nil {
+				return errors.WithStack(err)
+			}
 		}
 
 		// TODO optimisation - pass through row bytes so don't have to re-encode
 		var prevRowBytes []byte
+		var err error
 		if prevRow != nil {
 			prevRowBytes, err = common.EncodeRow(prevRow, colTypes, nil)
 			if err != nil {
@@ -108,13 +133,19 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 		}
 
 		receiverSeq := rowsBatch.ReceiverIndex(i)
-		if receiverSeq == 0 && ctx.EnableDuplicateDetection {
+		if receiverSeq == 0 {
 			// sanity check
 			// a valid receiver sequence is never equal to zero - they always start at 1 so we know that it's
 			// undefined here and we can't create a valid dedup key
 			panic("undefined receiver sequence in attempting to forward aggregation")
 		}
-		forwardKey := util.EncodeKeyForForwardAggregation(ctx.EnableDuplicateDetection, a.AggTableInfo.ID,
+		var origTableID uint64
+		if ctx.FillTableID != -1 {
+			origTableID = uint64(ctx.FillTableID)
+		} else {
+			origTableID = a.AggTableInfo.ID
+		}
+		forwardKey := util.EncodeKeyForForwardAggregation(origTableID,
 			ctx.WriteBatch.ShardID, uint64(receiverSeq), a.AggTableInfo.ID)
 		value := util.EncodePrevAndCurrentRow(prevRowBytes, currRowBytes)
 		ctx.AddToForwardBatch(remoteShardID, forwardKey, value)

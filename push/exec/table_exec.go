@@ -15,7 +15,7 @@ import (
 )
 
 const lockAndLoadMaxRows = 10
-const fillMaxBatchSize = 10000
+const fillMaxBatchSize = 500
 
 // TableExecutor updates the changes into the associated table - used to persist state
 // of a materialized view or source
@@ -30,9 +30,10 @@ type TableExecutor struct {
 	fillTableID        uint64
 	uncommittedBatches sync.Map
 	delayer            interruptor.InterruptManager
+	lagProvider        util.LagProvider
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagProvider util.LagProvider) *TableExecutor {
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -45,6 +46,7 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *Table
 		store:          store,
 		consumingNodes: make(map[string]PushExecutor),
 		delayer:        interruptor.GetInterruptManager(),
+		lagProvider:    lagProvider,
 	}
 }
 
@@ -263,8 +265,10 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	t.filling = true
 	t.fillTableID = fillTableID
 
+	receiverSequences := sync.Map{}
+
 	// start the fill - this takes a snapshot and fills from there
-	ch, err := t.startReplayFromSnapshot(pe, schedulers, interruptor)
+	ch, err := t.startReplayFromSnapshot(pe, schedulers, interruptor, &receiverSequences, fillTableID)
 	if err != nil {
 		t.lock.Unlock()
 		return errors.WithStack(err)
@@ -340,7 +344,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 
 		// Now we replay those records to that sequence value
 		if rowsToFill != 0 {
-			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID); err != nil {
+			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID, &receiverSequences); err != nil {
 				if lockAndLoad {
 					t.lock.Unlock()
 				}
@@ -389,7 +393,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 }
 
 func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
-	interruptor *interruptor.Interruptor) (chan error, error) {
+	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) (chan error, error) {
 	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
@@ -397,7 +401,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, interruptor)
+		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, interruptor, receiverSeqs, fillTableID)
 		snapshot.Close()
 		ch <- err
 		log.Trace("Replay from snapshot complete")
@@ -407,7 +411,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 }
 
 func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
-	interruptor *interruptor.Interruptor) error {
+	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) error {
 	numRows := 0
 	chans := make([]chan error, 0, len(schedulers))
 
@@ -437,7 +441,7 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 					ch <- nil
 					return
 				}
-				if err := t.sendFillBatchFromPairs(pe, theShardID, kvp); err != nil {
+				if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
 					ch <- err
 					return
 				}
@@ -471,7 +475,8 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 	return errors.WithStack(err)
 }
 
-func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair) error {
+func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair,
+	receiverSeqs *sync.Map, fillTableID uint64) error {
 	rows := t.RowsFactory().NewRows(len(kvp))
 	for _, kv := range kvp {
 		if err := common.DecodeRow(kv.Value, t.colTypes, rows); err != nil {
@@ -479,19 +484,46 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 		}
 	}
 	wb := cluster.NewWriteBatch(shardID)
+
+	// When we fill it's important that we have duplicate detection as forward writes caused in fills (e.g. for aggregations)
+	// can be retried in case of Raft timeout.
+	// However we don't have a natural receiver sequence in this case. So we generate one starting from 1 at the beginning of the fill
+	// We also will use the fill table id in the originator id when filling to distinguish the fill dup keys from normal dup keys
+	var receiverSeq uint64
+	lrs, ok := receiverSeqs.Load(shardID)
+	if ok {
+		receiverSeq, ok = lrs.(uint64)
+		if !ok {
+			panic("not a uint64")
+		}
+	}
+	receiverSeq++ // We start at 1
+	numRows := rows.RowCount()
+	entries := make([]RowsEntry, numRows, numRows)
+	for i := 0; i < numRows; i++ {
+		entry := NewRowsEntry(-1, i, int64(receiverSeq))
+		entries[i] = entry
+		receiverSeq++
+	}
+	receiverSeqs.Store(shardID, receiverSeq)
+	batch := NewRowsBatch(rows, entries)
+
 	// We disable duplicate detection for the fill
-	ctx := NewExecutionContext(wb, false)
-	if err := pe.HandleRows(NewCurrentRowsBatch(rows), ctx); err != nil {
+	ctx := NewExecutionContext(wb, int64(fillTableID))
+	if err := pe.HandleRows(batch, ctx); err != nil {
 		return errors.WithStack(err)
 	}
-	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store, nil); err != nil {
+	if !util.MaybeThrottleIfLagging(t.store.GetAllShardIDs(), t.lagProvider, 5*time.Second) {
+		// FIXME - fail?
+	}
+	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
 		return err
 	}
 	return t.store.WriteBatch(wb)
 }
 
 func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,
-	fillTableID uint64) error {
+	fillTableID uint64, receiverSeqs *sync.Map) error {
 
 	chans := make([]chan error, 0)
 	for shardID, endSeq := range endSeqs {
@@ -529,7 +561,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 					numRows, len(kvp), startSeq, theEndSeq, common.DumpDataKey(startPrefix), common.DumpDataKey(endPrefix))
 				return
 			}
-			if err := t.sendFillBatchFromPairs(pe, theShardID, kvp); err != nil {
+			if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
 				ch <- err
 				return
 			}
