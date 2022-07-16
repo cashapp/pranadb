@@ -4,6 +4,8 @@
 
 --create topic testtopic;
 
+set max_line_width 300;
+
 use test;
 
 create source test_source_1(

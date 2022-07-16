@@ -18,7 +18,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
-	physicalPlan, logicalPlan, err := pl.QueryToPlan(query, false, false)
+	physicalPlan, logicalPlan, _, err := pl.QueryToPlan(query, false, false)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -42,7 +42,6 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 	return dag, internalTables, nil
 }
 
-// TODO: extract functions and break apart giant switch
 // nolint: gocyclo
 func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
@@ -86,9 +85,12 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 				funcType = aggfuncs.FirstRowAggregateFunctionType
 				firstRowFuncs++
 			default:
-				return nil, nil, errors.Errorf("unexpected aggregate function %s", aggFunc.Name)
+				return nil, nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported aggregate function %s", aggFunc.Name)
 			}
-			colType := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
+			colType, err := common.ConvertTiDBTypeToPranaType(aggFunc.RetTp)
+			if err != nil {
+				return nil, nil, err
+			}
 			af := &exec.AggregateFunctionInfo{
 				FuncType:   funcType,
 				Distinct:   aggFunc.HasDistinct,
@@ -115,17 +117,17 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			pkCols[i] = i + nonFirstRowFuncs
 		}
 
-		partialTableID := seqGenerator.GenerateSequence()
-		partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
-		aggSequence++
-		partialTableInfo := &common.TableInfo{
-			ID:             partialTableID,
-			SchemaName:     schema.Name,
-			Name:           partialTableName,
-			PrimaryKeyCols: pkCols,
-			IndexInfos:     nil, // TODO
-			Internal:       true,
-		}
+		//partialTableID := seqGenerator.GenerateSequence()
+		//partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
+		//aggSequence++
+		//partialTableInfo := &common.TableInfo{
+		//	ID:             partialTableID,
+		//	SchemaName:     schema.Name,
+		//	Name:           partialTableName,
+		//	PrimaryKeyCols: pkCols,
+		//	IndexInfos:     nil, // TODO
+		//	Internal:       true,
+		//}
 		fullTableID := seqGenerator.GenerateSequence()
 		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
 		aggSequence++
@@ -137,17 +139,17 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			IndexInfos:     nil, // TODO
 			Internal:       true,
 		}
-		partialAggInfo := &common.InternalTableInfo{
-			TableInfo:            partialTableInfo,
-			MaterializedViewName: mvName,
-		}
-		internalTables = append(internalTables, partialAggInfo)
+		//partialAggInfo := &common.InternalTableInfo{
+		//	TableInfo:            partialTableInfo,
+		//	MaterializedViewName: mvName,
+		//}
+		//internalTables = append(internalTables, partialAggInfo)
 		fullAggInfo := &common.InternalTableInfo{
 			TableInfo:            fullTableInfo,
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, fullAggInfo)
-		executor, err = exec.NewAggregator(pkCols, aggFuncs, partialTableInfo, fullTableInfo, groupByCols, m.cluster, m.sharder)
+		executor, err = exec.NewAggregator(pkCols, aggFuncs, fullTableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}

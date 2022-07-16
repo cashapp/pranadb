@@ -5,6 +5,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/interruptor"
+	pranalog "github.com/squareup/pranadb/log"
+	"github.com/squareup/pranadb/push"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -16,8 +20,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
@@ -43,11 +45,10 @@ import (
 )
 
 const (
-	TestPrefix         = "" // Set this to the name of a test if you want to only run that test, e.g. during development
-	ExcludedTestPrefix = ""
-	TestClusterID      = 12345678
-	ProtoDescriptorDir = "../protos"
-	UseFancyDiff       = false
+	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	ExcludedTestPrefixes = ""
+	TestClusterID        = 12345678
+	ProtoDescriptorDir   = "../protos"
 )
 
 var (
@@ -105,6 +106,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 		DisableQuote:           true,
 		FullTimestamp:          true,
 		DisableLevelTruncation: true,
+		TimestampFormat:        pranalog.TimestampFormat,
 	})
 
 	// Make sure we don't run tests in parallel
@@ -146,6 +148,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			},
 		},
 	}
+	// We set the table initialisation batch size to be a small number to exercise the batching logic
+	push.SetInitBatchSize(3)
 	w.pranaCluster = make([]*server.Server, w.numNodes)
 	if w.fakeCluster {
 		cnf := conf.NewDefaultConfig()
@@ -192,6 +196,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
+			cnf.RaftRTTMs = 25
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
@@ -199,6 +204,11 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			w.pranaCluster[i] = s
 		}
 	}
+
+	// We override MaxVarCharLength in tests so we can test ingesting varchar fields that are too big
+	source.MaxVarCharOverride = 1000
+
+	interruptor.ActivateTestInterruptManager()
 
 	w.startCluster()
 }
@@ -234,8 +244,18 @@ func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor i
 		if TestPrefix != "" && (strings.Index(fileName, TestPrefix) != 0) {
 			continue
 		}
-		if ExcludedTestPrefix != "" && (strings.Index(fileName, ExcludedTestPrefix) == 0) {
-			continue
+		if ExcludedTestPrefixes != "" {
+			exclude := false
+			excluded := strings.Split(ExcludedTestPrefixes, ",")
+			for _, excl := range excluded {
+				if strings.Index(fileName, excl) == 0 {
+					exclude = true
+					break
+				}
+			}
+			if exclude {
+				continue
+			}
 		}
 		if file.IsDir() {
 			continue
@@ -341,7 +361,6 @@ type sqlTest struct {
 	prana         *server.Server
 	topics        []*kafka.Topic
 	cli           *client.Client
-	sessionID     string
 	clientNodeID  int
 	currentSchema string
 }
@@ -399,8 +418,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		log.Infof("Executing line: %s", command)
 		if strings.HasPrefix(command, "--load data") {
 			st.executeLoadData(require, command)
-		} else if strings.HasPrefix(command, "--close session") {
-			st.executeCloseSession(require)
+		} else if strings.HasPrefix(command, "--close client") {
+			st.executeCloseClient(require)
 		} else if strings.HasPrefix(command, "--repeat") {
 			if i > 0 {
 				require.Fail("--repeat command must be first line in script")
@@ -445,12 +464,25 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			}
 		} else if strings.HasPrefix(command, "--pause") {
 			st.executePause(require, command)
+		} else if strings.HasPrefix(command, "--get ddl lock") {
+			st.executeGetDdlLock(require)
+		} else if strings.HasPrefix(command, "--set ddl lock timeout") {
+			st.executeSetDdlLockTimeout(require, command)
+		} else if strings.HasPrefix(command, "--activate interrupt") {
+			st.executeActivateInterrupt(command)
+		} else if strings.HasPrefix(command, "--deactivate interrupt") {
+			st.executeDeactivateInterrupt(command)
+		} else if strings.HasPrefix(command, "--async reset ddl") {
+			st.executeAsyncResetDdl(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
 		} else {
-			// sql statement
-			st.executeSQLStatement(require, command)
+			if strings.HasPrefix(command, "execps ") {
+				st.executePreparedStatement(require, command)
+			} else {
+				st.executeSQLStatement(require, command)
+			}
 		}
 	}
 
@@ -465,7 +497,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	}
 
 	// Now we verify that the test has left the database in a clean state - there should be no user sources
-	// or materialized views and no data in the database and nothing in the remote session caches
+	// or materialized views and no data in the database and nothing in the remote exec ctx caches
 	for _, prana := range st.testSuite.pranaCluster {
 
 		// This ensures no rows in receiver, forwarder tables etc
@@ -501,14 +533,14 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		require.True(ok, "table data left at end of test")
 
 		ok, err = commontest.WaitUntilWithError(func() (bool, error) {
-			num, err := prana.GetPullEngine().NumCachedSessions()
+			num, err := prana.GetPullEngine().NumCachedExecCtxs()
 			if err != nil {
 				return false, errors.WithStack(err)
 			}
 			return num == 0, nil
 		}, 5*time.Second, 10*time.Millisecond)
 		require.NoError(err)
-		require.True(ok, "timed out waiting for num remote sessions to get to zero")
+		require.True(ok, "timed out waiting for num remote execution contexts to get to zero")
 
 		topicNames := st.testSuite.fakeKafka.GetTopicNames()
 		if len(topicNames) > 0 {
@@ -539,9 +571,7 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 		}
 		require.Equal(0, indexRows.RowCount(), "Rows in sys.indexes at end of test run")
 
-		require.Equal(0, prana.GetCommandExecutor().RunningCommands(), "DDL commands left at end of test run")
-
-		require.Equal(0, prana.GetAPIServer().SessionCount(), "API Server sessions left at end of test run")
+		require.True(prana.GetCommandExecutor().Empty(), "DDL state left at end of test run")
 	}
 
 	if *updateFlag {
@@ -553,38 +583,60 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	} else {
 		b, err := os.ReadFile("./testdata/" + st.outFile)
 		require.NoError(err)
-		if !UseFancyDiff {
-			// For a large amount of output it can be hard to spot the difference with the fancy diff so defaulting
-			// to a basic check - this shows only the changed lines, not all the lines
-			require.Equal(string(b), st.output.String())
+		expectedLines := strings.Split(string(b), "\n")
+		actualLines := strings.Split(st.output.String(), "\n")
+		ok := true
+		if len(expectedLines) != len(actualLines) {
+			ok = false
 		} else {
-			dmp := diffmatchpatch.New()
-			actualOutput := st.output.String()
-			diffs := dmp.DiffMain(actualOutput, string(b), false)
-			if !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual) {
-				diff := dmp.DiffPrettyText(diffs)
-				st.testSuite.T().Error("Test output did not match:")
-				fmt.Println(diff)
+			// We compare the lines one by one because there are special lines that we compare by prefix not exactly
+			// E.g. internal error contains a UUID which is different each time so we can't exact compare
+			for i, expected := range expectedLines {
+				actual := actualLines[i]
+				hasPrefix := false
+				for _, prefix := range prefixCompareLines {
+					if strings.HasPrefix(expected, prefix) {
+						if !strings.HasPrefix(actual, prefix) {
+							ok = false
+						}
+						hasPrefix = true
+						break
+					}
+				}
+				if !ok {
+					break
+				}
+				a := strings.TrimRight(actual, " ")
+				e := strings.TrimRight(expected, " ")
+				if !hasPrefix && a != e {
+					ok = false
+					break
+				}
 			}
 		}
+		if !ok {
+			require.Equal(string(b), st.output.String())
+		}
 	}
-
 	dur := time.Now().Sub(start)
 	log.Infof("Finished running sql test %s time taken %d ms", st.testName, dur.Milliseconds())
 	return numIters
 }
 
+var prefixCompareLines = []string{"Failed to execute statement: PDB5000 - Internal error - reference:"}
+
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
+	lineExpected := fmt.Sprintf("%d rows returned", numRows)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := st.cli.ExecuteStatement(st.sessionID, fmt.Sprintf("select * from %s", tableName))
+		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName), nil)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
-		lineCount := -2 // There's a header and a footer
-		for range ch {
-			lineCount++
+		lastLine := ""
+		for l := range ch {
+			lastLine = l
 		}
-		return lineCount == numRows, nil
+		return lineExpected == lastLine, nil
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok)
@@ -772,16 +824,14 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	log.Infof("Load data %s execute time ms %d", command, dur.Milliseconds())
 }
 
-func (st *sqlTest) executeCloseSession(require *require.Assertions) {
+func (st *sqlTest) executeCloseClient(require *require.Assertions) {
 	// Closes then recreates the cli
 	st.closeClient(require)
 	st.cli = st.createCli(require)
 }
 
 func (st *sqlTest) closeClient(require *require.Assertions) {
-	err := st.cli.CloseSession(st.sessionID)
-	require.NoError(err)
-	err = st.cli.Stop()
+	err := st.cli.Stop()
 	require.NoError(err)
 }
 
@@ -968,6 +1018,174 @@ func (st *sqlTest) executePause(require *require.Assertions, command string) {
 	require.NoError(err)
 }
 
+func (st *sqlTest) executeGetDdlLock(require *require.Assertions) {
+	//choose a random Prana
+	prana := st.choosePrana()
+	ok, err := prana.GetCluster().GetLock(st.currentSchema + "/")
+	require.NoError(err)
+	st.output.WriteString(fmt.Sprintf("Get lock returned: %t", ok))
+}
+
+func (st *sqlTest) executeSetDdlLockTimeout(require *require.Assertions, com string) {
+	timeout, err := strconv.ParseInt(com[23:], 10, 64)
+	require.NoError(err)
+	command.SetSchemaLockAttemptTimeout(time.Duration(timeout) * time.Second)
+}
+
+func (st *sqlTest) executeActivateInterrupt(com string) {
+	parts := strings.Split(com, " ")
+	interruptName := parts[2]
+	st.interruptManager().ActivateDelay(interruptName)
+}
+
+func (st *sqlTest) executeDeactivateInterrupt(com string) {
+	parts := strings.Split(com, " ")
+	interruptName := parts[2]
+	st.interruptManager().DeactivateDelay(interruptName)
+}
+
+func (st *sqlTest) interruptManager() *interruptor.DelayingInterruptManager {
+	i, ok := interruptor.GetInterruptManager().(*interruptor.DelayingInterruptManager)
+	if !ok {
+		panic("not a *interruptor.DelayingInterruptManager")
+	}
+	return i
+}
+
+func (st *sqlTest) executeAsyncResetDdl(require *require.Assertions, com string) {
+	parts := strings.Split(com, " ")
+	schemaName := parts[3]
+	go func() {
+		// Execute the reset ddl command asynchronously after a short delay
+		time.Sleep(1 * time.Second)
+		resChan, err := st.cli.ExecuteStatement(fmt.Sprintf("reset ddl %s", schemaName), nil)
+		require.NoError(err)
+		for range resChan {
+		}
+	}()
+}
+
+func (st *sqlTest) executePreparedStatement(require *require.Assertions, command string) {
+	//--execps num_args argType argVal ... query
+	command = command[7:]
+	parts := split(command)
+	numArgs, err := strconv.Atoi(parts[0])
+	require.NoError(err)
+	pos := 1
+	psArgs := make([]*service.Arg, numArgs)
+	for i := 0; i < numArgs; i++ {
+		sArgType := strings.ToLower(parts[pos])
+		pos++
+		var psArg *service.Arg
+		switch sArgType {
+		case "tinyint":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_TINY_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "int":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "bigint":
+			val, err := strconv.ParseInt(parts[pos], 10, 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_BIG_INT,
+				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
+			}
+		case "double":
+			val, err := strconv.ParseFloat(parts[pos], 64)
+			require.NoError(err)
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_DOUBLE,
+				Value: &service.ArgValue{Value: &service.ArgValue_FloatValue{FloatValue: val}},
+			}
+		case "varchar":
+			psArg = &service.Arg{
+				Type:  service.ColumnType_COLUMN_TYPE_VARCHAR,
+				Value: &service.ArgValue{Value: &service.ArgValue_StringValue{StringValue: parts[pos]}},
+			}
+		default:
+			if strings.HasPrefix(sArgType, "decimal") {
+				var decParams *service.DecimalParams
+				if sArgType != "decimal" {
+					sParam := sArgType[8 : len(sArgType)-1]
+					argsParts := strings.Split(sParam, ",")
+					prec, err := strconv.ParseInt(argsParts[0], 10, 64)
+					require.NoError(err)
+					scale, err := strconv.ParseInt(argsParts[1], 10, 64)
+					require.NoError(err)
+					decParams = &service.DecimalParams{DecimalScale: uint32(scale), DecimalPrecision: uint32(prec)}
+				}
+				psArg = &service.Arg{
+					Type:          service.ColumnType_COLUMN_TYPE_DECIMAL,
+					Value:         &service.ArgValue{Value: &service.ArgValue_DecimalValue{DecimalValue: parts[pos]}},
+					DecimalParams: decParams,
+				}
+			} else if strings.HasPrefix(sArgType, "timestamp") {
+				var fsp uint32 = 6
+				if sArgType != "timestamp" {
+					f, err := strconv.ParseInt(sArgType[10:len(sArgType)-1], 10, 64)
+					require.NoError(err)
+					fsp = uint32(f)
+				}
+				psArg = &service.Arg{
+					Type:            service.ColumnType_COLUMN_TYPE_TIMESTAMP,
+					Value:           &service.ArgValue{Value: &service.ArgValue_TimestampValue{TimestampValue: parts[pos]}},
+					TimestampParams: &service.TimestampParams{FractionalSecondsPrecision: fsp},
+				}
+			}
+		}
+		pos++
+		psArgs[i] = psArg
+	}
+	start := time.Now()
+	resChan, err := st.cli.ExecuteStatement(parts[pos], psArgs)
+	require.NoError(err)
+	for line := range resChan {
+		log.Infof("output:%s", line)
+		st.output.WriteString(line + "\n")
+	}
+	end := time.Now()
+	dur := end.Sub(start)
+	log.Infof("Prepared statement execute time ms %d", dur.Milliseconds())
+}
+
+func split(str string) []string {
+	var res []string
+	var cb *strings.Builder
+	inQuote := false
+	for _, b := range str {
+		if b == ' ' && !inQuote {
+			if cb != nil {
+				res = append(res, cb.String())
+				cb = nil
+			}
+		} else if b == '"' {
+			if cb == nil {
+				inQuote = true
+			} else {
+				inQuote = false
+			}
+		} else {
+			if cb == nil {
+				cb = &strings.Builder{}
+			}
+			cb.WriteRune(b)
+		}
+	}
+	if cb != nil {
+		res = append(res, cb.String())
+	}
+	return res
+}
+
 func (st *sqlTest) waitForProcessingToComplete(require *require.Assertions) {
 	log.Debug("Waiting for processing to complete")
 	for _, prana := range st.testSuite.pranaCluster {
@@ -988,8 +1206,8 @@ func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
-	isUse := strings.HasPrefix(statement, "use ")
-	resChan, err := st.cli.ExecuteStatement(st.sessionID, statement)
+	isUse := strings.HasPrefix(strings.ToLower(statement), "use ")
+	resChan, err := st.cli.ExecuteStatement(statement, nil)
 	require.NoError(err)
 	lastLine := ""
 	for line := range resChan {
@@ -997,9 +1215,8 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 		st.output.WriteString(line + "\n")
 		lastLine = line
 	}
-	successful := lastLine == "0 rows returned"
-	if isUse && successful {
-		st.currentSchema = statement[4:]
+	if isUse && strings.HasPrefix(lastLine, "0 rows returned") {
+		st.currentSchema = strings.ToLower(statement[4:])
 	}
 	end := time.Now()
 	dur := end.Sub(start)
@@ -1023,13 +1240,10 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
-	cli := client.NewClient(apiServerAddress, 5*time.Second)
+	cli := client.NewClient(apiServerAddress)
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
 	require.NoError(err)
-	sessID, err := cli.CreateSession()
-	require.NoError(err)
-	st.sessionID = sessID
 	st.clientNodeID = id
 	return cli
 }

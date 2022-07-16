@@ -1,0 +1,204 @@
+--create topic testtopic;
+use test;
+
+-- first we check that reset ddl clears the ddl lock;
+
+--get ddl lock;
+
+--set ddl lock timeout 2;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+reset ddl test;
+
+--set ddl lock timeout 30;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+-- next we introduce a delay on loading initial state, then try and create another source with initial state = test_source_1;
+-- this should go slow, then we cancel it, and it should return;
+
+--activate interrupt initial_state;
+
+--create topic testtopic2;
+
+-- we execute reset ddl asynchronously after a short delay;
+--async reset ddl test;
+
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+select * from test_source_2 order by col0;
+
+--deactivate interrupt initial_state;
+
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    ),
+    properties = (
+        "prop1" = "val1",
+        "prop2" = "val2"
+    )
+);
+
+select * from test_source_2 order by col0;
+
+-- Now try a slow materialized view initial state load and cancel it;
+
+--activate interrupt initial_state;
+
+--async reset ddl test;
+
+create materialized view test_mv1 with(initialstate="test_source_2") as select * from test_source_2;
+
+select * from test_mv1 order by col0;
+
+--deactivate interrupt initial_state;
+
+-- Now try a slow materialized view snapshot fill and cancel it;
+
+--activate interrupt fill_snapshot;
+
+--async reset ddl test;
+
+create materialized view test_mv1 as select * from test_source_2;
+
+select * from test_mv1 order by col0;
+
+--deactivate interrupt fill_snapshot;
+
+create materialized view test_mv1 as select * from test_source_2;
+
+select * from test_mv1 order by col0;
+
+-- Now try a slow index snapshot fill and cancel it;
+
+--activate interrupt fill_snapshot;
+
+--async reset ddl test;
+
+create index index_1 on test_mv1(col1);
+
+--deactivate interrupt fill_snapshot;
+
+create index index_1 on test_mv1(col1);
+
+select * from test_mv1 order by col0;
+
+drop index index_1 on test_mv1;
+drop materialized view test_mv1;
+drop source test_source_2;
+drop source test_source_1;
+
+--delete topic testtopic2;
+--delete topic testtopic;

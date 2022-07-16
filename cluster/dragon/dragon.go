@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/cznic/mathutil"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
 
@@ -39,13 +39,11 @@ const (
 
 	retryDelay = 1000 * time.Millisecond
 
-	retryTimeout = 10 * time.Minute
+	retryTimeout = 15 * time.Minute
 
 	callTimeout = 10 * time.Second
 
 	toDeleteShardID uint64 = 4
-
-	requestClientMaxPoolSize = 100
 
 	nodeHostStartTimeout = 10 * time.Second
 
@@ -56,11 +54,9 @@ func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	requestClientMaxPoolSize := mathutil.Min(requestClientMaxPoolSize, cnf.NumShards)
 	return &Dragon{
-		cnf:               cnf,
-		shardSMs:          make(map[uint64]struct{}),
-		requestClientPool: make([]remoting.Client, requestClientMaxPoolSize, requestClientMaxPoolSize),
+		cnf:      cnf,
+		shardSMs: make(map[uint64]struct{}),
 	}, nil
 }
 
@@ -82,9 +78,10 @@ type Dragon struct {
 	shardSMsLock                 sync.Mutex
 	shardSMs                     map[uint64]struct{}
 	requestClientMap             sync.Map
-	requestClientPool            []remoting.Client
-	requestClientPoolLock        sync.Mutex
+	requestClientsLock           sync.Mutex
 	healthChecker                *remoting.HealthChecker
+	saveSnapshotCount            int64
+	restoreSnapshotCount         int64
 }
 
 type snapshot struct {
@@ -165,6 +162,13 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 
 func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if !d.started {
+		return nil, errors.Errorf("failed to execute query on node %d not started", d.cnf.NodeID)
+	}
+
 	if queryInfo.ShardID < cluster.DataShardIDBase {
 		panic("invalid shard cluster id")
 	}
@@ -189,7 +193,7 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 		if bytes[0] == 0 {
 			if time.Now().Sub(start) > pullQueryRetryTimeout {
 				msg := string(bytes[1:])
-				return nil, errors.Errorf("failed to execute remote query %s %v", queryInfo.Query, msg)
+				return nil, errors.Errorf("failed to execute remote query %v", msg)
 			}
 			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
 			// initialised until after the cluster is active
@@ -409,18 +413,16 @@ func (d *Dragon) Stop() error {
 	if err == nil {
 		d.started = false
 	}
-	log.Debug("stopped pebble")
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	for i, cl := range d.requestClientPool {
-		if cl != nil {
-			if err := cl.Stop(); err != nil {
-				log.Errorf("failed to stop client %v", err)
-			}
-			d.requestClientPool[i] = nil
+	d.requestClientMap.Range(func(key, value interface{}) bool {
+		cl, ok := value.(remoting.Client)
+		if !ok {
+			panic("not a remoting.Client")
 		}
-	}
-	d.requestClientMap = sync.Map{} // clear the cache
+		if err := cl.Stop(); err != nil {
+			log.Warnf("failed to stop client %v", err)
+		}
+		return true
+	})
 	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
 	return errors.WithStack(err)
 }
@@ -557,7 +559,6 @@ func (d *Dragon) deleteAllDataInRangeForShardsLocally(startPrefix []byte, endPre
 		endPrefixWithShard = common.AppendUint64ToBufferBE(endPrefixWithShard, shardID)
 		endPrefixWithShard = append(endPrefixWithShard, endPrefix...)
 
-		log.Debugf("Deleting all data in range %v to %v", startPrefixWithShard, endPrefixWithShard)
 		if err := d.deleteAllDataInRangeLocally(batch, startPrefixWithShard, endPrefixWithShard); err != nil {
 			return errors.WithStack(err)
 		}
@@ -762,9 +763,10 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error), timeout time.Du
 		}
 		if time.Now().Sub(start) >= timeout {
 			// If we timeout, then something is seriously wrong - we should just exit
-			log.Errorf("timeout in making dragonboat calls %+v", err)
+			log.Errorf("error in making dragonboat calls %+v", err)
 			return nil, err
 		}
+		log.Warnf("executeWithRetry failed, will be retried: %v", err)
 		var delay time.Duration
 		if err == dragonboat.ErrTimeout {
 			delay = retryDelay
@@ -874,7 +876,6 @@ func (d *Dragon) checkDeleteToDeleteData(queryExec common.SimpleQueryExec) error
 			}
 			if !exists {
 				for _, prefix := range batch.Prefixes {
-					log.Debugf("Deleting all local data with prefix %s", common.DumpDataKey(prefix))
 					endPrefix := common.IncrementBytesBigEndian(prefix)
 					if err := d.deleteAllDataInRangeLocally(pBatch, prefix, endPrefix); err != nil {
 						return err
@@ -1026,11 +1027,12 @@ func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
 	if !ok {
 		panic("can't find shard allocs")
 	}
-	// TODO sort with leader first - this could give better perf - currently we don't know the leader
 	ln := len(nids)
 	serverAddresses := make([]string, ln, ln)
 	for i, nid := range nids {
-		serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		if nid != d.cnf.NodeID {
+			serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+		}
 	}
 	return serverAddresses
 }
@@ -1065,9 +1067,9 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 }
 
 func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
 	return d.getOrCreateRequestClient(shardID)
 }
@@ -1075,35 +1077,30 @@ func (d *Dragon) getRequestClient(shardID uint64) (remoting.Client, error) {
 func (d *Dragon) doGetRequestClient(shardID uint64) remoting.Client {
 	c, ok := d.requestClientMap.Load(shardID)
 	if ok {
-		client, ok := c.(remoting.Client)
+		cl, ok := c.(remoting.Client)
 		if !ok {
 			panic("not a remoting.Client")
 		}
-		return client
+		return cl
 	}
 	return nil
 }
 
 func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, error) {
-	d.requestClientPoolLock.Lock()
-	defer d.requestClientPoolLock.Unlock()
-	client := d.doGetRequestClient(shardID)
-	if client != nil {
-		return client, nil
+	d.requestClientsLock.Lock()
+	defer d.requestClientsLock.Unlock()
+	cl := d.doGetRequestClient(shardID)
+	if cl != nil {
+		return cl, nil
 	}
-	index := int(shardID % uint64(len(d.requestClientPool)))
-	client = d.requestClientPool[index]
-	if client == nil {
-		serverAddresses := d.getServerAddressesForShard(shardID)
-		client = remoting.NewClient(serverAddresses...)
-		if err := client.Start(); err != nil {
-			return nil, err
-		}
-		d.healthChecker.AddAvailabilityListener(client.AvailabilityListener())
-		d.requestClientPool[index] = client
+	serverAddresses := d.getServerAddressesForShard(shardID)
+	cl = remoting.NewClient(serverAddresses...)
+	if err := cl.Start(); err != nil {
+		return nil, err
 	}
-	d.requestClientMap.Store(shardID, client)
-	return client, nil
+	d.healthChecker.AddAvailabilityListener(cl.AvailabilityListener())
+	d.requestClientMap.Store(shardID, cl)
+	return cl, nil
 }
 
 func (d *Dragon) GetRemoteProposeHandler() remoting.ClusterMessageHandler {
@@ -1191,4 +1188,16 @@ func (d *Dragon) ensureNodeHostAvailable() error {
 		d.lock.RUnlock()
 	}
 	return nil
+}
+
+func (d *Dragon) SaveSnapshotCount() int64 {
+	return atomic.LoadInt64(&d.saveSnapshotCount)
+}
+
+func (d *Dragon) RestoreSnapshotCount() int64 {
+	return atomic.LoadInt64(&d.restoreSnapshotCount)
+}
+
+func (d *Dragon) AddHealthcheckListener(listener remoting.AvailabilityListener) {
+	d.healthChecker.AddAvailabilityListener(listener)
 }

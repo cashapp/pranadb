@@ -2,6 +2,8 @@ package command
 
 import (
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/interruptor"
+	"strings"
 	"sync"
 
 	"github.com/squareup/pranadb/command/parser"
@@ -20,6 +22,7 @@ type CreateIndexCommand struct {
 	indexInfo      *common.IndexInfo
 	ast            *parser.CreateIndex
 	toDeleteBatch  *cluster.ToDeleteBatch
+	interruptor    interruptor.Interruptor
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -38,12 +41,12 @@ func (c *CreateIndexCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateIndexCommand) LockName() string {
-	return c.schema.Name + "/"
+func (c *CreateIndexCommand) Cancel() {
+	c.interruptor.Interrupt()
 }
 
-func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string, tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
-	pl.RefreshInfoSchema()
+func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string,
+	tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
@@ -117,7 +120,7 @@ func (c *CreateIndexCommand) onPhase0() error {
 	}
 
 	// We create the index but we don't register it yet
-	return c.e.pushEngine.CreateIndex(c.indexInfo, true)
+	return c.e.pushEngine.CreateIndex(c.indexInfo, true, &c.interruptor)
 }
 
 func (c *CreateIndexCommand) onPhase1() error {
@@ -137,18 +140,30 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 	if phase == 0 {
 		// We persist the index after it's been filled but *before* it's been registered - otherwise in case of
 		// failure the index can disappear after it has been used
-		return c.e.metaController.PersistIndex(c.indexInfo)
+		if err := c.e.metaController.PersistIndex(c.indexInfo); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+func (c *CreateIndexCommand) Cleanup() {
+	if c.indexInfo == nil {
+		return
+	}
+	if err := c.e.pushEngine.UnattachIndex(c.indexInfo); err != nil {
+		// Ignore
+	}
+}
+
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {
+	ast.Name = strings.ToLower(ast.Name)
 	var tab common.Table
 	tab, ok := c.e.metaController.GetSource(c.SchemaName(), ast.TableName)
 	if !ok {
 		tab, ok = c.e.metaController.GetMaterializedView(c.SchemaName(), ast.TableName)
 		if !ok {
-			return nil, errors.NewUnknownSourceOrMaterializedViewError(c.SchemaName(), ast.TableName)
+			return nil, errors.NewUnknownTableError(c.SchemaName(), ast.TableName)
 		}
 	}
 	tabInfo := tab.GetTableInfo()
@@ -165,12 +180,18 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 		colMap[colName] = colIndex
 	}
 	indexCols := make([]int, len(ast.ColumnNames))
+	indexColMap := make(map[int]struct{}, len(ast.ColumnNames))
 	for i, colName := range ast.ColumnNames {
 		colIndex, ok := colMap[colName.Name]
 		if !ok {
-			return nil, errors.NewUnknownIndexColumn(c.SchemaName(), ast.TableName, colName.Name)
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown column %s in %s.%s",
+				colName.Name, c.SchemaName(), ast.TableName)
 		}
 		indexCols[i] = colIndex
+		indexColMap[colIndex] = struct{}{}
+	}
+	if len(indexColMap) != len(ast.ColumnNames) {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Index cannot contain same column multiple times")
 	}
 	info := &common.IndexInfo{
 		SchemaName: c.SchemaName(),

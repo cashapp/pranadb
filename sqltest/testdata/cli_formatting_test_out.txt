@@ -1,0 +1,308 @@
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(65, 30),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
++---------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3         | col4         | col5         | col6                       |
++---------------------------------------------------------------------------------------------------------------------+
+| -9223372036854775808 | -128 | -2147483648 | -112345678.. | 1234567898.. | iquwhsiquw.. | 2020-01-03 01:00:00.123456 |
+| -2                   | -1   | -1          | -1.100000    | -12345.543.. | oranges      | 2020-01-02 01:00:00.123456 |
+| 1                    | 1    | 1           | 1.100000     | 12345.5432.. | avocados     | 2020-01-01 01:00:00.123456 |
+| 9223372036854775807  | 127  | 2147483647  | 1123456789.. | -123456789.. | uiqwhdiuqw.. | 2020-01-04 01:00:00.123456 |
++---------------------------------------------------------------------------------------------------------------------+
+4 rows returned
+
+set max_line_width 200;
+0 rows returned
+
+select * from test_source_1 order by col0;
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3                                    | col4                                    | col5                                    | col6                       |
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| -9223372036854775808 | -128 | -2147483648 | -112345678901233994926117295264512151.. | 12345678987654321234567898765432123.1.. | iquwhsiquwhsiuqwhsiuqhsuqwhsiuqwhsiuq.. | 2020-01-03 01:00:00.123456 |
+| -2                   | -1   | -1          | -1.100000                               | -12345.543210000000000000000000000000   | oranges                                 | 2020-01-02 01:00:00.123456 |
+| 1                    | 1    | 1           | 1.100000                                | 12345.543210000000000000000000000000    | avocados                                | 2020-01-01 01:00:00.123456 |
+| 9223372036854775807  | 127  | 2147483647  | 1123456789012339949261172952645121513.. | -12345678987654321234567898765432123... | uiqwhdiuqwhdiuqwhdiuqwdiuhqwdiuhqwduh.. | 2020-01-04 01:00:00.123456 |
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+4 rows returned
+
+set max_line_width 50;
+0 rows returned
+
+set foo 123;
+Failed to execute statement: Unknown property: foo
+
+set max_line_width oranges;
+Failed to execute statement: Invalid max_line_width value: oranges
+
+set max_line_width 0;
+Failed to execute statement: Invalid max_line_width value: 0
+
+set max_line_width -1;
+Failed to execute statement: Invalid max_line_width value: -1
+
+set bar;
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
+
+set;
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
+
+set max_line_width 80;
+0 rows returned
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------+
+| col0     | col1     | col2     | col3     | col4     | col5     | col6     |
++----------------------------------------------------------------------------+
+| -92233.. | -128     | -21474.. | -11234.. | 123456.. | iquwhs.. | 2020-0.. |
+| -2       | -1       | -1       | -1.100.. | -12345.. | oranges  | 2020-0.. |
+| 1        | 1        | 1        | 1.100000 | 12345... | avocados | 2020-0.. |
+| 922337.. | 127      | 214748.. | 112345.. | -12345.. | uiqwhd.. | 2020-0.. |
++----------------------------------------------------------------------------+
+4 rows returned
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    col2 double,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+--load data dataset_2;
+
+select * from test_source_2 order by col0;
++------------------------------------------------------------------------------+
+| col0                 | col1                      | col2                      |
++------------------------------------------------------------------------------+
+| 1                    | apples                    | 1.234000                  |
+| 2                    | pears                     | 2.345000                  |
++------------------------------------------------------------------------------+
+2 rows returned
+
+set max_line_width 120;
+0 rows returned
+
+select * from test_source_2 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                                          | col2                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | apples                                        | 1.234000                                      |
+| 2                    | pears                                         | 2.345000                                      |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+--create topic testtopic3;
+
+create source test_source_3(
+    col0 bigint,
+    col1 varchar,
+    col2 varchar,
+    col3 varchar,
+    col4 varchar,
+    col5 varchar,
+    col6 varchar,
+    col7 varchar,
+    col8 varchar,
+    col9 varchar,
+    col10 varchar,
+    col11 varchar,
+    col12 varchar,
+    col13 varchar,
+    col14 varchar,
+    col15 varchar,
+    col16 varchar,
+    col17 varchar,
+    col18 varchar,
+    col19 varchar,
+    col20 varchar,
+    col21 varchar,
+    col22 varchar,
+    col23 varchar,
+    col24 varchar,
+    col25 varchar,
+    col26 varchar,
+    col27 varchar,
+    col28 varchar,
+    col29 varchar,
+    col30 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic3",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6,
+        v7,
+        v8,
+        v9,
+        v10,
+        v11,
+        v12,
+        v13,
+        v14,
+        v15,
+        v16,
+        v17,
+        v18,
+        v19,
+        v20,
+        v21,
+        v22,
+        v23,
+        v24,
+        v25,
+        v26,
+        v27,
+        v28,
+        v29,
+        v30
+    )
+);
+0 rows returned
+
+--load data dataset_3;
+
+select * from test_source_3 order by col0;
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| col0  | col1  | col2  | col3  | col4  | col5  | col6  | col7  | col8  | col9  | col10 | col11 | col12 | col13 | col14 | col15 | col16 | col17 | col18 | col19 | col20 | col21 | col22 | col23 | col24 | col25 | col26 | col27 | col28 | col29 | col30 |
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1     | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. | abc.. |
++-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+
+--create topic testtopic4;
+
+create source test_source_4(
+    col0 bigint,
+    col________________________________________________________________ varchar,
+    col2_______________________________________________________________ varchar,
+    col3_______________________________________________________________ varchar,
+    col4_______________________________________________________________ varchar,
+    col5_______________________________________________________________ varchar,
+    col6_______________________________________________________________ varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic4",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+--load data dataset_4;
+
+select * from test_source_4 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col________.. | col2_______.. | col3_______.. | col4_______.. | col5_______.. | col6_______.. |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | a             | b             | c             | d             | e             | f             |
+| 2                    | g             | h             | i             | j             | k             | l             |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+--create topic testtopic5;
+create source test_source_5(
+    col0 bigint,
+    looooooooooooooooooooong_col_name tinyint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic5",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+0 rows returned
+
+--load data dataset_5;
+
+-- col name longer than col width;
+select looooooooooooooooooooong_col_name from test_source_5 order by col0;
++-----------------------------------+
+| looooooooooooooooooooong_col_name |
++-----------------------------------+
+| 123                               |
++-----------------------------------+
+1 rows returned
+
+drop source test_source_5;
+0 rows returned
+drop source test_source_4;
+0 rows returned
+drop source test_source_3;
+0 rows returned
+drop source test_source_2;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic5;
+--delete topic testtopic4;
+--delete topic testtopic3;
+--delete topic testtopic2;
+--delete topic testtopic;

@@ -32,17 +32,17 @@ func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset
 
 func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 	if maxRowsToReturn < 1 {
-		return nil, errors.Errorf("invalid limit %d", maxRowsToReturn)
+		return nil, errors.Errorf("Invalid limit %d", maxRowsToReturn)
 	}
 	// OFFSET is unsupported for now.
 	if l.offset != 0 {
-		return nil, errors.NewInvalidStatementError("offset must be zero")
+		return nil, errors.NewInvalidStatementError("Offset must be zero")
 	}
 	// Because LIMIT is often used together with ORDER BY which is limited to orderByMaxRows rows,
 	// we impose the same max on LIMIT.
 	if l.count > orderByMaxRows {
 		return nil, errors.NewInvalidStatementError(
-			fmt.Sprintf("limit count cannot be larger than %d", orderByMaxRows),
+			fmt.Sprintf("Limit count cannot be larger than %d", orderByMaxRows),
 		)
 	}
 	if l.count == 0 {
@@ -55,17 +55,9 @@ func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		for {
-			// Drain all rows so that the current session query is cleared.
-			// TODO: Add a method to stop PullExecutor early
-			// https://github.com/cashapp/pranadb/issues/361
-			rows, err := child.GetRows(batchSize)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			if rows.RowCount() < batchSize {
-				break
-			}
+		if l.rows.RowCount() == int(l.count) {
+			// We need to signal upstream to close the query resources
+			child.Close()
 		}
 	}
 	startIndex := l.cursor

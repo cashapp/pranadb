@@ -12,13 +12,19 @@ show schemas;
 create source payments (
     payment_id varchar,
     customer_id bigint,
-    amount decimal(10, 2)
+    amount decimal(10, 2),
+    primary key(payment_id)
 ) with (
     brokername = "testbroker",
     topicname = "payments",
     headerencoding = "stringbytes",
     keyencoding = "stringbytes",
-    valueencoding = "json"
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
 );
 
 --now go to another schema - test0 should still exist as it's not empty;

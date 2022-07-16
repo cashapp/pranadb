@@ -227,7 +227,12 @@ func (c *connection) sendResponse(nf *ClusterRequest, respMsg ClusterMessage, re
 		resp.ok = true
 	} else {
 		resp.ok = false
-		resp.errMsg = respErr.Error()
+		var perr errors.PranaError
+		if !errors.As(respErr, &perr) {
+			perr = common.LogInternalError(respErr)
+		}
+		resp.errCode = int(perr.Code)
+		resp.errMsg = perr.Error()
 	}
 	buff, err := resp.serialize(nil)
 	if err != nil {

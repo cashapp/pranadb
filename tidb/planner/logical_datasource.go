@@ -131,8 +131,6 @@ func (ds *LogicalDataSource) buildIndexScan(path *util.AccessPath, isDoubleRead 
 }
 
 func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
-	scan := ds.buildTableScan()
-	scans = append(scans, scan)
 	for _, path := range ds.possibleAccessPaths {
 		if !path.IsIntHandlePath {
 			path.FullIdxCols, path.FullIdxColLens = expression.IndexInfo2Cols(ds.Columns, ds.schema.Columns, path.Index)
@@ -144,6 +142,13 @@ func (ds *LogicalDataSource) Convert2Scans() (scans []LogicalPlan) {
 				scans = append(scans, ds.buildIndexScan(path, true))
 			}
 		}
+	}
+	if len(scans) == 0 {
+		// If the PK has more than one column we will have created a fake index for the planner which should
+		// result in an index scan being output from the physical plan which we then convert back to a table scan
+		// So we only need to create a table scan here in the case where the PK has one column
+		scan := ds.buildTableScan()
+		scans = append(scans, scan)
 	}
 	return scans
 }

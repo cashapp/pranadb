@@ -23,6 +23,14 @@ var (
 	kafkaDecoderString  = newKafkaDecoder(common.KafkaEncodingStringBytes)
 )
 
+const (
+	tinyIntMinVal    = -128
+	tinyIntMaxVal    = 127
+	intMinVal        = -2147483648
+	intMaxVal        = 2147483647
+	maxVarcharLength = 65535
+)
+
 type MessageParser struct {
 	sourceInfo       *common.SourceInfo
 	rowsFactory      *common.RowsFactory
@@ -35,7 +43,7 @@ type MessageParser struct {
 }
 
 func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver) (*MessageParser, error) {
-	selectors := sourceInfo.TopicInfo.ColSelectors
+	selectors := sourceInfo.OriginInfo.ColSelectors
 	selectEvals := make([]evaluable, len(selectors))
 	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
 	// don't use them
@@ -45,7 +53,7 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 
 		err error
 	)
-	topic := sourceInfo.TopicInfo
+	topic := sourceInfo.OriginInfo
 	for i, selector := range selectors {
 		selector := selector
 		selectEvals[i] = selector.Select
@@ -159,7 +167,7 @@ func (m *MessageParser) decodeMessage(message *kafka.Message) error {
 	return nil
 }
 
-func (m *MessageParser) evalColumns(rows *common.Rows) error {
+func (m *MessageParser) evalColumns(rows *common.Rows) error { //nolint:gocyclo
 	for i, eval := range m.colEvals {
 		colType := m.sourceInfo.ColumnTypes[i]
 		val, err := eval(m.evalContext.meta, m.evalContext.value)
@@ -171,7 +179,29 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			continue
 		}
 		switch colType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+		case common.TypeTinyInt:
+			ival, err := CoerceInt64(val)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if ival < tinyIntMinVal || ival > tinyIntMaxVal {
+				return errors.NewPranaErrorf(errors.ValueOutOfRange,
+					"value %d is out of range for TINYINT (%d < x < %d) in source %s.%s",
+					ival, tinyIntMinVal, tinyIntMaxVal, m.sourceInfo.SchemaName, m.sourceInfo.Name)
+			}
+			rows.AppendInt64ToColumn(i, ival)
+		case common.TypeInt:
+			ival, err := CoerceInt64(val)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if ival < intMinVal || ival > intMaxVal {
+				return errors.NewPranaErrorf(errors.ValueOutOfRange,
+					"value %d is out of range for INT (%d < x < %d) in source %s.%s",
+					ival, intMinVal, intMaxVal, m.sourceInfo.SchemaName, m.sourceInfo.Name)
+			}
+			rows.AppendInt64ToColumn(i, ival)
+		case common.TypeBigInt:
 			ival, err := CoerceInt64(val)
 			if err != nil {
 				return errors.WithStack(err)
@@ -187,6 +217,11 @@ func (m *MessageParser) evalColumns(rows *common.Rows) error {
 			sval, err := CoerceString(val)
 			if err != nil {
 				return errors.WithStack(err)
+			}
+			if len(sval) > getMaxVarcharLength() {
+				return errors.NewPranaErrorf(errors.VarcharTooBig,
+					"value is too long at %d for varchar (max length %d) in source %s.%s",
+					len(sval), maxVarcharLength, m.sourceInfo.SchemaName, m.sourceInfo.Name)
 			}
 			rows.AppendStringToColumn(i, sval)
 		case common.TypeDecimal:
@@ -319,3 +354,12 @@ type evalContext struct {
 	meta  map[string]interface{}
 	value interface{}
 }
+
+func getMaxVarcharLength() int {
+	if MaxVarCharOverride != -1 {
+		return MaxVarCharOverride
+	}
+	return maxVarcharLength
+}
+
+var MaxVarCharOverride = -1

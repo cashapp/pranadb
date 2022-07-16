@@ -41,6 +41,7 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 
 		currRow := rowsBatch.CurrentRow(i)
 		prevRow := rowsBatch.PreviousRow(i)
+		receiverIndex := rowsBatch.ReceiverIndex(i)
 
 		if currRow != nil && prevRow == nil {
 			// A new row
@@ -49,7 +50,7 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 				return errors.WithStack(err)
 			}
 			if ok {
-				resultBatch.AppendEntry(nil, currRow)
+				resultBatch.AppendEntry(nil, currRow, receiverIndex)
 			}
 		} else if currRow != nil && prevRow != nil {
 			// A modified row
@@ -63,13 +64,13 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			}
 			if okCurr && okPrev {
 				// Both the current and previous version pass the condition so this remains a modify
-				resultBatch.AppendEntry(prevRow, currRow)
+				resultBatch.AppendEntry(prevRow, currRow, receiverIndex)
 			} else if !okCurr && okPrev {
 				// Previous value passed the filter but current value doesn't so this becomes a delete
-				resultBatch.AppendEntry(prevRow, nil)
+				resultBatch.AppendEntry(prevRow, nil, receiverIndex)
 			} else if okCurr && !okPrev {
 				// Passes now but didn't pass before - becomes an add
-				resultBatch.AppendEntry(nil, currRow)
+				resultBatch.AppendEntry(nil, currRow, receiverIndex)
 			}
 		} else if currRow == nil && prevRow != nil {
 			// A deleted row - pass it through if it previously was passed
@@ -78,7 +79,7 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 				return errors.WithStack(err)
 			}
 			if ok {
-				resultBatch.AppendEntry(prevRow, nil)
+				resultBatch.AppendEntry(prevRow, nil, receiverIndex)
 			}
 		}
 	}

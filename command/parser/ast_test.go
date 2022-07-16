@@ -50,6 +50,7 @@ func TestParse(t *testing.T) {
 			headerencoding = "json",
 			keyencoding = "json",
 			valueencoding = "json",
+            ingestfilter = "where sensor_id=1",
 			columnselectors = (
 				meta("key").k0,
 				v1,
@@ -69,12 +70,13 @@ func TestParse(t *testing.T) {
 					{Column: &ColumnDef{Pos: lexer.Position{Offset: 80, Line: 5, Column: 4}, Name: "temperature", Type: common.Type(4)}},
 					{PrimaryKey: []string{"sensor_id", "location"}},
 				},
-				TopicInformation: []*TopicInformation{
+				OriginInformation: []*SourceOriginInformation{
 					{BrokerName: "testbroker"},
 					{TopicName: "testtopic"},
 					{HeaderEncoding: "json"},
 					{KeyEncoding: "json"},
 					{ValueEncoding: "json"},
+					{IngestFilter: "where sensor_id=1"},
 					{ColSelectors: []*selector.ColumnSelectorAST{
 						{MetaKey: stringRef("key"), Next: &selector.SelectorAST{Field: "k0"}},
 						{Field: stringRef("v1")},
@@ -100,24 +102,20 @@ func TestParse(t *testing.T) {
 			&AST{Drop: &Drop{MaterializedView: true, Name: "test_mv_1"}}, "",
 		},
 		{
-			"ExecutePreparedStatement", `EXECUTE 8 432 123.32 "hello world"`,
-			&AST{Execute: &Execute{PsID: 8, Args: []string{"432", "123.32", "hello world"}}}, "",
-		},
-		{
-			"ExecutePreparedStatementNoArgs", `EXECUTE 8`,
-			&AST{Execute: &Execute{PsID: 8}}, "",
-		},
-		{
 			"Describe", `DESCRIBE foo`,
 			&AST{Describe: "foo"}, "",
 		},
 		{
 			"ShowTables", `SHOW TABLES`,
-			&AST{Show: &Show{Tables: "TABLES"}}, "",
+			&AST{Show: &Show{Tables: true}}, "",
 		},
 		{
 			"ShowSchemas", `SHOW SCHEMAS`,
-			&AST{Show: &Show{Schemas: "SCHEMAS"}}, "",
+			&AST{Show: &Show{Schemas: true}}, "",
+		},
+		{
+			"ShowIndexes", `SHOW INDEXES on test_mv1`,
+			&AST{Show: &Show{Indexes: true, TableName: "test_mv1"}}, "",
 		},
 	}
 	for _, test := range tests {

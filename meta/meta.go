@@ -204,8 +204,16 @@ func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error 
 }
 
 func (c *Controller) existsTable(schema *common.Schema, name string) error {
-	if _, ok := schema.GetTable(name); ok {
-		return errors.Errorf("table with Name %s already exists in Schema %s", name, schema.Name)
+	if tbl, ok := schema.GetTable(name); ok {
+		_, isSource := tbl.(*common.SourceInfo)
+		_, isMV := tbl.(*common.MaterializedViewInfo)
+		if isSource {
+			return errors.NewPranaErrorf(errors.SourceAlreadyExists, "Source %s.%s already exists", schema.Name, name)
+		} else if isMV {
+			return errors.NewPranaErrorf(errors.MaterializedViewAlreadyExists, "Materialized view %s.%s already exists", schema.Name, name)
+		} else {
+			return errors.Errorf("Table %s.%s already exists", schema.Name, name)
+		}
 	}
 	return nil
 }
@@ -335,7 +343,7 @@ func (c *Controller) RegisterMaterializedView(mvInfo *common.MaterializedViewInf
 }
 
 func (c *Controller) registerInternalTable(info *common.InternalTableInfo) error {
-	log.Debugf("Registering internal tabe %s with id %d", info.Name, info.ID)
+	log.Debugf("Registering internal table %s with id %d", info.Name, info.ID)
 	if err := c.checkTableID(info.ID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -365,7 +373,7 @@ func (c *Controller) UnregisterSource(schemaName string, sourceName string) erro
 	}
 	delete(c.tableIDs, tbl.GetTableInfo().ID)
 	schema.DeleteTable(sourceName)
-	c.DeleteSchemaIfEmpty(schema)
+	c.deleteSchemaIfEmpty(schema)
 	return nil
 }
 
@@ -412,7 +420,7 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)
 	}
-	c.DeleteSchemaIfEmpty(schema)
+	c.deleteSchemaIfEmpty(schema)
 	return nil
 }
 
@@ -449,8 +457,21 @@ func (c *Controller) registerSystemSchema() {
 
 // DeleteSchemaIfEmpty - Schema are removed once they have no more tables
 func (c *Controller) DeleteSchemaIfEmpty(schema *common.Schema) {
+	c.doDeleteSchemaIfEmpty(schema, true)
+}
+
+func (c *Controller) deleteSchemaIfEmpty(schema *common.Schema) {
+	c.doDeleteSchemaIfEmpty(schema, false)
+}
+
+func (c *Controller) doDeleteSchemaIfEmpty(schema *common.Schema, lock bool) {
 	if schema != nil && schema.LenTables() == 0 {
+		if lock {
+			c.lock.Lock()
+		}
 		delete(c.schemas, schema.Name)
-		schema.SetDeleted()
+		if lock {
+			c.lock.Unlock()
+		}
 	}
 }

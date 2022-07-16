@@ -2,11 +2,11 @@ package parplan
 
 import (
 	"fmt"
+	"github.com/pingcap/parser/mysql"
 
 	"github.com/squareup/pranadb/tidb"
 
 	"github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/tidb/infoschema"
 )
@@ -59,7 +59,7 @@ func schemaToInfoSchema(schema *common.Schema) infoschema.InfoSchema {
 				FieldType: *colType,
 				ID:        int64(columnIndex + 1),
 			}
-			for pkIndex := range tableInfo.PrimaryKeyCols {
+			for _, pkIndex := range tableInfo.PrimaryKeyCols {
 				if columnIndex == pkIndex {
 					col.Flag |= mysql.PriKeyFlag
 					break

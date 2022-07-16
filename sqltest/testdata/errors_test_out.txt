@@ -1,0 +1,1233 @@
+-- client errors;
+----------------;
+
+-- set errors;
+
+set;
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
+set whateva;
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
+set foobar blah;
+Failed to execute statement: Unknown property: foobar
+set max_line_width;
+Failed to execute statement: Invalid set command. Should be set <prop_name> <prop_value>
+set max_line_width 10000000;
+Failed to execute statement: Invalid max_line_width value: 10000000
+set max_line_width 0;
+Failed to execute statement: Invalid max_line_width value: 0
+set max_line_width -1;
+Failed to execute statement: Invalid max_line_width value: -1
+set max_line_width -100;
+Failed to execute statement: Invalid max_line_width value: -100
+set max_line_width bananas;
+Failed to execute statement: Invalid max_line_width value: bananas
+
+-- general syntax errors;
+
+uiuqwdiuqwdiuqwhd;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "uiuqwdiuqwdiuqwhd"
+ijwsoiqwd qwudhquwidh;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "ijwsoiqwd"
+
+iwdoqwd
+qwdqwdqw
+qwdqwdqwd
+qwdqwd;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "iwdoqwd"
+
+7;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "7"
+
+create sausages;
+Failed to execute statement: PDB1000 - 1:8: unexpected token "sausages" (expected Create)
+cr eate source;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "cr"
+
+-- create source errors;
+
+--create topic testtopic;
+
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1001 - No schema in use
+
+use test;
+0 rows returned
+
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+0 rows returned
+
+-- already exists;
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.foo already exists
+
+drop source foo;
+0 rows returned
+
+create source 34353(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 1:15: unexpected token "34353" (expected CreateSource)
+
+create source !*£8373(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 1:15: invalid input text "!*£8373(\n    col..."
+
+create source (
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 1:15: unexpected token "(" (expected CreateSource)
+
+create source bar(
+    23123 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: unexpected token "23123" (expected TableOption ("," TableOption)* ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+create source bar(
+    col0 ginormousint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:10: unexpected token "ginormousint" (expected ("VARCHAR" | "TINYINT" | "INT" | "BIGINT" | "TIMESTAMP" | "DOUBLE" | "DECIMAL") ("(" <number> ("," <number>)* ")")?)
+
+create source bar(
+    col0 decimal(0,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Decimal precision must be > 0 and <= 65
+
+create source bar(
+    col0 decimal(-1,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Decimal precision must be > 0 and <= 65
+
+create source bar(
+    col0 decimal(66,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Decimal precision must be > 0 and <= 65
+
+create source bar(
+    col0 decimal(65,-1),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: decimal scale must be >= 0 and <= 30
+
+create source bar(
+    col0 decimal(65,31),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: decimal scale must be >= 0 and <= 30
+
+create source bar(
+    col0 decimal(29,30),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Decimal scale must be <= precision
+
+create source bar(
+    col0 decimal,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Expected DECIMAL(precision, scale)
+
+create source bar(
+    col0 decimal(),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:17: unexpected token "(" (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+create source bar(
+    col0 decimal(45),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Expected DECIMAL(precision, scale)
+
+create source bar(
+    col0 timestamp(-1),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Timestamp fsp must be >= 0 and <= 6
+
+create source bar(
+    col0 timestamp(7),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 2:5: Timestamp fsp must be >= 0 and <= 6
+
+create source bar(
+    col0 bigint
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 3:5: unexpected token "primary" (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+create source bar(
+    col0 bigint,
+    primary key (col0),
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 3:23: unexpected token "," (expected ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+create source bar(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic"
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - 7:5: unexpected token "headerencoding" (expected ")")
+
+create source bar(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    ),
+);
+Failed to execute statement: PDB1000 - 12:6: unexpected token "," (expected ")")
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+    )
+);
+Failed to execute statement: PDB1000 - 13:11: unexpected token "," (expected ")")
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    );
+Failed to execute statement: PDB1000 - 14:6: unexpected token "<EOF>" (expected ")")
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - 6:5: unexpected token "broke" (expected SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+Failed to execute statement: PDB1000 - Number of column selectors (1) must match number of columns (2)
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "george",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Unknown broker george - has it been configured in the server config?
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "foo",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "foo",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "foo",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create source bar(
+    col0 bigint,
+    col1 bigint
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Primary key is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key ()
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - 4:18: unexpected token ")" (expected <ident> ("," <ident>)* ")")
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0, col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Primary key cannot contain same column multiple times
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0, col1, col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Invalid primary key column ["col0" "col1" "col2"]
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - Invalid primary key column ["col2"]
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - brokerName is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - topicName is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - headerEncoding is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - keyEncoding is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1000 - valueEncoding is required
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json"
+);
+Failed to execute statement: PDB1000 - Number of column selectors (0) must match number of columns (2)
+
+-- duplicate column name;
+create source bar(
+    col0 bigint,
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Duplicate column names
+
+-- no columns;
+create source bar(
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+    )
+);
+Failed to execute statement: PDB1000 - 2:1: unexpected token ")" (expected TableOption ("," TableOption)* ")" "WITH" "(" SourceOriginInformation ("," SourceOriginInformation)* ")")
+
+--errors in drop source;
+
+drop source who;
+Failed to execute statement: PDB1002 - Unknown source: test.who
+drop source 1254124;
+Failed to execute statement: PDB1000 - 1:13: unexpected token "1254124" (expected <ident> ("ON" <ident>)?)
+drop source;
+Failed to execute statement: PDB1000 - 1:12: unexpected token "<EOF>" (expected <ident> ("ON" <ident>)?)
+drop source uqwhs qwdiuhqwd;
+Failed to execute statement: PDB1000 - 1:19: unexpected token "qwdiuhqwd"
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+0 rows returned
+
+create materialized view mv1 as select * from bar;
+0 rows returned
+
+drop source bar;
+Failed to execute statement: PDB1009 - Cannot drop source test.bar it has the following children test.mv1
+
+drop materialized view mv1;
+0 rows returned
+drop source bar;
+0 rows returned
+
+-- show and describe errors;
+
+show sch emas;
+Failed to execute statement: PDB1000 - 1:6: unexpected token "sch" (expected Show)
+show schemass;
+Failed to execute statement: PDB1000 - 1:6: unexpected token "schemass" (expected Show)
+show;
+Failed to execute statement: PDB1000 - 1:5: unexpected token "<EOF>" (expected Show)
+show t ables;
+Failed to execute statement: PDB1000 - 1:6: unexpected token "t" (expected Show)
+show ttables;
+Failed to execute statement: PDB1000 - 1:6: unexpected token "ttables" (expected Show)
+
+describe a b;
+Failed to execute statement: PDB1000 - 1:12: unexpected token "b"
+describe blah;
+Failed to execute statement: PDB1005 - Unknown source or materialized view: test.blah
+
+-- create materialized view errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+0 rows returned
+
+create materialized view bar as select * from bar;
+Failed to execute statement: PDB1006 - Source test.bar already exists
+
+create materialized view mv1 as select * from bar;
+0 rows returned
+
+create materialized view mv1 as select * from bar;
+Failed to execute statement: PDB1007 - Materialized view test.mv1 already exists
+
+create source mv1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+Failed to execute statement: PDB1007 - Materialized view test.mv1 already exists
+
+drop materialized view mv1;
+0 rows returned
+drop source bar;
+0 rows returned
+
+-- drop materialized view errors;
+
+drop materialized view who;
+Failed to execute statement: PDB1003 - Unknown materialized view: test.who
+drop materialized view 1254124;
+Failed to execute statement: PDB1000 - 1:24: unexpected token "1254124" (expected <ident> ("ON" <ident>)?)
+drop materialized view;
+Failed to execute statement: PDB1000 - 1:23: unexpected token "<EOF>" (expected <ident> ("ON" <ident>)?)
+drop materialized view uqwhs qwdiuhqwd;
+Failed to execute statement: PDB1000 - 1:30: unexpected token "qwdiuhqwd"
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+0 rows returned
+
+create materialized view mv1 as select * from bar;
+0 rows returned
+
+create materialized view mv2 as select * from mv1;
+0 rows returned
+
+drop materialized view mv1;
+Failed to execute statement: PDB1010 - Cannot drop materialized view test.mv1 it has the following children test.mv2
+
+drop materialized view mv2;
+0 rows returned
+drop materialized view mv1;
+0 rows returned
+drop source bar;
+0 rows returned
+
+-- create index errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+0 rows returned
+
+create index 51424 on bar(col1);
+Failed to execute statement: PDB1000 - 1:14: unexpected token "51424" (expected CreateIndex)
+
+create index on bar(col1);
+Failed to execute statement: PDB1000 - 1:17: unexpected token "bar" (expected "ON" <ident> "(" ColumnName ("," ColumnName)* ")")
+
+create index foo(col1);
+Failed to execute statement: PDB1000 - 1:17: unexpected token "(" (expected "ON" <ident> "(" ColumnName ("," ColumnName)* ")")
+
+create index foo on bar;
+Failed to execute statement: PDB1000 - 1:24: unexpected token "<EOF>" (expected "(" ColumnName ("," ColumnName)* ")")
+
+create index foo on bar();
+Failed to execute statement: PDB1000 - 1:25: unexpected token ")" (expected ColumnName ("," ColumnName)* ")")
+
+create index foo on bar(col2);
+Failed to execute statement: PDB1000 - Unknown column col2 in test.bar
+
+create index foo on bar(col1, col1);
+Failed to execute statement: PDB1000 - Index cannot contain same column multiple times
+
+create index foo on bar(col1, col2);
+Failed to execute statement: PDB1000 - Unknown column col2 in test.bar
+
+create index foo on bar(col1);
+0 rows returned
+create index foo on bar(col1);
+Failed to execute statement: PDB1008 - Index foo already exists on test.bar
+
+drop index foo on bar;
+0 rows returned
+drop source bar;
+0 rows returned
+
+-- drop index errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+0 rows returned
+
+drop index foo on bar;
+Failed to execute statement: PDB1004 - Unknown index: test.bar.foo
+
+create index foo on bar(col1);
+0 rows returned
+drop index foo;
+Failed to execute statement: PDB1000 - Drop index requires a table
+
+drop index foo on bar;
+0 rows returned
+drop source bar;
+0 rows returned
+
+-- query errors;
+
+create source bar(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+se lect * from bar;
+Failed to execute statement: PDB1000 - 1:1: unexpected token "se"
+
+select * from unknown;
+Failed to execute statement: PDB1000 - Table 'test.unknown' doesn't exist
+
+select col100 from bar;
+Failed to execute statement: PDB1000 - Unknown column 'col100' in 'field list'
+
+select col0, col100 from bar;
+Failed to execute statement: PDB1000 - Unknown column 'col100' in 'field list'
+
+create materialized view foo as select * from unknown;
+Failed to execute statement: PDB1000 - Table 'test.unknown' doesn't exist
+
+create materialized view foo as select col100 from bar;
+Failed to execute statement: PDB1000 - Unknown column 'col100' in 'field list'
+
+create materialized view foo as select col0, col100 from bar;
+Failed to execute statement: PDB1000 - Unknown column 'col100' in 'field list'
+
+select foofunc(col0) from bar;
+Failed to execute statement: PDB1000 - FUNCTION test.foofunc does not exist
+
+create materialized view foo as select foofunc(col0) from bar;
+Failed to execute statement: PDB1000 - FUNCTION test.foofunc does not exist
+
+select lpad(col5, 100, "abc", 23, 67) from bar;
+Failed to execute statement: PDB1000 - Incorrect parameter count in the call to native function 'lpad'
+
+-- we don't currently support max min or avg;
+create materialized view foo as select col5, max(col1) from bar group by col5;
+Failed to execute statement: PDB1000 - Unsupported aggregate function max
+create materialized view foo as select col5, min(col1) from bar group by col5;
+Failed to execute statement: PDB1000 - Unsupported aggregate function min
+create materialized view foo as select col5, avg(col1) from bar group by col5;
+Failed to execute statement: PDB1000 - Unsupported aggregate function avg
+
+create materialized view foo as select col5, unknown(col1) from bar group by col5;
+Failed to execute statement: PDB1000 - line 1 column 22 near "(col1) from bar group by col5"
+
+create materialized view foo as select col5, sum(col1) from bar group by col5 having col7 > 10;
+Failed to execute statement: PDB1000 - Unknown column 'col7' in 'having clause'
+
+-- we don't support joins in queries;
+
+create source quux(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+create materialized view foo as select a.col0, a.col5, b.col2 from bar a inner join quux b on a.col0 = b.col0;
+Failed to execute statement: PDB1000 - Internal : Can't find a proper physical plan for this query
+
+select a.col0, a.col5, b.col2 from bar a inner join quux b on a.col0 = b.col0;
+Failed to execute statement: PDB1000 - Internal : Can't find a proper physical plan for this query
+
+-- pull queries don't support aggregations;
+
+select col5, sum(col1) from bar group by col5;
+Failed to execute statement: PDB1000 - select col5, sum(col1) from bar group by col5
+
+-- we don't support sub queries;
+
+select col0, col3 from bar where exists (select 1 from quux where quux.col0 = bar.col0);
+Failed to execute statement: PDB1000 - Invalid statement select col0, col3 from bar where exists (select 1 from quux where quux.col0 = bar.col0) - UnknownType: *ast.SelectField
+
+select col0, col3 from bar where col3 > (select sum(col1) from quux);
+Failed to execute statement: PDB1000 - Invalid statement select col0, col3 from bar where col3 > (select sum(col1) from quux) - Invalid use of group function
+
+create materialized view foo as select col0, col3 from bar where exists (select 1 from quux where quux.col0 = bar.col0);
+Failed to execute statement: PDB1000 - UnknownType: *ast.SelectField
+
+create materialized view foo as select col0, col3 from bar where col3 > (select sum(col1) from quux);
+Failed to execute statement: PDB1000 - Invalid use of group function
+
+drop source quux;
+0 rows returned
+
+-- prepared statements errors;
+
+select * from bar where col0 = ?;
+Failed to execute statement: PDB1011 - Statement has 1 param markers but 0 param(s) supplied
+
+execps 0 "select * from bar where col0 = ?";
+Failed to execute statement: PDB1011 - Statement has 1 param markers but 0 param(s) supplied
+
+execps 1 bigint 23 "select * from bar where col0 = ? and col1 = ?";
+Failed to execute statement: PDB1011 - Statement has 2 param markers but 1 param(s) supplied
+
+create materialized view foo as select col0 from bar where col0 = ?;
+Failed to execute statement: PDB1000 - 1:67: invalid input text "?"
+
+execps 1 bigint 23 "select * from bar where col0 = ??";
+Failed to execute statement: PDB1000 - Invalid statement select * from bar where col0 = ?? - line 1 column 33 near "?"
+
+execps 1 bigint 23 "select * from bar where col0 = $";
+Failed to execute statement: PDB1011 - Statement has 0 param markers but 1 param(s) supplied
+
+drop source bar;
+0 rows returned
+
+--delete topic testtopic;
+
+-- backfill errors;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "foo",
+    columnselectors = (v0)
+);
+Failed to execute statement: PDB1005 - Unknown table or materialized view test.foo
+
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+0 rows returned
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (v0,v1,v2)
+);
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+create source test_source_3(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    col3 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate="test_source_1",
+    columnselectors = (v0,v1,v2,v3)
+);
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (bigint,int,varchar,int)
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+0 rows returned
+
+create materialized view test_mv_1 with (initialstate = "bar") as select * from test_source_2;
+Failed to execute statement: PDB1005 - Unknown table or materialized view test.bar
+
+create materialized view test_mv_1 with (initialstate = "test_source_1") as select * from test_source_2;
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+create materialized view test_mv_2 with (initialstate = "test_mv_1") as select * from test_source_2;
+Failed to execute statement: PDB1000 - initialState table structure does not match. initial structure: (bigint,int,varchar) source structure: (varchar,int,decimal(10, 2))
+
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_2;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+--delete topic testtopic;

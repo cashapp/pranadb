@@ -21,6 +21,11 @@ func KeyEncodeInt64(buffer []byte, val int64) []byte {
 	return AppendUint64ToBufferBE(buffer, uVal)
 }
 
+func KeyDecodeInt64(buffer []byte, offset int) (int64, int) {
+	u, offset := ReadUint64FromBufferBE(buffer, offset)
+	return int64(u ^ SignBitMask), offset
+}
+
 func KeyEncodeFloat64(buffer []byte, val float64) []byte {
 	uVal := math.Float64bits(val)
 	if val >= 0 {
@@ -31,13 +36,23 @@ func KeyEncodeFloat64(buffer []byte, val float64) []byte {
 	return AppendUint64ToBufferBE(buffer, uVal)
 }
 
+func KeyDecodeFloat64(buffer []byte, offset int) (float64, int) {
+	u, offset := ReadUint64FromBufferBE(buffer, offset)
+	if u&SignBitMask == SignBitMask {
+		//+ve
+		u &= ^SignBitMask
+	} else {
+		u = ^u
+	}
+	return math.Float64frombits(u), offset
+}
+
 func KeyEncodeDecimal(buffer []byte, val Decimal, precision int, scale int) ([]byte, error) {
 	return val.Encode(buffer, precision, scale)
 }
 
-func KeyEncodeString(buffer []byte, val string) []byte {
-	buffer = AppendUint32ToBufferBE(buffer, uint32(len(val)))
-	return append(buffer, val...)
+func KeyDecodeDecimal(buffer []byte, offset int, precision int, scale int) (Decimal, int, error) {
+	return ReadDecimalFromBuffer(buffer, offset, precision, scale)
 }
 
 func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
@@ -47,6 +62,10 @@ func KeyEncodeTimestamp(buffer []byte, val Timestamp) ([]byte, error) {
 	}
 	buffer = AppendUint64ToBufferBE(buffer, enc)
 	return buffer, nil
+}
+
+func KeyDecodeTimestamp(buffer []byte, offset int, fsp int8) (Timestamp, int, error) {
+	return ReadTimestampFromBufferBE(buffer, offset, fsp)
 }
 
 func EncodeKey(key Key, colTypes []ColumnType, keyColIndexes []int, buffer []byte) ([]byte, error) {
@@ -159,7 +178,7 @@ func EncodeKeyCol(row *Row, colIndex int, colType ColumnType, buffer []byte) ([]
 	case TypeTimestamp:
 		valTime := row.GetTimestamp(colIndex)
 		var err error
-		buffer, err = AppendTimestampToBuffer(buffer, valTime)
+		buffer, err = KeyEncodeTimestamp(buffer, valTime)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -194,16 +213,15 @@ func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputCol
 	} else {
 		switch colType.Type {
 		case TypeTinyInt, TypeInt, TypeBigInt:
-			var u uint64
-			u, offset = ReadUint64FromBufferBE(buffer, offset)
+			var u int64
+			u, offset = KeyDecodeInt64(buffer, offset)
 			if outputColIndex != -1 {
-				decoded := u ^ SignBitMask
-				rows.AppendInt64ToColumn(outputColIndex, int64(decoded))
+				rows.AppendInt64ToColumn(outputColIndex, u)
 			}
 		case TypeDecimal:
 			var val Decimal
 			var err error
-			val, offset, err = ReadDecimalFromBuffer(buffer, offset, colType.DecPrecision, colType.DecScale)
+			val, offset, err = KeyDecodeDecimal(buffer, offset, colType.DecPrecision, colType.DecScale)
 			if err != nil {
 				return 0, errors.WithStack(err)
 			}
@@ -211,14 +229,18 @@ func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputCol
 				rows.AppendDecimalToColumn(outputColIndex, val)
 			}
 		case TypeDouble:
-			var val float64
-			val, offset = ReadFloat64FromBufferBE(buffer, offset)
+			var f float64
+			f, offset = KeyDecodeFloat64(buffer, offset)
 			if outputColIndex != -1 {
-				rows.AppendFloat64ToColumn(outputColIndex, val)
+				rows.AppendFloat64ToColumn(outputColIndex, f)
 			}
 		case TypeVarchar:
 			var val string
-			val, offset = ReadStringFromBufferBE(buffer, offset)
+			var err error
+			val, offset, err = KeyDecodeString(buffer, offset)
+			if err != nil {
+				return 0, err
+			}
 			if outputColIndex != -1 {
 				rows.AppendStringToColumn(outputColIndex, val)
 			}
@@ -227,7 +249,7 @@ func DecodeIndexOrPKCol(buffer []byte, offset int, colType ColumnType, outputCol
 				val Timestamp
 				err error
 			)
-			val, offset, err = ReadTimestampFromBuffer(buffer, offset, colType.FSP)
+			val, offset, err = KeyDecodeTimestamp(buffer, offset, colType.FSP)
 			if err != nil {
 				return 0, errors.WithStack(err)
 			}

@@ -42,7 +42,7 @@ func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows.AppendStringToColumn(2, info.SchemaName)
 	rows.AppendStringToColumn(3, info.Name)
 	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
-	rows.AppendStringToColumn(5, jsonEncode(info.TopicInfo))
+	rows.AppendStringToColumn(5, jsonEncode(info.OriginInfo))
 	rows.AppendNullToColumn(6)
 	rows.AppendNullToColumn(7)
 	row := rows.GetRow(0)
@@ -53,7 +53,7 @@ func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 	info := common.SourceInfo{}
 	jsonDecode(row.GetString(4), &info.TableInfo)
-	jsonDecode(row.GetString(5), &info.TopicInfo)
+	jsonDecode(row.GetString(5), &info.OriginInfo)
 	return &info
 }
 
@@ -75,7 +75,8 @@ func EncodeMaterializedViewInfoToRow(info *common.MaterializedViewInfo) *common.
 // DecodeMaterializedViewInfoRow decodes a database row into a common.MaterializedViewInfo.
 func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo {
 	info := common.MaterializedViewInfo{
-		Query: row.GetString(6),
+		Query:      row.GetString(6),
+		OriginInfo: &common.MaterializedViewOriginInfo{},
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
 	return &info

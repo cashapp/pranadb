@@ -29,16 +29,24 @@ type (
 type Server struct {
 	config     conf.Config
 	httpServer *http.Server
+	dummy      bool
 }
 
 type metricServer struct{}
 
 func (ms *metricServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	promhttp.Handler().ServeHTTP(w, r)
+	promhttp.InstrumentMetricHandler(
+		prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+			DisableCompression: true,
+		}),
+	).ServeHTTP(w, r)
 	dragonboat.WriteHealthMetrics(w)
 }
 
-func NewServer(config conf.Config) *Server {
+func NewServer(config conf.Config, dummy bool) *Server {
+	if dummy {
+		return &Server{dummy: true}
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", &metricServer{})
 	return &Server{
@@ -51,6 +59,9 @@ func NewServer(config conf.Config) *Server {
 }
 
 func (s *Server) Start() error {
+	if s.dummy {
+		return nil
+	}
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("prometheus http export server failed to listen %v", err)
@@ -62,6 +73,9 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	if s.dummy {
+		return nil
+	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
 	}

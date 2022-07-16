@@ -27,68 +27,94 @@ create index index1 on transactions (customer_id);
 
 --test with index;
 
-select customer_id from transactions where customer_id = 600;
-|customer_id|
-|600|
-|600|
+select customer_id from transactions where customer_id = 60;
++-------------+
+| customer_id |
++-------------+
+| 60          |
+| 60          |
++-------------+
 2 rows returned
 
-select customer_id from transactions where customer_id > 600 order by customer_id;
-|customer_id|
-|800|
-|900|
-|1000|
+select customer_id from transactions where customer_id > 60 order by customer_id;
++-------------+
+| customer_id |
++-------------+
+| 80          |
+| 90          |
+| 100         |
++-------------+
 3 rows returned
 
-select customer_id from transactions where customer_id < 600 order by customer_id;
-|customer_id|
-|null|
-|100|
-|300|
-|400|
-|500|
+select customer_id from transactions where customer_id < 60 order by customer_id;
++-------------+
+| customer_id |
++-------------+
+| null        |
+| 10          |
+| 30          |
+| 40          |
+| 50          |
++-------------+
 5 rows returned
 
 select customer_id from transactions where customer_id is null;
-|customer_id|
-|null|
++-------------+
+| customer_id |
++-------------+
+| null        |
++-------------+
 1 rows returned
 
-select customer_id from transactions where customer_id = 1000000;
-|customer_id|
+select customer_id from transactions where customer_id = 77;
++-------------+
+| customer_id |
++-------------+
 0 rows returned
 
 --test partially-covering index;
 
-select * from transactions where customer_id = 600 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
+select * from transactions where customer_id = 60 order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 6                    | 60          | abc                                                                             |
+| 7                    | 60          | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 2 rows returned
 
 select * from transactions where id > 5 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
-|8|800|abc|
-|9|900|abc|
-|10|1000|abc|
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 6                    | 60          | abc                                                                             |
+| 7                    | 60          | abc                                                                             |
+| 8                    | 80          | abc                                                                             |
+| 9                    | 90          | abc                                                                             |
+| 10                   | 100         | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 5 rows returned
 
 select * from transactions where id < 5 order by id;
-|id|customer_id|col2|
-|1|100|abc|
-|2|null|def|
-|3|300|ghi|
-|4|400|null|
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10          | abc                                                                             |
+| 2                    | null        | def                                                                             |
+| 3                    | 30          | ghi                                                                             |
+| 4                    | 40          | null                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
 4 rows returned
 
 -- this should trigger multiple ranges for an index scan;
-select * from transactions where customer_id in (500, 600, 700) order by id;
-|id|customer_id|col2|
-|5|500|abc|
-|6|600|abc|
-|7|600|abc|
+select * from transactions where customer_id in (50, 60, 70) order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 5                    | 50          | abc                                                                             |
+| 6                    | 60          | abc                                                                             |
+| 7                    | 60          | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 
 drop index index1 on transactions;
@@ -100,81 +126,124 @@ create index index2 on transactions (customer_id, col2);
 0 rows returned
 
 select * from transactions where id > 10 order by id;
-|id|customer_id|col2|
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
 0 rows returned
 
-select * from transactions where customer_id = 600 order by id;
-|id|customer_id|col2|
-|6|600|abc|
-|7|600|abc|
+select * from transactions where customer_id = 60 order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 6                    | 60          | abc                                                                             |
+| 7                    | 60          | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 2 rows returned
+
+select * from transactions where customer_id is null order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 2                    | null        | def                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
 
 select col2 from transactions where col2 = 'abc';
-|col2|
-|abc|
-|abc|
-|abc|
-|abc|
-|abc|
-|abc|
-|abc|
++----------------------------------------------------------------------------------------------------------------------+
+| col2                                                                                                                 |
++----------------------------------------------------------------------------------------------------------------------+
+| abc                                                                                                                  |
+| abc                                                                                                                  |
+| abc                                                                                                                  |
+| abc                                                                                                                  |
+| abc                                                                                                                  |
+| abc                                                                                                                  |
+| abc                                                                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
 7 rows returned
 
-select col2, customer_id from transactions where customer_id = 600 order by col2;
-|col2|customer_id|
-|abc|600|
-|abc|600|
+select col2, customer_id from transactions where customer_id = 60 order by col2;
++----------------------------------------------------------------------------------------------------------------------+
+| col2                                                                                                   | customer_id |
++----------------------------------------------------------------------------------------------------------------------+
+| abc                                                                                                    | 60          |
+| abc                                                                                                    | 60          |
++----------------------------------------------------------------------------------------------------------------------+
 2 rows returned
 
-select customer_id from transactions where customer_id > 600 order by customer_id;
-|customer_id|
-|800|
-|900|
-|1000|
+select customer_id from transactions where customer_id > 60 order by customer_id;
++-------------+
+| customer_id |
++-------------+
+| 80          |
+| 90          |
+| 100         |
++-------------+
 3 rows returned
 
-select customer_id from transactions where customer_id < 600 order by customer_id;
-|customer_id|
-|null|
-|100|
-|300|
-|400|
-|500|
+select customer_id from transactions where customer_id < 60 order by customer_id;
++-------------+
+| customer_id |
++-------------+
+| null        |
+| 10          |
+| 30          |
+| 40          |
+| 50          |
++-------------+
 5 rows returned
 
-select * from transactions where customer_id > 600 and customer_id < 900 order by id;
-|id|customer_id|col2|
-|8|800|abc|
+select * from transactions where customer_id > 60 and customer_id < 90 order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 8                    | 80          | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
-select * from transactions where customer_id > 300 and col2 is null order by id;
-|id|customer_id|col2|
-|4|400|null|
+select * from transactions where customer_id > 30 and col2 is null order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 4                    | 40          | null                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
-select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
-|customer_id|id|col2|
-|400|4|null|
+select customer_id, id, col2 from transactions where customer_id > 30 and col2 is null order by customer_id, id;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_id | id                   | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 40          | 4                    | null                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
 -- test index usage with composite range - we do this by fixing the leftmost columns in the index;
 
-select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
-|id|customer_id|col2|
-|3|300|ghi|
+select * from transactions where customer_id = 30 and col2 = 'ghi' order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 3                    | 30          | ghi                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
-select * from transactions where customer_id = 400 and col2 is null order by id;
-|id|customer_id|col2|
-|4|400|null|
+select * from transactions where customer_id = 40 and col2 is null order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 4                    | 40          | null                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 
 -- this should trigger multiple ranges for an index scan;
-select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
-|id|customer_id|col2|
-|5|500|abc|
-|6|600|abc|
-|7|600|abc|
+select * from transactions where customer_id in (50, 60, 70) and col2 in ('abc', 'ghi') order by id;
++----------------------------------------------------------------------------------------------------------------------+
+| id                   | customer_id | col2                                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 5                    | 50          | abc                                                                             |
+| 6                    | 60          | abc                                                                             |
+| 7                    | 60          | abc                                                                             |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 
 drop index index2 on transactions;

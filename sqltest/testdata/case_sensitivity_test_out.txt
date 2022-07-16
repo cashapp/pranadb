@@ -1,0 +1,372 @@
+--create topic testtopic;
+
+-- check schema is not case sensitive;
+
+use test;
+0 rows returned
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+0 rows returned
+
+use TEST;
+0 rows returned
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+use TeSt;
+0 rows returned
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+show schemas;
++----------------------------------------------------------------------------------------------------------------------+
+| schema                                                                                                               |
++----------------------------------------------------------------------------------------------------------------------+
+| sys                                                                                                                  |
+| test                                                                                                                 |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+-- check source names are not case sensitive;
+
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+create source TEST_SOURCE_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+create source TeSt_SoUrCe_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0
+    )
+);
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+show tables;
++---------------------------------------------------------------------------------------------------------------------+
+| tables_in_test                                           | table_type                                               |
++---------------------------------------------------------------------------------------------------------------------+
+| test_source_1                                            | source                                                   |
++---------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+
+-- check materialized view names are not case sensitive;
+
+create materialized view test_mv1 as select * from test_source_1;
+0 rows returned
+
+create materialized view TEST_MV1 as select * from test_source_1;
+Failed to execute statement: PDB1007 - Materialized view test.test_mv1 already exists
+
+create materialized view tEsT_mV1 as select * from test_source_1;
+Failed to execute statement: PDB1007 - Materialized view test.test_mv1 already exists
+
+show tables;
++---------------------------------------------------------------------------------------------------------------------+
+| tables_in_test                                           | table_type                                               |
++---------------------------------------------------------------------------------------------------------------------+
+| test_mv1                                                 | materialized_view                                        |
+| test_source_1                                            | source                                                   |
++---------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+-- check index names are not case sensitive;
+
+create index index1 on test_source_1(col0);
+0 rows returned
+
+create index INDEX1 on test_source_1(col0);
+Failed to execute statement: PDB1008 - Index index1 already exists on test.test_source_1
+
+create index InDeX1 on test_source_1(col0);
+Failed to execute statement: PDB1008 - Index index1 already exists on test.test_source_1
+
+drop materialized view test_mv1;
+0 rows returned
+drop index index1 on test_source_1;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+-- check statements are not case sensitive;
+
+uSe TeST2;
+0 rows returned
+
+ShOW SCHeMas;
++----------------------------------------------------------------------------------------------------------------------+
+| schema                                                                                                               |
++----------------------------------------------------------------------------------------------------------------------+
+| sys                                                                                                                  |
+| test2                                                                                                                |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+cReAtE SoURCE bar (
+  col0 BiGinT,
+  col1 DOuBLE,
+  PrimAry kEY (col0)
+) with (
+  bRoKerName = "testbroker",
+  tOpIcNAMe = "testtopic",
+  hEaDeREncODINg = "json",
+  kEyEncODInG = "json",
+  VaLueEnCODiNg = "json",
+  CoLUmnSElEctORs = (
+      v0,
+      v1
+  )
+);
+0 rows returned
+
+cReAtE MaTeriAlIzEd VieW foo AS sElEcT * FrOM BAr;
+0 rows returned
+
+--load data dataset_2;
+
+select * from foo order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
+| 2                    | 20.000000                                                                                     |
+| 3                    | 30.000000                                                                                     |
+| 4                    | 40.000000                                                                                     |
+| 5                    | 50.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+
+ShOw TABLeS;
++---------------------------------------------------------------------------------------------------------------------+
+| tables_in_test2                                          | table_type                                               |
++---------------------------------------------------------------------------------------------------------------------+
+| foo                                                      | materialized_view                                        |
+| bar                                                      | source                                                   |
++---------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+DeScRiBE BaR;
++--------------------------------------------------------------------------------------------------------------------+
+| field                                | type                                 | key                                  |
++--------------------------------------------------------------------------------------------------------------------+
+| col0                                 | bigint                               | pri                                  |
+| col1                                 | double                               |                                      |
++--------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+-- check column names are case sensitive;
+
+-- should fail;
+create source bar2(
+    apples bigint,
+    APPLES double,
+    AppLEs decimal(10,2),
+    primary key (apples)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+Failed to execute statement: PDB1000 - Duplicate column names
+
+--create topic testtopic2;
+
+create source bar2(
+    apples bigint,
+    pEaRs double,
+    primary key (APPLES)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from bar2 order by apples;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
+| 2                    | 20.000000                                                                                     |
+| 3                    | 30.000000                                                                                     |
+| 4                    | 40.000000                                                                                     |
+| 5                    | 50.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+select apples, PEARS from bar2 order by apples;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
+| 2                    | 20.000000                                                                                     |
+| 3                    | 30.000000                                                                                     |
+| 4                    | 40.000000                                                                                     |
+| 5                    | 50.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+select APPLES, pears from bar2 order by apples;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
+| 2                    | 20.000000                                                                                     |
+| 3                    | 30.000000                                                                                     |
+| 4                    | 40.000000                                                                                     |
+| 5                    | 50.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+select APPles, PeaRs from bar2 order by apples;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
+| 2                    | 20.000000                                                                                     |
+| 3                    | 30.000000                                                                                     |
+| 4                    | 40.000000                                                                                     |
+| 5                    | 50.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+
+ShOw TABLeS;
++---------------------------------------------------------------------------------------------------------------------+
+| tables_in_test2                                          | table_type                                               |
++---------------------------------------------------------------------------------------------------------------------+
+| foo                                                      | materialized_view                                        |
+| bar                                                      | source                                                   |
+| bar2                                                     | source                                                   |
++---------------------------------------------------------------------------------------------------------------------+
+3 rows returned
+
+DeScRiBE BaR2;
++--------------------------------------------------------------------------------------------------------------------+
+| field                                | type                                 | key                                  |
++--------------------------------------------------------------------------------------------------------------------+
+| apples                               | bigint                               | pri                                  |
+| pears                                | double                               |                                      |
++--------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+-- queries;
+
+SELECT * FROM BAR2 WHERE APPLES=1;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+select * from bar2 where apples=1;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+sElECT * FrOM BaR2 WhErE APPleS=1;
++----------------------------------------------------------------------------------------------------------------------+
+| apples               | pears                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10.000000                                                                                     |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+
+-- drop;
+
+DROP Materialized View Foo;
+0 rows returned
+DrOp sourcE BAR;
+0 rows returned
+drOp souRce baR2;
+0 rows returned
+
+-- try again, should fail;
+drop source bar2;
+Failed to execute statement: PDB1002 - Unknown source: test2.bar2
+
+--delete topic testtopic2;
+--delete topic testtopic;

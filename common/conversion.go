@@ -34,25 +34,24 @@ func ConvertPranaTypeToTiDBType(columnType ColumnType) *types.FieldType {
 	return ft
 }
 
-func ConvertTiDBTypeToPranaType(columnType *types.FieldType) ColumnType {
+func ConvertTiDBTypeToPranaType(columnType *types.FieldType) (ColumnType, error) {
 	switch columnType.Tp {
 	case mysql.TypeTiny:
-		return TinyIntColumnType
+		return TinyIntColumnType, nil
 	case mysql.TypeLong:
-		return IntColumnType
+		return IntColumnType, nil
 	case mysql.TypeLonglong:
-		return BigIntColumnType
+		return BigIntColumnType, nil
 	case mysql.TypeDouble:
-		return DoubleColumnType
+		return DoubleColumnType, nil
 	case mysql.TypeNewDecimal:
-		// The TiDB expression does not calculate the right precision and scale so we just use maximum
-		return NewDecimalColumnType(65, 30)
+		return NewDecimalColumnType(columnType.Flen, columnType.Decimal), nil
 	case mysql.TypeVarchar, mysql.TypeVarString:
-		return VarcharColumnType
+		return VarcharColumnType, nil
 	case mysql.TypeTimestamp:
-		return TimestampColumnType
+		return ColumnType{Type: TypeTimestamp, FSP: int8(columnType.Decimal)}, nil
 	default:
-		panic(fmt.Sprintf("unknown colum type %d", columnType.Tp))
+		return ColumnType{}, fmt.Errorf("unexpected colum type %d", columnType.Tp)
 	}
 }
 

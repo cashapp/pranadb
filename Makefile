@@ -4,7 +4,8 @@ CHANNEL ?= canary
 VERSION ?= $(shell git describe --tags --dirty  --always)
 GOOS ?= $(shell ./bin/go version | awk '{print $$NF}' | cut -d/ -f1)
 GOARCH ?= $(shell ./bin/go version | awk '{print $$NF}' | cut -d/ -f2)
-BIN = $(BUILD_DIR)/pranadb-$(GOOS)-$(GOARCH)
+BIN_SERVER = $(BUILD_DIR)/pranadb-$(GOOS)-$(GOARCH)
+BIN_CLI = $(BUILD_DIR)/prana-cli-$(GOOS)-$(GOARCH)
 
 .PHONY: all protos build test docker-image start stop create-topics publish-payments connect status
 
@@ -13,10 +14,15 @@ all: protos build
 protos:
 	$(MAKE) -C ./protos
 
-build: protos ## builds binary and gzips it
-	mkdir -p $(BIN)
-	go build -tags musl -o $(BIN) ./cmd/pranadb
-	gzip -9 -f $(BIN)/pranadb
+build-server: protos
+	mkdir -p $(BUILD_DIR)
+	go build -tags musl -o $(BIN_SERVER) $(ROOT)/cmd/pranadb
+	gzip -9 $(BIN_SERVER)
+
+build-cli: protos
+	mkdir -p $(BUILD_DIR)
+	go build -o $(BIN_CLI) $(ROOT)/cmd/prana
+	gzip -9 $(BIN_CLI)
 
 test: protos
 	go test -race -short -timeout 30s ./...

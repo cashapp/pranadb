@@ -18,7 +18,7 @@ import (
 func TestRemoteExecutorGetAll(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(numRows)
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestRemoteExecutorGetAll(t *testing.T) {
 func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(numRows * 2)
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestRemoteExecutorGetAllRequestMany(t *testing.T) {
 func TestRemoteExecutorGetOne(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, _, _ := setupRowExecutor(t, numRows, rf, false)
+	re, _, _ := setupRowExecutor(t, numRows, rf)
 
 	provided, err := re.GetRows(1)
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestRemoteExecutorGetOne(t *testing.T) {
 func TestRemoteExecutorGetInBatches(t *testing.T) {
 	numRows := 100
 	rf := common.NewRowsFactory(colTypes)
-	re, allRows, _ := setupRowExecutor(t, numRows, rf, false)
+	re, allRows, _ := setupRowExecutor(t, numRows, rf)
 
 	allReceived := rf.NewRows(numRows)
 	for i := 0; i < 10; i++ {
@@ -98,16 +98,17 @@ func TestRemoteExecutorSystemTablesTableDoesNotFanout(t *testing.T) {
 	}
 	tc := &testCluster{allShardIds: allShardsIds}
 
-	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)}, colNames, colTypes, "sys", tc, -1)
-	require.NotNil(t, re.pointGetQueryInfo)
-	require.Equal(t, re.pointGetQueryInfo.ShardID, cluster.SystemSchemaShardID)
+	re := NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{Query: fmt.Sprintf("select * from %s ", meta.TableDefTableName)},
+		colNames, colTypes, "sys", tc, nil)
+	require.NotNil(t, re.singlePointGetQueryInfo)
+	require.Equal(t, re.singlePointGetQueryInfo.ShardID, cluster.SystemSchemaShardID)
 
-	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc, -1)
+	re = NewRemoteExecutor(nil, &cluster.QueryExecutionInfo{}, colNames, colTypes, "sys", tc, nil)
 	require.Len(t, re.clusterGetters, len(allShardsIds))
 }
 
 //nolint: unparam
-func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool) (PullExecutor, *common.Rows, *testCluster) {
+func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory) (PullExecutor, *common.Rows, *testCluster) {
 	t.Helper()
 	allShardsIds := make([]uint64, 10)
 	for i := 0; i < 10; i++ {
@@ -142,11 +143,9 @@ func setupRowExecutor(t *testing.T, numRows int, rf *common.RowsFactory, ps bool
 	tc.rowsByShardOrig = rowsByShard
 	tc.reset()
 
-	queryInfo := &cluster.QueryExecutionInfo{
-		IsPs: ps,
-	}
+	queryInfo := &cluster.QueryExecutionInfo{}
 
-	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, -1), allRows, tc
+	return NewRemoteExecutor(nil, queryInfo, colNames, colTypes, "test-schema", tc, nil), allRows, tc
 }
 
 func generateRow(t *testing.T, index int, rows *common.Rows) {
@@ -164,6 +163,9 @@ type testCluster struct {
 	allShardIds     []uint64
 	rowsByShard     map[uint64]*common.Rows
 	rowsByShardOrig map[uint64]*common.Rows
+}
+
+func (t *testCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }
 
 func (t *testCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {

@@ -21,10 +21,10 @@ type Parser struct {
 	parser *pc_parser.Parser
 }
 
-func (p *Parser) Parse(sql string) (stmt AstHandle, err error) {
+func (p *Parser) Parse(sql string) (stmt AstHandle, paramCount int, err error) {
 	stmtNodes, warns, err := p.parser.Parse(sql, charset.CharsetUTF8, "")
 	if err != nil {
-		return AstHandle{}, errors.WithStack(err)
+		return AstHandle{}, 0, errors.WithStack(err)
 	}
 	if warns != nil {
 		for _, warn := range warns {
@@ -32,7 +32,7 @@ func (p *Parser) Parse(sql string) (stmt AstHandle, err error) {
 		}
 	}
 	if len(stmtNodes) != 1 {
-		return AstHandle{}, errors.Errorf("expected 1 statement got %d", len(stmtNodes))
+		return AstHandle{}, 0, errors.Errorf("expected 1 statement got %d", len(stmtNodes))
 	}
 
 	// We gather the param marker expressions then sort them in order of where they appear in the original sql
@@ -48,7 +48,7 @@ func (p *Parser) Parse(sql string) (stmt AstHandle, err error) {
 		pme.SetOrder(i)
 	}
 
-	return AstHandle{stmt: stmtNode}, nil
+	return AstHandle{stmt: stmtNode}, len(pms), nil
 }
 
 // AstHandle wraps the underlying TiDB ast, to avoid leaking the TiDB too much into the rest of the code

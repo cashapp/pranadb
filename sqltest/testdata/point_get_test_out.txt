@@ -30,16 +30,39 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|cust_0006|1|65343.000000000000000000000000000000|
-|cust_0007|2|5556.000000000000000000000000000000|
-|cust_0010|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| cust_0006                                     | 1                    | 65343                                         |
+| cust_0007                                     | 2                    | 5556                                          |
+| cust_0010                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token='cust_0007';
-|customer_token|count(*)|sum(amount)|
-|cust_0007|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| cust_0007                                     | 2                    | 5556                                          |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in ('cust_0010','cust_0007') order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| cust_0007                                     | 2                    | 5556                                          |
+| cust_0010                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 'cust_0010' or customer_token = 'cust_0007' order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| cust_0007                                     | 2                    | 5556                                          |
+| cust_0010                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
 drop materialized view customer_balances;
 0 rows returned
 drop source raw_ledger_events;
@@ -76,16 +99,39 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|6|1|65343.000000000000000000000000000000|
-|7|2|5556.000000000000000000000000000000|
-|10|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token       | count(*)             | sum(amount)                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 6                    | 1                    | 65343                                                                  |
+| 7                    | 2                    | 5556                                                                   |
+| 10                   | 1                    | 123                                                                    |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|
-|7|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token       | count(*)             | sum(amount)                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 7                    | 2                    | 5556                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token       | count(*)             | sum(amount)                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 7                    | 2                    | 5556                                                                   |
+| 10                   | 1                    | 123                                                                    |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token       | count(*)             | sum(amount)                                                            |
++----------------------------------------------------------------------------------------------------------------------+
+| 7                    | 2                    | 5556                                                                   |
+| 10                   | 1                    | 123                                                                    |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
 drop materialized view customer_balances;
 0 rows returned
 drop source raw_ledger_events;
@@ -122,16 +168,39 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|6|1|65343.000000000000000000000000000000|
-|7|2|5556.000000000000000000000000000000|
-|10|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 6              | 1                    | 65343                                                                        |
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|
-|7|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
 drop materialized view customer_balances;
 0 rows returned
 drop source raw_ledger_events;
@@ -168,16 +237,39 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|6|1|65343.000000000000000000000000000000|
-|7|2|5556.000000000000000000000000000000|
-|10|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 6              | 1                    | 65343                                                                        |
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7;
-|customer_token|count(*)|sum(amount)|
-|7|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in (10,7) order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 10 or customer_token = 7 order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token | count(*)             | sum(amount)                                                                  |
++----------------------------------------------------------------------------------------------------------------------+
+| 7              | 2                    | 5556                                                                         |
+| 10             | 1                    | 123                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
 drop materialized view customer_balances;
 0 rows returned
 drop source raw_ledger_events;
@@ -214,16 +306,39 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|6|1|65343.000000000000000000000000000000|
-|7|2|5556.000000000000000000000000000000|
-|10|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 6.000000                                      | 1                    | 65343                                         |
+| 7.000000                                      | 2                    | 5556                                          |
+| 10.000000                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7.0;
-|customer_token|count(*)|sum(amount)|
-|7|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7.000000                                      | 2                    | 5556                                          |
++----------------------------------------------------------------------------------------------------------------------+
 1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in (10.0,7.0) order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7.000000                                      | 2                    | 5556                                          |
+| 10.000000                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 10.0 or customer_token = 7.0 order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7.000000                                      | 2                    | 5556                                          |
+| 10.000000                                     | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
 drop materialized view customer_balances;
 0 rows returned
 drop source raw_ledger_events;
@@ -260,15 +375,244 @@ create source raw_ledger_events(
 create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
 0 rows returned
 select * from customer_balances order by customer_token;
-|customer_token|count(*)|sum(amount)|
-|6000.000000000000000000000000000000|1|65343.000000000000000000000000000000|
-|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|
-|10000.000000000000000000000000000000|1|123.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 6000.00                                       | 1                    | 65343                                         |
+| 7000.00                                       | 2                    | 5556                                          |
+| 10000.00                                      | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
 3 rows returned
 -- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
 select * from customer_balances where customer_token=7000.00;
-|customer_token|count(*)|sum(amount)|
-|7000.000000000000000000000000000000|2|5556.000000000000000000000000000000|
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7000.00                                       | 2                    | 5556                                          |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in (10000,7000) order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7000.00                                       | 2                    | 5556                                          |
+| 10000.00                                      | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = 10000 or customer_token = 7000 order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token                                | count(*)             | sum(amount)                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 7000.00                                       | 2                    | 5556                                          |
+| 10000.00                                      | 1                    | 123                                           |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+drop materialized view customer_balances;
+0 rows returned
+drop source raw_ledger_events;
+0 rows returned
+--delete topic testtopic;
+
+-- test with the MV having a TIMESTAMP(6) PK;
+--create topic testtopic;
+use test;
+0 rows returned
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token timestamp(6),
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		v0,
+        v1,
+		v2,
+		v3,
+		v4
+	)
+);
+0 rows returned
+--load data dataset_5;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
+0 rows returned
+select * from customer_balances order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.646966 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:06.643534 | 1                    | 123                                                              |
+| 2020-01-07 22:09:05.645534 | 1                    | 5433                                                             |
+| 2021-03-04 16:11:06.643834 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+4 rows returned
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token='2020-01-07 21:11:06.643534';
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 21:11:06.643534 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in ('2020-01-07 21:11:06.643534','2020-01-07 02:06:06.646966') order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.646966 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:06.643534 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = '2020-01-07 21:11:06.643534' or customer_token = '2020-01-07 02:06:06.646966' order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.646966 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:06.643534 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+drop materialized view customer_balances;
+0 rows returned
+drop source raw_ledger_events;
+0 rows returned
+--delete topic testtopic;
+
+-- test with the MV having a TIMESTAMP PK;
+--create topic testtopic;
+use test;
+0 rows returned
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token timestamp,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		v0,
+        v1,
+		v2,
+		v3,
+		v4
+	)
+);
+0 rows returned
+--load data dataset_6;
+create materialized view customer_balances as select customer_token, count(*), sum(amount) from raw_ledger_events group by customer_token;
+0 rows returned
+select * from customer_balances order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.000000 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:07.000000 | 1                    | 123                                                              |
+| 2020-01-07 22:09:05.000000 | 1                    | 5433                                                             |
+| 2021-03-04 16:11:06.000000 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+4 rows returned
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token='2020-01-07 21:11:07';
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 21:11:07.000000 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+-- multiple point gets;
+select * from customer_balances where customer_token in ('2020-01-07 21:11:07','2020-01-07 02:06:06') order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.000000 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:07.000000 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+select * from customer_balances where customer_token = '2020-01-07 21:11:07' or customer_token = '2020-01-07 02:06:06' order by customer_token;
++----------------------------------------------------------------------------------------------------------------------+
+| customer_token             | count(*)             | sum(amount)                                                      |
++----------------------------------------------------------------------------------------------------------------------+
+| 2020-01-07 02:06:06.000000 | 1                    | 65343                                                            |
+| 2020-01-07 21:11:07.000000 | 1                    | 123                                                              |
++----------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+drop materialized view customer_balances;
+0 rows returned
+drop source raw_ledger_events;
+0 rows returned
+--delete topic testtopic;
+
+-- test with the MV having a Composite PK;
+--create topic testtopic;
+set max_line_width 250;
+0 rows returned
+use test;
+0 rows returned
+create source raw_ledger_events(
+	transaction_id varchar,
+    customer_token decimal(10, 2),
+    customer_token2 tinyint,
+    customer_token3 int,
+    customer_token4 bigint,
+    customer_token5 double,
+    customer_token6 varchar,
+    amount bigint,
+    currency_code varchar,
+	occurred_at bigint,
+	primary key (transaction_id)
+) with (
+	brokername = "testbroker",
+	topicname = "testtopic",
+	headerencoding = "stringbytes",
+	keyencoding = "stringbytes",
+	valueencoding = "json",
+	columnselectors = (
+		v0,
+        v1,
+		v2,
+		v3,
+		v4,
+		v5,
+		v6,
+		v7,
+		v8,
+		v9
+	)
+);
+0 rows returned
+--load data dataset_7;
+create materialized view customer_balances as select customer_token, customer_token2, customer_token3, customer_token4, customer_token5, customer_token6, count(*), sum(amount)
+from raw_ledger_events group by customer_token, customer_token2, customer_token3, customer_token4, customer_token5, customer_token6;
+0 rows returned
+select * from customer_balances order by customer_token, customer_token2, customer_token3, customer_token4, customer_token5;
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| customer_token                         | customer_token2 | customer_token3 | customer_token4      | customer_token5                        | customer_token6                        | count(*)             | sum(amount)                            |
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 6000.00                                | 1               | 100             | 1000                 | 3.230000                               | quux                                   | 1                    | 65343                                  |
+| 7000.00                                | 1               | 100             | 1000                 | 1.230000                               | foo                                    | 1                    | 5433                                   |
+| 7000.00                                | 1               | 100             | 1000                 | 4.230000                               | wibble                                 | 1                    | 123                                    |
+| 10000.00                               | 1               | 100             | 1000                 | 2.230000                               | bar                                    | 1                    | 123                                    |
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+4 rows returned
+-- the lookup here will result in a point lookup which boils down to a table scan with a range that selects only one row;
+select * from customer_balances where customer_token=7000.00 and customer_token2=1 and customer_token3=100 and customer_token4=1000 and customer_token5=1.23 and customer_token6='foo';
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| customer_token                         | customer_token2 | customer_token3 | customer_token4      | customer_token5                        | customer_token6                        | count(*)             | sum(amount)                            |
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 7000.00                                | 1               | 100             | 1000                 | 1.230000                               | foo                                    | 1                    | 5433                                   |
++-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 1 rows returned
 drop materialized view customer_balances;
 0 rows returned

@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/sharder"
@@ -22,7 +23,7 @@ type MaterializedView struct {
 
 // CreateMaterializedView creates the materialized view but does not register it in memory
 func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Schema, mvName string, query string,
-	tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
+	initTable string, tableID uint64, seqGenerator common.SeqGenerator) (*MaterializedView, error) {
 
 	mv := MaterializedView{
 		pe:      pe,
@@ -45,11 +46,12 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		IndexInfos:     nil,
 	}
 	mvInfo := common.MaterializedViewInfo{
-		Query:     query,
-		TableInfo: &tableInfo,
+		Query:      query,
+		TableInfo:  &tableInfo,
+		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)
+	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster, pe)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -105,17 +107,17 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 		}
 	case *exec.Aggregator:
 		if disconnect {
-			err := m.pe.UnregisterRemoteConsumer(op.FullAggTableInfo.ID)
+			err := m.pe.UnregisterRemoteConsumer(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
 		}
 		if deleteData {
-			err := m.deleteTableData(op.PartialAggTableInfo.ID)
+			err := m.deleteTableData(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = m.deleteTableData(op.FullAggTableInfo.ID)
+			err = m.deleteTableData(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -183,14 +185,14 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 		}
 	case *exec.Aggregator:
 		if registerRemote {
-			colTypes := op.FullAggTableInfo.ColumnTypes
+			colTypes := op.GetChildren()[0].ColTypes()
 			rf := common.NewRowsFactory(colTypes)
 			rc := &RemoteConsumer{
 				RowsFactory: rf,
 				ColTypes:    colTypes,
 				RowsHandler: op,
 			}
-			err := m.pe.RegisterRemoteConsumer(op.FullAggTableInfo.ID, rc)
+			err := m.pe.RegisterRemoteConsumer(op.AggTableInfo.ID, rc)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -199,7 +201,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 	return nil
 }
 
-func (m *MaterializedView) Fill() error {
+func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
 	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
 	if err != nil {
 		return errors.WithStack(err)
@@ -220,7 +222,7 @@ func (m *MaterializedView) Fill() error {
 		// Execute in parallel
 		te := tableExec
 		go func() {
-			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject)
+			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
 			ch <- err
 		}()
 	}

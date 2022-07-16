@@ -36,7 +36,7 @@ select * from test_source_1 order by col0;
 
 select * from test_source_1 where col0 = 1;
 
-select * from test_source_1 where col1 = 600;
+select * from test_source_1 where col1 = 60;
 select * from test_source_1 where col1 is null;
 select * from test_source_1 where col1 is not null order by col0;
 
@@ -56,7 +56,7 @@ select * from test_source_1 where col5 = 'str8';
 select * from test_source_1 where col5 is null;
 select * from test_source_1 where col5 is not null order by col0;
 
-select * from test_source_1 where col1 = 600 or col5 ='str7' order by col0;
+select * from test_source_1 where col1 = 60 or col5 ='str7' order by col0;
 
 --test with mv;
 
@@ -64,7 +64,7 @@ select * from test_mv_1 order by col0;
 
 select * from test_mv_1 where col0 = 1;
 
-select * from test_mv_1 where col1 = 600;
+select * from test_mv_1 where col1 = 60;
 select * from test_mv_1 where col1 is null;
 select * from test_mv_1 where col1 is not null order by col0;
 
@@ -84,7 +84,7 @@ select * from test_mv_1 where col5 = 'str8';
 select * from test_mv_1 where col5 is null;
 select * from test_mv_1 where col5 is not null order by col0;
 
-select * from test_mv_1 where col1 = 600 or col5 ='str7' order by col0;
+select * from test_mv_1 where col1 = 60 or col5 ='str7' order by col0;
 
 -- TODO test with all different types of expressions;
 

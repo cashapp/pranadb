@@ -11,8 +11,9 @@ type RowsBatch struct {
 }
 
 type RowsEntry struct {
-	prevIndex int
-	currIndex int
+	prevIndex     int
+	currIndex     int
+	receiverIndex int64
 }
 
 func NewCurrentRowsBatch(currentRows *common.Rows) RowsBatch {
@@ -23,11 +24,11 @@ func NewRowsBatch(rows *common.Rows, entries []RowsEntry) RowsBatch {
 	return RowsBatch{rows: rows, entries: entries}
 }
 
-func NewRowsEntry(prevIndex int, currIndex int) RowsEntry {
-	return RowsEntry{prevIndex: prevIndex, currIndex: currIndex}
+func NewRowsEntry(prevIndex int, currIndex int, receiverIndex int64) RowsEntry {
+	return RowsEntry{prevIndex: prevIndex, currIndex: currIndex, receiverIndex: receiverIndex}
 }
 
-func (r *RowsBatch) AppendEntry(rowPrev *common.Row, rowCurr *common.Row) {
+func (r *RowsBatch) AppendEntry(rowPrev *common.Row, rowCurr *common.Row, receiverIndex int64) {
 	pi := -1
 	ci := -1
 	if rowPrev != nil {
@@ -38,7 +39,7 @@ func (r *RowsBatch) AppendEntry(rowPrev *common.Row, rowCurr *common.Row) {
 		r.rows.AppendRow(*rowCurr)
 		ci = r.rows.RowCount() - 1
 	}
-	r.entries = append(r.entries, RowsEntry{prevIndex: pi, currIndex: ci})
+	r.entries = append(r.entries, RowsEntry{prevIndex: pi, currIndex: ci, receiverIndex: receiverIndex})
 }
 
 func (r *RowsBatch) Len() int {
@@ -71,6 +72,14 @@ func (r *RowsBatch) CurrentRow(index int) *common.Row {
 	}
 	row := r.rows.GetRow(entry.currIndex)
 	return &row
+}
+
+func (r *RowsBatch) ReceiverIndex(index int) int64 {
+	if r.entries == nil {
+		// This only happens when there's no duplicate detection so it's ok
+		return 0
+	}
+	return r.entries[index].receiverIndex
 }
 
 func (r *RowsBatch) Rows() *common.Rows {

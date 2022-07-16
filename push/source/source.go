@@ -66,6 +66,9 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	globalRateLimiter       IngestLimiter
+	ingestExpressions       []*common.Expression
+	lagProvider             util.LagProvider
+	offsetsForPartition     sync.Map
 }
 
 var (
@@ -91,22 +94,19 @@ var (
 	}, []string{"source"})
 )
 
-func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sharder *sharder.Sharder,
+func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	globalRateLimiter IngestLimiter) (*Source, error) {
+	globalRateLimiter IngestLimiter, lagProvider util.LagProvider) (*Source, error) {
 	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
 	var msgProvFact kafka.MessageProviderFactory
-	ti := sourceInfo.TopicInfo
-	if ti == nil {
-		// TODO not sure if we need this... parser should catch it?
-		return nil, errors.NewPranaErrorf(errors.MissingTopicInfo, "No topic info configured for source %s", sourceInfo.Name)
+	ti := sourceInfo.OriginInfo
+	var brokerConf conf.BrokerConfig
+	var ok bool
+	if cfg.KafkaBrokers != nil {
+		brokerConf, ok = cfg.KafkaBrokers[ti.BrokerName]
 	}
-	if cfg.KafkaBrokers == nil {
-		return nil, errors.NewPranaError(errors.MissingKafkaBrokers, "No Kafka brokers configured")
-	}
-	brokerConf, ok := cfg.KafkaBrokers[ti.BrokerName]
-	if !ok {
-		return nil, errors.NewPranaErrorf(errors.UnknownBrokerName, "Unknown broker. Name: %s", ti.BrokerName)
+	if !ok || cfg.KafkaBrokers == nil {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
 	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
@@ -120,17 +120,17 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	default:
-		return nil, errors.NewPranaErrorf(errors.UnsupportedBrokerClientType, "Unsupported broker client type %d", brokerConf.ClientType)
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
-	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.TopicInfo.Properties, defaultNumConsumersPerSource)
+	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.TopicInfo.Properties, defaultPollTimeoutMs)
+	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.TopicInfo.Properties, defaultMaxPollMessages)
+	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -157,6 +157,8 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, sha
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		globalRateLimiter:       globalRateLimiter,
+		ingestExpressions:       ingestExpressions,
+		lagProvider:             lagProvider,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
@@ -244,7 +246,7 @@ func (s *Source) consumerError(err error, clientError bool) {
 		return
 		//panic("Got consumer error but souce is not started")
 	}
-	log.Errorf("Failure in consumer, source will be stopped: %+v. ", err)
+	log.Errorf("Failure in consumer, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
 	if err2 := s.stop(); err2 != nil {
 		return
 	}
@@ -296,8 +298,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		return errors.WithStack(err)
 	}
 
-	// TODO where Source has no key - need to create one
-
 	// Partition the rows and send them to the appropriate shards
 	info := s.sourceInfo.TableInfo
 	pkCols := info.PrimaryKeyCols
@@ -307,12 +307,37 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	forwardBatches := make(map[uint64]*cluster.WriteBatch)
 
 	totBatchSizeBytes := 0
+	rowsIngested := 0
 	for i := 0; i < rows.RowCount(); i++ {
-		// We throttle the global ingest to prevent the node getting overloaded - it's easy otherwise to saturate the
-		// disk throughput which can make the node unstable
-		s.globalRateLimiter.Limit()
-
 		row := rows.GetRow(i)
+
+		filtered := false
+		if s.ingestExpressions != nil {
+			// We filter out any rows which don't match the optional ingest filter
+			for _, predicate := range s.ingestExpressions {
+				accept, isNull, err := predicate.EvalBoolean(&row)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if isNull {
+					return errors.Error("null returned from evaluating select predicate")
+				}
+				if !accept {
+					filtered = true
+					break
+				}
+			}
+		}
+		if filtered {
+			continue
+		}
+
+		for _, pkCol := range s.sourceInfo.PrimaryKeyCols {
+			if row.IsNull(pkCol) {
+				return errors.New("cannot ingest message, null value in PK col(s)")
+			}
+		}
+
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
 		if err != nil {
@@ -332,7 +357,20 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 		kMsg := messages[i]
 		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
-			uint64(kMsg.PartInfo.Offset), tableID)
+			uint64(kMsg.PartInfo.Offset+1), tableID)
+
+		// Sanity check
+		v, ok := s.offsetsForPartition.Load(kMsg.PartInfo.PartitionID)
+		if ok {
+			prevOffset, ok := v.(int64)
+			if !ok {
+				panic("not an int64")
+			}
+			if kMsg.PartInfo.Offset != prevOffset+1 {
+				panic(fmt.Sprintf("offset out of sequence expected %d got %d", prevOffset+1, kMsg.PartInfo.Offset))
+			}
+			s.offsetsForPartition.Store(kMsg.PartInfo.PartitionID, kMsg.PartInfo.Offset)
+		}
 
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
@@ -346,6 +384,11 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		l := len(valueBuff)
 		totBatchSizeBytes += l
 		s.ingestRowSizeHistogram.Observe(float64(l))
+		rowsIngested++
+	}
+
+	if !util.MaybeThrottleIfLagging(s.cluster.GetAllShardIDs(), s.lagProvider, 2*time.Second) {
+		// TODO consider stopping sources
 	}
 
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
@@ -355,7 +398,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 	ingestTimeNanos := time.Now().Sub(start).Nanoseconds()
 	s.ingestDurationHistogram.Observe(float64(ingestTimeNanos))
-	s.rowsIngestedCounter.Add(float64(rows.RowCount()))
+	s.rowsIngestedCounter.Add(float64(rowsIngested))
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 

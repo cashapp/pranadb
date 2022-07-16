@@ -113,6 +113,9 @@ func (ran *Range) IsFullRange() bool {
 	if len(ran.LowVal) != len(ran.HighVal) {
 		return false
 	}
+	if ran.LowExclude || ran.HighExclude {
+		return false
+	}
 	for i := range ran.LowVal {
 		lowValRawString := formatDatum(ran.LowVal[i], true)
 		highValRawString := formatDatum(ran.HighVal[i], false)

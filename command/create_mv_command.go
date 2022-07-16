@@ -6,9 +6,11 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +24,7 @@ type CreateMVCommand struct {
 	mv             *push.MaterializedView
 	ast            *parser.CreateMaterializedView
 	toDeleteBatch  *cluster.ToDeleteBatch
+	interruptor    interruptor.Interruptor
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -40,12 +43,12 @@ func (c *CreateMVCommand) TableSequences() []uint64 {
 	return c.tableSequences
 }
 
-func (c *CreateMVCommand) LockName() string {
-	return c.schema.Name + "/"
+func (c *CreateMVCommand) Cancel() {
+	c.interruptor.Interrupt()
 }
 
-func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string, tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
-	pl.RefreshInfoSchema()
+func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string,
+	tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
@@ -96,17 +99,24 @@ func (c *CreateMVCommand) Before() error {
 		return errors.WithStack(err)
 	}
 	c.mv = mv
-	_, ok := c.e.metaController.GetMaterializedView(mv.Info.SchemaName, mv.Info.Name)
-	if ok {
-		return errors.NewMaterializedViewAlreadyExistsError(mv.Info.SchemaName, mv.Info.Name)
+
+	if err := c.e.metaController.ExistsMvOrSource(c.schema, mv.Info.Name); err != nil {
+		return err
 	}
+
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",
 		fmt.Sprintf("select id from tables where schema_name='%s' and name='%s' and kind='%s'", c.mv.Info.SchemaName, c.mv.Info.Name, meta.TableKindMaterializedView))
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	if rows.RowCount() != 0 {
-		return errors.Errorf("source with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+		return errors.Errorf("materialized view with name %s.%s already exists in storage", c.mv.Info.SchemaName, c.mv.Info.Name)
+	}
+	if mv.Info.OriginInfo.InitialState != "" {
+		err := validateInitState(mv.Info.OriginInfo.InitialState, mv.Info.TableInfo, c.e.metaController)
+		if err != nil {
+			return err
+		}
 	}
 
 	return err
@@ -116,8 +126,8 @@ func (c *CreateMVCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// If receiving on prepare from broadcast on the originating node, mv will already be set
-	// this means we do not have to parse the ast twice!
+	// If phase0 on the originating node, mv will already be set
+	// this means we do not have to parse the ast twice
 	if c.mv == nil {
 		mv, err := c.createMV()
 		if err != nil {
@@ -134,6 +144,20 @@ func (c *CreateMVCommand) onPhase0() error {
 		return err
 	}
 
+	// We can now load initial state from initial state table (if any)
+	var initTable *common.TableInfo
+	if c.mv.Info.OriginInfo.InitialState != "" {
+		var err error
+		initTable, err = getInitialiseFromTable(c.mv.Info.SchemaName, c.mv.Info.OriginInfo.InitialState, c.e.metaController)
+		if err != nil {
+			return err
+		}
+		shardIDs := c.e.cluster.GetLocalShardIDs()
+		if err := c.e.pushEngine.LoadInitialStateForTable(shardIDs, initTable.ID, c.mv.Info.ID, &c.interruptor); err != nil {
+			return err
+		}
+	}
+
 	// We must first connect any aggregations in the MV as remote consumers as they might have rows forwarded to them
 	// during the MV fill process. This must be done on all nodes before we start the fill
 	// We do not join the MV up to it's feeding sources or MVs at this point
@@ -145,7 +169,7 @@ func (c *CreateMVCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Fill the MV from it's feeding sources and MVs
-	return c.mv.Fill()
+	return c.mv.Fill(&c.interruptor)
 }
 
 func (c *CreateMVCommand) onPhase2() error {
@@ -193,12 +217,33 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 	return nil
 }
 
+func (c *CreateMVCommand) Cleanup() {
+	if c.mv == nil {
+		return
+	}
+	if err := c.mv.Disconnect(); err != nil {
+		// Ignore
+	}
+	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
+		// Ignore
+	}
+}
+
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {
-	mvName := ast.Name.String()
+	mvName := strings.ToLower(ast.Name.String())
 	querySQL := ast.Query.String()
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()
-	return push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, tableID, seqGenerator)
+	var initTable string
+	if ast.OriginInformation != nil {
+		for _, info := range ast.OriginInformation {
+			if info.InitialState != "" {
+				initTable = info.InitialState
+				break
+			}
+		}
+	}
+	return push.CreateMaterializedView(c.e.pushEngine, c.pl, c.schema, mvName, querySQL, initTable, tableID, seqGenerator)
 }
 
 func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {

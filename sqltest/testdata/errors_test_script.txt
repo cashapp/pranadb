@@ -1,0 +1,1075 @@
+-- client errors;
+----------------;
+
+-- set errors;
+
+set;
+set whateva;
+set foobar blah;
+set max_line_width;
+set max_line_width 10000000;
+set max_line_width 0;
+set max_line_width -1;
+set max_line_width -100;
+set max_line_width bananas;
+
+-- general syntax errors;
+
+uiuqwdiuqwdiuqwhd;
+ijwsoiqwd qwudhquwidh;
+
+iwdoqwd
+qwdqwdqw
+qwdqwdqwd
+qwdqwd;
+
+7;
+
+create sausages;
+cr eate source;
+
+-- create source errors;
+
+--create topic testtopic;
+
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+use test;
+
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+-- already exists;
+create source foo(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+drop source foo;
+
+create source 34353(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source !*£8373(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source (
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    23123 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 ginormousint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(0,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(-1,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(66,0),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(65,-1),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(65,31),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(29,30),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 decimal(45),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 timestamp(-1),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 timestamp(7),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 bigint
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    primary key (col0),
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic"
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    ),
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    );
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "george",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "foo",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "foo",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "foo",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key ()
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0, col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0, col1, col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col2)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json"
+);
+
+-- duplicate column name;
+create source bar(
+    col0 bigint,
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+-- no columns;
+create source bar(
+) with (
+    broke rname = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+    )
+);
+
+--errors in drop source;
+
+drop source who;
+drop source 1254124;
+drop source;
+drop source uqwhs qwdiuhqwd;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create materialized view mv1 as select * from bar;
+
+drop source bar;
+
+drop materialized view mv1;
+drop source bar;
+
+-- show and describe errors;
+
+show sch emas;
+show schemass;
+show;
+show t ables;
+show ttables;
+
+describe a b;
+describe blah;
+
+-- create materialized view errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create materialized view bar as select * from bar;
+
+create materialized view mv1 as select * from bar;
+
+create materialized view mv1 as select * from bar;
+
+create source mv1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+drop materialized view mv1;
+drop source bar;
+
+-- drop materialized view errors;
+
+drop materialized view who;
+drop materialized view 1254124;
+drop materialized view;
+drop materialized view uqwhs qwdiuhqwd;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create materialized view mv1 as select * from bar;
+
+create materialized view mv2 as select * from mv1;
+
+drop materialized view mv1;
+
+drop materialized view mv2;
+drop materialized view mv1;
+drop source bar;
+
+-- create index errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+create index 51424 on bar(col1);
+
+create index on bar(col1);
+
+create index foo(col1);
+
+create index foo on bar;
+
+create index foo on bar();
+
+create index foo on bar(col2);
+
+create index foo on bar(col1, col1);
+
+create index foo on bar(col1, col2);
+
+create index foo on bar(col1);
+create index foo on bar(col1);
+
+drop index foo on bar;
+drop source bar;
+
+-- drop index errors;
+
+create source bar(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v0
+    )
+);
+
+drop index foo on bar;
+
+create index foo on bar(col1);
+drop index foo;
+
+drop index foo on bar;
+drop source bar;
+
+-- query errors;
+
+create source bar(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+se lect * from bar;
+
+select * from unknown;
+
+select col100 from bar;
+
+select col0, col100 from bar;
+
+create materialized view foo as select * from unknown;
+
+create materialized view foo as select col100 from bar;
+
+create materialized view foo as select col0, col100 from bar;
+
+select foofunc(col0) from bar;
+
+create materialized view foo as select foofunc(col0) from bar;
+
+select lpad(col5, 100, "abc", 23, 67) from bar;
+
+-- we don't currently support max min or avg;
+create materialized view foo as select col5, max(col1) from bar group by col5;
+create materialized view foo as select col5, min(col1) from bar group by col5;
+create materialized view foo as select col5, avg(col1) from bar group by col5;
+
+create materialized view foo as select col5, unknown(col1) from bar group by col5;
+
+create materialized view foo as select col5, sum(col1) from bar group by col5 having col7 > 10;
+
+-- we don't support joins in queries;
+
+create source quux(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+create materialized view foo as select a.col0, a.col5, b.col2 from bar a inner join quux b on a.col0 = b.col0;
+
+select a.col0, a.col5, b.col2 from bar a inner join quux b on a.col0 = b.col0;
+
+-- pull queries don't support aggregations;
+
+select col5, sum(col1) from bar group by col5;
+
+-- we don't support sub queries;
+
+select col0, col3 from bar where exists (select 1 from quux where quux.col0 = bar.col0);
+
+select col0, col3 from bar where col3 > (select sum(col1) from quux);
+
+create materialized view foo as select col0, col3 from bar where exists (select 1 from quux where quux.col0 = bar.col0);
+
+create materialized view foo as select col0, col3 from bar where col3 > (select sum(col1) from quux);
+
+drop source quux;
+
+-- prepared statements errors;
+
+select * from bar where col0 = ?;
+
+execps 0 "select * from bar where col0 = ?";
+
+execps 1 bigint 23 "select * from bar where col0 = ? and col1 = ?";
+
+create materialized view foo as select col0 from bar where col0 = ?;
+
+execps 1 bigint 23 "select * from bar where col0 = ??";
+
+execps 1 bigint 23 "select * from bar where col0 = $";
+
+drop source bar;
+
+--delete topic testtopic;
+
+-- backfill errors;
+
+--create topic testtopic;
+create source test_source_1(
+    col0 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "foo",
+    columnselectors = (v0)
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate = "test_source_1",
+    columnselectors = (v0,v1,v2)
+);
+
+create source test_source_3(
+    col0 bigint,
+    col1 int,
+    col2 varchar,
+    col3 int,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    initialstate="test_source_1",
+    columnselectors = (v0,v1,v2,v3)
+);
+
+create source test_source_2(
+    col0 varchar,
+    col1 int,
+    col2 decimal(10,2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2)
+);
+
+create materialized view test_mv_1 with (initialstate = "bar") as select * from test_source_2;
+
+create materialized view test_mv_1 with (initialstate = "test_source_1") as select * from test_source_2;
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+create materialized view test_mv_2 with (initialstate = "test_mv_1") as select * from test_source_2;
+
+drop materialized view test_mv_1;
+drop source test_source_2;
+drop source test_source_1;
+--delete topic testtopic;

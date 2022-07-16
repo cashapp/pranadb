@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -31,12 +32,12 @@ func (s *JSONKeyJSONValueEncoder) EncodeMessage(row *common.Row, colTypes []comm
 	keyMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal := getColVal(keyCol, colType, row)
+		colVal := checkType(getColVal(keyCol, colType, row))
 		keyMap[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal := getColVal(i, colType, row)
+		colVal := checkType(getColVal(i, colType, row))
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyBytes, err := json.Marshal(keyMap)
@@ -241,7 +242,7 @@ func encodeTLJSONValue(colTypes []common.ColumnType, row *common.Row, keyColInde
 		if i == keyColIndex {
 			continue
 		}
-		colVal := getColVal(i, colType, row)
+		colVal := checkType(getColVal(i, colType, row))
 		valMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	return json.Marshal(valMap)
@@ -260,14 +261,14 @@ func (s *NestedJSONKeyNestedJSONValueEncoder) EncodeMessage(row *common.Row, col
 	keyMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal := getColVal(keyCol, colType, row)
+		colVal := checkType(getColVal(keyCol, colType, row))
 		nested := map[string]interface{}{}
 		keyMap[fmt.Sprintf("n%d", i)] = nested
 		nested[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal := getColVal(i, colType, row)
+		colVal := checkType(getColVal(i, colType, row))
 		nested := map[string]interface{}{}
 		valMap[fmt.Sprintf("n%d", i)] = nested
 		nested[fmt.Sprintf("v%d", i)] = colVal
@@ -300,12 +301,12 @@ func (s *JSONHeadersEncoder) EncodeMessage(row *common.Row, colTypes []common.Co
 	keyHeaderMap := map[string]interface{}{}
 	for i, keyCol := range keyCols {
 		colType := colTypes[keyCol]
-		colVal := getColVal(keyCol, colType, row)
+		colVal := checkType(getColVal(keyCol, colType, row))
 		keyHeaderMap[fmt.Sprintf("k%d", i)] = colVal
 	}
 	valHeaderMap := map[string]interface{}{}
 	for i, colType := range colTypes {
-		colVal := getColVal(i, colType, row)
+		colVal := checkType(getColVal(i, colType, row))
 		valHeaderMap[fmt.Sprintf("v%d", i)] = colVal
 	}
 	keyHeaderBytes, err := json.Marshal(keyHeaderMap)
@@ -431,4 +432,14 @@ func protoSet(msg *dynamicpb.Message, fd pref.FieldDescriptor, v interface{}) {
 		panic(fmt.Sprintf("unknown type %s", reflect.TypeOf(v)))
 	}
 	msg.Set(fd, pref.ValueOf(v))
+}
+
+func checkType(val interface{}) interface{} {
+	i, ok := val.(int64)
+	if ok {
+		// int64 must be encoded as a string value otherwise precision is lost on decoding as golang decodes number
+		// fields into float64 which does not have sufficient precision for full range of int64 numbers
+		return strconv.FormatInt(i, 10)
+	}
+	return val
 }

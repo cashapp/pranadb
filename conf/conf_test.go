@@ -69,20 +69,6 @@ func invalidAPIServerListenAddress() Config {
 	return cnf
 }
 
-func invalidAPIServerSessionTimeout() Config {
-	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerSessionTimeout = 1*time.Second - 1
-	return cnf
-}
-
-func invalidAPIServerSessionCheckInterval() Config {
-	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerSessionCheckInterval = 100*time.Millisecond - 1
-	return cnf
-}
-
 func invalidReplicationFactorConfig() Config {
 	cnf := confAllFields
 	cnf.ReplicationFactor = 2
@@ -273,43 +259,41 @@ func invalidRaftElectionRTTTooSmall() Config {
 }
 
 var invalidConfigs = []configPair{
-	{"PDB0004 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
-	{"PDB0004 - Invalid configuration: NumShards must be >= 1", invalidNumShardsConf()},
-	{"PDB0004 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
-	{"PDB0004 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
-	{"PDB0004 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB0004 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
-	{"PDB0004 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
-	{"PDB0004 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
-	{"PDB0004 - Invalid configuration: APIServerSessionTimeout must be >= 1000000000", invalidAPIServerSessionTimeout()},
-	{"PDB0004 - Invalid configuration: APIServerSessionCheckInterval must be >= 100000000", invalidAPIServerSessionCheckInterval()},
-	{"PDB0004 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
-	{"PDB0004 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
-	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
-	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be same as number of NotifListenerAddresses", raftAndNotifListenerAddressedDifferentLengthConfig()},
-	{"PDB0004 - Invalid configuration: Number of RaftAddresses must be same as number of APIServerListenAddresses", raftAndAPIServerListenerAddressedDifferentLengthConfig()},
-	{"PDB0004 - Invalid configuration: DataSnapshotEntries must be >= 10", invalidDataSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: DataCompactionOverhead must be >= 5", invalidDataCompactionOverhead()},
-	{"PDB0004 - Invalid configuration: SequenceSnapshotEntries must be >= 10", invalidSequenceSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: SequenceCompactionOverhead must be >= 5", invalidSequenceCompactionOverhead()},
-	{"PDB0004 - Invalid configuration: LocksSnapshotEntries must be >= 10", invalidLocksSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: LocksCompactionOverhead must be >= 5", invalidLocksCompactionOverhead()},
-	{"PDB0004 - Invalid configuration: DataSnapshotEntries must be >= DataCompactionOverhead", dataCompactionGreaterThanDataSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: SequenceSnapshotEntries must be >= SequenceCompactionOverhead", sequenceCompactionGreaterThanDataSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: LocksSnapshotEntries must be >= LocksCompactionOverhead", locksCompactionGreaterThanDataSnapshotEntries()},
-	{"PDB0004 - Invalid configuration: LifeCycleListenAddress must be specified", invalidLifecycleListenAddress()},
-	{"PDB0004 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
-	{"PDB0004 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
-	{"PDB0004 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
-	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
-	{"PDB0004 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
-	{"PDB0004 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsZero()},
-	{"PDB0004 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsNegative()},
-	{"PDB0004 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTZero()},
-	{"PDB0004 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTNegative()},
-	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTZero()},
-	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTNegative()},
-	{"PDB0004 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
+	{"PDB3000 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
+	{"PDB3000 - Invalid configuration: NumShards must be >= 1", invalidNumShardsConf()},
+	{"PDB3000 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
+	{"PDB3000 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
+	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
+	{"PDB3000 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
+	{"PDB3000 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
+	{"PDB3000 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
+	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
+	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of NotifListenerAddresses", raftAndNotifListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of APIServerListenAddresses", raftAndAPIServerListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: DataSnapshotEntries must be >= 10", invalidDataSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: DataCompactionOverhead must be >= 5", invalidDataCompactionOverhead()},
+	{"PDB3000 - Invalid configuration: SequenceSnapshotEntries must be >= 10", invalidSequenceSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: SequenceCompactionOverhead must be >= 5", invalidSequenceCompactionOverhead()},
+	{"PDB3000 - Invalid configuration: LocksSnapshotEntries must be >= 10", invalidLocksSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: LocksCompactionOverhead must be >= 5", invalidLocksCompactionOverhead()},
+	{"PDB3000 - Invalid configuration: DataSnapshotEntries must be >= DataCompactionOverhead", dataCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: SequenceSnapshotEntries must be >= SequenceCompactionOverhead", sequenceCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: LocksSnapshotEntries must be >= LocksCompactionOverhead", locksCompactionGreaterThanDataSnapshotEntries()},
+	{"PDB3000 - Invalid configuration: LifeCycleListenAddress must be specified", invalidLifecycleListenAddress()},
+	{"PDB3000 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
+	{"PDB3000 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
+	{"PDB3000 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
+	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
+	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
+	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsZero()},
+	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsNegative()},
+	{"PDB3000 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTZero()},
+	{"PDB3000 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTNegative()},
+	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTZero()},
+	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTNegative()},
+	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
 }
 
 func TestValidate(t *testing.T) {
@@ -340,20 +324,18 @@ var confAllFields = Config{
 			},
 		},
 	},
-	DataSnapshotEntries:           1001,
-	DataCompactionOverhead:        501,
-	SequenceSnapshotEntries:       2001,
-	SequenceCompactionOverhead:    1001,
-	LocksSnapshotEntries:          101,
-	LocksCompactionOverhead:       51,
-	RemotingHeartbeatInterval:     76 * time.Second,
-	RemotingHeartbeatTimeout:      4 * time.Second,
-	EnableAPIServer:               true,
-	APIServerListenAddresses:      []string{"addr7", "addr8", "addr9"},
-	APIServerSessionTimeout:       41 * time.Second,
-	APIServerSessionCheckInterval: 6 * time.Second,
-	GlobalIngestLimitRowsPerSec:   3000,
-	RaftRTTMs:                     100,
-	RaftHeartbeatRTT:              10,
-	RaftElectionRTT:               100,
+	DataSnapshotEntries:         1001,
+	DataCompactionOverhead:      501,
+	SequenceSnapshotEntries:     2001,
+	SequenceCompactionOverhead:  1001,
+	LocksSnapshotEntries:        101,
+	LocksCompactionOverhead:     51,
+	RemotingHeartbeatInterval:   76 * time.Second,
+	RemotingHeartbeatTimeout:    4 * time.Second,
+	EnableAPIServer:             true,
+	APIServerListenAddresses:    []string{"addr7", "addr8", "addr9"},
+	GlobalIngestLimitRowsPerSec: 3000,
+	RaftRTTMs:                   100,
+	RaftHeartbeatRTT:            10,
+	RaftElectionRTT:             100,
 }

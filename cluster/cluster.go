@@ -2,9 +2,9 @@ package cluster
 
 import (
 	"fmt"
-
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/remoting"
 )
 
 const (
@@ -70,6 +70,8 @@ type Cluster interface {
 	Stop() error
 
 	PostStartChecks(queryExec common.SimpleQueryExec) error
+
+	AddHealthcheckListener(listener remoting.AvailabilityListener)
 }
 
 type ToDeleteBatch struct {
@@ -82,145 +84,137 @@ type Snapshot interface {
 }
 
 type QueryExecutionInfo struct {
-	SessionID   string
-	SchemaName  string
-	Query       string
-	PsID        int64
-	PsArgs      []interface{}
-	PsArgTypes  []common.ColumnType
-	Limit       uint32
-	ShardID     uint64
-	IsPs        bool
-	SystemQuery bool
-}
-
-func (q *QueryExecutionInfo) GetArgs() []interface{} {
-	return q.PsArgs
-}
-
-func encodePsArgs(buff []byte, args []interface{}, argTypes []common.ColumnType) ([]byte, error) {
-	buff = common.AppendUint32ToBufferLE(buff, uint32(len(args)))
-	for _, argType := range argTypes {
-		buff = append(buff, byte(argType.Type))
-	}
-	var err error
-	for i, arg := range args {
-		argType := argTypes[i]
-		switch arg := arg.(type) {
-		case int64:
-			buff = common.AppendUint64ToBufferLE(buff, uint64(arg))
-		case float64:
-			buff = common.AppendFloat64ToBufferLE(buff, arg)
-		case string:
-			buff = common.AppendStringToBufferLE(buff, arg)
-		case common.Decimal:
-			buff, err = common.AppendDecimalToBuffer(buff, arg, argType.DecPrecision, argType.DecScale)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-		case common.Timestamp:
-			buff, err = common.AppendTimestampToBuffer(buff, arg)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-		default:
-			panic(fmt.Sprintf("unexpected arg type %v", arg))
-		}
-	}
-	return buff, errors.WithStack(err)
-}
-
-func decodePsArgs(offset int, buff []byte) ([]interface{}, int, error) {
-	numArgs, offset := common.ReadUint32FromBufferLE(buff, offset)
-	argTypes := make([]common.ColumnType, numArgs)
-	for i := 0; i < int(numArgs); i++ {
-		b := buff[offset]
-		offset++
-		t := common.Type(int(b))
-		colType := common.ColumnType{Type: t}
-		if colType.Type == common.TypeDecimal {
-			var dp uint64
-			dp, offset = common.ReadUint64FromBufferLE(buff, offset)
-			colType.DecPrecision = int(dp)
-			var dc uint64
-			dc, offset = common.ReadUint64FromBufferLE(buff, offset)
-			colType.DecScale = int(dc)
-		}
-		argTypes[i] = colType
-	}
-
-	args := make([]interface{}, numArgs)
-	var err error
-	for i := 0; i < int(numArgs); i++ {
-		argType := argTypes[i]
-		switch argType.Type {
-		case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
-			args[i], offset = common.ReadUint64FromBufferLE(buff, offset)
-		case common.TypeDouble:
-			args[i], offset = common.ReadFloat64FromBufferLE(buff, offset)
-		case common.TypeVarchar:
-			args[i], offset = common.ReadStringFromBufferLE(buff, offset)
-		case common.TypeDecimal:
-			args[i], offset, err = common.ReadDecimalFromBuffer(buff, offset, argType.DecPrecision, argType.DecScale)
-			if err != nil {
-				return nil, 0, errors.WithStack(err)
-			}
-		case common.TypeTimestamp:
-			args[i], offset, err = common.ReadTimestampFromBuffer(buff, offset, argType.FSP)
-			if err != nil {
-				return nil, 0, errors.WithStack(err)
-			}
-		default:
-			panic(fmt.Sprintf("unsupported col type %d", argType.Type))
-		}
-	}
-	return args, offset, nil
+	ExecutionID       string
+	SchemaName        string
+	Query             string
+	Limit             uint32
+	ShardID           uint64
+	SystemQuery       bool
+	PsArgTypes        []common.ColumnType
+	PsArgs            []interface{}
+	PreparedStatement bool
 }
 
 func (q *QueryExecutionInfo) Serialize(buff []byte) ([]byte, error) {
-	buff = common.AppendStringToBufferLE(buff, q.SessionID)
+	buff = common.AppendStringToBufferLE(buff, q.ExecutionID)
 	buff = common.AppendStringToBufferLE(buff, q.SchemaName)
 	buff = common.AppendStringToBufferLE(buff, q.Query)
-	buff = common.AppendUint64ToBufferLE(buff, uint64(q.PsID))
-	buff, err := encodePsArgs(buff, q.PsArgs, q.PsArgTypes)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
 	buff = common.AppendUint32ToBufferLE(buff, q.Limit)
 	buff = common.AppendUint64ToBufferLE(buff, q.ShardID)
-	var b byte
-	if q.IsPs {
-		b = 1
-	} else {
-		b = 0
+	buff = appendBool(buff, q.SystemQuery)
+	buff = appendBool(buff, q.PreparedStatement)
+	if q.PreparedStatement {
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(q.PsArgTypes)))
+		for _, argType := range q.PsArgTypes {
+			buff = append(buff, byte(argType.Type))
+			if argType.Type == common.TypeDecimal {
+				buff = append(buff, byte(argType.DecPrecision))
+				buff = append(buff, byte(argType.DecScale))
+			} else if argType.Type == common.TypeTimestamp {
+				buff = append(buff, byte(argType.FSP))
+			}
+		}
+		for i, argType := range q.PsArgTypes {
+			arg := q.PsArgs[i]
+			switch argType.Type {
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+				i64val, ok := arg.(int64)
+				if !ok {
+					return nil, errors.New("not an int64")
+				}
+				buff = common.AppendUint64ToBufferLE(buff, uint64(i64val))
+			case common.TypeDouble:
+				f64Val, ok := arg.(float64)
+				if !ok {
+					return nil, errors.New("not an float64")
+				}
+				buff = common.AppendFloat64ToBufferLE(buff, f64Val)
+			case common.TypeVarchar, common.TypeDecimal, common.TypeTimestamp:
+				str, ok := arg.(string)
+				if !ok {
+					return nil, errors.New("not a string")
+				}
+				buff = common.AppendStringToBufferLE(buff, str)
+			default:
+				panic(fmt.Sprintf("unexpected arg type %d", argType.Type))
+			}
+		}
 	}
-	buff = append(buff, b)
-	if q.SystemQuery {
-		b = 1
-	} else {
-		b = 0
-	}
-	buff = append(buff, b)
 	return buff, nil
 }
 
 func (q *QueryExecutionInfo) Deserialize(buff []byte) error {
 	offset := 0
-	q.SessionID, offset = common.ReadStringFromBufferLE(buff, offset)
+	q.ExecutionID, offset = common.ReadStringFromBufferLE(buff, offset)
 	q.SchemaName, offset = common.ReadStringFromBufferLE(buff, offset)
 	q.Query, offset = common.ReadStringFromBufferLE(buff, offset)
-	q.PsID, offset = common.ReadInt64FromBufferLE(buff, offset)
-	var err error
-	q.PsArgs, offset, err = decodePsArgs(offset, buff)
-	if err != nil {
-		return errors.WithStack(err)
-	}
 	q.Limit, offset = common.ReadUint32FromBufferLE(buff, offset)
 	q.ShardID, offset = common.ReadUint64FromBufferLE(buff, offset)
-	q.IsPs = buff[offset] == 1
-	offset++
 	q.SystemQuery = buff[offset] == 1
+	offset++
+	q.PreparedStatement = buff[offset] == 1
+	offset++
+	if q.PreparedStatement {
+		var numArgs uint32
+		numArgs, offset = common.ReadUint32FromBufferLE(buff, offset)
+		q.PsArgTypes = make([]common.ColumnType, numArgs)
+		q.PsArgs = make([]interface{}, numArgs)
+		for i := 0; i < int(numArgs); i++ {
+			at := common.Type(buff[offset])
+			offset++
+			var argType common.ColumnType
+			switch at {
+			case common.TypeTinyInt:
+				argType = common.TinyIntColumnType
+			case common.TypeInt:
+				argType = common.IntColumnType
+			case common.TypeBigInt:
+				argType = common.BigIntColumnType
+			case common.TypeDouble:
+				argType = common.DoubleColumnType
+			case common.TypeVarchar:
+				argType = common.VarcharColumnType
+			case common.TypeDecimal:
+				argType = common.ColumnType{Type: common.TypeDecimal}
+				argType.DecPrecision = int(buff[offset])
+				offset++
+				argType.DecScale = int(buff[offset])
+				offset++
+			case common.TypeTimestamp:
+				argType = common.ColumnType{Type: common.TypeTimestamp}
+				argType.FSP = int8(buff[offset])
+				offset++
+			default:
+				panic(fmt.Sprintf("unexpected arg type %d", at))
+			}
+			q.PsArgTypes[i] = argType
+		}
+		for i, argType := range q.PsArgTypes {
+			var arg interface{}
+			switch argType.Type {
+			case common.TypeTinyInt, common.TypeInt, common.TypeBigInt:
+				arg, offset = common.ReadUint64FromBufferLE(buff, offset)
+			case common.TypeDouble:
+				arg, offset = common.ReadFloat64FromBufferLE(buff, offset)
+			case common.TypeVarchar, common.TypeDecimal, common.TypeTimestamp:
+				arg, offset = common.ReadStringFromBufferLE(buff, offset)
+			default:
+				panic(fmt.Sprintf("unexpected arg type %d", argType.Type))
+			}
+			q.PsArgs[i] = arg
+		}
+	}
 	return nil
+}
+
+func appendBool(buff []byte, val bool) []byte {
+	var b byte
+	if val {
+		b = 1
+	} else {
+		b = 0
+	}
+	return append(buff, b)
 }
 
 type RemoteQueryResult struct {
@@ -254,8 +248,14 @@ type ShardListenerFactory interface {
 	CreateShardListener(shardID uint64) ShardListener
 }
 
-type ShardListener interface {
-	RemoteWriteOccurred()
+type ForwardRow struct {
+	ReceiverSequence uint64
+	RemoteConsumerID uint64
+	KeyBytes         []byte
+	RowBytes         []byte
+	WriteTime        int64
+}
 
-	Close()
+type ShardListener interface {
+	RemoteWriteOccurred(forwardRows []ForwardRow)
 }

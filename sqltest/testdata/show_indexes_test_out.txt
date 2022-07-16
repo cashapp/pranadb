@@ -1,0 +1,94 @@
+use test;
+0 rows returned
+--create topic testtopic;
+use test0;
+0 rows returned
+create source test_source_0(
+    col0 bigint,
+    col1 double,
+    col2 varchar,
+    col3 decimal(10, 2),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (v0,v1,v2,v3)
+);
+0 rows returned
+
+show indexes on test_source_0;
+0 rows returned
+
+create index index1 on test_source_0(col1);
+0 rows returned
+
+show indexes on test_source_0;
++---------------------------------------------------------------------------------------------------------------------+
+| indexes_on_test_source_0                                 | columns                                                  |
++---------------------------------------------------------------------------------------------------------------------+
+| index1                                                   | col1                                                     |
++---------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+
+create index index2 on test_source_0(col2, col3);
+0 rows returned
+
+create index index3 on test_source_0(col3, col2, col1);
+0 rows returned
+
+show indexes on test_source_0;
++---------------------------------------------------------------------------------------------------------------------+
+| indexes_on_test_source_0                                 | columns                                                  |
++---------------------------------------------------------------------------------------------------------------------+
+| index1                                                   | col1                                                     |
+| index2                                                   | col2, col3                                               |
+| index3                                                   | col3, col2, col1                                         |
++---------------------------------------------------------------------------------------------------------------------+
+3 rows returned
+
+create materialized view test_mv_0 as select * from test_source_0;
+0 rows returned
+
+create index index1 on test_mv_0(col2, col1);
+0 rows returned
+
+show indexes on test_mv_0;
++---------------------------------------------------------------------------------------------------------------------+
+| indexes_on_test_mv_0                                     | columns                                                  |
++---------------------------------------------------------------------------------------------------------------------+
+| index1                                                   | col2, col1                                               |
++---------------------------------------------------------------------------------------------------------------------+
+1 rows returned
+
+create index index2 on test_mv_0(col1, col2, col3);
+0 rows returned
+
+show indexes on test_mv_0;
++---------------------------------------------------------------------------------------------------------------------+
+| indexes_on_test_mv_0                                     | columns                                                  |
++---------------------------------------------------------------------------------------------------------------------+
+| index1                                                   | col2, col1                                               |
+| index2                                                   | col1, col2, col3                                         |
++---------------------------------------------------------------------------------------------------------------------+
+2 rows returned
+
+drop index index1 on test_mv_0;
+0 rows returned
+drop index index2 on test_mv_0;
+0 rows returned
+drop materialized view test_mv_0;
+0 rows returned
+
+drop index index1 on test_source_0;
+0 rows returned
+drop index index2 on test_source_0;
+0 rows returned
+drop index index3 on test_source_0;
+0 rows returned
+drop source test_source_0;
+0 rows returned
+
+--delete topic testtopic;

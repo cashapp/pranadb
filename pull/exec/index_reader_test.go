@@ -69,7 +69,7 @@ func TestReadIndexCovers(t *testing.T) {
 	expectedRows = [][]interface{}{}
 	testReadIndex(t, indexCols, pkCols, ranges, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
 
-	// Test with no range - full index scan
+	// Test with singl nil range - full index scan
 	expectedRows = [][]interface{}{
 		{4, nil},
 		{5, nil},
@@ -77,7 +77,7 @@ func TestReadIndexCovers(t *testing.T) {
 		{2, 2},
 		{3, 2},
 	}
-	testReadIndex(t, indexCols, pkCols, nil, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
+	testReadIndex(t, indexCols, pkCols, []*ScanRange{nil}, tableColIndexes, inpRows, tableColNames, tableColTypes, expectedRows, expectedColTypes)
 
 	// Open ended range including first element
 	ranges = createSimpleRanges(int64(2), nil, false, false)

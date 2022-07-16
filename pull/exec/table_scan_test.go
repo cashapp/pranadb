@@ -22,7 +22,7 @@ func TestTableScanAllRows(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)
@@ -62,7 +62,7 @@ func TestTableScanWithLimit2(t *testing.T) {
 		{5, "tokyo", 28.9, "999.99"},
 	}
 
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, nil)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, nil)
 	defer stopCluster(t, clust)
 
 	expectedRows1 := [][]interface{}{
@@ -207,18 +207,6 @@ func testTableScanWithRange(t *testing.T, scanRanges []*ScanRange, expectedRows 
 var naturalOrderingColTypes = []common.ColumnType{common.BigIntColumnType, common.DoubleColumnType,
 	common.VarcharColumnType, common.NewDecimalColumnType(10, 3)}
 
-/*
-	expectedRows := [][]interface{}{
-		{-300, 0.0, "str3", "-300.111"},
-		{-200, 1.1, "str7", "0.000"},
-		{-100, -1.1, "str1", "-100.111"},
-		{0, -3.1, "str4", "300.111"},
-		{100, -2.1, "str6", "-200.111"},
-		{200, 3.1, "str5", "200.111"},
-		{300, 2.1, "str2", "100.111"},
-	}
-*/
-
 func TestTableScanNaturalOrderingBigIntCol(t *testing.T) {
 	inpRows := [][]interface{}{
 		{-200, 1.1, "str7", "0.000"},
@@ -276,10 +264,10 @@ func TestTableScanNaturalOrderingStringCol(t *testing.T) {
 	expectedRows := [][]interface{}{
 		{0, -3.1, "", "300.111"},
 		{100, -2.1, "a", "-200.111"},
-		{-100, -1.1, "z", "-100.111"},
 		{-300, 0.0, "aaa", "-300.111"},
-		{-200, 1.1, "zzz", "0.000"},
 		{300, 2.1, "aaaa", "100.111"},
+		{-100, -1.1, "z", "-100.111"},
+		{-200, 1.1, "zzz", "0.000"},
 		{200, 3.1, "zzzz", "200.111"},
 	}
 	testTableScanNaturalOrdering(t, inpRows, expectedRows, naturalOrderingColTypes, []int{2})
@@ -345,7 +333,7 @@ func TestTableScanNaturalOrderingCompositeKey(t *testing.T) {
 
 func testTableScanNaturalOrdering(t *testing.T, inpRows [][]interface{}, expectedRows [][]interface{}, colTypes []common.ColumnType, pkCols []int) {
 	t.Helper()
-	ts, clust := setupTableScan(t, inpRows, nil, colTypes, pkCols)
+	ts, clust := setupTableScan(t, inpRows, []*ScanRange{nil}, colTypes, pkCols)
 	defer stopCluster(t, clust)
 
 	exp := toRows(t, expectedRows, colTypes)

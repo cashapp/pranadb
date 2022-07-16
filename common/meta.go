@@ -87,26 +87,6 @@ var (
 	}
 )
 
-// InferColumnType from Go type.
-func InferColumnType(value interface{}) ColumnType {
-	switch value.(type) {
-	case string:
-		return VarcharColumnType
-	case int, int64:
-		return BigIntColumnType
-	case int16, int32:
-		return IntColumnType
-	case int8:
-		return TinyIntColumnType
-	case float64:
-		return DoubleColumnType
-	case Timestamp:
-		return TimestampColumnType
-	default:
-		panic(fmt.Sprintf("can't infer column of type %T", value))
-	}
-}
-
 func NewDecimalColumnType(precision int, scale int) ColumnType {
 	return ColumnType{
 		Type:         TypeDecimal,
@@ -206,11 +186,10 @@ func (i *IndexInfo) ContainsColIndex(colIndex int) bool {
 
 type Schema struct {
 	// Schema can be mutated from different goroutines so we need to lock to protect access to it's maps
-	lock    sync.RWMutex
-	Name    string
-	tables  map[string]Table
-	sinks   map[string]*SinkInfo
-	deleted bool
+	lock   sync.RWMutex
+	Name   string
+	tables map[string]Table
+	sinks  map[string]*SinkInfo
 }
 
 func NewSchema(name string) *Schema {
@@ -300,23 +279,9 @@ func (s *Schema) Equal(other *Schema) bool {
 	return reflect.DeepEqual(s, other)
 }
 
-func (s *Schema) SetDeleted() {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	s.deleted = true
-}
-
-func (s *Schema) IsDeleted() bool {
-	// Schema cna become deleted if all tables are removed, but sessions might still have it cached
-	// checking isDeleted() allows sessions to refresh the schema if necessary
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.deleted
-}
-
 type SourceInfo struct {
 	*TableInfo
-	TopicInfo *TopicInfo
+	OriginInfo *SourceOriginInfo
 }
 
 func (i *SourceInfo) String() string {
@@ -336,7 +301,7 @@ func (i *MetaTableInfo) String() string {
 	return "meta_" + i.TableInfo.String()
 }
 
-type TopicInfo struct {
+type SourceOriginInfo struct {
 	BrokerName     string
 	TopicName      string
 	KeyEncoding    KafkaEncoding
@@ -344,6 +309,8 @@ type TopicInfo struct {
 	HeaderEncoding KafkaEncoding
 	ColSelectors   []selector.ColumnSelector
 	Properties     map[string]string
+	IngestFilter   string
+	InitialState   string
 }
 
 type KafkaEncoding struct {
@@ -422,7 +389,12 @@ func EncodingFormatFromString(str string) Encoding {
 
 type MaterializedViewInfo struct {
 	*TableInfo
-	Query string
+	OriginInfo *MaterializedViewOriginInfo
+	Query      string
+}
+
+type MaterializedViewOriginInfo struct {
+	InitialState string
 }
 
 type InternalTableInfo struct {
@@ -438,5 +410,5 @@ func (i *MaterializedViewInfo) String() string {
 type SinkInfo struct {
 	Name      string
 	Query     string
-	TopicInfo *TopicInfo
+	TopicInfo *SourceOriginInfo
 }

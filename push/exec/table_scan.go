@@ -10,9 +10,7 @@ import (
 type Scan struct {
 	pushExecutorBase
 	TableName string
-	//pkOnly    bool
-	//projExprs []*common.Expression
-	cols []int
+	cols      []int
 }
 
 func NewScan(tableName string, cols []int) (*Scan, error) {
@@ -106,7 +104,7 @@ func (t *Scan) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 				ci = rc
 				rc++
 			}
-			entries[i] = NewRowsEntry(pi, ci)
+			entries[i] = NewRowsEntry(pi, ci, rowsBatch.ReceiverIndex(i))
 		}
 		return t.parent.HandleRows(NewRowsBatch(newRows, entries), ctx)
 	}

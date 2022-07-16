@@ -80,3 +80,10 @@ func (r *rowProvider) GetParent() PullExecutor {
 func (r *rowProvider) GetChildren() []PullExecutor {
 	return nil
 }
+
+func (r *rowProvider) Close() {
+}
+
+func (r *rowProvider) RowsFactory() *common.RowsFactory {
+	return nil
+}

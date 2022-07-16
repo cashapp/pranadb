@@ -4,6 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
@@ -54,11 +55,10 @@ func (l *Loader) Start() error { //nolint:gocyclo
 		switch kind {
 		case meta.TableKindSource:
 			info := meta.DecodeSourceInfoRow(&tableRow)
-			// TODO check prepare state and restart command if pending
 			if err := l.meta.RegisterSource(info); err != nil {
 				return errors.WithStack(err)
 			}
-			src, err := l.pushEngine.CreateSource(info)
+			src, err := l.pushEngine.CreateSource(info, nil)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -104,7 +104,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 		mv, err := push.CreateMaterializedView(
 			l.pushEngine,
 			parplan.NewPlanner(schema),
-			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, mvID,
+			schema, mvt.mvInfo.Name, mvt.mvInfo.Query, "", mvID,
 			seqGen)
 		if err != nil {
 			return errors.WithStack(err)
@@ -123,7 +123,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 	for i := 0; i < indexRows.RowCount(); i++ {
 		indexRow := indexRows.GetRow(i)
 		info := meta.DecodeIndexInfoRow(&indexRow)
-		if err := l.pushEngine.CreateIndex(info, false); err != nil {
+		if err := l.pushEngine.CreateIndex(info, false, &interruptor.Interruptor{}); err != nil {
 			return err
 		}
 		if err := l.meta.RegisterIndex(info); err != nil {

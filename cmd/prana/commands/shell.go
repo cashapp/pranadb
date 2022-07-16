@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/chzyer/readline"
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/errors"
 )
@@ -18,16 +17,6 @@ type ShellCommand struct {
 }
 
 func (c *ShellCommand) Run(cl *client.Client) error {
-	sessionID, err := cl.CreateSession()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer func() {
-		if err := cl.CloseSession(sessionID); err != nil {
-			log.Errorf("failed to close session %+v", err)
-		}
-	}()
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return errors.WithStack(err)
@@ -51,6 +40,10 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 				return nil
 			}
 			if err != nil {
+				if err.Error() == "Interrupt" {
+					// This occurs when CTRL-C is pressed - we should exit silently
+					return nil
+				}
 				return errors.WithStack(err)
 			}
 			line = strings.TrimSpace(line)
@@ -66,14 +59,14 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 		statement := strings.Join(cmd, " ")
 		_ = rl.SaveHistory(statement)
 
-		if err := c.sendStatement(sessionID, statement, cl); err != nil {
+		if err := c.sendStatement(statement, cl); err != nil {
 			return errors.WithStack(err)
 		}
 	}
 }
 
-func (c *ShellCommand) sendStatement(sessionID string, statement string, cli *client.Client) error {
-	ch, err := cli.ExecuteStatement(sessionID, statement)
+func (c *ShellCommand) sendStatement(statement string, cli *client.Client) error {
+	ch, err := cli.ExecuteStatement(statement, nil)
 	if err != nil {
 		return errors.WithStack(err)
 	}

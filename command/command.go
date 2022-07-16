@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -13,14 +14,13 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/execctx"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/protolib"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/remoting"
-	"github.com/squareup/pranadb/sess"
 )
 
 type Executor struct {
@@ -28,57 +28,55 @@ type Executor struct {
 	metaController    *meta.Controller
 	pushEngine        *push.Engine
 	pullEngine        *pull.Engine
-	notifClient       remoting.Client
 	protoRegistry     protolib.Resolver
-	sessionIDSequence int64
+	execCtxIDSequence int64
 	ddlRunner         *DDLCommandRunner
 	failureInjector   failinject.Injector
-}
-
-type sessCloser struct {
-	clus        cluster.Cluster
-	notifClient remoting.Client
+	notifClient       remoting.Client
+	ddlResetClient    remoting.Client
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
-	cluster cluster.Cluster, notifClient remoting.Client, protoRegistry protolib.Resolver,
+	cluster cluster.Cluster, notifClient remoting.Client, ddlResetClient remoting.Client, protoRegistry protolib.Resolver,
 	failureInjector failinject.Injector) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
 		pushEngine:        pushEngine,
 		pullEngine:        pullEngine,
-		notifClient:       notifClient,
 		protoRegistry:     protoRegistry,
-		sessionIDSequence: -1,
+		execCtxIDSequence: -1,
 		failureInjector:   failureInjector,
+		notifClient:       notifClient,
+		ddlResetClient:    ddlResetClient,
 	}
 	commandRunner := NewDDLCommandRunner(ex)
 	ex.ddlRunner = commandRunner
 	return ex
 }
 
-func (e *Executor) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	return nil, e.ddlRunner.HandleNotification(notification)
+func (e *Executor) DDlCommandRunner() *DDLCommandRunner {
+	return e.ddlRunner
 }
 
 func (e *Executor) Start() error {
-	return e.notifClient.Start()
+	if err := e.notifClient.Start(); err != nil {
+		return err
+	}
+	return e.ddlResetClient.Start()
 }
 
 func (e *Executor) Stop() error {
-	e.ddlRunner.clear()
-	return e.notifClient.Stop()
+	if err := e.notifClient.Stop(); err != nil {
+		return err
+	}
+	return e.ddlResetClient.Stop()
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
 //nolint:gocyclo
-func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.PullExecutor, error) {
-	// Sessions cannot be accessed concurrently and we also need a memory barrier even if they're not accessed
-	// concurrently
-	session.Lock.Lock()
-	defer session.Lock.Unlock()
-
+func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql string, argTypes []common.ColumnType,
+	args []interface{}) (exec.PullExecutor, error) {
 	ast, err := parser.Parse(sql)
 	if err != nil {
 		var perr participle.Error
@@ -88,33 +86,16 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		return nil, errors.WithStack(err)
 	}
 
-	if session.Schema == nil && isSchemaNeeded(ast) {
-		return nil, errors.NewSchemaNotInUseError()
-	}
-
-	if session.Schema != nil && session.Schema.IsDeleted() && isSchemaNeeded(ast) {
-		schema := e.metaController.GetOrCreateSchema(session.Schema.Name)
-		session.UseSchema(schema)
-	}
-
 	switch {
 	case ast.Select != "":
-		session.Planner().RefreshInfoSchema()
-		dag, err := e.pullEngine.BuildPullQuery(session, sql)
+		dag, err := e.pullEngine.BuildPullQuery(execCtx, sql, argTypes, args)
 		return dag, errors.WithStack(err)
-	case ast.Prepare != "":
-		session.Planner().RefreshInfoSchema()
-		ex, err := e.execPrepare(session, ast.Prepare)
-		return ex, errors.WithStack(err)
-	case ast.Execute != nil:
-		ex, err := e.execExecute(session, ast.Execute)
-		return ex, errors.WithStack(err)
 	case ast.Create != nil && ast.Create.Source != nil:
 		sequences, err := e.generateTableIDSequences(1)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateSourceCommand(e, session.Schema.Name, sql, sequences, ast.Create.Source)
+		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -125,7 +106,7 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateMVCommand(e, session.Planner(), session.Schema, sql, sequences, ast.Create.MaterializedView)
+		command := NewOriginatingCreateMVCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.MaterializedView)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -136,85 +117,70 @@ func (e *Executor) ExecuteSQLStatement(session *sess.Session, sql string) (exec.
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateIndexCommand(e, session.Planner(), session.Schema, sql, sequences, ast.Create.Index)
+		command := NewOriginatingCreateIndexCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Index)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Source:
-		command := NewOriginatingDropSourceCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		command := NewOriginatingDropSourceCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.MaterializedView:
-		command := NewOriginatingDropMVCommand(e, session.Schema.Name, sql, ast.Drop.Name)
+		command := NewOriginatingDropMVCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Index:
-		command := NewOriginatingDropIndexCommand(e, session.Schema.Name, sql, ast.Drop.TableName, ast.Drop.Name)
+		command := NewOriginatingDropIndexCommand(e, execCtx.Schema.Name, sql, ast.Drop.TableName, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
-	case ast.Use != "":
-		return e.execUse(session, ast.Use)
-	case ast.Show != nil && ast.Show.Tables != "":
-		rows, err := e.execShowTables(session)
+	case ast.Show != nil && ast.Show.Tables:
+		rows, err := e.execShowTables(execCtx)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
-	case ast.Show != nil && ast.Show.Schemas != "":
+	case ast.Show != nil && ast.Show.Schemas:
 		rows, err := e.execShowSchemas()
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
-	case ast.Describe != "":
-		rows, err := e.execDescribe(session, ast.Describe)
+	case ast.Show != nil && ast.Show.Indexes:
+		rows, err := e.execShowIndexes(execCtx.Schema.Name, ast.Show.TableName)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return rows, nil
+	case ast.Describe != "":
+		rows, err := e.execDescribe(execCtx, strings.ToLower(ast.Describe))
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return rows, nil
+	case ast.ResetDdl != "":
+		if err := e.DDlCommandRunner().Cancel(ast.ResetDdl); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
 
-// checks if it's necessary to use a schema namespace to run the SQL statement
-func isSchemaNeeded(ast *parser.AST) bool {
-	switch {
-	case ast.Use != "":
-		return false
-	case ast.Show != nil && ast.Show.Schemas != "":
-		return false
-	}
-	return true
-}
-
-func (e *Executor) CreateSession() *sess.Session {
-	seq := atomic.AddInt64(&e.sessionIDSequence, 1)
-	sessionID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
-	return sess.NewSession(sessionID, &sessCloser{clus: e.cluster, notifClient: e.notifClient})
-}
-
-func (s *sessCloser) CloseRemoteSessions(sessionID string) error {
-	shardIDs := s.clus.GetAllShardIDs()
-	for _, shardID := range shardIDs {
-		sessID := fmt.Sprintf("%s-%d", sessionID, shardID)
-		sessCloseMsg := &notifications.SessionClosedMessage{SessionId: sessID}
-		err := s.notifClient.BroadcastOneway(sessCloseMsg)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
-	return nil
+func (e *Executor) CreateExecutionContext(schema *common.Schema) *execctx.ExecutionContext {
+	seq := atomic.AddInt64(&e.execCtxIDSequence, 1)
+	ctxID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
+	return execctx.NewExecutionContext(ctxID, schema)
 }
 
 // GetPushEngine is only used in testing
@@ -238,44 +204,13 @@ func (e *Executor) generateTableIDSequences(numValues int) ([]uint64, error) {
 	return tableIDSequences, nil
 }
 
-func (e *Executor) execPrepare(session *sess.Session, sql string) (exec.PullExecutor, error) {
-	// TODO we should really use the parser to do this
-	sql = strings.ToLower(sql)
-	if strings.Index(sql, "prepare ") != 0 {
-		return nil, errors.Errorf("in valid prepare command %s", sql)
-	}
-	sql = sql[8:]
-	return e.pullEngine.PrepareSQLStatement(session, sql)
-}
-
-func (e *Executor) execExecute(session *sess.Session, execute *parser.Execute) (exec.PullExecutor, error) {
-	session.Planner().RefreshInfoSchema()
-	args := make([]interface{}, len(execute.Args))
-	for i := range args {
-		args[i] = execute.Args[i]
-	}
-	return e.pullEngine.ExecutePreparedStatement(session, execute.PsID, args)
-}
-
-func (e *Executor) execUse(session *sess.Session, schemaName string) (exec.PullExecutor, error) {
-	// TODO auth checks
-	previousSchema := session.Schema
-	schema := e.metaController.GetOrCreateSchema(schemaName)
-	session.UseSchema(schema)
-	// delete previousSchema if empty after switching to new schema
-	if previousSchema != nil && previousSchema.Name != schemaName {
-		e.metaController.DeleteSchemaIfEmpty(previousSchema)
-	}
-	return exec.Empty, nil
-}
-
-func (e *Executor) execShowTables(session *sess.Session) (exec.PullExecutor, error) {
-	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select name, kind from tables where schema_name='%s' and kind <> 'internal' order by kind, name", session.Schema.Name))
+func (e *Executor) execShowTables(execCtx *execctx.ExecutionContext) (exec.PullExecutor, error) {
+	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select name, kind from tables where schema_name='%s' and kind <> 'internal' order by kind, name", execCtx.Schema.Name))
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	staticRows, err := exec.NewStaticRows([]string{"table", "kind"}, rows)
+	staticRows, err := exec.NewStaticRows([]string{fmt.Sprintf("tables_in_%s", execCtx.Schema.Name), "table_type"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 
@@ -289,6 +224,47 @@ func (e *Executor) execShowSchemas() (exec.PullExecutor, error) {
 		rows.AppendStringToColumn(0, schemaName)
 	}
 	staticRows, err := exec.NewStaticRows([]string{"schema"}, rows)
+	return staticRows, errors.WithStack(err)
+}
+
+func (e *Executor) execShowIndexes(schemaName string, tableName string) (exec.PullExecutor, error) {
+	var tableInfo *common.TableInfo
+	src, ok := e.metaController.GetSource(schemaName, tableName)
+	if !ok {
+		mv, ok := e.metaController.GetMaterializedView(schemaName, tableName)
+		if !ok {
+			return nil, errors.NewPranaErrorf(errors.UnknownTable, "Unknown table %s.%s", schemaName, tableName)
+		}
+		tableInfo = mv.GetTableInfo()
+	} else {
+		tableInfo = src.GetTableInfo()
+	}
+	rowsFactory := common.NewRowsFactory(
+		[]common.ColumnType{common.VarcharColumnType, common.VarcharColumnType},
+	)
+	rows := rowsFactory.NewRows(len(tableInfo.IndexInfos))
+
+	// Sort the index names
+	var indNames []string
+	for indexName := range tableInfo.IndexInfos {
+		indNames = append(indNames, indexName)
+	}
+	sort.Strings(indNames)
+
+	for _, indexName := range indNames {
+		indexInfo := tableInfo.IndexInfos[indexName]
+		rows.AppendStringToColumn(0, indexName)
+		sb := strings.Builder{}
+		for i, index := range indexInfo.IndexCols {
+			colName := tableInfo.ColumnNames[index]
+			sb.WriteString(colName)
+			if i != len(indexInfo.IndexCols)-1 {
+				sb.WriteString(", ")
+			}
+		}
+		rows.AppendStringToColumn(1, sb.String())
+	}
+	staticRows, err := exec.NewStaticRows([]string{fmt.Sprintf("indexes_on_%s", tableName), "columns"}, rows)
 	return staticRows, errors.WithStack(err)
 }
 
@@ -309,7 +285,7 @@ func describeRows(tableInfo *common.TableInfo) (exec.PullExecutor, error) {
 		resultRows.AppendStringToColumn(0, columnName)
 		resultRows.AppendStringToColumn(1, tableInfo.ColumnTypes[columnIndex].String())
 		if tableInfo.IsPrimaryKeyCol(columnIndex) {
-			resultRows.AppendStringToColumn(2, "pk")
+			resultRows.AppendStringToColumn(2, "pri")
 		} else {
 			resultRows.AppendStringToColumn(2, "")
 		}
@@ -318,17 +294,17 @@ func describeRows(tableInfo *common.TableInfo) (exec.PullExecutor, error) {
 	return staticRows, errors.WithStack(err)
 }
 
-func (e *Executor) execDescribe(session *sess.Session, tableName string) (exec.PullExecutor, error) {
+func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName string) (exec.PullExecutor, error) {
 	// NB: We select a specific set of columns because the Decode*Row() methods expect a row with *_info columns on certain predefined positions.
-	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select id, kind, schema_name, name, table_info, topic_info, query, mv_name from tables where schema_name='%s' and name='%s'", session.Schema.Name, tableName))
+	rows, err := e.pullEngine.ExecuteQuery("sys", fmt.Sprintf("select id, kind, schema_name, name, table_info, topic_info, query, mv_name from tables where schema_name='%s' and name='%s'", execCtx.Schema.Name, tableName))
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	if rows.RowCount() == 0 {
-		return nil, errors.NewUnknownSourceOrMaterializedViewError(session.Schema.Name, tableName)
+		return nil, errors.NewUnknownTableError(execCtx.Schema.Name, tableName)
 	}
 	if rows.RowCount() != 1 {
-		panic(fmt.Sprintf("multiple matches for table: '%s.%s'", session.Schema.Name, tableName))
+		panic(fmt.Sprintf("multiple matches for table: '%s.%s'", execCtx.Schema.Name, tableName))
 	}
 	tableRow := rows.GetRow(0)
 	var tableInfo *common.TableInfo
@@ -348,8 +324,8 @@ func (e *Executor) execDescribe(session *sess.Session, tableName string) (exec.P
 	return describeRows(tableInfo)
 }
 
-func (e *Executor) RunningCommands() int {
-	return e.ddlRunner.runningCommands()
+func (e *Executor) Empty() bool {
+	return e.ddlRunner.empty()
 }
 
 func (e *Executor) FailureInjector() failinject.Injector {

@@ -48,20 +48,35 @@ func TestKeyEncodeFloat64(t *testing.T) {
 	}
 }
 
+func TestKeyEncodeDecodeFloat64(t *testing.T) {
+	testKeyEncodeDecodeFloat64(t, -1234.4321)
+	testKeyEncodeDecodeFloat64(t, -0.002)
+	testKeyEncodeDecodeFloat64(t, 0.0034)
+	testKeyEncodeDecodeFloat64(t, 4321.5436)
+	testKeyEncodeDecodeFloat64(t, 0)
+}
+
+func testKeyEncodeDecodeFloat64(t *testing.T, val float64) {
+	t.Helper()
+	buff := KeyEncodeFloat64([]byte{}, val)
+	f, _ := KeyDecodeFloat64(buff, 0)
+	require.Equal(t, val, f)
+}
+
 func TestKeyEncodeString(t *testing.T) {
 	vals := []string{
 		"",
 		"a",
+		"aa",
+		"aaa",
+		"aaaa",
+		"aab",
+		"ab",
+		"abb",
+		"antelopes",
 		"b",
 		"z",
-		"aa",
-		"ab",
-		"aaa",
-		"aab",
-		"abb",
 		"zzz",
-		"aaaa",
-		"antelopes",
 	}
 	for i := 0; i < len(vals)-1; i++ {
 		checkLessThan(t, encodeString(vals[i]), encodeString(vals[i+1]))

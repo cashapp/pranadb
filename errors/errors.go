@@ -8,36 +8,39 @@ import (
 
 type ErrorCode int
 
+// User errors
 const (
-	InternalError = iota
+	InvalidStatement = iota + 1000
 	SchemaNotInUse
-	InvalidStatement
-	UnknownSessionID
-	InvalidConfiguration
 	UnknownSource
 	UnknownMaterializedView
-	UnknownPreparedStatement
+	UnknownIndex
+	UnknownTable
 	SourceAlreadyExists
 	MaterializedViewAlreadyExists
+	IndexAlreadyExists
 	SourceHasChildren
 	MaterializedViewHasChildren
-
-	UnknownBrokerName
-	MissingKafkaBrokers
-	MissingTopicInfo
-	UnsupportedBrokerClientType
-	UnknownTopicEncoding
-	WrongNumberColumnSelectors
-	InvalidSelector
-	UnknownSourceOrMaterializedView
-	UnknownIndexColumn
-	IndexAlreadyExists
-
-	UnknownPerfCommand
+	InvalidParamCount
+	Timeout
+	DdlCancelled
 )
 
-func NewInternalError(seq int64) PranaError {
-	return NewPranaErrorf(InternalError, "Internal error - sequence %d please consult server logs for details", seq)
+// Ingest errors
+const (
+	ValueOutOfRange = iota + 2000
+	VarcharTooBig
+)
+
+// Miscellaneous errors
+const (
+	InvalidConfiguration = 3000
+	UnknownPerfCommand   = 4000
+	InternalError        = 5000
+)
+
+func NewInternalError(errReference string) PranaError {
+	return NewPranaErrorf(InternalError, "Internal error - reference: %s please consult server logs for details", errReference)
 }
 
 func NewSchemaNotInUseError() PranaError {
@@ -46,10 +49,6 @@ func NewSchemaNotInUseError() PranaError {
 
 func NewInvalidStatementError(msg string) PranaError {
 	return NewPranaErrorf(InvalidStatement, msg)
-}
-
-func NewUnknownSessionIDError(sessionID string) PranaError {
-	return NewPranaErrorf(UnknownSessionID, "Unknown session ID %s", sessionID)
 }
 
 func NewInvalidConfigurationError(msg string) PranaError {
@@ -61,35 +60,19 @@ func NewUnknownSourceError(schemaName string, sourceName string) PranaError {
 }
 
 func NewUnknownIndexError(schemaName string, tableName string, indexName string) PranaError {
-	return NewPranaErrorf(UnknownSource, "Unknown index: %s.%s.%s", schemaName, tableName, indexName)
+	return NewPranaErrorf(UnknownIndex, "Unknown index: %s.%s.%s", schemaName, tableName, indexName)
 }
 
 func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaError {
 	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
 }
 
-func NewUnknownSourceOrMaterializedViewError(schemaName string, tableName string) PranaError {
-	return NewPranaErrorf(UnknownSourceOrMaterializedView, "Unknown source or materialized view: %s.%s", schemaName, tableName)
-}
-
-func NewUnknownIndexColumn(schemaName string, tableName string, columnName string) PranaError {
-	return NewPranaErrorf(UnknownIndexColumn, "Table %s.%s does not have a column %s", schemaName, tableName, columnName)
-}
-
-func NewUnknownPreparedStatementError(psID int64) PranaError {
-	return NewPranaErrorf(UnknownPreparedStatement, "Unknown prepared statement, id: %d", psID)
-}
-
-func NewSourceAlreadyExistsError(schemaName string, sourceName string) PranaError {
-	return NewPranaErrorf(SourceAlreadyExists, "Source already exists: %s.%s", schemaName, sourceName)
+func NewUnknownTableError(schemaName string, tableName string) PranaError {
+	return NewPranaErrorf(UnknownTable, "Unknown source or materialized view: %s.%s", schemaName, tableName)
 }
 
 func NewIndexAlreadyExistsError(schemaName string, tableName string, indexName string) PranaError {
 	return NewPranaErrorf(IndexAlreadyExists, "Index %s already exists on %s.%s", indexName, schemaName, tableName)
-}
-
-func NewMaterializedViewAlreadyExistsError(schemaName string, materializedViewName string) PranaError {
-	return NewPranaErrorf(MaterializedViewAlreadyExists, "Materialized view already exists: %s.%s", schemaName, materializedViewName)
 }
 
 func NewSourceHasChildrenError(schemaName string, sourceName string, childMVs []string) PranaError {
@@ -102,6 +85,10 @@ func NewMaterializedViewHasChildrenError(schemaName string, materializedViewName
 
 func NewUnknownLoadRunnerfCommandError(commandName string) PranaError {
 	return NewPranaErrorf(UnknownPerfCommand, "Unknown perf runner command %s", commandName)
+}
+
+func NewValueOutOfRangeError(msg string) PranaError {
+	return NewPranaErrorf(ValueOutOfRange, "Value out of range. %s", msg)
 }
 
 func getChildString(schemaName string, childMVs []string) string {
@@ -139,7 +126,13 @@ func (u PranaError) Error() string {
 	return u.Msg
 }
 
-// FIXME - fix all these - quick fixed here after port from TiDB
+func MaybeConvertToPranaErrorf(err error, errorCode ErrorCode, msgFormat string, args ...interface{}) error {
+	var perr PranaError
+	if As(err, &perr) {
+		return err
+	}
+	return NewPranaErrorf(errorCode, msgFormat, args...)
+}
 
 func Trace(err error) error {
 	return err

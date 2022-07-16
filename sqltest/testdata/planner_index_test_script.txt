@@ -24,26 +24,26 @@ create index index1 on transactions (customer_id);
 
 --test with index;
 
-select customer_id from transactions where customer_id = 600;
+select customer_id from transactions where customer_id = 60;
 
-select customer_id from transactions where customer_id > 600 order by customer_id;
+select customer_id from transactions where customer_id > 60 order by customer_id;
 
-select customer_id from transactions where customer_id < 600 order by customer_id;
+select customer_id from transactions where customer_id < 60 order by customer_id;
 
 select customer_id from transactions where customer_id is null;
 
-select customer_id from transactions where customer_id = 1000000;
+select customer_id from transactions where customer_id = 77;
 
 --test partially-covering index;
 
-select * from transactions where customer_id = 600 order by id;
+select * from transactions where customer_id = 60 order by id;
 
 select * from transactions where id > 5 order by id;
 
 select * from transactions where id < 5 order by id;
 
 -- this should trigger multiple ranges for an index scan;
-select * from transactions where customer_id in (500, 600, 700) order by id;
+select * from transactions where customer_id in (50, 60, 70) order by id;
 
 drop index index1 on transactions;
 
@@ -53,30 +53,32 @@ create index index2 on transactions (customer_id, col2);
 
 select * from transactions where id > 10 order by id;
 
-select * from transactions where customer_id = 600 order by id;
+select * from transactions where customer_id = 60 order by id;
+
+select * from transactions where customer_id is null order by id;
 
 select col2 from transactions where col2 = 'abc';
 
-select col2, customer_id from transactions where customer_id = 600 order by col2;
+select col2, customer_id from transactions where customer_id = 60 order by col2;
 
-select customer_id from transactions where customer_id > 600 order by customer_id;
+select customer_id from transactions where customer_id > 60 order by customer_id;
 
-select customer_id from transactions where customer_id < 600 order by customer_id;
+select customer_id from transactions where customer_id < 60 order by customer_id;
 
-select * from transactions where customer_id > 600 and customer_id < 900 order by id;
+select * from transactions where customer_id > 60 and customer_id < 90 order by id;
 
-select * from transactions where customer_id > 300 and col2 is null order by id;
+select * from transactions where customer_id > 30 and col2 is null order by id;
 
-select customer_id, id, col2 from transactions where customer_id > 300 and col2 is null order by customer_id, id;
+select customer_id, id, col2 from transactions where customer_id > 30 and col2 is null order by customer_id, id;
 
 -- test index usage with composite range - we do this by fixing the leftmost columns in the index;
 
-select * from transactions where customer_id = 300 and col2 = 'ghi' order by id;
+select * from transactions where customer_id = 30 and col2 = 'ghi' order by id;
 
-select * from transactions where customer_id = 400 and col2 is null order by id;
+select * from transactions where customer_id = 40 and col2 is null order by id;
 
 -- this should trigger multiple ranges for an index scan;
-select * from transactions where customer_id in (500, 600, 700) and col2 in ('abc', 'ghi') order by id;
+select * from transactions where customer_id in (50, 60, 70) and col2 in ('abc', 'ghi') order by id;
 
 drop index index2 on transactions;
 
