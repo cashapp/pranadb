@@ -114,6 +114,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader:    schemaLoader,
 		notifServer:     remotingServer,
 		notifClient:     notifClient,
+		ddlResetClient:  ddlResetClient,
 		apiServer:       apiServer,
 		services:        services,
 		metrics:         theMetrics,
@@ -135,6 +136,7 @@ type Server struct {
 	schemaLoader       *schema.Loader
 	notifServer        remoting.Server
 	notifClient        remoting.Client
+	ddlResetClient     remoting.Client
 	apiServer          *api.Server
 	services           []service
 	started            bool
@@ -167,6 +169,9 @@ func (s *Server) Start() error {
 	if err := s.cluster.PostStartChecks(s.pullEngine); err != nil {
 		return errors.WithStack(err)
 	}
+
+	s.cluster.AddHealthcheckListener(s.notifClient.AvailabilityListener())
+	s.cluster.AddHealthcheckListener(s.ddlResetClient.AvailabilityListener())
 
 	if err := s.pushEngine.Ready(); err != nil {
 		return errors.WithStack(err)
