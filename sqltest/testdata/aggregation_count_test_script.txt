@@ -119,7 +119,6 @@ select * from test_mv_25;
 create materialized view test_mv_26 as select count(1) from latest_sensor_readings;
 select * from test_mv_26;
 
-
 drop materialized view test_mv_26;
 drop materialized view test_mv_25;
 drop materialized view test_mv_24;
