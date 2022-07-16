@@ -20,6 +20,9 @@ const (
 	DefaultRaftRTTMs                   = 50
 	DefaultRaftHeartbeatRTT            = 30
 	DefaultRaftElectionRTT             = 300
+	DefaultProcessorMaxLag             = 2 * time.Second
+	DefaultFillMaxLag                  = 5 * time.Second
+	DefaultSourceLagTimeout            = 30 * time.Second
 )
 
 type Config struct {
@@ -58,6 +61,9 @@ type Config struct {
 	RaftRTTMs                        int
 	RaftElectionRTT                  int
 	RaftHeartbeatRTT                 int
+	ProcessorMaxLag                  time.Duration
+	FillMaxLag                       time.Duration
+	SourceLagTimeout                 time.Duration
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -198,6 +204,9 @@ func NewDefaultConfig() *Config {
 		RaftRTTMs:                   DefaultRaftRTTMs,
 		RaftHeartbeatRTT:            DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:             DefaultRaftElectionRTT,
+		ProcessorMaxLag:             DefaultProcessorMaxLag,
+		FillMaxLag:                  DefaultFillMaxLag,
+		SourceLagTimeout:            DefaultSourceLagTimeout,
 	}
 }
 
@@ -209,6 +218,9 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		RaftRTTMs:                   DefaultRaftRTTMs,
 		RaftHeartbeatRTT:            DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:             DefaultRaftElectionRTT,
+		ProcessorMaxLag:             DefaultProcessorMaxLag,
+		FillMaxLag:                  DefaultFillMaxLag,
+		SourceLagTimeout:            DefaultSourceLagTimeout,
 		NodeID:                      0,
 		NumShards:                   10,
 		TestServer:                  true,

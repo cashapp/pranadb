@@ -68,6 +68,7 @@ func EncodePrevAndCurrentRow(prevValueBuff []byte, currValueBuff []byte) []byte 
 
 type LagProvider interface {
 	GetLag(shardID uint64) time.Duration
+	WaitForAcceptableLag(timeout time.Duration) bool
 }
 
 func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster) error {
@@ -97,7 +98,7 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 	return nil
 }
 
-func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, acceptableLag time.Duration) bool {
+func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, acceptableLag time.Duration, timeout time.Duration) bool {
 	// We have to wait for the lag of ALL shards to go down as messages sent can update aggregations which causes
 	// further sends to different shards
 	st := time.Now()
@@ -114,7 +115,7 @@ func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, accepta
 			return true
 		}
 		time.Sleep(10 * time.Millisecond)
-		if time.Now().Sub(st) > 60*time.Second {
+		if time.Now().Sub(st) > timeout {
 			log.Warn("timed out in waiting for acceptable lags")
 			return false
 		}

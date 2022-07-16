@@ -140,8 +140,8 @@ func (cmp *ConfluentMessageProvider) Start() error {
 		"group.id":             cmp.krpf.groupID,
 		"auto.offset.reset":    "earliest",
 		"enable.auto.commit":   false,
-		"session.timeout.ms":   60000,
-		"max.poll.interval.ms": 5 * 60 * 1000,
+		"session.timeout.ms":   30 * 1000,
+		"max.poll.interval.ms": 60 * 1000,
 	}
 	for k, v := range cmp.krpf.props {
 		if err := cm.SetKey(k, v); err != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/push/util"
-	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
 	"go.uber.org/ratelimit"
 	"math/rand"
@@ -56,9 +55,7 @@ type Engine struct {
 	processBatchTimeHistogram metrics.Observer
 	globalRateLimiter         ratelimit.Limiter
 	failInject                failinject.Injector
-	lagsBroadcastClient       remoting.Client
-	lagsTimer                 *time.Timer
-	shardLags                 sync.Map
+	lagManager                *LagManager
 }
 
 var (
@@ -96,8 +93,7 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 	} else {
 		rl = nil
 	}
-	lagsBroadcastClient := remoting.NewClient(cfg.NotifListenAddresses...)
-	engine := Engine{
+	engine := &Engine{
 		cluster:                   cluster,
 		sharder:                   sharder,
 		meta:                      meta,
@@ -108,10 +104,10 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
 		globalRateLimiter:         rl,
 		failInject:                failInject,
-		lagsBroadcastClient:       lagsBroadcastClient,
 	}
+	engine.lagManager = NewLagManager(engine, cfg.NotifListenAddresses...)
 	engine.createMaps()
-	return &engine
+	return engine
 }
 
 func (p *Engine) Start() error {
@@ -120,11 +116,9 @@ func (p *Engine) Start() error {
 	if p.started {
 		return nil
 	}
-	p.cluster.AddHealthcheckListener(p.lagsBroadcastClient.AvailabilityListener())
-	if err := p.lagsBroadcastClient.Start(); err != nil {
+	if err := p.lagManager.Start(); err != nil {
 		return err
 	}
-	p.broadcastLagsNoLock()
 	p.started = true
 	return nil
 }
@@ -149,13 +143,9 @@ func (p *Engine) Stop() error {
 	if !p.started {
 		return nil
 	}
-	if p.lagsTimer != nil {
-		p.lagsTimer.Stop()
-	}
-	if err := p.lagsBroadcastClient.Stop(); err != nil {
+	if err := p.lagManager.Stop(); err != nil {
 		return err
 	}
-	//p.readyToReceive.Set(false)
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
 			return errors.WithStack(err)
@@ -696,7 +686,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		}
 	}
 
-	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, p)
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, p.lagManager, p.cfg.FillMaxLag)
 
 	src, err := source.NewSource(
 		sourceInfo,
@@ -708,7 +698,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		p.queryExec,
 		p.protoRegistry,
 		p,
-		p,
+		p.lagManager,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -763,7 +753,9 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			}
 			scanStart = pairs[len(pairs)-1].Key
 			skipFirst = true
-			util.MaybeThrottleIfLagging(p.cluster.GetAllShardIDs(), p, 5*time.Second)
+			if !util.MaybeThrottleIfLagging(p.cluster.GetAllShardIDs(), p.lagManager, p.cfg.ProcessorMaxLag, 2*time.Minute) {
+				return errors.NewPranaErrorf(errors.DdlCancelled, "initial state load timed out in waiting for lags to reduce")
+			}
 		}
 	}
 	log.Debugf("loaded initial state for table %d from %d", targetTableID, initTableID)
@@ -826,47 +818,6 @@ func (p *Engine) getLagsMessage() *notifications.LagsMessage {
 	return &notifications.LagsMessage{Lags: lags}
 }
 
-func (p *Engine) broadcastLags() {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	if !p.started {
-		return
-	}
-	p.broadcastLagsNoLock()
-}
-
-func (p *Engine) broadcastLagsNoLock() {
-	p.lagsTimer = time.AfterFunc(1*time.Second, func() {
-		msg := p.getLagsMessage()
-		if err := p.lagsBroadcastClient.BroadcastOneway(msg); err != nil {
-			log.Errorf("failed to broadcast lags %+v", err)
-		} else {
-			p.broadcastLags()
-		}
-	})
-}
-
-func (p *Engine) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	lags, ok := notification.(*notifications.LagsMessage)
-	if !ok {
-		panic("not a LagsMessage")
-	}
-	for _, lagEntry := range lags.Lags {
-		shardID := uint64(lagEntry.ShardId)
-		lag := time.Duration(lagEntry.Lag)
-		p.shardLags.Store(shardID, lag)
-	}
-	return nil, nil
-}
-
-func (p *Engine) GetLag(shardID uint64) time.Duration {
-	l, ok := p.shardLags.Load(shardID)
-	if !ok {
-		return time.Duration(0)
-	}
-	lag, ok := l.(time.Duration)
-	if !ok {
-		panic("not a time.Duration")
-	}
-	return lag
+func (p *Engine) GetLagManager() *LagManager {
+	return p.lagManager
 }
