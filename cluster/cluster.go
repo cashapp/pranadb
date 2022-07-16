@@ -72,6 +72,8 @@ type Cluster interface {
 	PostStartChecks(queryExec common.SimpleQueryExec) error
 
 	AddHealthcheckListener(listener remoting.AvailabilityListener)
+
+	SyncStore() error
 }
 
 type ToDeleteBatch struct {

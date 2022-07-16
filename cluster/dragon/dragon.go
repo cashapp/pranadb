@@ -1171,3 +1171,12 @@ func (d *Dragon) RestoreSnapshotCount() int64 {
 func (d *Dragon) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 	d.healthChecker.AddAvailabilityListener(listener)
 }
+
+func (d *Dragon) SyncStore() error {
+	d.lock.RLock()
+	d.lock.RUnlock()
+	if !d.started {
+		return nil
+	}
+	return syncPebble(d.pebble)
+}

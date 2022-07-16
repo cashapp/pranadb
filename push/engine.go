@@ -766,6 +766,9 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			util.MaybeThrottleIfLagging(p.cluster.GetAllShardIDs(), p, 5*time.Second)
 		}
 	}
+	if err := p.cluster.SyncStore(); err != nil {
+		return err
+	}
 	log.Debugf("loaded initial state for table %d from %d", targetTableID, initTableID)
 	return nil
 }
