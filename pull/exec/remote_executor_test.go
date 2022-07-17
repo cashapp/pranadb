@@ -165,6 +165,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) SyncStore() error {
+	return nil
+}
+
 func (t *testCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }
 
