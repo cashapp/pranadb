@@ -218,6 +218,8 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateMVCommand) Cleanup() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.mv == nil {
 		return
 	}
