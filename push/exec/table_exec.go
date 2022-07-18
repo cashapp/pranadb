@@ -31,9 +31,11 @@ type TableExecutor struct {
 	uncommittedBatches sync.Map
 	delayer            interruptor.InterruptManager
 	lagProvider        util.LagProvider
+	fillMaxLag         time.Duration
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagProvider util.LagProvider) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagProvider util.LagProvider,
+	fillMaxLag time.Duration) *TableExecutor {
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -47,6 +49,7 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagPro
 		consumingNodes: make(map[string]PushExecutor),
 		delayer:        interruptor.GetInterruptManager(),
 		lagProvider:    lagProvider,
+		fillMaxLag:     fillMaxLag,
 	}
 }
 
@@ -513,8 +516,8 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	if err := pe.HandleRows(batch, ctx); err != nil {
 		return errors.WithStack(err)
 	}
-	if !util.MaybeThrottleIfLagging(t.store.GetAllShardIDs(), t.lagProvider, 5*time.Second) {
-		// FIXME - fail?
+	if !util.MaybeThrottleIfLagging(t.store.GetAllShardIDs(), t.lagProvider, t.fillMaxLag, 1*time.Minute) {
+		return errors.NewPranaErrorf(errors.DdlCancelled, "fill timed out in waiting for lags to reduce")
 	}
 	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
 		return err
