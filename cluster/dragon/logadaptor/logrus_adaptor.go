@@ -9,11 +9,7 @@ import (
 This adaptor allows us to plug the dragonboat logging into the logrus logger we use in Prana.
 */
 
-func init() {
-	logger.SetLoggerFactory(logrusLogFactory)
-}
-
-func logrusLogFactory(pkgName string) logger.ILogger {
+func LogrusLogFactory(pkgName string) logger.ILogger {
 	return &LogrusILogger{}
 }
 

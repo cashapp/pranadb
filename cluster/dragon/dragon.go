@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
 	"math/rand"
@@ -48,6 +49,10 @@ const (
 
 	pullQueryRetryTimeout = 10 * time.Second
 )
+
+func init() {
+	logger.SetLoggerFactory(logadaptor.LogrusLogFactory)
+}
 
 func NewDragon(cnf conf.Config) (*Dragon, error) {
 	if len(cnf.RaftAddresses) < 3 {
