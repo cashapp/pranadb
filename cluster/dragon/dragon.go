@@ -1064,7 +1064,7 @@ func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, erro
 		return cl, nil
 	}
 	serverAddresses := d.getServerAddressesForShard(shardID)
-	cl = remoting.NewClient(serverAddresses...)
+	cl = remoting.NewClient(false, serverAddresses...)
 	if err := cl.Start(); err != nil {
 		return nil, err
 	}

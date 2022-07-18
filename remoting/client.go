@@ -21,16 +21,17 @@ type Client interface {
 	AvailabilityListener() AvailabilityListener
 }
 
-func NewClient(serverAddresses ...string) Client {
-	return newClient(serverAddresses...)
+func NewClient(alwaysTryConnect bool, serverAddresses ...string) Client {
+	return newClient(alwaysTryConnect, serverAddresses...)
 }
 
-func newClient(serverAddresses ...string) *client {
+func newClient(alwaysTryConnect bool, serverAddresses ...string) *client {
 	return &client{
 		serverAddresses:    serverAddresses,
 		connections:        make(map[string]*clientConnection),
 		unavailableServers: make(map[string]struct{}),
 		msgSeq:             -1,
+		alwaysTryConnect:   alwaysTryConnect,
 	}
 }
 
@@ -44,6 +45,7 @@ type client struct {
 	unavailableServers map[string]struct{}
 	responseChannels   sync.Map
 	msgSeq             int64
+	alwaysTryConnect   bool
 }
 
 func (c *client) AvailabilityListener() AvailabilityListener {
@@ -84,13 +86,16 @@ func (c *client) AvailabilityChanged(availServers []string) {
 	}
 }
 
-func (c *client) makeUnavailable(serverAddress string) {
+func (c *client) maybeMakeUnavailable(serverAddress string) {
 	// Cannot write to server or make connection, it's unavailable - it may be down or there's a network issue
 	// We remove the server from the set of live servers and add it to the set of unavailable ones
-	log.Debugf("Server became unavailable %s", serverAddress)
-	delete(c.connections, serverAddress)
-	delete(c.availableServers, serverAddress)
-	c.unavailableServers[serverAddress] = struct{}{}
+	// We only do this if alwaysTryConnect is false, otherwise we always try and connect every time
+	if !c.alwaysTryConnect {
+		log.Debugf("Server became unavailable %s", serverAddress)
+		delete(c.connections, serverAddress)
+		delete(c.availableServers, serverAddress)
+		c.unavailableServers[serverAddress] = struct{}{}
+	}
 }
 
 // SendRequest attempts to send the request to one of the serverAddresses starting at the first one
@@ -176,7 +181,7 @@ func (c *client) BroadcastSync(notificationMessage ClusterMessage) error {
 
 // BroadcastOneway broadcasts a notification to all members of the cluster, and does not wait for responses
 // Please note that this is best effort: servers will receive notifications only if they are available.
-// Notifications are not persisted and their is no total ordering. Ordering is guaranteed per client instance
+// Notifications are not persisted and there is no total ordering. Ordering is guaranteed per client instance
 // The notifications system is not designed for high volumes of traffic.
 func (c *client) BroadcastOneway(notificationMessage ClusterMessage) error {
 	nf := c.createRequest(notificationMessage, false)
@@ -226,7 +231,7 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 		nc, err := c.createConnection(serverAddress)
 		if err != nil {
 			log.Warnf("failed to connect to %s %v", serverAddress, err)
-			c.makeUnavailable(serverAddress)
+			c.maybeMakeUnavailable(serverAddress)
 			maybeRemoveFromConnCount(ri)
 			return err
 		}
@@ -241,7 +246,7 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 	}
 	if err := writeMessage(requestMessageType, messageBytes, clientConn.conn); err != nil {
 		clientConn.Stop()
-		c.makeUnavailable(serverAddress)
+		c.maybeMakeUnavailable(serverAddress)
 		c.connectionClosed(clientConn)
 		maybeRemoveFromConnCount(ri)
 		return err
