@@ -148,6 +148,8 @@ func (c *CreateIndexCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateIndexCommand) Cleanup() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.indexInfo == nil {
 		return
 	}

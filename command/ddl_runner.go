@@ -216,6 +216,9 @@ func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage
 		return nil
 	}
 	err := com.OnPhase(phase)
+	if err != nil {
+		com.Cleanup()
+	}
 	if phase == int32(com.NumPhases()-1) {
 		// Final phase so delete the command
 		d.commands.Delete(skey)

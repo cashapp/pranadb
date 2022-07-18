@@ -211,6 +211,8 @@ func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateSourceCommand) Cleanup() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.sourceInfo == nil {
 		return
 	}
