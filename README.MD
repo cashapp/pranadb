@@ -32,7 +32,5 @@ In order to contribute please sign the [block CLA](http://squ.re/sign-the-cla)
 
 [Try the demo](docs/demo.md)
 
-[Try the demo (using Docker Compose)](docs/demo_docker_compose.md)
-
 [Frequently asked questions](docs/faq.md)
 
