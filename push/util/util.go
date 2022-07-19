@@ -116,7 +116,7 @@ func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, accepta
 		}
 		time.Sleep(10 * time.Millisecond)
 		if time.Now().Sub(st) > timeout {
-			log.Warn("timed out in waiting for acceptable lags")
+			log.Warnf("timed out in waiting for acceptable lags, timeout is %d acceptable lag is %d", timeout, acceptableLag)
 			return false
 		}
 	}

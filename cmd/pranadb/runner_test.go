@@ -87,5 +87,8 @@ func createConfigWithAllFields() conf.Config {
 		RaftRTTMs:                   100,
 		RaftElectionRTT:             300,
 		RaftHeartbeatRTT:            30,
+		ProcessorMaxLag:             6500 * time.Millisecond,
+		FillMaxLag:                  12000 * time.Millisecond,
+		SourceLagTimeout:            65000 * time.Millisecond,
 	}
 }

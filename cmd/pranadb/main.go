@@ -53,8 +53,6 @@ func (r *runner) run(args []string, start bool) error {
 		}
 	}
 	cfg := arguments{}
-	defaults := conf.NewDefaultConfig()
-	cfg.Server = *defaults
 	parser, err := kong.New(&cfg, kong.Configuration(konghcl.Loader))
 	if err != nil {
 		return errors.WithStack(err)
@@ -66,7 +64,7 @@ func (r *runner) run(args []string, start bool) error {
 	if err := cfg.Log.Configure(); err != nil {
 		return errors.WithStack(err)
 	}
-
+	cfg.Server.ApplyDefaults()
 	s, err := server.NewServer(cfg.Server)
 	if err != nil {
 		return errors.WithStack(err)
