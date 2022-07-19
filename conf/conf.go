@@ -14,7 +14,7 @@ const (
 	DefaultSequenceCompactionOverhead  = 250
 	DefaultLocksSnapshotEntries        = 1000
 	DefaultLocksCompactionOverhead     = 250
-	DefaultRemotingHeartbeatInterval   = 10 * time.Second
+	DefaultRemotingHeartbeatInterval   = 5 * time.Second
 	DefaultRemotingHeartbeatTimeout    = 5 * time.Second
 	DefaultGlobalIngestLimitRowsPerSec = 1000
 	DefaultRaftRTTMs                   = 50

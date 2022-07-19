@@ -21,7 +21,7 @@ type LagManager struct {
 var _ util.LagProvider = &LagManager{}
 
 func NewLagManager(engine *Engine, notifAddresses ...string) *LagManager {
-	broadcastClient := remoting.NewClient(notifAddresses...)
+	broadcastClient := remoting.NewClient(false, notifAddresses...)
 	return &LagManager{broadcastClient: broadcastClient, engine: engine}
 }
 

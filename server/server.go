@@ -39,13 +39,13 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
-	var notifClient remoting.Client
+	var ddlClient remoting.Client
 	var ddlResetClient remoting.Client
 	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
 		fakeNotifier := remoting.NewFakeServer()
-		notifClient = fakeNotifier
+		ddlClient = fakeNotifier
 		remotingServer = fakeNotifier
 		ddlResetClient = fakeNotifier
 	} else {
@@ -56,8 +56,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		}
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = remoting.NewClient(config.NotifListenAddresses...)
-		ddlResetClient = remoting.NewClient(config.NotifListenAddresses...)
+		ddlClient = remoting.NewClient(true, config.NotifListenAddresses...)
+		ddlResetClient = remoting.NewClient(true, config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
@@ -66,7 +66,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	pullEngine := pull.NewPullEngine(clus, metaController, shardr)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
-	protoRegistry.SetNotifier(notifClient.BroadcastSync)
+	protoRegistry.SetNotifier(ddlClient.BroadcastSync)
 	theMetrics := metrics.NewServer(config, !config.EnableMetrics)
 	var failureInjector failinject.Injector
 	if config.EnableFailureInjector {
@@ -77,7 +77,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageLags, pushEngine.GetLagManager())
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, ddlResetClient,
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
 		protoRegistry, failureInjector)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
@@ -113,7 +113,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
 		notifServer:     remotingServer,
-		notifClient:     notifClient,
+		ddlClient:       ddlClient,
 		apiServer:       apiServer,
 		services:        services,
 		metrics:         theMetrics,
@@ -134,7 +134,7 @@ type Server struct {
 	commandExecutor    *command.Executor
 	schemaLoader       *schema.Loader
 	notifServer        remoting.Server
-	notifClient        remoting.Client
+	ddlClient          remoting.Client
 	apiServer          *api.Server
 	services           []service
 	started            bool
@@ -257,7 +257,7 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 }
 
 func (s *Server) GetNotificationsClient() remoting.Client {
-	return s.notifClient
+	return s.ddlClient
 }
 
 func (s *Server) GetNotificationsServer() remoting.Server {
