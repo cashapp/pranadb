@@ -433,3 +433,7 @@ func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 
 func (f *FakeCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }
+
+func (f *FakeCluster) SyncStore() error {
+	return nil
+}
