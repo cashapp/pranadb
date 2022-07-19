@@ -58,3 +58,6 @@ global-ingest-limit-rows-per-sec = 5000
 raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
+processor-max-lag                 = "6500ms"
+fill-max-lag                      = "12000ms"
+source-lag-timeout                = "65000ms"
