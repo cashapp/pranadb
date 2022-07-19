@@ -69,6 +69,8 @@ type Source struct {
 	ingestExpressions       []*common.Expression
 	lagProvider             util.LagProvider
 	cfg                     *conf.Config
+	restartTimer            *time.Timer
+	stopped                 bool // represents a hard stop - not a stop then a restart after delay
 }
 
 var (
@@ -166,38 +168,20 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 }
 
 func (s *Source) Start() error {
-	log.Infof("Starting source %s.%s", s.sourceInfo.SchemaName, s.sourceInfo.Name)
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.started {
-		return nil
-	}
-
-	if len(s.msgConsumers) != 0 {
-		panic("more than zero consumers!")
-	}
-
-	for i := 0; i < s.numConsumersPerSource; i++ {
-		msgProvider, err := s.msgProvFact.NewMessageProvider()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
-			s.maxPollMessages, s)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		s.msgConsumers = append(s.msgConsumers, consumer)
-	}
-
-	s.started = true
-	return nil
+	return s.start()
 }
 
 func (s *Source) Stop() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.stopped = true // hard stop - no restart
+	if s.restartTimer != nil {
+		s.restartTimer.Stop()
+	}
 	return s.stop()
 }
 
@@ -281,12 +265,45 @@ func (s *Source) ingestError(err error, clientError bool) {
 
 func (s *Source) restartAfterDelay(delay time.Duration) {
 	log.Warnf("Will attempt restart of source %s.%s after delay of %d ms", s.sourceInfo.SchemaName, s.sourceInfo.Name, delay.Milliseconds())
-	time.AfterFunc(delay, func() {
-		err := s.Start()
+	s.restartTimer = time.AfterFunc(delay, func() {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		if s.stopped {
+			return
+		}
+		err := s.start()
 		if err != nil {
 			log.Errorf("Failed to start source %+v", err)
 		}
 	})
+}
+
+func (s *Source) start() error {
+	log.Infof("Starting source %s.%s", s.sourceInfo.SchemaName, s.sourceInfo.Name)
+
+	if s.started {
+		return nil
+	}
+
+	if len(s.msgConsumers) != 0 {
+		panic("more than zero consumers!")
+	}
+
+	for i := 0; i < s.numConsumersPerSource; i++ {
+		msgProvider, err := s.msgProvFact.NewMessageProvider()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
+			s.maxPollMessages, s)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		s.msgConsumers = append(s.msgConsumers, consumer)
+	}
+
+	s.started = true
+	return nil
 }
 
 func (s *Source) stop() error {
