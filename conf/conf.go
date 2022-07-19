@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	DefaultDataSnapshotEntries         = 10000
-	DefaultDataCompactionOverhead      = 2500
+	DefaultDataSnapshotEntries         = 50000
+	DefaultDataCompactionOverhead      = 5000
 	DefaultSequenceSnapshotEntries     = 1000
-	DefaultSequenceCompactionOverhead  = 250
+	DefaultSequenceCompactionOverhead  = 50
 	DefaultLocksSnapshotEntries        = 1000
-	DefaultLocksCompactionOverhead     = 250
+	DefaultLocksCompactionOverhead     = 50
 	DefaultRemotingHeartbeatInterval   = 5 * time.Second
 	DefaultRemotingHeartbeatTimeout    = 5 * time.Second
 	DefaultGlobalIngestLimitRowsPerSec = 1000
@@ -64,6 +64,54 @@ type Config struct {
 	ProcessorMaxLag                  time.Duration
 	FillMaxLag                       time.Duration
 	SourceLagTimeout                 time.Duration
+}
+
+func (c *Config) ApplyDefaults() {
+	if c.DataSnapshotEntries == 0 {
+		c.DataSnapshotEntries = DefaultDataSnapshotEntries
+	}
+	if c.DataCompactionOverhead == 0 {
+		c.DataCompactionOverhead = DefaultDataCompactionOverhead
+	}
+	if c.SequenceSnapshotEntries == 0 {
+		c.SequenceSnapshotEntries = DefaultSequenceSnapshotEntries
+	}
+	if c.SequenceCompactionOverhead == 0 {
+		c.SequenceCompactionOverhead = DefaultSequenceCompactionOverhead
+	}
+	if c.LocksSnapshotEntries == 0 {
+		c.LocksSnapshotEntries = DefaultLocksSnapshotEntries
+	}
+	if c.LocksCompactionOverhead == 0 {
+		c.LocksCompactionOverhead = DefaultLocksCompactionOverhead
+	}
+	if c.RemotingHeartbeatInterval == 0 {
+		c.RemotingHeartbeatInterval = DefaultRemotingHeartbeatInterval
+	}
+	if c.RemotingHeartbeatTimeout == 0 {
+		c.RemotingHeartbeatTimeout = DefaultRemotingHeartbeatTimeout
+	}
+	if c.GlobalIngestLimitRowsPerSec == 0 {
+		c.GlobalIngestLimitRowsPerSec = DefaultGlobalIngestLimitRowsPerSec
+	}
+	if c.RaftRTTMs == 0 {
+		c.RaftRTTMs = DefaultRaftRTTMs
+	}
+	if c.RaftHeartbeatRTT == 0 {
+		c.RaftHeartbeatRTT = DefaultRaftHeartbeatRTT
+	}
+	if c.RaftElectionRTT == 0 {
+		c.RaftElectionRTT = DefaultRaftElectionRTT
+	}
+	if c.ProcessorMaxLag == 0 {
+		c.ProcessorMaxLag = DefaultProcessorMaxLag
+	}
+	if c.FillMaxLag == 0 {
+		c.FillMaxLag = DefaultFillMaxLag
+	}
+	if c.SourceLagTimeout == 0 {
+		c.SourceLagTimeout = DefaultSourceLagTimeout
+	}
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
