@@ -1,9 +1,13 @@
 package sched
 
 import (
+	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/metrics"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,19 +15,42 @@ import (
 
 const maxProcessBatchRows = 500
 
+var (
+	rowsProcessedVec = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_rows_processed_total",
+		Help: "counter for number of rows processed, segmented by shard id",
+	}, []string{"shard_id"})
+	shardLagVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_shard_lag",
+		Help: "histogram measuring processing lag of a shard in ms",
+	}, []string{"shard_id"})
+	batchProcessingTimeVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_batch_process_time",
+		Help: "histogram measuring processing time of a batch in ms",
+	}, []string{"shard_id"})
+	batchSizeVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "pranadb_batch_size",
+		Help: "histogram measuring size of a batch in rows",
+	}, []string{"shard_id"})
+)
+
 type ShardScheduler struct {
-	shardID                  uint64
-	actions                  chan struct{}
-	started                  bool
-	failed                   common.AtomicBool
-	lock                     common.SpinLock
-	processorRunning         bool
-	forwardRows              []cluster.ForwardRow
-	batchHandler             RowsBatchHandler
-	lastQueuedReceiverSeq    uint64
-	lastProcessedReceiverSeq uint64
-	stopped                  bool
-	loopExitWaitGroup        sync.WaitGroup
+	shardID                      uint64
+	actions                      chan struct{}
+	started                      bool
+	failed                       common.AtomicBool
+	lock                         common.SpinLock
+	processorRunning             bool
+	forwardRows                  []cluster.ForwardRow
+	batchHandler                 RowsBatchHandler
+	lastQueuedReceiverSeq        uint64
+	lastProcessedReceiverSeq     uint64
+	stopped                      bool
+	loopExitWaitGroup            sync.WaitGroup
+	rowsProcessedCounter         metrics.Counter
+	shardLagHistogram            metrics.Observer
+	batchProcessingTimeHistogram metrics.Observer
+	batchSizeHistogram           metrics.Observer
 }
 
 type RowsBatchHandler interface {
@@ -36,10 +63,19 @@ type BatchEntry struct {
 }
 
 func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler) *ShardScheduler {
+	sShardID := fmt.Sprintf("shard-%04d", shardID)
+	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
+	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
+	batchProcessingTimeHistogram := batchProcessingTimeVec.WithLabelValues(sShardID)
+	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
 	ss := &ShardScheduler{
-		shardID:      shardID,
-		actions:      make(chan struct{}, 1),
-		batchHandler: batchHandler,
+		shardID:                      shardID,
+		actions:                      make(chan struct{}, 1),
+		batchHandler:                 batchHandler,
+		rowsProcessedCounter:         rowsProcessedCounter,
+		shardLagHistogram:            shardLagHistogram,
+		batchProcessingTimeHistogram: batchProcessingTimeHistogram,
+		batchSizeHistogram:           batchSizeHistogram,
 	}
 	ss.loopExitWaitGroup.Add(1)
 	return ss
@@ -107,9 +143,6 @@ func (s *ShardScheduler) runLoop() {
 			break
 		}
 		rows, more := s.getRowBatch()
-		//if !first && len(rows) == 0 {
-		//	panic("expected rows")
-		//}
 
 		// It's possible we might get rows with receiverSequence <= lastProcessedSequence
 		// This can happen on startup, where the first call in here triggers loading of rows directly from receiver table
@@ -126,29 +159,38 @@ func (s *ShardScheduler) runLoop() {
 			rows = rows[i:]
 		}
 
-		if first || len(rows) > 0 {
-			//start := time.Now()
+		lr := len(rows)
+
+		if first || lr > 0 {
+
+			start := common.NanoTime()
 			lastSequence, err := s.batchHandler.HandleBatch(s.shardID, rows, first)
 			if err != nil {
 				log.Errorf("failed to process batch: %+v", err)
 				s.failed.Set(true)
 				return
 			}
-			first = false
-			//end := time.Now()
+			processTime := common.NanoTime() - start
 
-			//log.Printf("shard %d processed %d rows in %d ms current lag is %d ms", s.shardID, len(rows),
-			//	end.Sub(start).Milliseconds(), s.GetLag(end).Milliseconds())
+			s.batchProcessingTimeHistogram.Observe(float64(processTime / 1000000))
+			s.rowsProcessedCounter.Add(float64(lr))
+			s.batchSizeHistogram.Observe(float64(lr))
+
+			first = false
+
 			if lastSequence != -1 { // -1 represents no rows returned
 				atomic.StoreUint64(&s.lastProcessedReceiverSeq, uint64(lastSequence))
 			}
+
 		}
 
 		s.lock.Lock()
+		lag := s.getLagNoLock(common.NanoTime())
 		if !s.stopped && more {
 			s.actions <- struct{}{}
 		}
 		s.lock.Unlock()
+		s.shardLagHistogram.Observe(float64(lag.Milliseconds()))
 	}
 }
 
@@ -182,17 +224,16 @@ func (s *ShardScheduler) Stop() {
 	s.loopExitWaitGroup.Wait()
 }
 
-func (s *ShardScheduler) GetLag(now time.Time) time.Duration {
+func (s *ShardScheduler) GetLag(nowNanos uint64) time.Duration {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	return s.getLagNoLock(now)
+	return s.getLagNoLock(nowNanos)
 }
 
-func (s *ShardScheduler) getLagNoLock(now time.Time) time.Duration {
+func (s *ShardScheduler) getLagNoLock(nowNanos uint64) time.Duration {
 	if len(s.forwardRows) > 0 {
-		nowUnix := now.Sub(common.UnixStart)
 		writeTime := time.Duration(s.forwardRows[0].WriteTime)
-		return nowUnix - writeTime
+		return time.Duration(nowNanos) - writeTime
 	}
 	return time.Duration(0)
 }
