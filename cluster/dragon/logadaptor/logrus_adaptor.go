@@ -26,30 +26,34 @@ func (l *LogrusILogger) SetLevel(level logger.LogLevel) {
 	atomic.StoreInt64(&l.level, int64(level))
 }
 
+func addPrefix(str string) string {
+	return "dragon: " + str
+}
+
 func (l *LogrusILogger) Debugf(format string, args ...interface{}) {
 	if l.getLevel() >= logger.DEBUG {
-		log.Debugf(format, args...)
+		log.Debugf(addPrefix(format), args...)
 	}
 }
 
 func (l *LogrusILogger) Infof(format string, args ...interface{}) {
 	if l.getLevel() >= logger.INFO {
-		log.Infof(format, args...)
+		log.Infof(addPrefix(format), args...)
 	}
 }
 
 func (l *LogrusILogger) Warningf(format string, args ...interface{}) {
 	if l.getLevel() >= logger.WARNING {
-		log.Warnf(format, args...)
+		log.Warnf(addPrefix(format), args...)
 	}
 }
 
 func (l *LogrusILogger) Errorf(format string, args ...interface{}) {
 	if l.getLevel() >= logger.ERROR {
-		log.Errorf(format, args...)
+		log.Errorf(addPrefix(format), args...)
 	}
 }
 
 func (l *LogrusILogger) Panicf(format string, args ...interface{}) {
-	log.Fatalf(format, args...)
+	log.Fatalf(addPrefix(format), args...)
 }
