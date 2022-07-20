@@ -38,10 +38,6 @@ const (
 type RowProcessor interface {
 }
 
-type IngestLimiter interface {
-	Limit()
-}
-
 type Source struct {
 	sourceInfo              *common.SourceInfo
 	tableExecutor           *exec.TableExecutor
@@ -65,7 +61,6 @@ type Source struct {
 	bytesIngestedCounter    metrics.Counter
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
-	globalRateLimiter       IngestLimiter
 	ingestExpressions       []*common.Expression
 	lagProvider             util.LagProvider
 	cfg                     *conf.Config
@@ -98,8 +93,7 @@ var (
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	globalRateLimiter IngestLimiter, lagProvider util.LagProvider) (*Source, error) {
-	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
+	lagProvider util.LagProvider) (*Source, error) {
 	var msgProvFact kafka.MessageProviderFactory
 	ti := sourceInfo.OriginInfo
 	var brokerConf conf.BrokerConfig
@@ -158,7 +152,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		bytesIngestedCounter:    bytesIngestedCounter,
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
-		globalRateLimiter:       globalRateLimiter,
 		ingestExpressions:       ingestExpressions,
 		lagProvider:             lagProvider,
 		cfg:                     cfg,

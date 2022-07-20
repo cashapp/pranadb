@@ -2,20 +2,15 @@ package push
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/tidb/planner"
-	"go.uber.org/ratelimit"
 	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/squareup/pranadb/metrics"
 
 	"github.com/squareup/pranadb/errors"
 
@@ -37,33 +32,24 @@ import (
 )
 
 type Engine struct {
-	lock                      sync.RWMutex
-	localShardsLock           sync.RWMutex
-	started                   bool
-	schedulers                map[uint64]*sched.ShardScheduler
-	sources                   map[uint64]*source.Source
-	materializedViews         map[uint64]*MaterializedView
-	remoteConsumers           sync.Map
-	localLeaderShards         []uint64
-	cluster                   cluster.Cluster
-	sharder                   *sharder.Sharder
-	meta                      *meta.Controller
-	rnd                       *rand.Rand
-	cfg                       *conf.Config
-	queryExec                 common.SimpleQueryExec
-	protoRegistry             protolib.Resolver
-	processBatchTimeHistogram metrics.Observer
-	globalRateLimiter         ratelimit.Limiter
-	failInject                failinject.Injector
-	lagManager                *LagManager
+	lock              sync.RWMutex
+	localShardsLock   sync.RWMutex
+	started           bool
+	schedulers        map[uint64]*sched.ShardScheduler
+	sources           map[uint64]*source.Source
+	materializedViews map[uint64]*MaterializedView
+	remoteConsumers   sync.Map
+	localLeaderShards []uint64
+	cluster           cluster.Cluster
+	sharder           *sharder.Sharder
+	meta              *meta.Controller
+	rnd               *rand.Rand
+	cfg               *conf.Config
+	queryExec         common.SimpleQueryExec
+	protoRegistry     protolib.Resolver
+	failInject        failinject.Injector
+	lagManager        *LagManager
 }
-
-var (
-	processBatchVec = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "pranadb_process_batch_time_nanos",
-		Help: "histogram measuring time to process batches of rows in the push engine in nanoseconds",
-	}, []string{"node_id"})
-)
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
 // e.g. a source or an aggregator
@@ -85,25 +71,15 @@ type remoteRowsHandler interface {
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
 	queryExec common.SimpleQueryExec, registry protolib.Resolver, failInject failinject.Injector) *Engine {
-	// We limit the ingest rate of the source to this value - this prevents the node getting overloaded which can result
-	// in unstable behaviour
-	var rl ratelimit.Limiter
-	if cfg.GlobalIngestLimitRowsPerSec != -1 {
-		rl = ratelimit.New(cfg.GlobalIngestLimitRowsPerSec)
-	} else {
-		rl = nil
-	}
 	engine := &Engine{
-		cluster:                   cluster,
-		sharder:                   sharder,
-		meta:                      meta,
-		rnd:                       rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
-		cfg:                       cfg,
-		queryExec:                 queryExec,
-		protoRegistry:             registry,
-		processBatchTimeHistogram: processBatchVec.WithLabelValues(fmt.Sprintf("node-%d", cluster.GetNodeID())),
-		globalRateLimiter:         rl,
-		failInject:                failInject,
+		cluster:       cluster,
+		sharder:       sharder,
+		meta:          meta,
+		rnd:           rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:           cfg,
+		queryExec:     queryExec,
+		protoRegistry: registry,
+		failInject:    failInject,
 	}
 	engine.lagManager = NewLagManager(engine, cfg.NotifListenAddresses...)
 	engine.createMaps()
@@ -697,7 +673,6 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
-		p,
 		p.lagManager,
 	)
 	if err != nil {
@@ -795,12 +770,6 @@ func (p *Engine) IsEmpty() bool {
 		return true
 	})
 	return len(p.sources) == 0 && len(p.materializedViews) == 0 && numRecs == 0
-}
-
-func (p *Engine) Limit() {
-	if p.globalRateLimiter != nil {
-		p.globalRateLimiter.Take()
-	}
 }
 
 func (p *Engine) getLagsMessage() *notifications.LagsMessage {
