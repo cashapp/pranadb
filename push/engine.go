@@ -808,10 +808,9 @@ func (p *Engine) getLagsMessage() *notifications.LagsMessage {
 	defer p.localShardsLock.Unlock()
 
 	lags := make([]*notifications.LagEntry, len(p.localLeaderShards))
-	now := time.Now()
 	for i, shardID := range p.localLeaderShards {
 		sh := p.schedulers[shardID]
-		lag := sh.GetLag(now)
+		lag := sh.GetLag(common.NanoTime())
 		lagEntry := &notifications.LagEntry{
 			ShardId: int64(shardID),
 			Lag:     int64(lag),
