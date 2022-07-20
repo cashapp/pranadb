@@ -13,3 +13,4 @@ vendor
 .hermit/
 kafkaserver/
 prana-data/
+*.log
