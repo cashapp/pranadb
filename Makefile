@@ -30,7 +30,8 @@ test: protos
 docker-image:
 	docker build -f docker-files/Dockerfile -t pranadb:latest .
 
-start:docker-image
+start:
+	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f docker-files/Dockerfile -t pranadb:latest .
 	docker-compose -f ./local-deployment/docker-compose.yaml up -d --remove-orphans
 
 stop:
