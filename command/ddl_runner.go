@@ -59,6 +59,8 @@ type DDLCommand interface {
 	// Cleanup will be called if an error occurs during execution of the command, it should perform any clean up logic
 	// to leave the system in a clean state
 	Cleanup()
+
+	GetExtraData() []byte
 }
 
 type DDLCommandType int
@@ -79,10 +81,11 @@ func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	}
 }
 
-func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, sql string, tableSequences []uint64) DDLCommand {
+func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, sql string, tableSequences []uint64,
+	extraData []byte) DDLCommand {
 	switch commandType {
 	case DDLCommandTypeCreateSource:
-		return NewCreateSourceCommand(e, schemaName, sql, tableSequences)
+		return NewCreateSourceCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeCreateMV:
 		return NewCreateMVCommand(e, schemaName, sql, tableSequences)
 	case DDLCommandTypeDropSource:
@@ -207,7 +210,8 @@ func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage
 			if originatingNode {
 				return errors.Errorf("cannot find command with id %d:%d on originating node", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 			}
-			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(), ddlInfo.GetTableSequences())
+			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(),
+				ddlInfo.GetTableSequences(), ddlInfo.GetExtraData())
 			d.commands.Store(skey, com)
 		}
 	} else if !ok {
@@ -241,6 +245,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		SchemaName:        command.SchemaName(),
 		Sql:               command.SQL(),
 		TableSequences:    command.TableSequences(),
+		ExtraData:         command.GetExtraData(),
 	}
 	err := d.RunWithLock(command, ddlInfo)
 	// We release the lock even if we got an error

@@ -1,6 +1,6 @@
 
-€
-:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
+Ÿ
+:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"•
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
 
@@ -10,7 +10,9 @@ command_id (R	commandId
 schema_name (	R
 schemaName
 sql (	Rsql'
-table_sequences (RtableSequences"3
+table_sequences (RtableSequences
+
+extra_data (R	extraData"3
 DDLCancelMessage
 schema_name (	R
 schemaName"8

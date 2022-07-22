@@ -173,7 +173,7 @@ func runServer(t *testing.T, clus cluster.Cluster, notif *remoting.FakeServer) (
 	pullEngine := pull.NewPullEngine(clus, metaController, shardr)
 	config := conf.NewTestConfig(fakeKafka.ID)
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, config, pullEngine, protolib.EmptyRegistry, failinject.NewDummyInjector())
-	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, notif, protolib.EmptyRegistry, failinject.NewDummyInjector())
+	ce := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notif, notif, protolib.EmptyRegistry, failinject.NewDummyInjector(), config)
 	notif.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, ce.DDlCommandRunner().DdlHandler())
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	clus.RegisterShardListenerFactory(pushEngine)

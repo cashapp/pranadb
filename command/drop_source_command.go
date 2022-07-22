@@ -173,3 +173,7 @@ func (d *DropSourceCommand) getSourceInfo() (*common.SourceInfo, error) {
 	}
 	return sourceInfo, nil
 }
+
+func (d *DropSourceCommand) GetExtraData() []byte {
+	return nil
+}

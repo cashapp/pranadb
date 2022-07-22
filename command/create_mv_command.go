@@ -258,3 +258,7 @@ func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 	}
 	return c.createMVFromAST(ast.Create.MaterializedView)
 }
+
+func (c *CreateMVCommand) GetExtraData() []byte {
+	return nil
+}

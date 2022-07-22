@@ -12,6 +12,7 @@ message DDLStatementInfo {
   string schema_name = 5;
   string sql = 6;
   repeated uint64 table_sequences = 7;
+  bytes extra_data = 8;
 }
 
 message DDLCancelMessage {

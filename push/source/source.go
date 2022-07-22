@@ -1,7 +1,6 @@
 package source
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/push/util"
 	"strconv"
 	"sync"
@@ -105,7 +104,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
-	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
+	groupID := sourceInfo.OriginInfo.ConsumerGroupID
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
 		var err error
@@ -439,10 +438,6 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 		m[k] = v
 	}
 	return m
-}
-
-func GenerateGroupID(clusterID uint64, sourceInfo *common.SourceInfo) string {
-	return fmt.Sprintf("prana-source-%d-%s-%s-%d", clusterID, sourceInfo.SchemaName, sourceInfo.Name, sourceInfo.ID)
 }
 
 func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
