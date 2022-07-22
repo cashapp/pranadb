@@ -54,7 +54,6 @@ kafka-brokers = {
   }
 }
 
-global-ingest-limit-rows-per-sec = 5000
 raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300

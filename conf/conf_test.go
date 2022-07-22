@@ -204,18 +204,6 @@ func invalidReadyEndpointPath() Config {
 	return cnf
 }
 
-func invalidGlobalIngestLimitRowsPerSecZero() Config {
-	cnf := confAllFields
-	cnf.GlobalIngestLimitRowsPerSec = 0
-	return cnf
-}
-
-func invalidGlobalIngestLimitRowsPerNegative() Config {
-	cnf := confAllFields
-	cnf.GlobalIngestLimitRowsPerSec = -10
-	return cnf
-}
-
 func invalidRaftRTTMsZero() Config {
 	cnf := confAllFields
 	cnf.RaftRTTMs = 0
@@ -285,8 +273,6 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
 	{"PDB3000 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
 	{"PDB3000 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
-	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
-	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
 	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsZero()},
 	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsNegative()},
 	{"PDB3000 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTZero()},
@@ -324,18 +310,17 @@ var confAllFields = Config{
 			},
 		},
 	},
-	DataSnapshotEntries:         1001,
-	DataCompactionOverhead:      501,
-	SequenceSnapshotEntries:     2001,
-	SequenceCompactionOverhead:  1001,
-	LocksSnapshotEntries:        101,
-	LocksCompactionOverhead:     51,
-	RemotingHeartbeatInterval:   76 * time.Second,
-	RemotingHeartbeatTimeout:    4 * time.Second,
-	EnableAPIServer:             true,
-	APIServerListenAddresses:    []string{"addr7", "addr8", "addr9"},
-	GlobalIngestLimitRowsPerSec: 3000,
-	RaftRTTMs:                   100,
-	RaftHeartbeatRTT:            10,
-	RaftElectionRTT:             100,
+	DataSnapshotEntries:        1001,
+	DataCompactionOverhead:     501,
+	SequenceSnapshotEntries:    2001,
+	SequenceCompactionOverhead: 1001,
+	LocksSnapshotEntries:       101,
+	LocksCompactionOverhead:    51,
+	RemotingHeartbeatInterval:  76 * time.Second,
+	RemotingHeartbeatTimeout:   4 * time.Second,
+	EnableAPIServer:            true,
+	APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
+	RaftRTTMs:                  100,
+	RaftHeartbeatRTT:           10,
+	RaftElectionRTT:            100,
 }
