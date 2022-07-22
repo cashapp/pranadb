@@ -1,5 +1,5 @@
 
-Ÿ
+ˆ	
 :squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"•
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -35,4 +35,10 @@ session_id (	R	sessionId"
 lags (20.squareup.cash.pranadb.notifications.v1.LagEntryRlags"7
 LagEntry
 shard_id (RshardId
-lag (RlagBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3
+lag (Rlag"g
+ConsumerSetRate
+schema_name (	R
+schemaName
+source_name (	R
+sourceName
+rate (RrateBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

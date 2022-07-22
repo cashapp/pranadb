@@ -3,6 +3,7 @@ package remoting
 import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
@@ -22,6 +23,7 @@ const (
 	ClusterMessageClusterReadResponse
 	ClusterMessageNotificationTestMessage
 	ClusterMessageLags
+	ClusterMessageConsumerSetRate
 )
 
 func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
@@ -44,6 +46,8 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 		return ClusterMessageNotificationTestMessage
 	case *notifications.LagsMessage:
 		return ClusterMessageLags
+	case *notifications.ConsumerSetRate:
+		return ClusterMessageConsumerSetRate
 	default:
 		return ClusterMessageTypeUnknown
 	}
@@ -85,6 +89,8 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.NotificationTestMessage{}
 	case ClusterMessageLags:
 		msg = &notifications.LagsMessage{}
+	case ClusterMessageConsumerSetRate:
+		msg = &notifications.ConsumerSetRate{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}
@@ -215,7 +221,7 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 	return errors.WithStack(err)
 }
 
-func readMessage(handler messageHandler, ch chan error, conn net.Conn, closeAction func()) {
+func readMessage(handler messageHandler, conn net.Conn, closeAction func()) {
 	var msgBuf []byte
 	readBuff := make([]byte, readBuffSize)
 	msgLen := -1
@@ -228,7 +234,6 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn, closeActi
 			if err := conn.Close(); err != nil {
 				// Ignore
 			}
-			ch <- nil
 			return
 		}
 		msgBuf = append(msgBuf, readBuff[0:n]...)
@@ -236,7 +241,7 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn, closeActi
 		if msgType == heartbeatMessageType {
 			// Heartbeats don't have a message body
 			if err := handler(msgType, nil); err != nil {
-				ch <- err
+				log.Errorf("failed to handle heartbeat %v", err)
 				return
 			}
 			msgBuf = msgBuf[1:]
@@ -251,7 +256,7 @@ func readMessage(handler messageHandler, ch chan error, conn net.Conn, closeActi
 				msg := msgBuf[messageHeaderSize : messageHeaderSize+msgLen]
 				msg = common.CopyByteSlice(msg)
 				if err := handler(msgType, msg); err != nil {
-					ch <- err
+					log.Errorf("failed to handle message %v", err)
 					return
 				}
 				// We copy the slice otherwise the backing array won't be gc'd

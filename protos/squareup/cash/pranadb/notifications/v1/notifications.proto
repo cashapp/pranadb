@@ -53,3 +53,9 @@ message LagEntry {
   int64 shard_id = 1;
   int64 lag = 2;
 }
+
+message ConsumerSetRate {
+  string schema_name = 1;
+  string source_name = 2;
+  int64 rate = 3;
+}

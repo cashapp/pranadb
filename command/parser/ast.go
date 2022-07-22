@@ -172,13 +172,19 @@ type Show struct {
 	TableName string `("ON" @Ident)?`
 }
 
+type ConsumerRate struct {
+	SourceName string `@Ident`
+	Rate       int64  `@Number`
+}
+
 // AST root.
 type AST struct {
-	Select   string  // Unaltered SELECT statement, if any.
-	Use      string  `(  "USE" @Ident`
-	Drop     *Drop   ` | "DROP" @@ `
-	Create   *Create ` | "CREATE" @@ `
-	Show     *Show   ` | "SHOW" @@ `
-	Describe string  ` | "DESCRIBE" @Ident `
-	ResetDdl string  ` | "RESET" "DDL" @Ident ) ';'?`
+	Select       string        // Unaltered SELECT statement, if any.
+	Use          string        `(  "USE" @Ident`
+	Drop         *Drop         ` | "DROP" @@ `
+	Create       *Create       ` | "CREATE" @@ `
+	Show         *Show         ` | "SHOW" @@ `
+	Describe     string        ` | "DESCRIBE" @Ident `
+	ConsumerRate *ConsumerRate ` | "CONSUMER" "RATE" @@ `
+	ResetDdl     string        ` | "RESET" "DDL" @Ident ) ';'?`
 }

@@ -1,0 +1,118 @@
+--local only;
+--create topic testtopic;
+use test;
+0 rows returned
+create source test_source_1(
+    primary_key_field varchar,
+    varchar_field varchar,
+    bigint_field bigint,
+    primary key (primary_key_field)
+) with (
+    brokername = "genbroker",
+    topicname = "testtopic",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        primary_key_field,
+        varchar_field,
+        bigint_field
+    ),
+    properties = (
+        "prana.loadclient.maxmessagesperconsumer" = "10"
+    )
+);
+0 rows returned
+
+--wait for rows test_source_1 20;
+
+select * from test_source_1 order by primary_key_field;
++----------------------------------------------------------------------------------------------------------------------+
+| primary_key_field                             | varchar_field                                 | bigint_field         |
++----------------------------------------------------------------------------------------------------------------------+
+| customer-token-0-1                            | customer-full-name-customer-token-0-1         | 1                    |
+| customer-token-0-2                            | customer-full-name-customer-token-0-2         | 2                    |
+| customer-token-0-3                            | customer-full-name-customer-token-0-3         | 3                    |
+| customer-token-1-1                            | customer-full-name-customer-token-1-1         | 1                    |
+| customer-token-1-2                            | customer-full-name-customer-token-1-2         | 2                    |
+| customer-token-1-3                            | customer-full-name-customer-token-1-3         | 3                    |
+| customer-token-2-1                            | customer-full-name-customer-token-2-1         | 1                    |
+| customer-token-2-2                            | customer-full-name-customer-token-2-2         | 2                    |
+| customer-token-3-1                            | customer-full-name-customer-token-3-1         | 1                    |
+| customer-token-3-2                            | customer-full-name-customer-token-3-2         | 2                    |
+| customer-token-4-1                            | customer-full-name-customer-token-4-1         | 1                    |
+| customer-token-4-2                            | customer-full-name-customer-token-4-2         | 2                    |
+| customer-token-4-3                            | customer-full-name-customer-token-4-3         | 3                    |
+| customer-token-5-1                            | customer-full-name-customer-token-5-1         | 1                    |
+| customer-token-5-2                            | customer-full-name-customer-token-5-2         | 2                    |
+| customer-token-5-3                            | customer-full-name-customer-token-5-3         | 3                    |
+| customer-token-6-1                            | customer-full-name-customer-token-6-1         | 1                    |
+| customer-token-6-2                            | customer-full-name-customer-token-6-2         | 2                    |
+| customer-token-7-1                            | customer-full-name-customer-token-7-1         | 1                    |
+| customer-token-7-2                            | customer-full-name-customer-token-7-2         | 2                    |
++----------------------------------------------------------------------------------------------------------------------+
+20 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+create source test_source_2(
+    primary_key_field varchar,
+    varchar_field varchar,
+    bigint_field bigint,
+    primary key (primary_key_field)
+) with (
+    brokername = "genbroker",
+    topicname = "testtopic",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        primary_key_field,
+        varchar_field,
+        bigint_field
+    ),
+    properties = (
+        "prana.loadclient.maxmessagesperconsumer" = "10",
+        "prana.loadclient.maxrateperconsumer" = "1"
+    )
+);
+0 rows returned
+
+-- now change rate;
+consumer rate test_source_2 1000000;
+0 rows returned
+
+--wait for rows test_source_2 20;
+
+select * from test_source_2 order by primary_key_field;
++----------------------------------------------------------------------------------------------------------------------+
+| primary_key_field                             | varchar_field                                 | bigint_field         |
++----------------------------------------------------------------------------------------------------------------------+
+| customer-token-0-1                            | customer-full-name-customer-token-0-1         | 1                    |
+| customer-token-0-2                            | customer-full-name-customer-token-0-2         | 2                    |
+| customer-token-0-3                            | customer-full-name-customer-token-0-3         | 3                    |
+| customer-token-1-1                            | customer-full-name-customer-token-1-1         | 1                    |
+| customer-token-1-2                            | customer-full-name-customer-token-1-2         | 2                    |
+| customer-token-1-3                            | customer-full-name-customer-token-1-3         | 3                    |
+| customer-token-2-1                            | customer-full-name-customer-token-2-1         | 1                    |
+| customer-token-2-2                            | customer-full-name-customer-token-2-2         | 2                    |
+| customer-token-3-1                            | customer-full-name-customer-token-3-1         | 1                    |
+| customer-token-3-2                            | customer-full-name-customer-token-3-2         | 2                    |
+| customer-token-4-1                            | customer-full-name-customer-token-4-1         | 1                    |
+| customer-token-4-2                            | customer-full-name-customer-token-4-2         | 2                    |
+| customer-token-4-3                            | customer-full-name-customer-token-4-3         | 3                    |
+| customer-token-5-1                            | customer-full-name-customer-token-5-1         | 1                    |
+| customer-token-5-2                            | customer-full-name-customer-token-5-2         | 2                    |
+| customer-token-5-3                            | customer-full-name-customer-token-5-3         | 3                    |
+| customer-token-6-1                            | customer-full-name-customer-token-6-1         | 1                    |
+| customer-token-6-2                            | customer-full-name-customer-token-6-2         | 2                    |
+| customer-token-7-1                            | customer-full-name-customer-token-7-1         | 1                    |
+| customer-token-7-2                            | customer-full-name-customer-token-7-2         | 2                    |
++----------------------------------------------------------------------------------------------------------------------+
+20 rows returned
+
+drop source test_source_2;
+0 rows returned
+
+--delete topic testtopic;

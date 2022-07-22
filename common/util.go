@@ -5,6 +5,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -167,4 +168,19 @@ func (a *AtomicBool) toInt(val bool) int32 {
 
 func (a *AtomicBool) CompareAndSet(expected bool, val bool) bool {
 	return atomic.CompareAndSwapInt32(&a.val, a.toInt(expected), a.toInt(val))
+}
+
+func GetOrDefaultIntProperty(propName string, props map[string]string, def int) (int, error) {
+	ncs, ok := props[propName]
+	var res int
+	if ok {
+		nc, err := strconv.ParseInt(ncs, 10, 32)
+		if err != nil {
+			return 0, err
+		}
+		res = int(nc)
+	} else {
+		res = def
+	}
+	return res, nil
 }

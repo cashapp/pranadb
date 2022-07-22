@@ -19,7 +19,7 @@ import (
 
 // MessageGenerator - quick and dirty Kafka message generator for demos, tests etc
 type MessageGenerator interface {
-	GenerateMessage(index int64, rnd *rand.Rand) (*kafka.Message, error)
+	GenerateMessage(scope int32, index int64, rnd *rand.Rand) (*kafka.Message, error)
 	Name() string
 }
 
@@ -95,7 +95,7 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	}()
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	for i := indexStart; i < indexStart+numMessages; i++ {
-		msg, err := gen.GenerateMessage(i, rnd)
+		msg, err := gen.GenerateMessage(0, i, rnd)
 		if err != nil {
 			return errors.WithStack(err)
 		}

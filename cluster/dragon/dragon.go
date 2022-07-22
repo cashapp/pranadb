@@ -41,7 +41,7 @@ const (
 
 	retryTimeout = 15 * time.Minute
 
-	callTimeout = 10 * time.Second
+	callTimeout = 20 * time.Second
 
 	toDeleteShardID uint64 = 4
 
@@ -394,7 +394,7 @@ func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byt
 }
 
 func (d *Dragon) Stop() error {
-	log.Debugf("stopping dragon on node %d", d.cnf.NodeID)
+	log.Debugf("Stopping dragon on node %d", d.cnf.NodeID)
 	d.startStopLock.Lock()
 	defer d.startStopLock.Unlock()
 	d.lock.Lock()
