@@ -13,7 +13,6 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 const (
@@ -107,7 +106,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		s.lastIndex = entries[len(entries)-1].Index
 	}
 	batch := s.dragon.pebble.NewBatch()
-	timestamp := int64(time.Now().Sub(common.UnixStart))
+	timestamp := common.NanoTime()
 	for i, entry := range entries {
 		cmdBytes := entry.Cmd
 		command := cmdBytes[0]
@@ -155,7 +154,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	return entries, nil
 }
 
-func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp int64) error {
+func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp uint64) error {
 	puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
 	for _, kvPair := range puts {
 
