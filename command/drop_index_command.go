@@ -159,3 +159,7 @@ func (d *DropIndexCommand) getIndexInfo() (*common.IndexInfo, error) {
 	}
 	return indexInfo, nil
 }
+
+func (d *DropIndexCommand) GetExtraData() []byte {
+	return nil
+}

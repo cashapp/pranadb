@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/conf"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -34,11 +35,12 @@ type Executor struct {
 	failureInjector   failinject.Injector
 	notifClient       remoting.Client
 	ddlResetClient    remoting.Client
+	config            *conf.Config
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
 	cluster cluster.Cluster, notifClient remoting.Client, ddlResetClient remoting.Client, protoRegistry protolib.Resolver,
-	failureInjector failinject.Injector) *Executor {
+	failureInjector failinject.Injector, config *conf.Config) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
@@ -49,6 +51,7 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 		failureInjector:   failureInjector,
 		notifClient:       notifClient,
 		ddlResetClient:    ddlResetClient,
+		config:            config,
 	}
 	commandRunner := NewDDLCommandRunner(ex)
 	ex.ddlRunner = commandRunner
@@ -95,7 +98,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source)
+		consumerGroupID, err := CreateConsumerGroupID(e.config.ClusterID)
+		if err != nil {
+			return nil, err
+		}
+		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source, consumerGroupID)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)

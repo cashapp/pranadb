@@ -204,3 +204,7 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 	}
 	return info, nil
 }
+
+func (c *CreateIndexCommand) GetExtraData() []byte {
+	return nil
+}

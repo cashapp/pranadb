@@ -172,3 +172,7 @@ func (d *DropMVCommand) getMV() (*push.MaterializedView, error) {
 	mv, err := d.e.pushEngine.GetMaterializedView(mvInfo.ID)
 	return mv, errors.WithStack(err)
 }
+
+func (d *DropMVCommand) GetExtraData() []byte {
+	return nil
+}

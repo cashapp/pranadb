@@ -78,7 +78,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.RegisterShardListenerFactory(pushEngine)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageLags, pushEngine.GetLagManager())
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
-		protoRegistry, failureInjector)
+		protoRegistry, failureInjector, &config)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)

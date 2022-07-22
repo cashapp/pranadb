@@ -105,7 +105,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
-	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
+	groupID := sourceInfo.OriginInfo.ConsumerGroupID
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
 		var err error
