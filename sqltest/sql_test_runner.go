@@ -883,7 +883,7 @@ func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string)
 	require.NotEmpty(st.currentSchema, "no schema selected")
 	srcInfo, ok := st.prana.GetMetaController().GetSource(st.currentSchema, sourceNae)
 	require.True(ok)
-	groupID := source.GenerateGroupID(TestClusterID, srcInfo)
+	groupID := srcInfo.OriginInfo.ConsumerGroupID
 	err = st.testSuite.fakeKafka.InjectFailure(topicName, groupID, dur)
 	require.NoError(err)
 }

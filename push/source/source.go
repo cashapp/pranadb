@@ -1,7 +1,6 @@
 package source
 
 import (
-	"fmt"
 	"github.com/squareup/pranadb/push/util"
 	"strconv"
 	"sync"
@@ -439,10 +438,6 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 		m[k] = v
 	}
 	return m
-}
-
-func GenerateGroupID(clusterID uint64, sourceInfo *common.SourceInfo) string {
-	return fmt.Sprintf("prana-source-%d-%s-%s-%d", clusterID, sourceInfo.SchemaName, sourceInfo.Name, sourceInfo.ID)
 }
 
 func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
