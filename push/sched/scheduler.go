@@ -232,8 +232,7 @@ func (s *ShardScheduler) GetLag(nowNanos uint64) time.Duration {
 
 func (s *ShardScheduler) getLagNoLock(nowNanos uint64) time.Duration {
 	if len(s.forwardRows) > 0 {
-		writeTime := time.Duration(s.forwardRows[0].WriteTime)
-		return time.Duration(nowNanos) - writeTime
+		return time.Duration(nowNanos - s.forwardRows[0].WriteTime)
 	}
 	return time.Duration(0)
 }

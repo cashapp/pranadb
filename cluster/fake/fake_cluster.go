@@ -20,13 +20,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/squareup/pranadb/errors"
 
 	"github.com/google/btree"
 
@@ -194,7 +192,7 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 		f.dedupMaps[batch.ShardID] = dedupMap
 	}
 	var forwardRows []cluster.ForwardRow
-	timestamp := int64(time.Now().Sub(common.UnixStart))
+	timestamp := common.NanoTime()
 	if err := batch.ForEachPut(func(key []byte, value []byte) error {
 
 		dedupKey := key[:24]            // Next 24 bytes is the dedup key

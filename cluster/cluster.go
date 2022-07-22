@@ -255,7 +255,7 @@ type ForwardRow struct {
 	RemoteConsumerID uint64
 	KeyBytes         []byte
 	RowBytes         []byte
-	WriteTime        int64
+	WriteTime        uint64
 }
 
 type ShardListener interface {

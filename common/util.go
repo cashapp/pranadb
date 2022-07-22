@@ -168,5 +168,3 @@ func (a *AtomicBool) toInt(val bool) int32 {
 func (a *AtomicBool) CompareAndSet(expected bool, val bool) bool {
 	return atomic.CompareAndSwapInt32(&a.val, a.toInt(expected), a.toInt(val))
 }
-
-var UnixStart = time.Unix(0, 0)
