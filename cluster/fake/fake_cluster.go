@@ -119,6 +119,10 @@ func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionIn
 	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 
+func (f *FakeCluster) LinearizableGet(_ uint64, key []byte) ([]byte, error) {
+	return f.LocalGet(key)
+}
+
 func (f *FakeCluster) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
 	f.remoteQueryExecutionCallback = callback
 }
@@ -177,7 +181,11 @@ func (f *FakeCluster) Stop() error {
 	return nil
 }
 
-func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
+func (f *FakeCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
+	panic("implement me")
+}
+
+func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -241,10 +249,10 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 }
 
 func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
-	return f.WriteBatch(batch)
+	return f.WriteBatch(batch, true)
 }
 
-func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch) error {
+func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.writeBatchInternal(batch, false, nil); err != nil {

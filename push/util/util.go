@@ -17,11 +17,9 @@
 package util
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"time"
 )
 
 func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint64, remoteConsumerID uint64) []byte {
@@ -66,11 +64,6 @@ func EncodePrevAndCurrentRow(prevValueBuff []byte, currValueBuff []byte) []byte 
 	return buff
 }
 
-type LagProvider interface {
-	GetLag(shardID uint64) time.Duration
-	WaitForAcceptableLag(timeout time.Duration) bool
-}
-
 func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster) error {
 	lb := len(forwardBatches)
 	chs := make([]chan error, 0, lb)
@@ -79,7 +72,7 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		chs = append(chs, ch)
 		theBatch := b
 		go func() {
-			if err := clust.WriteForwardBatch(theBatch); err != nil {
+			if err := clust.WriteForwardBatch(theBatch, false); err != nil {
 				ch <- err
 				return
 			}
@@ -96,28 +89,4 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		}
 	}
 	return nil
-}
-
-func MaybeThrottleIfLagging(allShards []uint64, lagProvider LagProvider, acceptableLag time.Duration, timeout time.Duration) bool {
-	// We have to wait for the lag of ALL shards to go down as messages sent can update aggregations which causes
-	// further sends to different shards
-	st := time.Now()
-	for {
-		ok := true
-		for _, shardID := range allShards {
-			lag := lagProvider.GetLag(shardID)
-			if lag > acceptableLag {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-		if time.Now().Sub(st) > timeout {
-			log.Warnf("timed out in waiting for acceptable lags, timeout is %d acceptable lag is %d", timeout, acceptableLag)
-			return false
-		}
-	}
 }

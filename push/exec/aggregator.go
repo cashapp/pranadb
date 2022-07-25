@@ -212,7 +212,7 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	}
 
 	// Lookup existing aggregate state
-	stateHolder, err := a.loadAggregateState(keyBytes, readRows, aggStateHolders)
+	stateHolder, err := a.loadAggregateState(shardID, keyBytes, readRows, aggStateHolders)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -231,12 +231,16 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	return nil
 }
 
-func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders) (*aggStateHolder, error) {
+func (a *Aggregator) loadAggregateState(shardID uint64, keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders) (*aggStateHolder, error) {
 	sKey := common.ByteSliceToStringZeroCopy(keyBytes)
 	stateHolder, ok := aggStateHolders.holdersMap[sKey] // maybe already cached for this batch
 	if !ok {
 		// Nope - try and load the aggregate state from storage
-		rowBytes, err := a.storage.LocalGet(keyBytes)
+		// We must use a linearizable get via raft here - even though we are on a replica there is no guarantee that
+		// the data has been applied to the state machine of all replicas when the previous write has completed
+		// successfully.
+		// TODO lru cache and bloom filter (?) to reduce gets
+		rowBytes, err := a.storage.LinearizableGet(shardID, keyBytes)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

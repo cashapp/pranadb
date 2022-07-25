@@ -165,6 +165,18 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
+	panic("implement me")
+}
+
+func (t *testCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
+	panic("implement me")
+}
+
+func (t *testCluster) LinearizableGet(shardID uint64, key []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (t *testCluster) SyncStore() error {
 	return nil
 }
@@ -173,10 +185,6 @@ func (t *testCluster) AddHealthcheckListener(listener remoting.AvailabilityListe
 }
 
 func (t *testCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
-	return nil
-}
-
-func (t *testCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 	return nil
 }
 
@@ -233,7 +241,7 @@ func (t *testCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix [
 	panic("should not be called")
 }
 
-func (t *testCluster) WriteBatch(batch *cluster.WriteBatch) error {
+func (t *testCluster) WriteBatch(batch *cluster.WriteBatch, localOnly bool) error {
 	panic("should not be called")
 }
 

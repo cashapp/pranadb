@@ -75,7 +75,7 @@ func TestLocalPutGet(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.WriteBatch(&writeBatch)
+	err := node.WriteBatch(&writeBatch, false)
 	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
@@ -98,7 +98,7 @@ func TestLocalPutDelete(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.WriteBatch(&writeBatch)
+	err := node.WriteBatch(&writeBatch, false)
 	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
@@ -107,7 +107,7 @@ func TestLocalPutDelete(t *testing.T) {
 
 	deleteBatch := createWriteBatchWithDeletes(localShard, key)
 
-	err = node.WriteBatch(&deleteBatch)
+	err = node.WriteBatch(&deleteBatch, false)
 	require.NoError(t, err)
 
 	res, err = node.LocalGet(key)
@@ -148,7 +148,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 
-	err := node.WriteBatch(wb)
+	err := node.WriteBatch(wb, false)
 	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")

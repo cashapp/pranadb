@@ -17,17 +17,20 @@ const (
 )
 
 type Cluster interface {
+	ExecuteForwardBatch(shardID uint64, batch []byte) error
 
 	// WriteBatch writes a batch reliably to storage
-	WriteBatch(batch *WriteBatch) error
+	WriteBatch(batch *WriteBatch, localOnly bool) error
 
 	// WriteForwardBatch writes a batch reliably for forwarding to another shard
-	WriteForwardBatch(batch *WriteBatch) error
+	WriteForwardBatch(batch *WriteBatch, localOnly bool) error
 
 	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
 	WriteBatchLocally(batch *WriteBatch) error
 
 	LocalGet(key []byte) ([]byte, error)
+
+	LinearizableGet(shardID uint64, key []byte) ([]byte, error)
 
 	// LocalScan scans the local store
 	// endKeyPrefix is exclusive

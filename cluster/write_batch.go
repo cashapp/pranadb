@@ -47,8 +47,8 @@ func (wb *WriteBatch) HasPuts() bool {
 
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
-	buff = append(buff, wb.Puts...)
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeletes))
+	buff = append(buff, wb.Puts...)
 	buff = append(buff, wb.Deletes...)
 	return buff
 }

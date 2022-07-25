@@ -19,6 +19,7 @@ type Client interface {
 	Start() error
 	Stop() error
 	AvailabilityListener() AvailabilityListener
+	ServerAddresses() []string
 }
 
 func NewClient(alwaysTryConnect bool, serverAddresses ...string) Client {
@@ -46,6 +47,10 @@ type client struct {
 	responseChannels   sync.Map
 	msgSeq             int64
 	alwaysTryConnect   bool
+}
+
+func (c *client) ServerAddresses() []string {
+	return c.serverAddresses
 }
 
 func (c *client) AvailabilityListener() AvailabilityListener {
@@ -109,7 +114,7 @@ func (c *client) SendRequest(requestMessage ClusterMessage, timeout time.Duratio
 	var respChan chan *ClusterResponse
 	start := time.Now()
 	for {
-		respChan = make(chan *ClusterResponse, 10000)
+		respChan = make(chan *ClusterResponse, 10)
 		ri := &responseInfo{
 			rpcRespChan: respChan,
 			conns:       make(map[*clientConnection]struct{}),
@@ -148,7 +153,7 @@ func (c *client) doSendRequest(messageBytes []byte, ri *responseInfo) bool {
 	for _, serverAddress := range c.serverAddresses {
 		_, ok := c.availableServers[serverAddress]
 		if ok {
-			if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err == nil {
+			if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri, true); err == nil {
 				return true
 			} else { //nolint:revive
 				log.Warnf("failed to send request %v", err)
@@ -198,7 +203,7 @@ func (c *client) broadcast(messageBytes []byte, ri *responseInfo) error {
 
 	c.incrementConnCount(ri)
 	for serverAddress := range c.availableServers {
-		if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri); err != nil {
+		if err := c.maybeConnectAndSendMessage(messageBytes, serverAddress, ri, false); err != nil {
 			// Try with the next one
 			continue
 		}
@@ -225,12 +230,12 @@ func (c *client) createConnection(serverAddress string) (net.Conn, error) {
 	return nc, nil
 }
 
-func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress string, ri *responseInfo) error {
+func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress string, ri *responseInfo, rpc bool) error {
 	clientConn, ok := c.connections[serverAddress]
 	if !ok {
 		nc, err := c.createConnection(serverAddress)
 		if err != nil {
-			log.Warnf("failed to connect to %s %v", serverAddress, err)
+			log.Warnf("remoting client failed to connect to %s %v", serverAddress, err)
 			c.maybeMakeUnavailable(serverAddress)
 			maybeRemoveFromConnCount(ri)
 			return err
@@ -240,9 +245,12 @@ func (c *client) maybeConnectAndSendMessage(messageBytes []byte, serverAddress s
 			client:        c,
 			serverAddress: serverAddress,
 			conn:          nc,
+			ri:            ri,
 		}
 		clientConn.start()
 		c.connections[serverAddress] = clientConn
+	} else if rpc {
+		clientConn.setRi(ri)
 	}
 	if err := writeMessage(requestMessageType, messageBytes, clientConn.conn); err != nil {
 		clientConn.Stop()
@@ -425,6 +433,19 @@ type clientConnection struct {
 	started       bool
 	conn          net.Conn
 	closeGroup    sync.WaitGroup
+	ri            *responseInfo
+}
+
+func (cc *clientConnection) setRi(ri *responseInfo) {
+	cc.lock.Lock()
+	defer cc.lock.Unlock()
+	cc.ri = ri
+}
+
+func (cc *clientConnection) getRi() *responseInfo {
+	cc.lock.Lock()
+	defer cc.lock.Unlock()
+	return cc.ri
 }
 
 func (cc *clientConnection) start() {
@@ -432,10 +453,15 @@ func (cc *clientConnection) start() {
 	defer cc.lock.Unlock()
 	cc.closeGroup.Add(1)
 	go readMessage(cc.handleMessage, cc.conn, func() {
+
 		// Connection closed
 		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
 		if err := cc.conn.Close(); err != nil {
 			// Ignore
+		}
+		ri := cc.getRi()
+		if ri != nil {
+			ri.connClosed(cc)
 		}
 		cc.closeGroup.Done()
 	})

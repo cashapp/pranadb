@@ -83,9 +83,9 @@ type Dragon struct {
 	shardSMs                     map[uint64]struct{}
 	requestClientMap             sync.Map
 	requestClientsLock           sync.Mutex
-	healthChecker                *remoting.HealthChecker
 	saveSnapshotCount            int64
 	restoreSnapshotCount         int64
+	//healthChecker                *remoting.HealthChecker
 }
 
 type snapshot struct {
@@ -110,7 +110,7 @@ func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, sequenceName)
 
-	retVal, respBody, err := d.sendPropose(tableSequenceClusterID, buff)
+	retVal, respBody, err := d.sendPropose(tableSequenceClusterID, buff, false)
 	if err != nil {
 		return 0, errors.WithStack(err)
 	}
@@ -138,7 +138,7 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	locker := uuid.NewV4().String()
 	buff = common.AppendStringToBufferLE(buff, locker)
 
-	retVal, resBuff, err := d.sendPropose(locksClusterID, buff)
+	retVal, resBuff, err := d.sendPropose(locksClusterID, buff, false)
 	if err != nil {
 		return false, errors.WithStack(err)
 	}
@@ -212,6 +212,51 @@ func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, r
 	return rows, nil
 }
 
+func (d *Dragon) LinearizableGet(shardID uint64, key []byte) ([]byte, error) {
+
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
+	if !d.started {
+		return nil, errors.Errorf("failed to execute query on node %d not started", d.cnf.NodeID)
+	}
+
+	if shardID < cluster.DataShardIDBase {
+		panic("invalid shard cluster id")
+	}
+
+	start := time.Now()
+	for {
+		var buff []byte
+		buff = append(buff, shardStateMachineLookupGet)
+		buff = common.AppendUint32ToBufferLE(buff, uint32(len(key)))
+		buff = append(buff, key...)
+
+		result, err := d.executeRead(shardID, buff)
+
+		if err != nil {
+			err = errors.WithStack(errors.Errorf("failed to execute cluster get on node %d %v %v", d.cnf.NodeID, key, err))
+			return nil, errors.WithStack(err)
+		}
+
+		if result[0] == 0 {
+			if time.Now().Sub(start) > pullQueryRetryTimeout {
+				msg := string(result[1:])
+				return nil, errors.Errorf("failed to execute cluster get %v", msg)
+			}
+			// Retry - the pull engine might not be fully started.... this can occur as the pull engine is not fully
+			// initialised until after the cluster is active
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			value := result[1:]
+			if len(value) == 0 {
+				return nil, nil
+			}
+			return value, nil
+		}
+	}
+}
+
 func (d *Dragon) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
 	d.remoteQueryExecutionCallback = callback
 }
@@ -233,23 +278,23 @@ func (d *Dragon) start0() error {
 		}
 	}
 
-	d.healthChecker = remoting.NewHealthChecker(addresses, d.cnf.RemotingHeartbeatTimeout, d.cnf.RemotingHeartbeatInterval)
-	d.healthChecker.Start()
+	//d.healthChecker = remoting.NewHealthChecker(addresses, d.cnf.RemotingHeartbeatTimeout, d.cnf.RemotingHeartbeatInterval)
+	//d.healthChecker.Start()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
 	if d.cnf.ScreenDragonLogSpam {
 		logger.GetLogger("rsm").SetLevel(logger.ERROR)
 		logger.GetLogger("transport").SetLevel(logger.ERROR)
 		logger.GetLogger("grpc").SetLevel(logger.ERROR)
+		logger.GetLogger("raft").SetLevel(logger.ERROR)
+		logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
 	} else {
 		logger.GetLogger("rsm").SetLevel(logger.INFO)
 		logger.GetLogger("transport").SetLevel(logger.INFO)
 		logger.GetLogger("grpc").SetLevel(logger.INFO)
+		logger.GetLogger("raft").SetLevel(logger.DEBUG)
+		logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
 	}
-	// We always want to log Raft leader/follower changes
-	logger.GetLogger("raft").SetLevel(logger.DEBUG)
-	logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
-
 	log.Debugf("Starting dragon on node %d", d.cnf.NodeID)
 
 	if d.remoteQueryExecutionCallback == nil {
@@ -295,7 +340,7 @@ func (d *Dragon) start0() error {
 		EnableMetrics:  d.cnf.EnableMetrics,
 		Expert:         config.GetDefaultExpertConfig(),
 	}
-	nhc.Expert.LogDB.EnableFsync = d.cnf.EnableFsync
+	nhc.Expert.LogDB.EnableFsync = !d.cnf.DisableFsync
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
@@ -365,7 +410,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	d.started = true
 
-	log.Debugf("Prana node %d cluster started", d.cnf.NodeID)
+	log.Debugf("Prana node %d dragon started", d.cnf.NodeID)
 
 	return nil
 }
@@ -405,8 +450,8 @@ func (d *Dragon) Stop() error {
 		log.Debug("not started")
 		return nil
 	}
-	d.healthChecker.Stop()
-	log.Debug("stopped health checker")
+	//d.healthChecker.Stop()
+	//log.Debug("stopped health checker")
 	d.nh.Stop()
 	log.Debug("stopped node host")
 	d.nh = nil
@@ -423,6 +468,7 @@ func (d *Dragon) Stop() error {
 		if err := cl.Stop(); err != nil {
 			log.Warnf("failed to stop client %v", err)
 		}
+		d.requestClientMap.Delete(key)
 		return true
 	})
 	log.Debugf("Stopped Dragon node %d", d.cnf.NodeID)
@@ -456,27 +502,66 @@ func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	return batch.AfterCommit()
 }
 
-func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch) error {
-	return d.writeBatchInternal(batch, true)
+func (d *Dragon) ExecuteForwardBatch(shardID uint64, batch []byte) error {
+	// We handle this directly
+	cs := d.nh.GetNoOPSession(shardID)
+	res, err := d.proposeWithRetry(cs, batch)
+	if err != nil {
+		return err
+	}
+	if res.Value != shardStateMachineResponseOK {
+		return errors.Errorf("unexpected return value from writing batch: %d to shard %d", res.Value,
+			shardID)
+	}
+	return nil
 }
 
-func (d *Dragon) WriteBatch(batch *cluster.WriteBatch) error {
-	return d.writeBatchInternal(batch, false)
-}
-
-func (d *Dragon) writeBatchInternal(batch *cluster.WriteBatch, forward bool) error {
+func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 	var buff []byte
-	if forward {
-		buff = append(buff, shardStateMachineCommandForwardWrite)
-	} else {
-		buff = append(buff, shardStateMachineCommandWrite)
-	}
+	buff = append(buff, shardStateMachineCommandForwardWrite)
 	buff = batch.Serialize(buff)
 
-	retval, _, err := d.sendPropose(batch.ShardID, buff)
+	if localOnly {
+		retVal, _, err := d.sendPropose(batch.ShardID, buff, localOnly)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if retVal != shardStateMachineResponseOK {
+			return errors.Errorf("unexpected return value from writing batch: %d to shard %d", retVal,
+				batch.ShardID)
+		}
+	} else {
+		requestClient, err := d.getRequestClient(batch.ShardID)
+		if err != nil {
+			return err
+		}
+		clusterRequest := &notifications.ClusterForwardWriteRequest{
+			ShardId:     int64(batch.ShardID),
+			RequestBody: buff,
+		}
+		resp, err := requestClient.SendRequest(clusterRequest, 10*time.Minute)
+		if err != nil {
+			return err
+		}
+		_, ok := resp.(*notifications.ClusterForwardWriteResponse)
+		if !ok {
+			panic("not a notifications.ClusterForwardWriteResponse")
+		}
+	}
+	return nil
+}
+
+func (d *Dragon) WriteBatch(batch *cluster.WriteBatch, localOnly bool) error {
+	if batch.ShardID < cluster.DataShardIDBase {
+		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
+	}
+	var buff []byte
+	buff = append(buff, shardStateMachineCommandWrite)
+	buff = batch.Serialize(buff)
+	retval, _, err := d.sendPropose(batch.ShardID, buff, localOnly)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -619,6 +704,14 @@ func (d *Dragon) joinShardGroups() error {
 		}
 	}
 	return nil
+}
+
+// One of the replicas is chosen in a deterministic way to do the processing for the shard - i.e. to handle any
+// incoming rows. It doesn't matter whether this replica is the raft leader or not, but every raft replica needs
+// to come to the same decision as to who is the processor - that is why we handle the remove node event through
+// the same state machine as processing writes.
+func calcProcessingNode(nodeIDs []int, shardID uint64) int {
+	return nodeIDs[shardID%uint64(len(nodeIDs))]
 }
 
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
@@ -966,17 +1059,16 @@ func (d *Dragon) unregisterShardSM(shardID uint64) {
 	delete(d.shardSMs, shardID)
 }
 
-// Cluster requests
+func (d *Dragon) sendPropose(shardID uint64, request []byte, localOnly bool) (uint64, []byte, error) {
 
-func (d *Dragon) sendPropose(shardID uint64, request []byte) (uint64, []byte, error) {
-
-	// Does the local node have this shard?
 	_, ok := d.localShardsMap[shardID]
 	if ok {
 		// We handle this directly
 		cs := d.nh.GetNoOPSession(shardID)
 		res, err := d.proposeWithRetry(cs, request)
 		return res.Value, res.Data, err
+	} else if localOnly {
+		return 0, nil, errors.New("non forward write doesn't have a local shard")
 	}
 
 	requestClient, err := d.getRequestClient(shardID)
@@ -1004,11 +1096,13 @@ func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
 	if !ok {
 		panic("can't find shard allocs")
 	}
-	ln := len(nids)
-	serverAddresses := make([]string, ln, ln)
-	for i, nid := range nids {
-		if nid != d.cnf.NodeID {
-			serverAddresses[i] = d.cnf.NotifListenAddresses[nid]
+	processorNode := calcProcessingNode(nids, shardID)
+	serverAddresses := make([]string, 0, len(nids))
+	processorAddress := d.cnf.NotifListenAddresses[processorNode]
+	serverAddresses = append(serverAddresses, processorAddress) // We favour the processor
+	for _, nid := range nids {
+		if nid != processorNode {
+			serverAddresses = append(serverAddresses, d.cnf.NotifListenAddresses[nid])
 		}
 	}
 	return serverAddresses
@@ -1071,11 +1165,11 @@ func (d *Dragon) getOrCreateRequestClient(shardID uint64) (remoting.Client, erro
 		return cl, nil
 	}
 	serverAddresses := d.getServerAddressesForShard(shardID)
-	cl = remoting.NewClient(false, serverAddresses...)
+	cl = remoting.NewClient(true, serverAddresses...)
+	//d.healthChecker.AddAvailabilityListener(cl.AvailabilityListener())
 	if err := cl.Start(); err != nil {
 		return nil, err
 	}
-	d.healthChecker.AddAvailabilityListener(cl.AvailabilityListener())
 	d.requestClientMap.Store(shardID, cl)
 	return cl, nil
 }
@@ -1103,6 +1197,7 @@ func (d *Dragon) GetRemoteReadHandler() remoting.ClusterMessageHandler {
 func (d *Dragon) handleRemoteProposeRequest(request *notifications.ClusterProposeRequest) (*notifications.ClusterProposeResponse, error) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
+
 	if err := d.ensureNodeHostAvailable(); err != nil {
 		return nil, err
 	}
@@ -1176,7 +1271,7 @@ func (d *Dragon) RestoreSnapshotCount() int64 {
 }
 
 func (d *Dragon) AddHealthcheckListener(listener remoting.AvailabilityListener) {
-	d.healthChecker.AddAvailabilityListener(listener)
+	//d.healthChecker.AddAvailabilityListener(listener)
 }
 
 func (d *Dragon) SyncStore() error {

@@ -3,13 +3,12 @@ package server
 import (
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
-	"github.com/squareup/pranadb/remoting"
-	"net/http" //nolint:stylecheck
-	"runtime"
-	"time"
-
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
+	"github.com/squareup/pranadb/remoting"
+	"net/http" //nolint:stylecheck
+	"reflect"
+	"runtime"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -76,8 +75,8 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageLags, pushEngine.GetLagManager())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageConsumerSetRate, pushEngine.GetLoadClientSetRateHandler())
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageForwardWriteRequest, pushEngine.GetForwardWriteHandler())
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
 		protoRegistry, failureInjector, &config)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
@@ -124,26 +123,25 @@ func NewServer(config conf.Config) (*Server, error) {
 }
 
 type Server struct {
-	lock               sync.RWMutex
-	nodeID             int
-	lifeCycleMgr       *lifecycle.Endpoints
-	cluster            cluster.Cluster
-	shardr             *sharder.Sharder
-	metaController     *meta.Controller
-	pushEngine         *push.Engine
-	pullEngine         *pull.Engine
-	commandExecutor    *command.Executor
-	schemaLoader       *schema.Loader
-	notifServer        remoting.Server
-	ddlClient          remoting.Client
-	apiServer          *api.Server
-	services           []service
-	started            bool
-	conf               conf.Config
-	debugServer        *http.Server
-	metrics            *metrics.Server
-	failureinjector    failinject.Injector
-	logGoroutinesTimer *time.Timer
+	lock            sync.RWMutex
+	nodeID          int
+	lifeCycleMgr    *lifecycle.Endpoints
+	cluster         cluster.Cluster
+	shardr          *sharder.Sharder
+	metaController  *meta.Controller
+	pushEngine      *push.Engine
+	pullEngine      *pull.Engine
+	commandExecutor *command.Executor
+	schemaLoader    *schema.Loader
+	notifServer     remoting.Server
+	ddlClient       remoting.Client
+	apiServer       *api.Server
+	services        []service
+	started         bool
+	conf            conf.Config
+	debugServer     *http.Server
+	metrics         *metrics.Server
+	failureinjector failinject.Injector
 }
 
 type service interface {
@@ -159,8 +157,9 @@ func (s *Server) Start() error {
 	}
 
 	var err error
-	for _, s := range s.services {
-		if err = s.Start(); err != nil {
+	for _, serv := range s.services {
+		log.Printf("prana node %d starting service %s", s.nodeID, reflect.TypeOf(serv).String())
+		if err = serv.Start(); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -179,33 +178,8 @@ func (s *Server) Start() error {
 
 	s.started = true
 
-	s.scheduleLogGoroutinesTimer()
 	log.Infof("Prana server %d started on %s with %d CPUs", s.nodeID, runtime.GOOS, runtime.NumCPU())
 	return nil
-}
-
-func (s *Server) logNumGoroutines() {
-	//s.lock.Lock()
-	//defer s.lock.Unlock()
-	//if !s.started {
-	//	return
-	//}
-	//log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
-	//var m runtime.MemStats
-	//runtime.ReadMemStats(&m)
-	//log.Infof("Alloc = %v MiB", bytesToMB(m.Alloc))
-	//log.Infof("\tTotalAlloc = %v MiB", bytesToMB(m.TotalAlloc))
-	//log.Infof("\tSys = %v MiB", bytesToMB(m.Sys))
-	//log.Infof("\tNumGC = %v\n", m.NumGC)
-	//s.scheduleLogGoroutinesTimer()
-}
-
-//func bytesToMB(bytes uint64) uint64 {
-//	return bytes / 1024 / 1024
-//}
-
-func (s *Server) scheduleLogGoroutinesTimer() {
-	s.logGoroutinesTimer = time.AfterFunc(30*time.Second, s.logNumGoroutines)
 }
 
 func (s *Server) Stop() error {
@@ -214,10 +188,6 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.logGoroutinesTimer != nil {
-		s.logGoroutinesTimer.Stop()
-		s.logGoroutinesTimer = nil
-	}
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
@@ -225,6 +195,7 @@ func (s *Server) Stop() error {
 		}
 	}
 	for i := len(s.services) - 1; i >= 0; i-- {
+		log.Infof("prana node %d stopping service %s", s.nodeID, reflect.TypeOf(s.services[i]).String())
 		if err := s.services[i].Stop(); err != nil {
 			return errors.WithStack(err)
 		}

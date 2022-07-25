@@ -407,6 +407,6 @@ func insertRowsIntoTable(t *testing.T, shardID uint64, tableInfo *common.TableIn
 		err := table.Upsert(tableInfo, &row, batch)
 		require.NoError(t, err)
 	}
-	err := clust.WriteBatch(batch)
+	err := clust.WriteBatch(batch, false)
 	require.NoError(t, err)
 }

@@ -140,7 +140,7 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 			return errors.WithStack(err)
 		}
 	}
-	if err := s.cluster.WriteBatch(wb); err != nil {
+	if err := s.cluster.WriteBatch(wb, false); err != nil {
 		return errors.WithStack(err)
 	}
 

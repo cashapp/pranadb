@@ -208,7 +208,8 @@ func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage
 	if phase == 0 {
 		if !ok {
 			if originatingNode {
-				return errors.Errorf("cannot find command with id %d:%d on originating node", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+				// Can happen if the command is cancelled - we just ignore
+				return nil
 			}
 			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(),
 				ddlInfo.GetTableSequences(), ddlInfo.GetExtraData())
@@ -247,7 +248,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		TableSequences:    command.TableSequences(),
 		ExtraData:         command.GetExtraData(),
 	}
-	err := d.RunWithLock(command, ddlInfo)
+	err := d.RunWithLock(commandKey, command, ddlInfo)
 	// We release the lock even if we got an error
 	if _, err2 := d.ce.cluster.ReleaseLock(getLockName(command.SchemaName())); err2 != nil {
 		log.Errorf("failed to release lock %+v", err2)
@@ -258,11 +259,9 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	return nil
 }
 
-func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
+func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
 	if err := command.Before(); err != nil {
-		if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
-			// Ignore
-		}
+		d.commands.Delete(commandKey)
 		return errors.WithStack(err)
 	}
 	for phase := 0; phase < command.NumPhases(); phase++ {

@@ -237,7 +237,7 @@ func (c *Controller) PersistIndex(indexInfo *common.IndexInfo) error {
 	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 // UnregisterIndex removes the index from memory but does not delete it from storage
@@ -287,7 +287,7 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
@@ -302,7 +302,7 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 			return errors.WithStack(err)
 		}
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) checkTableID(tableID uint64) error {
@@ -436,7 +436,7 @@ func (c *Controller) deleteTableWithID(tableID uint64) error {
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(tableID))
 	wb.AddDelete(key)
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) deleteIndexWithID(indexID uint64) error {
@@ -445,7 +445,7 @@ func (c *Controller) deleteIndexWithID(indexID uint64) error {
 	key = table.EncodeTableKeyPrefix(common.IndexTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(indexID))
 	wb.AddDelete(key)
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) registerSystemSchema() {

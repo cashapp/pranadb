@@ -62,7 +62,6 @@ type Source struct {
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
 	ingestExpressions       []*common.Expression
-	lagProvider             util.LagProvider
 	cfg                     *conf.Config
 	restartTimer            *time.Timer
 	stopped                 bool // represents a hard stop - not a stop then a restart after delay
@@ -92,8 +91,7 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
-	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	lagProvider util.LagProvider) (*Source, error) {
+	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) (*Source, error) {
 	numConsumers, err := common.GetOrDefaultIntProperty(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -160,7 +158,6 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		ingestExpressions:       ingestExpressions,
-		lagProvider:             lagProvider,
 		cfg:                     cfg,
 	}
 	source.commitOffsets.Set(true)
@@ -246,20 +243,13 @@ func (s *Source) ingestError(err error, clientError bool) {
 			delay = initialRestartDelay
 		}
 		s.restartAfterDelay(delay)
-	} else if err == ingestTimeoutError {
-		log.Warnf("Source %s.%s timed out in waiting for lags to reduce. source will be stopped", s.sourceInfo.SchemaName, s.sourceInfo.Name)
-		if err2 := s.stop(); err2 != nil {
-			return
-		}
-		// Lags are too high, we will try again after max delay
-		s.lastRestartDelay = maxRetryDelay
-		s.restartAfterDelay(maxRetryDelay)
-	} else {
-		// Unexpected error in ingest, log and stop source.
-		log.Errorf("Failure in ingest, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
-		if err2 := s.stop(); err2 != nil {
-			return
-		}
+		return
+	}
+
+	// Unexpected error in ingest, log and stop source.
+	log.Errorf("Failure in ingest, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
+	if err2 := s.stop(); err2 != nil {
+		return
 	}
 }
 
@@ -410,14 +400,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		rowsIngested++
 	}
 
-	if !util.MaybeThrottleIfLagging(s.cluster.GetAllShardIDs(), s.lagProvider, s.cfg.ProcessorMaxLag, s.cfg.SourceLagTimeout) {
-		// Lags are taking too long to reach an acceptable level
-		// We will stop the source, otherwise if we block too long then the Kafka consumer will be removed from the consumer
-		// group. The source will retry after a delay
-		// Ensure that Kafka client max.poll.interval.ms > cfg.DefaultSourceLagTimeout
-		return ingestTimeoutError
-	}
-
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
 		log.Errorf("failed to send ingest forward batches %+v", err)
 		return err
@@ -428,6 +410,8 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.rowsIngestedCounter.Add(float64(rowsIngested))
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
+
+	log.Infof("ingested batch of %d", rowsIngested)
 
 	return nil
 }
@@ -459,15 +443,6 @@ func (s *Source) GetCommittedCount() int64 {
 func (s *Source) SetCommitOffsets(enable bool) {
 	s.commitOffsets.Set(enable)
 }
-
-type timeoutError struct {
-}
-
-func (s timeoutError) Error() string {
-	return "timeout"
-}
-
-var ingestTimeoutError = &timeoutError{}
 
 func (s *Source) SetMaxConsumerRate(rate int) {
 	s.lock.Lock()

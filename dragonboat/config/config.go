@@ -749,8 +749,8 @@ type LogDBConfig struct {
 	KVNumOfLevels                      uint64
 	KVBlockSize                        uint64
 	SaveBufferSize                     uint64
-	MaxSaveBufferSize uint64
-	EnableFsync       bool
+	MaxSaveBufferSize                  uint64
+	EnableFsync                        bool
 }
 
 // GetDefaultLogDBConfig returns the default configurations for the LogDB

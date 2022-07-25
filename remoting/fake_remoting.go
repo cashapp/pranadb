@@ -14,6 +14,10 @@ type FakeServer struct {
 	messageHandlers sync.Map
 }
 
+func (f *FakeServer) ServerAddresses() []string {
+	return nil
+}
+
 func (f *FakeServer) AvailabilityListener() AvailabilityListener {
 	return nil
 }

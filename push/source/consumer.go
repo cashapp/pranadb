@@ -117,16 +117,16 @@ func (m *MessageConsumer) pollLoop() {
 }
 
 func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([]*kafka.Message, map[int32]int64, error) {
-	start := time.Now()
-	remaining := pollTimeout
+	start := common.NanoTime()
+	remaining := int64(pollTimeout)
 
 	m.msgBatch = nil
 	m.offsetsToCommit = make(map[int32]int64)
 
 	// The golang Kafka consumer API returns single messages, not batches, but it's more efficient for us to
 	// process in batches. So we attempt to return more than one message at a time.
-	for len(m.msgBatch) <= maxRecords {
-		msg, err := m.msgProvider.GetMessage(remaining)
+	for len(m.msgBatch) < maxRecords {
+		msg, err := m.msgProvider.GetMessage(time.Duration(remaining))
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
@@ -136,7 +136,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		partID := msg.PartInfo.PartitionID
 		m.offsetsToCommit[partID] = msg.PartInfo.Offset + 1
 		m.msgBatch = append(m.msgBatch, msg)
-		remaining = pollTimeout - time.Now().Sub(start)
+		remaining = int64(pollTimeout) - int64(common.NanoTime()-start)
 		if remaining <= 0 {
 			break
 		}

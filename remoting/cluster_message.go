@@ -18,11 +18,12 @@ const (
 	ClusterMessageDDLCancel
 	ClusterMessageReloadProtobuf
 	ClusterMessageClusterProposeRequest
-	ClusterMessageClusterReadRequest
 	ClusterMessageClusterProposeResponse
+	ClusterMessageClusterReadRequest
 	ClusterMessageClusterReadResponse
+	ClusterMessageForwardWriteRequest
+	ClusterMessageForwardWriteResponse
 	ClusterMessageNotificationTestMessage
-	ClusterMessageLags
 	ClusterMessageConsumerSetRate
 )
 
@@ -42,10 +43,12 @@ func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
 		return ClusterMessageClusterProposeResponse
 	case *notifications.ClusterReadResponse:
 		return ClusterMessageClusterReadResponse
+	case *notifications.ClusterForwardWriteRequest:
+		return ClusterMessageForwardWriteRequest
+	case *notifications.ClusterForwardWriteResponse:
+		return ClusterMessageForwardWriteResponse
 	case *notifications.NotificationTestMessage:
 		return ClusterMessageNotificationTestMessage
-	case *notifications.LagsMessage:
-		return ClusterMessageLags
 	case *notifications.ConsumerSetRate:
 		return ClusterMessageConsumerSetRate
 	default:
@@ -79,6 +82,10 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.ClusterProposeResponse{}
 	case ClusterMessageClusterReadResponse:
 		msg = &notifications.ClusterReadResponse{}
+	case ClusterMessageForwardWriteRequest:
+		msg = &notifications.ClusterForwardWriteRequest{}
+	case ClusterMessageForwardWriteResponse:
+		msg = &notifications.ClusterForwardWriteResponse{}
 	case ClusterMessageDDLStatement:
 		msg = &notifications.DDLStatementInfo{}
 	case ClusterMessageDDLCancel:
@@ -87,8 +94,6 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &notifications.ReloadProtobuf{}
 	case ClusterMessageNotificationTestMessage:
 		msg = &notifications.NotificationTestMessage{}
-	case ClusterMessageLags:
-		msg = &notifications.LagsMessage{}
 	case ClusterMessageConsumerSetRate:
 		msg = &notifications.ConsumerSetRate{}
 	default:
