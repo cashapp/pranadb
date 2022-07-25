@@ -7,6 +7,7 @@ WORKDIR /tmp/pranadb
 
 # We want to populate the module cache based on the go.{mod,sum} files.
 COPY go.mod .
+COPY dragonboat .
 
 RUN go mod download
 

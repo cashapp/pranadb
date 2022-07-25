@@ -320,7 +320,10 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *ShardOnDiskStateMachine) Sync() error {
-	return syncPebble(s.dragon.pebble)
+	if s.dragon.cnf.EnableFsync {
+		return syncPebble(s.dragon.pebble)
+	}
+	return nil
 }
 
 func (s *ShardOnDiskStateMachine) PrepareSnapshot() (interface{}, error) {

@@ -63,6 +63,7 @@ type Config struct {
 	FillMaxLag                       time.Duration
 	SourceLagTimeout                 time.Duration
 	LogLags                          bool
+	EnableFsync                      bool
 }
 
 func (c *Config) ApplyDefaults() {

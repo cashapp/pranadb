@@ -293,7 +293,9 @@ func (d *Dragon) start0() error {
 		RTTMillisecond: uint64(d.cnf.RaftRTTMs),
 		RaftAddress:    nodeAddress,
 		EnableMetrics:  d.cnf.EnableMetrics,
+		Expert:         config.GetDefaultExpertConfig(),
 	}
+	nhc.Expert.LogDB.EnableFsync = d.cnf.EnableFsync
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {

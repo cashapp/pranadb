@@ -134,6 +134,7 @@ func syncPebble(peb *pebble.DB) error {
 	// To force an fsync we just write a kv into the dummy sys table with sync = true
 	key := common.AppendUint64ToBufferLE(make([]byte, 0, 8), common.SyncTableID)
 	return peb.Set(key, []byte{}, syncWriteOptions)
+	return nil
 }
 
 func loadLastProcessedRaftIndex(peb *pebble.DB, shardID uint64) (uint64, error) {
