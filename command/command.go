@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -180,6 +181,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
+	case ast.ConsumerRate != nil:
+		if err := e.execConsumerRate(execCtx, ast.ConsumerRate.SourceName, ast.ConsumerRate.Rate); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	}
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
@@ -329,6 +335,14 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 		panic(fmt.Sprintf("unknown table kind: '%s'", kind))
 	}
 	return describeRows(tableInfo)
+}
+
+func (e *Executor) execConsumerRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
+	return e.notifClient.BroadcastSync(&notifications.ConsumerSetRate{
+		SchemaName: execCtx.Schema.Name,
+		SourceName: sourceName,
+		Rate:       rate,
+	})
 }
 
 func (e *Executor) Empty() bool {

@@ -147,6 +147,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 				"fakeKafkaID": fmt.Sprintf("%d", w.fakeKafka.ID),
 			},
 		},
+		"genbroker": {
+			ClientType: conf.BrokerClientGenerator,
+		},
 	}
 	// We set the table initialisation batch size to be a small number to exercise the batching logic
 	push.SetInitBatchSize(3)
@@ -197,6 +200,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.RaftRTTMs = 25
+			cnf.LogLags = false
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)

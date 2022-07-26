@@ -422,22 +422,22 @@ type clientConnection struct {
 	lock          sync.Mutex
 	client        *client
 	serverAddress string
-	loopCh        chan error
-	hbTimer       *time.Timer
 	started       bool
 	conn          net.Conn
+	closeGroup    sync.WaitGroup
 }
 
 func (cc *clientConnection) start() {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
-	cc.loopCh = make(chan error, 10)
-	go readMessage(cc.handleMessage, cc.loopCh, cc.conn, func() {
+	cc.closeGroup.Add(1)
+	go readMessage(cc.handleMessage, cc.conn, func() {
 		// Connection closed
 		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
 		if err := cc.conn.Close(); err != nil {
 			// Ignore
 		}
+		cc.closeGroup.Done()
 	})
 	cc.started = true
 }
@@ -449,15 +449,12 @@ func (cc *clientConnection) Stop() {
 func (cc *clientConnection) stop() {
 	cc.lock.Lock()
 	cc.started = false
-	if cc.hbTimer != nil {
-		cc.hbTimer.Stop()
-	}
 	cc.lock.Unlock()
 	// We need to execute this and the wait on channel outside the lock to prevent deadlock
 	if err := cc.conn.Close(); err != nil {
 		// Do nothing - connection might already have been closed from other side - this is ok
 	}
-	<-cc.loopCh
+	cc.closeGroup.Wait()
 	cc.client.connectionClosed(cc)
 }
 

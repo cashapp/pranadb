@@ -23,7 +23,7 @@ type LagManager struct {
 var _ util.LagProvider = &LagManager{}
 
 func NewLagManager(engine *Engine, notifAddresses ...string) *LagManager {
-	broadcastClient := remoting.NewClient(false, notifAddresses...)
+	broadcastClient := remoting.NewClient(true, notifAddresses...)
 	return &LagManager{broadcastClient: broadcastClient, engine: engine}
 }
 
@@ -99,12 +99,14 @@ func (lm *LagManager) broadcastLags() {
 func (lm *LagManager) broadcastLagsNoLock() {
 	lm.lagsTimer = time.AfterFunc(1*time.Second, func() {
 		msg := lm.engine.getLagsMessage()
-		sb := strings.Builder{}
-		sb.WriteString("lags are: ")
-		for _, entry := range msg.Lags {
-			sb.WriteString(fmt.Sprintf("shard_id:%d lag:%d ms ", entry.ShardId, time.Duration(entry.Lag).Milliseconds()))
+		if lm.engine.cfg.LogLags {
+			sb := strings.Builder{}
+			sb.WriteString("lags are: ")
+			for _, entry := range msg.Lags {
+				sb.WriteString(fmt.Sprintf("shard_id:%d lag:%d ms ", entry.ShardId, time.Duration(entry.Lag).Milliseconds()))
+			}
+			log.Debug(sb.String())
 		}
-		log.Debug(sb.String())
 		if err := lm.broadcastClient.BroadcastOneway(msg); err != nil {
 			log.Errorf("failed to broadcast lags %+v", err)
 		} else {

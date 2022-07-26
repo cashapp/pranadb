@@ -1,8 +1,9 @@
 package source
 
 import (
+	"github.com/squareup/pranadb/kafka/load"
+
 	"github.com/squareup/pranadb/push/util"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,19 @@ var (
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
 	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
 	lagProvider util.LagProvider) (*Source, error) {
-	var msgProvFact kafka.MessageProviderFactory
+	numConsumers, err := common.GetOrDefaultIntProperty(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	pollTimeoutMs, err := common.GetOrDefaultIntProperty(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	maxPollMessages, err := common.GetOrDefaultIntProperty(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	ti := sourceInfo.OriginInfo
 	var brokerConf conf.BrokerConfig
 	var ok bool
@@ -105,6 +118,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
 	groupID := sourceInfo.OriginInfo.ConsumerGroupID
+	var msgProvFact kafka.MessageProviderFactory
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
 		var err error
@@ -114,21 +128,15 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		}
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
+	case conf.BrokerClientGenerator:
+		msgProvFact, err = load.NewMessageProviderFactory(10000, numConsumers, cluster.GetNodeID(), sourceInfo.OriginInfo.Properties)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
-	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+
 	rowsIngestedCounter := rowsIngestedVec.WithLabelValues(sourceInfo.Name)
 	batchesIngestedCounter := batchesIngestedVec.WithLabelValues(sourceInfo.Name)
 	bytesIngestedCounter := bytesIngestedVec.WithLabelValues(sourceInfo.Name)
@@ -440,21 +448,6 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 	return m
 }
 
-func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
-	ncs, ok := props[propName]
-	var res int
-	if ok {
-		nc, err := strconv.ParseInt(ncs, 10, 32)
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-		res = int(nc)
-	} else {
-		res = def
-	}
-	return res, nil
-}
-
 func (s *Source) addCommittedCount(val int64) {
 	atomic.AddInt64(&s.committedCount, val)
 }
@@ -475,3 +468,13 @@ func (s timeoutError) Error() string {
 }
 
 var ingestTimeoutError = &timeoutError{}
+
+func (s *Source) SetMaxConsumerRate(rate int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for _, consumer := range s.msgConsumers {
+		provider := consumer.msgProvider
+		provider.SetMaxRate(rate)
+	}
+}

@@ -62,6 +62,7 @@ type Config struct {
 	ProcessorMaxLag                  time.Duration
 	FillMaxLag                       time.Duration
 	SourceLagTimeout                 time.Duration
+	LogLags                          bool
 }
 
 func (c *Config) ApplyDefaults() {
@@ -107,6 +108,7 @@ func (c *Config) ApplyDefaults() {
 	if c.SourceLagTimeout == 0 {
 		c.SourceLagTimeout = DefaultSourceLagTimeout
 	}
+	c.LogLags = true
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -223,6 +225,7 @@ const (
 	BrokerClientTypeUnknown                  = 0
 	BrokerClientFake        BrokerClientType = 1
 	BrokerClientDefault                      = 2
+	BrokerClientGenerator                    = 3
 )
 
 type BrokerConfig struct {

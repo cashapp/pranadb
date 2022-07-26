@@ -89,5 +89,6 @@ func createConfigWithAllFields() conf.Config {
 		ProcessorMaxLag:            6500 * time.Millisecond,
 		FillMaxLag:                 12000 * time.Millisecond,
 		SourceLagTimeout:           65000 * time.Millisecond,
+		LogLags:                    true,
 	}
 }

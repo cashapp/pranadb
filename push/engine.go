@@ -7,6 +7,7 @@ import (
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/push/util"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
 	"math/rand"
 	"sync"
@@ -791,4 +792,32 @@ func (p *Engine) getLagsMessage() *notifications.LagsMessage {
 
 func (p *Engine) GetLagManager() *LagManager {
 	return p.lagManager
+}
+
+type loadClientSetRateHandler struct {
+	p *Engine
+}
+
+func (l *loadClientSetRateHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	setRate, ok := notification.(*notifications.ConsumerSetRate)
+	if !ok {
+		panic("not a ConsumerSetRate")
+	}
+	l.p.lock.Lock()
+	defer l.p.lock.Unlock()
+	sourceInfo, ok := l.p.meta.GetSource(setRate.SchemaName, setRate.SourceName)
+	if !ok {
+		return nil, errors.NewPranaErrorf(errors.UnknownSource, "Unknown source %s.%s", setRate.SchemaName, setRate.SourceName)
+	}
+	source, ok := l.p.sources[sourceInfo.ID]
+	if !ok {
+		// Internal error
+		return nil, errors.Errorf("can't find source %s.%s", setRate.SchemaName, setRate.SourceName)
+	}
+	source.SetMaxConsumerRate(int(setRate.Rate))
+	return nil, nil
+}
+
+func (p *Engine) GetLoadClientSetRateHandler() remoting.ClusterMessageHandler {
+	return &loadClientSetRateHandler{p: p}
 }
