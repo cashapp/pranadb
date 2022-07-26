@@ -18,7 +18,9 @@ var _ kafka.MessageProviderFactory = &LoadClientMessageProviderFactory{}
 type LoadClientMessageProviderFactory struct {
 	bufferSize             int
 	partitionsPerConsumer  int
+	consumersPerSource     int
 	partitionsStart        int
+	nextPartition          int
 	properties             map[string]string
 	maxRate                int
 	maxMessagesPerConsumer int64
@@ -66,7 +68,9 @@ func NewMessageProviderFactory(bufferSize int, numConsumersPerSource int, nodeID
 	return &LoadClientMessageProviderFactory{
 		bufferSize:             bufferSize,
 		partitionsPerConsumer:  partitionsPerConsumer,
+		consumersPerSource:     numConsumersPerSource,
 		partitionsStart:        partitionsStart,
+		nextPartition:          partitionsStart,
 		properties:             properties,
 		maxRate:                maxRate,
 		uniqueIDsPerPartition:  int64(uniqueIDsPerPartition),
@@ -82,8 +86,13 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 	msgs := make(chan *kafka.Message, l.bufferSize)
 	partitions := make([]int32, l.partitionsPerConsumer)
 	for i := range partitions {
-		partitions[i] = int32(l.partitionsStart)
-		l.partitionsStart++
+		partitions[i] = int32(l.nextPartition)
+		l.nextPartition++
+	}
+	if l.nextPartition == l.partitionsStart+l.consumersPerSource {
+		// Wrap around - consumers for a source can get closed when lags time out, and we need to make sure partitions
+		// go back to the right value next time they are created
+		l.nextPartition = l.partitionsStart
 	}
 	offsets := make([]int64, len(partitions))
 	for i, partitionID := range partitions {
