@@ -14,7 +14,7 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/chzyer/test v0.0.0-20210722231415-061457976a23 // indirect
-	github.com/cockroachdb/pebble v0.0.0-20210331181633-27fc006b8bfb
+	github.com/cockroachdb/pebble v0.0.0-20220726144858-a78491c0086f // Corresponds to branch crl-release-22.1
 	github.com/confluentinc/confluent-kafka-go v1.7.0
 	github.com/containerd/continuity v0.1.0 // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
@@ -44,7 +44,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.15.0
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
+	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/text v0.3.7
 	golang.org/x/tools v0.1.0
