@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/remoting"
 	"sync"
 	"testing"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/common/commontest"
-	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/stretchr/testify/require"
 )
@@ -179,9 +179,6 @@ func (t *testCluster) LinearizableGet(shardID uint64, key []byte) ([]byte, error
 
 func (t *testCluster) SyncStore() error {
 	return nil
-}
-
-func (t *testCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }
 
 func (t *testCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/remoting"
 )
 
 const (
@@ -73,8 +72,6 @@ type Cluster interface {
 	Stop() error
 
 	PostStartChecks(queryExec common.SimpleQueryExec) error
-
-	AddHealthcheckListener(listener remoting.AvailabilityListener)
 
 	SyncStore() error
 }

@@ -2,14 +2,12 @@ package main
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/stretchr/testify/require"
@@ -77,8 +75,6 @@ func createConfigWithAllFields() conf.Config {
 		SequenceCompactionOverhead: 1001,
 		LocksSnapshotEntries:       101,
 		LocksCompactionOverhead:    51,
-		RemotingHeartbeatInterval:  76 * time.Second,
-		RemotingHeartbeatTimeout:   5 * time.Second,
 		EnableAPIServer:            true,
 		APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
 		MetricsBind:                "localhost:9102",

@@ -38,15 +38,15 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
-	var ddlClient remoting.Client
-	var ddlResetClient remoting.Client
+	var ddlClient remoting.Broadcaster
+	var ddlResetClient remoting.Broadcaster
 	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
-		fakeNotifier := remoting.NewFakeServer()
-		ddlClient = fakeNotifier
-		remotingServer = fakeNotifier
-		ddlResetClient = fakeNotifier
+		fakeRemotingServer := remoting.NewFakeServer()
+		remotingServer = fakeRemotingServer
+		ddlClient = remoting.NewFakeClient(fakeRemotingServer)
+		ddlResetClient = remoting.NewFakeClient(fakeRemotingServer)
 	} else {
 		var err error
 		drag, err := dragon.NewDragon(config)
@@ -55,8 +55,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		}
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
-		ddlClient = remoting.NewClient(true, config.NotifListenAddresses...)
-		ddlResetClient = remoting.NewClient(true, config.NotifListenAddresses...)
+		ddlClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
+		ddlResetClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
@@ -65,7 +65,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	pullEngine := pull.NewPullEngine(clus, metaController, shardr)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
-	protoRegistry.SetNotifier(ddlClient.BroadcastSync)
+	protoRegistry.SetNotifier(ddlClient)
 	theMetrics := metrics.NewServer(config, !config.EnableMetrics)
 	var failureInjector failinject.Injector
 	if config.EnableFailureInjector {
@@ -112,7 +112,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
-		notifServer:     remotingServer,
+		remotingServer:  remotingServer,
 		ddlClient:       ddlClient,
 		apiServer:       apiServer,
 		services:        services,
@@ -133,8 +133,8 @@ type Server struct {
 	pullEngine      *pull.Engine
 	commandExecutor *command.Executor
 	schemaLoader    *schema.Loader
-	notifServer     remoting.Server
-	ddlClient       remoting.Client
+	remotingServer  remoting.Server
+	ddlClient       remoting.Broadcaster
 	apiServer       *api.Server
 	services        []service
 	started         bool
@@ -228,12 +228,12 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
 }
 
-func (s *Server) GetNotificationsClient() remoting.Client {
+func (s *Server) GetDDLClient() remoting.Broadcaster {
 	return s.ddlClient
 }
 
-func (s *Server) GetNotificationsServer() remoting.Server {
-	return s.notifServer
+func (s *Server) GetRemotingServer() remoting.Server {
+	return s.remotingServer
 }
 
 func (s *Server) GetAPIServer() *api.Server {

@@ -5,7 +5,7 @@ import (
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
@@ -780,8 +780,8 @@ type loadClientSetRateHandler struct {
 	p *Engine
 }
 
-func (l *loadClientSetRateHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	setRate, ok := notification.(*notifications.ConsumerSetRate)
+func (l *loadClientSetRateHandler) HandleMessage(clusterMsg remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	setRate, ok := clusterMsg.(*clustermsgs.ConsumerSetRate)
 	if !ok {
 		panic("not a ConsumerSetRate")
 	}
@@ -808,10 +808,10 @@ type forwardWriteHandler struct {
 	e *Engine
 }
 
-func (f *forwardWriteHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	req, ok := notification.(*notifications.ClusterForwardWriteRequest)
+func (f *forwardWriteHandler) HandleMessage(clusterMsg remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := clusterMsg.(*clustermsgs.ClusterForwardWriteRequest)
 	if !ok {
-		panic("not a *notifications.ClusterForwardWriteRequest")
+		panic("not a *clustermsgs.ClusterForwardWriteRequest")
 	}
 	return f.e.handleForwardWriteRequest(req)
 }
@@ -820,13 +820,13 @@ func (p *Engine) GetForwardWriteHandler() remoting.ClusterMessageHandler {
 	return &forwardWriteHandler{e: p}
 }
 
-func (p *Engine) handleForwardWriteRequest(req *notifications.ClusterForwardWriteRequest) (remoting.ClusterMessage, error) {
+func (p *Engine) handleForwardWriteRequest(req *clustermsgs.ClusterForwardWriteRequest) (remoting.ClusterMessage, error) {
 	scheduler := p.getScheduler(uint64(req.ShardId))
 	if scheduler == nil {
 		return nil, errors.Errorf("cannot find scheduler for shard %d this is most likely because the node for the processor is not available", req.ShardId)
 	}
 	err := scheduler.AddForwardBatch(req.GetRequestBody())
-	return &notifications.ClusterForwardWriteResponse{}, err
+	return &clustermsgs.ClusterForwardWriteResponse{}, err
 }
 
 func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {

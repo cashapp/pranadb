@@ -6,7 +6,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"net"
 )
 
@@ -23,44 +23,44 @@ const (
 	ClusterMessageClusterReadResponse
 	ClusterMessageForwardWriteRequest
 	ClusterMessageForwardWriteResponse
-	ClusterMessageNotificationTestMessage
 	ClusterMessageConsumerSetRate
+	ClusterMessageRemotingTestMessage
 )
 
-func TypeForClusterMessage(notification ClusterMessage) ClusterMessageType {
-	switch notification.(type) {
-	case *notifications.DDLStatementInfo:
+func TypeForClusterMessage(clusterMessage ClusterMessage) ClusterMessageType {
+	switch clusterMessage.(type) {
+	case *clustermsgs.DDLStatementInfo:
 		return ClusterMessageDDLStatement
-	case *notifications.DDLCancelMessage:
+	case *clustermsgs.DDLCancelMessage:
 		return ClusterMessageDDLCancel
-	case *notifications.ReloadProtobuf:
+	case *clustermsgs.ReloadProtobuf:
 		return ClusterMessageReloadProtobuf
-	case *notifications.ClusterProposeRequest:
+	case *clustermsgs.ClusterProposeRequest:
 		return ClusterMessageClusterProposeRequest
-	case *notifications.ClusterReadRequest:
+	case *clustermsgs.ClusterReadRequest:
 		return ClusterMessageClusterReadRequest
-	case *notifications.ClusterProposeResponse:
+	case *clustermsgs.ClusterProposeResponse:
 		return ClusterMessageClusterProposeResponse
-	case *notifications.ClusterReadResponse:
+	case *clustermsgs.ClusterReadResponse:
 		return ClusterMessageClusterReadResponse
-	case *notifications.ClusterForwardWriteRequest:
+	case *clustermsgs.ClusterForwardWriteRequest:
 		return ClusterMessageForwardWriteRequest
-	case *notifications.ClusterForwardWriteResponse:
+	case *clustermsgs.ClusterForwardWriteResponse:
 		return ClusterMessageForwardWriteResponse
-	case *notifications.NotificationTestMessage:
-		return ClusterMessageNotificationTestMessage
-	case *notifications.ConsumerSetRate:
+	case *clustermsgs.ConsumerSetRate:
 		return ClusterMessageConsumerSetRate
+	case *clustermsgs.RemotingTestMessage:
+		return ClusterMessageRemotingTestMessage
 	default:
 		return ClusterMessageTypeUnknown
 	}
 }
 
-// ClusterMessage protos live in protos/squareup/cash/pranadb/notifications.proto
+// ClusterMessage protos live in protos/squareup/cash/pranadb/clustermsgs.proto
 type ClusterMessage = proto.Message
 
 type ClusterMessageHandler interface {
-	HandleMessage(notification ClusterMessage) (ClusterMessage, error)
+	HandleMessage(clusterMessage ClusterMessage) (ClusterMessage, error)
 }
 
 func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
@@ -75,27 +75,27 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 	var msg ClusterMessage
 	switch ClusterMessageType(nt) {
 	case ClusterMessageClusterProposeRequest:
-		msg = &notifications.ClusterProposeRequest{}
+		msg = &clustermsgs.ClusterProposeRequest{}
 	case ClusterMessageClusterReadRequest:
-		msg = &notifications.ClusterReadRequest{}
+		msg = &clustermsgs.ClusterReadRequest{}
 	case ClusterMessageClusterProposeResponse:
-		msg = &notifications.ClusterProposeResponse{}
+		msg = &clustermsgs.ClusterProposeResponse{}
 	case ClusterMessageClusterReadResponse:
-		msg = &notifications.ClusterReadResponse{}
+		msg = &clustermsgs.ClusterReadResponse{}
 	case ClusterMessageForwardWriteRequest:
-		msg = &notifications.ClusterForwardWriteRequest{}
+		msg = &clustermsgs.ClusterForwardWriteRequest{}
 	case ClusterMessageForwardWriteResponse:
-		msg = &notifications.ClusterForwardWriteResponse{}
+		msg = &clustermsgs.ClusterForwardWriteResponse{}
 	case ClusterMessageDDLStatement:
-		msg = &notifications.DDLStatementInfo{}
+		msg = &clustermsgs.DDLStatementInfo{}
 	case ClusterMessageDDLCancel:
-		msg = &notifications.DDLCancelMessage{}
+		msg = &clustermsgs.DDLCancelMessage{}
 	case ClusterMessageReloadProtobuf:
-		msg = &notifications.ReloadProtobuf{}
-	case ClusterMessageNotificationTestMessage:
-		msg = &notifications.NotificationTestMessage{}
+		msg = &clustermsgs.ReloadProtobuf{}
 	case ClusterMessageConsumerSetRate:
-		msg = &notifications.ConsumerSetRate{}
+		msg = &clustermsgs.ConsumerSetRate{}
+	case ClusterMessageRemotingTestMessage:
+		msg = &clustermsgs.RemotingTestMessage{}
 	default:
 		return nil, errors.Errorf("invalid notification type %d", nt)
 	}
@@ -107,7 +107,6 @@ type messageType byte
 const (
 	requestMessageType = iota + 1
 	responseMessageType
-	heartbeatMessageType
 )
 
 type ClusterRequest struct {
@@ -211,13 +210,6 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 	if msgType == 0 {
 		panic("message type written is zero")
 	}
-	// Heartbeats don't have a body
-	if msgType == heartbeatMessageType {
-		if _, err := conn.Write([]byte{heartbeatMessageType}); err != nil {
-			return err
-		}
-		return nil
-	}
 	bytes := make([]byte, 0, messageHeaderSize+len(msg))
 	bytes = append(bytes, byte(msgType))
 	bytes = common.AppendUint32ToBufferLE(bytes, uint32(len(msg)))
@@ -243,14 +235,6 @@ func readMessage(handler messageHandler, conn net.Conn, closeAction func()) {
 		}
 		msgBuf = append(msgBuf, readBuff[0:n]...)
 		msgType := messageType(msgBuf[0])
-		if msgType == heartbeatMessageType {
-			// Heartbeats don't have a message body
-			if err := handler(msgType, nil); err != nil {
-				log.Errorf("failed to handle heartbeat %v", err)
-				return
-			}
-			msgBuf = msgBuf[1:]
-		}
 		for len(msgBuf) >= messageHeaderSize {
 			if msgLen == -1 {
 				u, _ := common.ReadUint32FromBufferLE(msgBuf, 1)
@@ -272,4 +256,21 @@ func readMessage(handler messageHandler, conn net.Conn, closeAction func()) {
 			}
 		}
 	}
+}
+
+func serializeClusterMessage(clusterMessage ClusterMessage) ([]byte, error) {
+	b := proto.NewBuffer(nil)
+	nt := TypeForClusterMessage(clusterMessage)
+	if nt == ClusterMessageTypeUnknown {
+		return nil, errors.Errorf("invalid cluster message type %d", nt)
+	}
+	err := b.EncodeVarint(uint64(nt))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	err = b.Marshal(clusterMessage)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return b.Bytes(), nil
 }
