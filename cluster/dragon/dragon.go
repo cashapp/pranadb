@@ -534,8 +534,7 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) er
 			ShardId:     int64(batch.ShardID),
 			RequestBody: buff,
 		}
-		// TODO - do we really want to retry here??
-		resp, err := retryRequestWithTimeout(requestClient, clusterRequest, 10*time.Minute)
+		resp, err := requestClient.SendRPC(clusterRequest)
 		if err != nil {
 			return err
 		}
