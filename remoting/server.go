@@ -12,7 +12,7 @@ import (
 const (
 	readBuffSize                   = 8 * 1024
 	messageHeaderSize              = 5 // 1 byte message type, 4 bytes length
-	maxConcurrentMsgsPerConnection = 10
+	maxConcurrentMsgsPerConnection = 100
 )
 
 type Server interface {

@@ -76,7 +76,10 @@ func (s *sequenceODStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *sequenceODStateMachine) Sync() error {
-	return syncPebble(s.dragon.pebble)
+	if s.dragon.cnf.DisableFsync {
+		return syncPebble(s.dragon.pebble)
+	}
+	return nil
 }
 
 func (s *sequenceODStateMachine) PrepareSnapshot() (interface{}, error) {

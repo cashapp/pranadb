@@ -365,6 +365,99 @@ func (x *ClusterProposeResponse) GetResponseBody() []byte {
 	return nil
 }
 
+type ClusterForwardWriteRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ShardId     int64  `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+	RequestBody []byte `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+}
+
+func (x *ClusterForwardWriteRequest) Reset() {
+	*x = ClusterForwardWriteRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterForwardWriteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterForwardWriteRequest) ProtoMessage() {}
+
+func (x *ClusterForwardWriteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterForwardWriteRequest.ProtoReflect.Descriptor instead.
+func (*ClusterForwardWriteRequest) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ClusterForwardWriteRequest) GetShardId() int64 {
+	if x != nil {
+		return x.ShardId
+	}
+	return 0
+}
+
+func (x *ClusterForwardWriteRequest) GetRequestBody() []byte {
+	if x != nil {
+		return x.RequestBody
+	}
+	return nil
+}
+
+type ClusterForwardWriteResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *ClusterForwardWriteResponse) Reset() {
+	*x = ClusterForwardWriteResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ClusterForwardWriteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterForwardWriteResponse) ProtoMessage() {}
+
+func (x *ClusterForwardWriteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterForwardWriteResponse.ProtoReflect.Descriptor instead.
+func (*ClusterForwardWriteResponse) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{7}
+}
+
 type ClusterReadRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -377,7 +470,7 @@ type ClusterReadRequest struct {
 func (x *ClusterReadRequest) Reset() {
 	*x = ClusterReadRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -390,7 +483,7 @@ func (x *ClusterReadRequest) String() string {
 func (*ClusterReadRequest) ProtoMessage() {}
 
 func (x *ClusterReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6]
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -403,7 +496,7 @@ func (x *ClusterReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterReadRequest.ProtoReflect.Descriptor instead.
 func (*ClusterReadRequest) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{6}
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ClusterReadRequest) GetShardId() int64 {
@@ -431,7 +524,7 @@ type ClusterReadResponse struct {
 func (x *ClusterReadResponse) Reset() {
 	*x = ClusterReadResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[7]
+		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -444,7 +537,7 @@ func (x *ClusterReadResponse) String() string {
 func (*ClusterReadResponse) ProtoMessage() {}
 
 func (x *ClusterReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[7]
+	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -457,7 +550,7 @@ func (x *ClusterReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterReadResponse.ProtoReflect.Descriptor instead.
 func (*ClusterReadResponse) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{7}
+	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ClusterReadResponse) GetResponseBody() []byte {
@@ -465,108 +558,6 @@ func (x *ClusterReadResponse) GetResponseBody() []byte {
 		return x.ResponseBody
 	}
 	return nil
-}
-
-type LagsMessage struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	Lags []*LagEntry `protobuf:"bytes,1,rep,name=lags,proto3" json:"lags,omitempty"`
-}
-
-func (x *LagsMessage) Reset() {
-	*x = LagsMessage{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[8]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *LagsMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LagsMessage) ProtoMessage() {}
-
-func (x *LagsMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[8]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LagsMessage.ProtoReflect.Descriptor instead.
-func (*LagsMessage) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *LagsMessage) GetLags() []*LagEntry {
-	if x != nil {
-		return x.Lags
-	}
-	return nil
-}
-
-type LagEntry struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	ShardId int64 `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
-	Lag     int64 `protobuf:"varint,2,opt,name=lag,proto3" json:"lag,omitempty"`
-}
-
-func (x *LagEntry) Reset() {
-	*x = LagEntry{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[9]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
-}
-
-func (x *LagEntry) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LagEntry) ProtoMessage() {}
-
-func (x *LagEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[9]
-	if protoimpl.UnsafeEnabled && x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LagEntry.ProtoReflect.Descriptor instead.
-func (*LagEntry) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *LagEntry) GetShardId() int64 {
-	if x != nil {
-		return x.ShardId
-	}
-	return 0
-}
-
-func (x *LagEntry) GetLag() int64 {
-	if x != nil {
-		return x.Lag
-	}
-	return 0
 }
 
 type ConsumerSetRate struct {
@@ -677,37 +668,36 @@ var file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDesc = []
 	0x0a, 0x07, 0x72, 0x65, 0x74, 0x5f, 0x76, 0x61, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52,
 	0x06, 0x72, 0x65, 0x74, 0x56, 0x61, 0x6c, 0x12, 0x23, 0x0a, 0x0d, 0x72, 0x65, 0x73, 0x70, 0x6f,
 	0x6e, 0x73, 0x65, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0c,
-	0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x52, 0x0a, 0x12,
-	0x43, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x21, 0x0a,
-	0x0c, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0c, 0x52, 0x0b, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x42, 0x6f, 0x64, 0x79,
-	0x22, 0x3a, 0x0a, 0x13, 0x43, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x52, 0x65, 0x61, 0x64, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x23, 0x0a, 0x0d, 0x72, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0c,
-	0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x53, 0x0a, 0x0b,
-	0x4c, 0x61, 0x67, 0x73, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x44, 0x0a, 0x04, 0x6c,
-	0x61, 0x67, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x30, 0x2e, 0x73, 0x71, 0x75, 0x61,
-	0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64,
-	0x62, 0x2e, 0x6e, 0x6f, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2e,
-	0x76, 0x31, 0x2e, 0x4c, 0x61, 0x67, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x04, 0x6c, 0x61, 0x67,
-	0x73, 0x22, 0x37, 0x0a, 0x08, 0x4c, 0x61, 0x67, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x19, 0x0a,
+	0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x5a, 0x0a, 0x1a,
+	0x43, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x57, 0x72,
+	0x69, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68,
+	0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x07, 0x73, 0x68,
+	0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0b, 0x72, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x1d, 0x0a, 0x1b, 0x43, 0x6c, 0x75, 0x73,
+	0x74, 0x65, 0x72, 0x46, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x57, 0x72, 0x69, 0x74, 0x65, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x52, 0x0a, 0x12, 0x43, 0x6c, 0x75, 0x73, 0x74,
+	0x65, 0x72, 0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a,
 	0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52,
-	0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x6c, 0x61, 0x67, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x6c, 0x61, 0x67, 0x22, 0x67, 0x0a, 0x0f, 0x43, 0x6f,
-	0x6e, 0x73, 0x75, 0x6d, 0x65, 0x72, 0x53, 0x65, 0x74, 0x52, 0x61, 0x74, 0x65, 0x12, 0x1f, 0x0a,
-	0x0b, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x09, 0x52, 0x0a, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x1f,
-	0x0a, 0x0b, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x0a, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x4e, 0x61, 0x6d, 0x65, 0x12,
-	0x12, 0x0a, 0x04, 0x72, 0x61, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x72,
-	0x61, 0x74, 0x65, 0x42, 0x4b, 0x5a, 0x49, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
-	0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61,
-	0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65,
-	0x75, 0x70, 0x2f, 0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f,
-	0x76, 0x31, 0x2f, 0x6e, 0x6f, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x72, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x5f, 0x62, 0x6f, 0x64, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0b,
+	0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x3a, 0x0a, 0x13, 0x43,
+	0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x52, 0x65, 0x61, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x12, 0x23, 0x0a, 0x0d, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x62,
+	0x6f, 0x64, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0c, 0x72, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x42, 0x6f, 0x64, 0x79, 0x22, 0x67, 0x0a, 0x0f, 0x43, 0x6f, 0x6e, 0x73, 0x75,
+	0x6d, 0x65, 0x72, 0x53, 0x65, 0x74, 0x52, 0x61, 0x74, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x73, 0x63,
+	0x68, 0x65, 0x6d, 0x61, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x0a, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x73,
+	0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x0a, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04,
+	0x72, 0x61, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x72, 0x61, 0x74, 0x65,
+	0x42, 0x4b, 0x5a, 0x49, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73,
+	0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f,
+	0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x76, 0x31, 0x2f,
+	0x6e, 0x6f, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x62, 0x06, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -724,25 +714,24 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_rawDescGZIP
 
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_goTypes = []interface{}{
-	(*DDLStatementInfo)(nil),        // 0: squareup.cash.pranadb.notifications.v1.DDLStatementInfo
-	(*DDLCancelMessage)(nil),        // 1: squareup.cash.pranadb.notifications.v1.DDLCancelMessage
-	(*NotificationTestMessage)(nil), // 2: squareup.cash.pranadb.notifications.v1.NotificationTestMessage
-	(*ReloadProtobuf)(nil),          // 3: squareup.cash.pranadb.notifications.v1.ReloadProtobuf
-	(*ClusterProposeRequest)(nil),   // 4: squareup.cash.pranadb.notifications.v1.ClusterProposeRequest
-	(*ClusterProposeResponse)(nil),  // 5: squareup.cash.pranadb.notifications.v1.ClusterProposeResponse
-	(*ClusterReadRequest)(nil),      // 6: squareup.cash.pranadb.notifications.v1.ClusterReadRequest
-	(*ClusterReadResponse)(nil),     // 7: squareup.cash.pranadb.notifications.v1.ClusterReadResponse
-	(*LagsMessage)(nil),             // 8: squareup.cash.pranadb.notifications.v1.LagsMessage
-	(*LagEntry)(nil),                // 9: squareup.cash.pranadb.notifications.v1.LagEntry
-	(*ConsumerSetRate)(nil),         // 10: squareup.cash.pranadb.notifications.v1.ConsumerSetRate
+	(*DDLStatementInfo)(nil),            // 0: squareup.cash.pranadb.notifications.v1.DDLStatementInfo
+	(*DDLCancelMessage)(nil),            // 1: squareup.cash.pranadb.notifications.v1.DDLCancelMessage
+	(*NotificationTestMessage)(nil),     // 2: squareup.cash.pranadb.notifications.v1.NotificationTestMessage
+	(*ReloadProtobuf)(nil),              // 3: squareup.cash.pranadb.notifications.v1.ReloadProtobuf
+	(*ClusterProposeRequest)(nil),       // 4: squareup.cash.pranadb.notifications.v1.ClusterProposeRequest
+	(*ClusterProposeResponse)(nil),      // 5: squareup.cash.pranadb.notifications.v1.ClusterProposeResponse
+	(*ClusterForwardWriteRequest)(nil),  // 6: squareup.cash.pranadb.notifications.v1.ClusterForwardWriteRequest
+	(*ClusterForwardWriteResponse)(nil), // 7: squareup.cash.pranadb.notifications.v1.ClusterForwardWriteResponse
+	(*ClusterReadRequest)(nil),          // 8: squareup.cash.pranadb.notifications.v1.ClusterReadRequest
+	(*ClusterReadResponse)(nil),         // 9: squareup.cash.pranadb.notifications.v1.ClusterReadResponse
+	(*ConsumerSetRate)(nil),             // 10: squareup.cash.pranadb.notifications.v1.ConsumerSetRate
 }
 var file_squareup_cash_pranadb_notifications_v1_notifications_proto_depIdxs = []int32{
-	9, // 0: squareup.cash.pranadb.notifications.v1.LagsMessage.lags:type_name -> squareup.cash.pranadb.notifications.v1.LagEntry
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // [0:0] is the sub-list for method output_type
+	0, // [0:0] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() }
@@ -824,7 +813,7 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ClusterReadRequest); i {
+			switch v := v.(*ClusterForwardWriteRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -836,7 +825,7 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ClusterReadResponse); i {
+			switch v := v.(*ClusterForwardWriteResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -848,7 +837,7 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*LagsMessage); i {
+			switch v := v.(*ClusterReadRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -860,7 +849,7 @@ func file_squareup_cash_pranadb_notifications_v1_notifications_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_notifications_v1_notifications_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*LagEntry); i {
+			switch v := v.(*ClusterReadResponse); i {
 			case 0:
 				return &v.state
 			case 1:

@@ -1,6 +1,7 @@
 package load
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/ratelimit"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 )
@@ -85,11 +87,15 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 	defer l.committedOffsetsLock.Unlock()
 	msgs := make(chan *kafka.Message, l.bufferSize)
 	partitions := make([]int32, l.partitionsPerConsumer)
+	sb := strings.Builder{}
+	sb.WriteString("creating message provider, partitions are: ")
 	for i := range partitions {
 		partitions[i] = int32(l.nextPartition)
+		sb.WriteString(fmt.Sprintf("%d,", l.nextPartition))
 		l.nextPartition++
 	}
-	if l.nextPartition == l.partitionsStart+l.consumersPerSource {
+	log.Info(sb.String())
+	if l.nextPartition == l.partitionsStart+(l.consumersPerSource*l.partitionsPerConsumer) {
 		// Wrap around - consumers for a source can get closed when lags time out, and we need to make sure partitions
 		// go back to the right value next time they are created
 		l.nextPartition = l.partitionsStart

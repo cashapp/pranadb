@@ -200,7 +200,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.RaftRTTMs = 25
-			cnf.LogLags = false
+			cnf.DisableFsync = true // for performance
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)

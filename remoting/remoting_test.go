@@ -469,6 +469,46 @@ func TestSendRequestOneServerNotAvailable(t *testing.T) {
 	require.Equal(t, string(retVal.ResponseBody), string(clustResp.ResponseBody))
 }
 
+func TestSendRequestThenSendAnotherAfterServerStopped(t *testing.T) {
+	t.Helper()
+
+	nListener := &notifListener{}
+
+	server := newServer("localhost:7888")
+	server.RegisterMessageHandler(ClusterMessageClusterProposeRequest, nListener)
+
+	respBody := []byte("some response")
+	retVal := &notifications.ClusterProposeResponse{
+		RetVal:       777,
+		ResponseBody: respBody,
+	}
+	nListener.SetReturnVal(retVal)
+
+	err := server.Start()
+	require.NoError(t, err)
+
+	client := newClient(false, "localhost:7888")
+	err = client.Start()
+	require.NoError(t, err)
+	defer stopClient(t, client)
+
+	reqBody := []byte("some body")
+	req := &notifications.ClusterProposeRequest{
+		ShardId:     1234,
+		RequestBody: reqBody,
+	}
+	_, err = client.SendRequest(req, 1*time.Second)
+	require.NoError(t, err)
+
+	// Now stop the server
+	stopServers(t, server)
+
+	// Now try and send another request
+	log.Println("sending another")
+	_, err = client.SendRequest(req, 1*time.Second)
+	require.Error(t, err)
+}
+
 func TestSendRequestWithError(t *testing.T) {
 	t.Helper()
 

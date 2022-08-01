@@ -58,7 +58,7 @@ func TestPutGet(t *testing.T) {
 	shardID := uint64(123545)
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	err := clust.WriteBatch(&writeBatch)
+	err := clust.WriteBatch(&writeBatch, false)
 	require.NoError(t, err)
 
 	res, err := clust.LocalGet(key)
@@ -85,7 +85,7 @@ func TestPutDelete(t *testing.T) {
 	shardID := uint64(123545)
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	err := clust.WriteBatch(&writeBatch)
+	err := clust.WriteBatch(&writeBatch, false)
 	require.NoError(t, err)
 
 	res, err := clust.LocalGet(key)
@@ -94,7 +94,7 @@ func TestPutDelete(t *testing.T) {
 
 	deleteBatch := createWriteBatchWithDeletes(shardID, key)
 
-	err = clust.WriteBatch(&deleteBatch)
+	err = clust.WriteBatch(&deleteBatch, false)
 	require.NoError(t, err)
 
 	res, err = clust.LocalGet(key)
@@ -137,7 +137,7 @@ func testScan(t *testing.T, limit int, expected int) {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 
-	err := clust.WriteBatch(wb)
+	err := clust.WriteBatch(wb, false)
 	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")
@@ -188,7 +188,7 @@ func TestRestart(t *testing.T) {
 	shardID := uint64(123545)
 	writeBatch := createWriteBatchWithPuts(shardID, kvPair)
 
-	err := clust.WriteBatch(&writeBatch)
+	err := clust.WriteBatch(&writeBatch, false)
 	require.NoError(t, err)
 
 	// Now stop the cluster

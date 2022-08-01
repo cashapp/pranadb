@@ -69,15 +69,16 @@ func DoDumpStacks(filterSpam bool) {
 	for i, line := range lines {
 		// Screen out Pebble spam
 		if filterSpam && strings.HasPrefix(line, "goroutine ") {
+			ignoring = false
+			// Does the next line have spam on it? If so ignore everything until the next 'goroutine' line
 			if i != len(lines)-1 {
 				nextLine := lines[i+1]
 				for _, spam := range spamLines {
 					if strings.Index(nextLine, spam) != -1 {
 						ignoring = true
+						break
 					}
 				}
-			} else {
-				ignoring = false
 			}
 		}
 		if !ignoring {

@@ -18,13 +18,15 @@ import (
 const (
 	shardStateMachineLookupPing          byte   = 1
 	shardStateMachineLookupQuery         byte   = 2
+	shardStateMachineLookupGet           byte   = 3
 	shardStateMachineCommandWrite        byte   = 1
 	shardStateMachineCommandForwardWrite byte   = 2
 	shardStateMachineResponseOK          uint64 = 1
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
-	processor := calcProcessingNode(nodeIDs, shardID, nodeID)
+	processorNode := calcProcessingNode(nodeIDs, shardID)
+	processor := nodeID == processorNode
 	ssm := ShardOnDiskStateMachine{
 		nodeID:    nodeID,
 		nodeIDs:   nodeIDs,
@@ -58,7 +60,6 @@ type ShardOnDiskStateMachine struct {
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	log.Infof("shard state machine %d open", s.shardID)
 	s.dragon.registerShardSM(s.shardID)
 	if err := s.loadDedupCache(); err != nil {
 		return 0, err
@@ -156,6 +157,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 
 func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp uint64) error {
 	puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
+	hasDups := false
 	for _, kvPair := range puts {
 
 		var key []byte
@@ -168,6 +170,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 				return err
 			}
 			if ignore {
+				hasDups = true
 				continue
 			}
 
@@ -211,13 +214,18 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 			return errors.WithStack(err)
 		}
 	}
+	if hasDups {
+		log.Warnf("Write batch in shard %d - contained duplicates - these were screened out", s.shardID)
+	}
 	return nil
 }
 
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
 func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (puts []cluster.KVPair, deletes [][]byte) {
-	numPuts, offset := common.ReadUint32FromBufferLE(buff, offset)
+	var numPuts, numDeletes uint32
+	numPuts, offset = common.ReadUint32FromBufferLE(buff, offset)
+	numDeletes, offset = common.ReadUint32FromBufferLE(buff, offset)
 	puts = make([]cluster.KVPair, numPuts)
 	for i := 0; i < int(numPuts); i++ {
 		var kl uint32
@@ -243,7 +251,7 @@ func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int,
 			Value: v,
 		}
 	}
-	numDeletes, offset := common.ReadUint32FromBufferLE(buff, offset)
+
 	deletes = make([][]byte, numDeletes)
 	for i := 0; i < int(numDeletes); i++ {
 		var kl uint32
@@ -302,25 +310,43 @@ func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 		}
 		rows, err := s.dragon.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 		if err != nil {
-			var buff []byte
-			buff = append(buff, 0) // Zero byte signifies error
-			buff = append(buff, err.Error()...)
-			// Note - we don't send back an error to Dragon if a query failed - we only return an error
-			// for an unrecoverable error.
-			return buff, nil
+			return encodeError(err), nil
 		}
 		b := rows.Serialize()
-		buff := make([]byte, 0, 1+len(b))
-		buff = append(buff, 1) // 1 signifies no error
-		buff = append(buff, b...)
-		return buff, nil
+		res := make([]byte, 0, 1+len(b))
+		res = append(res, 1) // 1 signifies no error
+		res = append(res, b...)
+		return res, nil
+	} else if typ == shardStateMachineLookupGet {
+		keyLen, _ := common.ReadUint32FromBufferLE(buff, 1)
+		key := buff[5 : 5+keyLen]
+		val, err := s.dragon.LocalGet(key)
+		if err != nil {
+			return encodeError(err), nil
+		}
+		res := make([]byte, 0, 1+len(val))
+		res = append(res, 1)
+		res = append(res, val...)
+		return res, nil
 	} else {
 		panic("invalid lookup type")
 	}
 }
 
+func encodeError(err error) []byte {
+	var buff []byte
+	buff = append(buff, 0) // Zero byte signifies error
+	buff = append(buff, err.Error()...)
+	// Note - we don't send back an error to Dragon if a query failed - we only return an error
+	// for an unrecoverable error.
+	return buff
+}
+
 func (s *ShardOnDiskStateMachine) Sync() error {
-	return syncPebble(s.dragon.pebble)
+	if s.dragon.cnf.DisableFsync {
+		return syncPebble(s.dragon.pebble)
+	}
+	return nil
 }
 
 func (s *ShardOnDiskStateMachine) PrepareSnapshot() (interface{}, error) {
@@ -379,15 +405,6 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 func (s *ShardOnDiskStateMachine) Close() error {
 	s.dragon.unregisterShardSM(s.shardID)
 	return nil
-}
-
-// One of the replicas is chosen in a deterministic way to do the processing for the shard - i.e. to handle any
-// incoming rows. It doesn't matter whether this replica is the raft leader or not, but every raft replica needs
-// to come to the same decision as to who is the processor - that is why we handle the remove node event through
-// the same state machine as processing writes.
-func calcProcessingNode(nodeIDs []int, shardID uint64, nodeID int) bool {
-	leaderNode := nodeIDs[shardID%uint64(len(nodeIDs))]
-	return nodeID == leaderNode
 }
 
 func (s *ShardOnDiskStateMachine) loadDedupCache() error {

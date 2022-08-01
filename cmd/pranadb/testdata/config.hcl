@@ -57,6 +57,4 @@ kafka-brokers = {
 raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
-processor-max-lag                 = "6500ms"
-fill-max-lag                      = "12000ms"
-source-lag-timeout                = "65000ms"
+disable-fsync                     = true

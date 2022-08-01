@@ -49,7 +49,6 @@ type Engine struct {
 	queryExec         common.SimpleQueryExec
 	protoRegistry     protolib.Resolver
 	failInject        failinject.Injector
-	lagManager        *LagManager
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -82,7 +81,6 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		protoRegistry: registry,
 		failInject:    failInject,
 	}
-	engine.lagManager = NewLagManager(engine, cfg.NotifListenAddresses...)
 	engine.createMaps()
 	return engine
 }
@@ -92,9 +90,6 @@ func (p *Engine) Start() error {
 	defer p.lock.Unlock()
 	if p.started {
 		return nil
-	}
-	if err := p.lagManager.Start(); err != nil {
-		return err
 	}
 	p.started = true
 	return nil
@@ -119,9 +114,6 @@ func (p *Engine) Stop() error {
 	defer p.lock.Unlock()
 	if !p.started {
 		return nil
-	}
-	if err := p.lagManager.Stop(); err != nil {
-		return err
 	}
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
@@ -290,12 +282,11 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 }
 
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
-	log.Printf("creating new scheduler for shard %d", shardID)
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
 	defer p.localShardsLock.Unlock()
-	sh := sched.NewShardScheduler(shardID, p)
+	sh := sched.NewShardScheduler(shardID, p, p.cluster)
 	p.schedulers[shardID] = sh
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
 	return &shardListener{
@@ -470,7 +461,22 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 			return errors.WithStack(err)
 		}
 	}
-	// Now send any remote forward batches - e.g. from aggregations
+	// Now send any  forward batches - e.g. from aggregations
+	// We screen out any batch destined for this shard id - we execute that locally - if we tried to send it
+	// to the processor then it would deadlock as we are running on that processor
+	var localBatch *cluster.WriteBatch
+	for shardID, b := range ctx.RemoteBatches {
+		if shardID == batch.writeBatch.ShardID {
+			localBatch = b
+			delete(ctx.RemoteBatches, shardID)
+		}
+	}
+	if localBatch != nil {
+		if err := p.cluster.WriteForwardBatch(localBatch, true); err != nil {
+			return err
+		}
+	}
+	// And send the remote ones - these will go through the processors
 	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster); err != nil {
 		return errors.WithStack(err)
 	}
@@ -478,9 +484,10 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	if err := p.failInject.GetFailpoint("process_batch_before_local_commit").CheckFail(); err != nil {
 		return err
 	}
-	if err := p.cluster.WriteBatch(batch.writeBatch); err != nil {
+	if err := p.cluster.WriteBatch(batch.writeBatch, true); err != nil {
 		return errors.WithStack(err)
 	}
+
 	return nil
 }
 
@@ -663,7 +670,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		}
 	}
 
-	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, p.lagManager, p.cfg.FillMaxLag)
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster)
 
 	src, err := source.NewSource(
 		sourceInfo,
@@ -674,7 +681,6 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
-		p.lagManager,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -729,9 +735,6 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			}
 			scanStart = pairs[len(pairs)-1].Key
 			skipFirst = true
-			if !util.MaybeThrottleIfLagging(p.cluster.GetAllShardIDs(), p.lagManager, p.cfg.ProcessorMaxLag, 2*time.Minute) {
-				return errors.NewPranaErrorf(errors.DdlCancelled, "initial state load timed out in waiting for lags to reduce")
-			}
 		}
 	}
 	if err := p.cluster.SyncStore(); err != nil {
@@ -773,27 +776,6 @@ func (p *Engine) IsEmpty() bool {
 	return len(p.sources) == 0 && len(p.materializedViews) == 0 && numRecs == 0
 }
 
-func (p *Engine) getLagsMessage() *notifications.LagsMessage {
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
-
-	lags := make([]*notifications.LagEntry, len(p.localLeaderShards))
-	for i, shardID := range p.localLeaderShards {
-		sh := p.schedulers[shardID]
-		lag := sh.GetLag(common.NanoTime())
-		lagEntry := &notifications.LagEntry{
-			ShardId: int64(shardID),
-			Lag:     int64(lag),
-		}
-		lags[i] = lagEntry
-	}
-	return &notifications.LagsMessage{Lags: lags}
-}
-
-func (p *Engine) GetLagManager() *LagManager {
-	return p.lagManager
-}
-
 type loadClientSetRateHandler struct {
 	p *Engine
 }
@@ -820,4 +802,35 @@ func (l *loadClientSetRateHandler) HandleMessage(notification remoting.ClusterMe
 
 func (p *Engine) GetLoadClientSetRateHandler() remoting.ClusterMessageHandler {
 	return &loadClientSetRateHandler{p: p}
+}
+
+type forwardWriteHandler struct {
+	e *Engine
+}
+
+func (f *forwardWriteHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	req, ok := notification.(*notifications.ClusterForwardWriteRequest)
+	if !ok {
+		panic("not a *notifications.ClusterForwardWriteRequest")
+	}
+	return f.e.handleForwardWriteRequest(req)
+}
+
+func (p *Engine) GetForwardWriteHandler() remoting.ClusterMessageHandler {
+	return &forwardWriteHandler{e: p}
+}
+
+func (p *Engine) handleForwardWriteRequest(req *notifications.ClusterForwardWriteRequest) (remoting.ClusterMessage, error) {
+	scheduler := p.getScheduler(uint64(req.ShardId))
+	if scheduler == nil {
+		return nil, errors.Errorf("cannot find scheduler for shard %d this is most likely because the node for the processor is not available", req.ShardId)
+	}
+	err := scheduler.AddForwardBatch(req.GetRequestBody())
+	return &notifications.ClusterForwardWriteResponse{}, err
+}
+
+func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.schedulers[shardID]
 }
