@@ -30,6 +30,8 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/push"
 	"github.com/squareup/pranadb/sharder"
+
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 func NewServer(config conf.Config) (*Server, error) {
@@ -156,6 +158,25 @@ func (s *Server) Start() error {
 		return nil
 	}
 
+	if err := profiler.Start(
+		profiler.WithService("pranadb-perf"),
+		profiler.WithEnv("staging"),
+		profiler.WithVersion("0.1"),
+	//	profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
+		profiler.WithProfileTypes(
+			profiler.CPUProfile,
+			profiler.HeapProfile,
+			// The profiles below are disabled by default to keep overhead
+			// low, but can be enabled as needed.
+
+			//profiler.BlockProfile,
+			profiler.MutexProfile,
+			// profiler.GoroutineProfile,
+		),
+	); err != nil {
+		return err
+	}
+
 	var err error
 	for _, serv := range s.services {
 		log.Printf("prana node %d starting service %s", s.nodeID, reflect.TypeOf(serv).String())
@@ -200,6 +221,7 @@ func (s *Server) Stop() error {
 			return errors.WithStack(err)
 		}
 	}
+	profiler.Stop()
 	s.started = false
 	return nil
 }
