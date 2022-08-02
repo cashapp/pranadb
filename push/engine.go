@@ -219,6 +219,10 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor
 		return err
 	}
 
+	if te.IsTransient() {
+		return errors.NewPranaErrorf(errors.InvalidStatement, "Cannot create index on transient source: %s", indexInfo.TableName)
+	}
+
 	// Create an index executor
 	indexExec := exec.NewIndexExecutor(te.TableInfo, indexInfo, p.cluster)
 
@@ -670,7 +674,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		}
 	}
 
-	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster)
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient)
 
 	src, err := source.NewSource(
 		sourceInfo,

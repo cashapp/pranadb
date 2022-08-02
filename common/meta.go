@@ -312,6 +312,7 @@ type SourceOriginInfo struct {
 	IngestFilter    string
 	InitialState    string
 	ConsumerGroupID string
+	Transient       bool
 }
 
 type KafkaEncoding struct {

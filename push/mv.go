@@ -51,7 +51,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster)
+	mv.tableExecutor = exec.NewTableExecutor(&tableInfo, pe.cluster, false)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -213,18 +213,23 @@ func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
 		return errors.WithStack(err)
 	}
 
-	chans := make([]chan error, len(tes))
+	var chans []chan error
 
 	for i, tableExec := range tes {
 		ts := tss[i]
-		ch := make(chan error, 1)
-		chans[i] = ch
-		// Execute in parallel
-		te := tableExec
-		go func() {
-			err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
-			ch <- err
-		}()
+		if !tableExec.IsTransient() {
+			ch := make(chan error, 1)
+			chans = append(chans, ch)
+			// Execute in parallel
+			te := tableExec
+
+			go func() {
+				err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
+				ch <- err
+			}()
+		} else {
+			tableExec.AddConsumingNode(m.Info.Name, ts)
+		}
 	}
 
 	for _, ch := range chans {

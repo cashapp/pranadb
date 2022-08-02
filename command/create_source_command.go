@@ -287,6 +287,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
 		initialiseFrom                             string
+		transient                                  bool
 	)
 	for _, opt := range ast.OriginInformation {
 		switch {
@@ -325,6 +326,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		case opt.InitialState != "":
 			initialiseFrom = opt.InitialState
 		}
+		if opt.Transient != nil && *opt.Transient {
+			transient = true
+		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "headerEncoding is required")
@@ -351,6 +355,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	if len(colIndex) != len(colNames) {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Duplicate column names")
 	}
+	if initialiseFrom != "" && transient {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Cannot specify InitialState for a Transient source")
+	}
 
 	pkMap := make(map[int]struct{}, len(pkCols))
 	for _, pkCol := range pkCols {
@@ -371,6 +378,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		Properties:      propsMap,
 		InitialState:    initialiseFrom,
 		ConsumerGroupID: c.consumerGroupID,
+		Transient:       transient,
 	}
 	tableInfo := common.TableInfo{
 		ID:             c.tableSequences[0],

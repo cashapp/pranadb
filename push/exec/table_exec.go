@@ -30,9 +30,10 @@ type TableExecutor struct {
 	fillTableID        uint64
 	uncommittedBatches sync.Map
 	delayer            interruptor.InterruptManager
+	transient          bool
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool) *TableExecutor {
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -45,7 +46,12 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster) *Table
 		store:          store,
 		consumingNodes: make(map[string]PushExecutor),
 		delayer:        interruptor.GetInterruptManager(),
+		transient:      transient,
 	}
+}
+
+func (t *TableExecutor) IsTransient() bool {
+	return t.transient
 }
 
 func (t *TableExecutor) ReCalcSchemaFromChildren() error {
@@ -93,6 +99,11 @@ func (t *TableExecutor) waitForNoUncommittedBatches() error {
 
 func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	if t.transient {
+		return t.ForwardToConsumingNodes(rowsBatch, ctx)
+	}
 
 	// We keep track of uncommitted batches
 	sid := ctx.WriteBatch.ShardID
@@ -160,7 +171,6 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		}
 	}
 	err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
-	t.lock.RUnlock()
 	return errors.WithStack(err)
 }
 
