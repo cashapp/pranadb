@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/lifecycle"
@@ -164,11 +165,14 @@ func (s *Server) Start() error {
 	envs := strings.Join(env, ",")
 	log.Infof("environment is %s", envs)
 
+	hostIP := os.Getenv("HOST_IP")
+
 	if err := profiler.Start(
 		profiler.WithService("pranadb-perf-pranadb"),
 		profiler.WithEnv("staging"),
 		profiler.WithVersion("0.1"),
 		//profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
+		profiler.WithAgentAddr(fmt.Sprintf("%s:%d", hostIP, 8126)),
 		profiler.WithProfileTypes(
 			profiler.CPUProfile,
 			profiler.HeapProfile,
