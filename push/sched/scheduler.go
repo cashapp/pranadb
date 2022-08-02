@@ -94,16 +94,16 @@ func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust clus
 }
 
 func (s *ShardScheduler) AddForwardBatch(writeBatch []byte) error {
-	ch := s.addForwardBatch(writeBatch)
-	if ch != nil {
-		select {
-		case err := <-ch:
-			return err
-		case <-time.After(addForwardRowsTimeout):
-			return errors.NewPranaErrorf(errors.Timeout, "timed out in waiting for forward write batch to be processed for shard %d", s.shardID)
-		}
+	ch, err := s.addForwardBatch(writeBatch)
+	if err != nil {
+		return err
 	}
-	return nil
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(addForwardRowsTimeout):
+		return errors.NewPranaErrorf(errors.Timeout, "timed out in waiting for forward write batch to be processed for shard %d", s.shardID)
+	}
 }
 
 func getNumPuts(batch []byte) uint32 {
@@ -111,27 +111,16 @@ func getNumPuts(batch []byte) uint32 {
 	return numPuts
 }
 
-func (s *ShardScheduler) setFailed(err error) {
+func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.stopped = true
-	s.failed = true
-	// We unblock all waiting writes
-	for _, fw := range s.forwardWrites {
-		fw.completionChannels[0] <- err
-	}
-	s.processorRunning = false
-}
-
-func (s *ShardScheduler) addForwardBatch(writeBatch []byte) chan error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if s.stopped {
-		return nil
-	}
 
 	ch := make(chan error)
+
+	if s.stopped {
+		return nil, errors.New("cannot add forward batch, scheduler is stopped")
+	}
+
 	s.forwardWrites = append(s.forwardWrites, WriteBatchEntry{
 		writeBatch:         writeBatch,
 		completionChannels: []chan error{ch},
@@ -143,10 +132,10 @@ func (s *ShardScheduler) addForwardBatch(writeBatch []byte) chan error {
 
 	if !s.started {
 		// We allow rows to be queued before the scheduler is started
-		return ch
+		return ch, nil
 	}
 	s.maybeStartRunning()
-	return ch
+	return ch, nil
 }
 
 func (s *ShardScheduler) maybeStartRunning() {
@@ -374,10 +363,26 @@ func (s *ShardScheduler) Stop() {
 	close(s.actions)
 	s.started = false
 	s.stopped = true
+	if !s.failed {
+		s.unblockWaitingWrites(errors.New("scheduler is closed"))
+	}
 	s.lock.Unlock()
 	// We want to make sure the runLoop has exited before we complete Stop() this means all current batch processing
 	// is complete
 	s.loopExitWaitGroup.Wait()
+}
+
+func (s *ShardScheduler) setFailed(err error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.failed || s.stopped {
+		return
+	}
+	s.stopped = true
+	s.failed = true
+	// We unblock all waiting writes
+	s.unblockWaitingWrites(err)
+	s.processorRunning = false
 }
 
 func (s *ShardScheduler) GetLag(nowNanos uint64) time.Duration {
@@ -422,6 +427,12 @@ func (s *ShardScheduler) WaitForProcessingToComplete(ch chan struct{}) {
 			}
 		}
 	}()
+}
+
+func (s *ShardScheduler) unblockWaitingWrites(err error) {
+	for _, fw := range s.forwardWrites {
+		fw.completionChannels[0] <- err
+	}
 }
 
 func (s *ShardScheduler) ShardID() uint64 {
