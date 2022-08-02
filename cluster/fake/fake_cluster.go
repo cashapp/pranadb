@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
@@ -435,9 +434,6 @@ func (f *FakeCluster) RemoveToDeleteBatch(batch *cluster.ToDeleteBatch) error {
 
 func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 	return nil
-}
-
-func (f *FakeCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
 }
 
 func (f *FakeCluster) SyncStore() error {

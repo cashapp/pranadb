@@ -163,8 +163,6 @@ func (c *connection) readLoop() {
 	c.s.removeConnection(c)
 }
 
-// We execute messages (other than heartbeat) on a different goroutine as we need to be able to answer heartbeats even
-// when we are processing other messages.
 func (c *connection) handleMessageLoop() {
 	for {
 		exec, ok := <-c.asyncMsgCh
@@ -176,20 +174,10 @@ func (c *connection) handleMessageLoop() {
 	}
 }
 
-func (c *connection) handleMessage(msgType messageType, msg []byte) error {
-	if msgType == heartbeatMessageType {
-		if !c.s.responsesDisabled.Get() {
-			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
-				log.Errorf("failed to write heartbeat %+v", err)
-			}
-		}
-		return nil
-	}
-
+func (c *connection) handleMessage(_ messageType, msg []byte) error {
 	// Handle async
 	c.asyncMsgsInProgress.Add(1)
 	c.asyncMsgCh <- msg
-
 	return nil
 }
 
@@ -207,7 +195,7 @@ func (c *connection) handleMessageAsync0(msg []byte) {
 	handler := c.s.lookupMessageHandler(request.requestMessage)
 	respMsg, respErr := handler.HandleMessage(request.requestMessage)
 	if respErr != nil {
-		log.Errorf("Failed to handle cluster message %+v", respErr)
+		log.Errorf("failed to handle cluster message %+v", respErr)
 	}
 	if request.requiresResponse && !c.s.responsesDisabled.Get() {
 		if err := c.sendResponse(request, respMsg, respErr); err != nil {
@@ -242,8 +230,16 @@ func (c *connection) sendResponse(nf *ClusterRequest, respMsg ClusterMessage, re
 
 func (c *connection) stop() {
 	if err := c.conn.Close(); err != nil {
-		// Do nothing - connection might already have been closed (e.g. from client)
+		// Do nothing - connection might already have been closed (e.g. from Client)
 	}
 	c.closeGroup.Wait()
 	c.asyncMsgsInProgress.Wait() // Wait for all async messages to be processed
+}
+
+// Used in testing only
+func (s *server) closeNetConns() {
+	s.connections.Range(func(conn, _ interface{}) bool {
+		conn.(*connection).conn.Close()
+		return true
+	})
 }

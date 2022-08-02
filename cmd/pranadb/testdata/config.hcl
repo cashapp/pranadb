@@ -26,8 +26,6 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-remoting-heartbeat-interval       = "76s"
-remoting-heartbeat-timeout        = "5s"
 enable-api-server                 = true
 api-server-listen-addresses       = [
   "addr7",

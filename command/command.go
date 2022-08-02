@@ -3,7 +3,8 @@ package command
 import (
 	"fmt"
 	"github.com/squareup/pranadb/conf"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -22,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
-	"github.com/squareup/pranadb/remoting"
 )
 
 type Executor struct {
@@ -34,13 +34,13 @@ type Executor struct {
 	execCtxIDSequence int64
 	ddlRunner         *DDLCommandRunner
 	failureInjector   failinject.Injector
-	notifClient       remoting.Client
-	ddlResetClient    remoting.Client
+	ddlClient         remoting.Broadcaster
+	ddlResetClient    remoting.Broadcaster
 	config            *conf.Config
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
-	cluster cluster.Cluster, notifClient remoting.Client, ddlResetClient remoting.Client, protoRegistry protolib.Resolver,
+	cluster cluster.Cluster, ddlClient remoting.Broadcaster, ddlResetClient remoting.Broadcaster, protoRegistry protolib.Resolver,
 	failureInjector failinject.Injector, config *conf.Config) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
@@ -50,7 +50,7 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 		protoRegistry:     protoRegistry,
 		execCtxIDSequence: -1,
 		failureInjector:   failureInjector,
-		notifClient:       notifClient,
+		ddlClient:         ddlClient,
 		ddlResetClient:    ddlResetClient,
 		config:            config,
 	}
@@ -64,17 +64,13 @@ func (e *Executor) DDlCommandRunner() *DDLCommandRunner {
 }
 
 func (e *Executor) Start() error {
-	if err := e.notifClient.Start(); err != nil {
-		return err
-	}
-	return e.ddlResetClient.Start()
+	return nil
 }
 
 func (e *Executor) Stop() error {
-	if err := e.notifClient.Stop(); err != nil {
-		return err
-	}
-	return e.ddlResetClient.Stop()
+	e.ddlClient.Stop()
+	e.ddlResetClient.Stop()
+	return nil
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
@@ -338,7 +334,7 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 }
 
 func (e *Executor) execConsumerRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
-	return e.notifClient.BroadcastSync(&notifications.ConsumerSetRate{
+	return e.ddlClient.Broadcast(&clustermsgs.ConsumerSetRate{
 		SchemaName: execCtx.Schema.Name,
 		SourceName: sourceName,
 		Rate:       rate,

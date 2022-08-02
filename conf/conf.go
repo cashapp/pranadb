@@ -2,8 +2,6 @@ package conf
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/squareup/pranadb/errors"
 )
 
@@ -14,12 +12,9 @@ const (
 	DefaultSequenceCompactionOverhead = 50
 	DefaultLocksSnapshotEntries       = 1000
 	DefaultLocksCompactionOverhead    = 50
-	DefaultRemotingHeartbeatInterval  = 5 * time.Second
-	DefaultRemotingHeartbeatTimeout   = 5 * time.Second
 	DefaultRaftRTTMs                  = 50
 	DefaultRaftHeartbeatRTT           = 30
 	DefaultRaftElectionRTT            = 300
-	DefaultEnableFSync                = true
 )
 
 type Config struct {
@@ -38,8 +33,6 @@ type Config struct {
 	SequenceCompactionOverhead       int
 	LocksSnapshotEntries             int
 	LocksCompactionOverhead          int
-	RemotingHeartbeatInterval        time.Duration
-	RemotingHeartbeatTimeout         time.Duration
 	EnableAPIServer                  bool
 	APIServerListenAddresses         []string
 	EnableSourceStats                bool
@@ -79,12 +72,6 @@ func (c *Config) ApplyDefaults() {
 	if c.LocksCompactionOverhead == 0 {
 		c.LocksCompactionOverhead = DefaultLocksCompactionOverhead
 	}
-	if c.RemotingHeartbeatInterval == 0 {
-		c.RemotingHeartbeatInterval = DefaultRemotingHeartbeatInterval
-	}
-	if c.RemotingHeartbeatTimeout == 0 {
-		c.RemotingHeartbeatTimeout = DefaultRemotingHeartbeatTimeout
-	}
 	if c.RaftRTTMs == 0 {
 		c.RaftRTTMs = DefaultRaftRTTMs
 	}
@@ -114,12 +101,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError(fmt.Sprintf("KafkaBroker %s, invalid ClientType, must be %d or %d",
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
-	}
-	if c.RemotingHeartbeatInterval < 1*time.Second {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatInterval must be >= %d", time.Second))
-	}
-	if c.RemotingHeartbeatTimeout < 1*time.Millisecond {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatTimeout must be >= %d", time.Millisecond))
 	}
 	if c.EnableAPIServer {
 		if len(c.APIServerListenAddresses) == 0 {
@@ -226,8 +207,6 @@ func NewDefaultConfig() *Config {
 		SequenceCompactionOverhead: DefaultSequenceCompactionOverhead,
 		LocksSnapshotEntries:       DefaultLocksSnapshotEntries,
 		LocksCompactionOverhead:    DefaultLocksCompactionOverhead,
-		RemotingHeartbeatInterval:  DefaultRemotingHeartbeatInterval,
-		RemotingHeartbeatTimeout:   DefaultRemotingHeartbeatTimeout,
 		RaftRTTMs:                  DefaultRaftRTTMs,
 		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:            DefaultRaftElectionRTT,
@@ -236,14 +215,12 @@ func NewDefaultConfig() *Config {
 
 func NewTestConfig(fakeKafkaID int64) *Config {
 	return &Config{
-		RemotingHeartbeatInterval: DefaultRemotingHeartbeatInterval,
-		RemotingHeartbeatTimeout:  DefaultRemotingHeartbeatTimeout,
-		RaftRTTMs:                 DefaultRaftRTTMs,
-		RaftHeartbeatRTT:          DefaultRaftHeartbeatRTT,
-		RaftElectionRTT:           DefaultRaftElectionRTT,
-		NodeID:                    0,
-		NumShards:                 10,
-		TestServer:                true,
+		RaftRTTMs:        DefaultRaftRTTMs,
+		RaftHeartbeatRTT: DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:  DefaultRaftElectionRTT,
+		NodeID:           0,
+		NumShards:        10,
+		TestServer:       true,
 		KafkaBrokers: BrokerConfigs{
 			"testbroker": BrokerConfig{
 				ClientType: BrokerClientFake,

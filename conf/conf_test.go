@@ -2,11 +2,9 @@ package conf
 
 import (
 	"fmt"
-	"testing"
-	"time"
-
 	"github.com/squareup/pranadb/errors"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 type configPair struct {
@@ -47,18 +45,6 @@ func invalidBrokerClientTypeConf() Config {
 		cnfsCopy[k] = bc
 	}
 	cnf.KafkaBrokers = cnfsCopy
-	return cnf
-}
-
-func invalidRemotingHeartbeatInterval() Config {
-	cnf := confAllFields
-	cnf.RemotingHeartbeatInterval = time.Second - 1
-	return cnf
-}
-
-func invalidRemotingHeartbeatTimeout() Config {
-	cnf := confAllFields
-	cnf.RemotingHeartbeatTimeout = time.Millisecond - 1
 	return cnf
 }
 
@@ -252,8 +238,6 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB3000 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB3000 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
-	{"PDB3000 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
 	{"PDB3000 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
@@ -316,8 +300,6 @@ var confAllFields = Config{
 	SequenceCompactionOverhead: 1001,
 	LocksSnapshotEntries:       101,
 	LocksCompactionOverhead:    51,
-	RemotingHeartbeatInterval:  76 * time.Second,
-	RemotingHeartbeatTimeout:   4 * time.Second,
 	EnableAPIServer:            true,
 	APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
 	RaftRTTMs:                  100,

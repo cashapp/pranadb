@@ -1,6 +1,6 @@
 
-õ
-:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"•
+é
+6squareup/cash/pranadb/clustermsgs/v1/clustermsgs.proto$squareup.cash.pranadb.clustermsgs.v1"•
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
 
@@ -15,10 +15,7 @@ schemaName
 extra_data (R	extraData"3
 DDLCancelMessage
 schema_name (	R
-schemaName"8
-NotificationTestMessage
-
-session_id (	R	sessionId"
+schemaName"
 ReloadProtobuf"U
 ClusterProposeRequest
 shard_id (RshardId!
@@ -40,4 +37,7 @@ session_id (	R	sessionId"
 schemaName
 source_name (	R
 sourceName
-rate (RrateBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3
+rate (Rrate"4
+RemotingTestMessage
+
+some_field (	R	someFieldBIZGgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgsbproto3
