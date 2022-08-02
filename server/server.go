@@ -7,8 +7,10 @@ import (
 	"github.com/squareup/pranadb/metrics"
 	"github.com/squareup/pranadb/remoting"
 	"net/http" //nolint:stylecheck
+	"os"
 	"reflect"
 	"runtime"
+	"strings"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -158,11 +160,15 @@ func (s *Server) Start() error {
 		return nil
 	}
 
+	env := os.Environ()
+	envs := strings.Join(env, ",")
+	log.Infof("environment is %s", envs)
+
 	if err := profiler.Start(
-		profiler.WithService("pranadb-perf"),
+		profiler.WithService("pranadb-perf-pranadb"),
 		profiler.WithEnv("staging"),
 		profiler.WithVersion("0.1"),
-	//	profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
+		//profiler.WithTags("<KEY1>:<VALUE1>,<KEY2>:<VALUE2>"),
 		profiler.WithProfileTypes(
 			profiler.CPUProfile,
 			profiler.HeapProfile,
