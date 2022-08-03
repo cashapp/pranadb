@@ -189,6 +189,9 @@ func (s *Source) IsRunning() bool {
 }
 
 func (s *Source) Drop() error {
+	if s.tableExecutor.IsTransient() {
+		return nil
+	}
 	// Delete the deduplication ids for the source
 	log.Printf("dropping source %s %d", s.sourceInfo.Name, s.sourceInfo.ID)
 	startPrefix := common.AppendUint64ToBufferBE(nil, common.ForwardDedupTableID)
