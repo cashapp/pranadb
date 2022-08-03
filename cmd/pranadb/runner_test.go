@@ -83,5 +83,12 @@ func createConfigWithAllFields() conf.Config {
 		RaftElectionRTT:            300,
 		RaftHeartbeatRTT:           30,
 		DisableFsync:               true,
+
+		DDProfilerTypes:           "HEAP,CPU",
+		DDProfilerServiceName:     "my-service",
+		DDProfilerEnvironmentName: "playing",
+		DDProfilerPort:            1324,
+		DDProfilerVersionName:     "2.3",
+		DDProfilerHostEnvVarName:  "FOO_IP",
 	}
 }

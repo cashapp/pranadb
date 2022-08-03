@@ -56,3 +56,10 @@ raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
 disable-fsync                     = true
+
+dd-profiler-types                 = "HEAP,CPU"
+dd-profiler-service-name          = "my-service"
+dd-profiler-environment-name      = "playing"
+dd-profiler-port                  = 1324
+dd-profiler-version-name          = "2.3"
+dd-profiler-host-env-var-name     = "FOO_IP"
