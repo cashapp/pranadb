@@ -51,14 +51,13 @@ type Registry struct {
 	mu          sync.RWMutex
 	partitioner server.IPartitioner
 	validate    config.TargetValidator
-	addr        map[raftio.NodeInfo]string
+	addr        sync.Map
 }
 
 // NewNodeRegistry returns a new Registry object.
 func NewNodeRegistry(streamConnections uint64, v config.TargetValidator) *Registry {
 	n := &Registry{
 		validate: v,
-		addr:     make(map[raftio.NodeInfo]string),
 	}
 	if streamConnections > 1 {
 		n.partitioner = server.NewFixedPartitioner(streamConnections)
@@ -69,17 +68,27 @@ func NewNodeRegistry(streamConnections uint64, v config.TargetValidator) *Regist
 // Stop stops the node registry.
 func (n *Registry) Stop() {}
 
+func (n *Registry) getTarget(nodeInfo raftio.NodeInfo) (string, bool) {
+	t, ok := n.addr.Load(nodeInfo)
+	if ok {
+		ni, ok := t.(string)
+		if !ok {
+			panic("not a string")
+		}
+		return ni, true
+	}
+	return "", false
+}
+
 // Add adds the specified node and its target info to the registry.
 func (n *Registry) Add(clusterID uint64, nodeID uint64, target string) {
 	if n.validate != nil && !n.validate(target) {
 		plog.Panicf("invalid target %s", target)
 	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
 	key := raftio.GetNodeInfo(clusterID, nodeID)
-	v, ok := n.addr[key]
+	v, ok := n.getTarget(key)
 	if !ok {
-		n.addr[key] = target
+		n.addr.Store(key, target)
 	} else {
 		if v != target {
 			plog.Panicf("inconsistent target for %s, %s:%s",
@@ -98,28 +107,27 @@ func (n *Registry) getConnectionKey(addr string, clusterID uint64) string {
 // Remove removes a remote from the node registry.
 func (n *Registry) Remove(clusterID uint64, nodeID uint64) {
 	key := raftio.GetNodeInfo(clusterID, nodeID)
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	delete(n.addr, key)
+	n.addr.Delete(key)
 }
 
 // RemoveCluster removes all nodes info associated with the specified cluster
 func (n *Registry) RemoveCluster(clusterID uint64) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	for k := range n.addr {
-		if k.ClusterID == clusterID {
-			delete(n.addr, k)
+	n.addr.Range(func(k, value interface{}) bool {
+		nodeInfo, ok := k.(raftio.NodeInfo)
+		if !ok {
+			panic("not a NodeInfo")
 		}
-	}
+		if nodeInfo.ClusterID == clusterID {
+			n.addr.Delete(k)
+		}
+		return true
+	})
 }
 
 // Resolve looks up the Addr of the specified node.
 func (n *Registry) Resolve(clusterID uint64, nodeID uint64) (string, string, error) {
 	key := raftio.GetNodeInfo(clusterID, nodeID)
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	addr, ok := n.addr[key]
+	addr, ok := n.getTarget(key)
 	if !ok {
 		return "", "", ErrUnknownTarget
 	}
