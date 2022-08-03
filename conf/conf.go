@@ -51,6 +51,12 @@ type Config struct {
 	RaftElectionRTT                  int
 	RaftHeartbeatRTT                 int
 	DisableFsync                     bool
+	DDProfilerTypes                  string
+	DDProfilerHostEnvVarName         string
+	DDProfilerPort                   int
+	DDProfilerServiceName            string
+	DDProfilerEnvironmentName        string
+	DDProfilerVersionName            string
 }
 
 func (c *Config) ApplyDefaults() {

@@ -1,14 +1,18 @@
 package server
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
 	"github.com/squareup/pranadb/remoting"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 	"net/http" //nolint:stylecheck
+	"os"
 	"reflect"
 	"runtime"
+	"strings"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -156,6 +160,10 @@ func (s *Server) Start() error {
 		return nil
 	}
 
+	if err := s.maybeEnabledDatadogProfiler(); err != nil {
+		return err
+	}
+
 	var err error
 	for _, serv := range s.services {
 		log.Printf("prana node %d starting service %s", s.nodeID, reflect.TypeOf(serv).String())
@@ -182,12 +190,59 @@ func (s *Server) Start() error {
 	return nil
 }
 
+func (s *Server) maybeEnabledDatadogProfiler() error {
+	ddProfileTypes := s.conf.DDProfilerTypes
+	if ddProfileTypes == "" {
+		return nil
+	}
+
+	ddHost := os.Getenv(s.conf.DDProfilerHostEnvVarName)
+	if ddHost == "" {
+		return errors.NewPranaErrorf(errors.InvalidConfiguration, "Env var %s for DD profiler host is not set", s.conf.DDProfilerHostEnvVarName)
+	}
+
+	var profileTypes []profiler.ProfileType
+	aProfTypes := strings.Split(ddProfileTypes, ",")
+	for _, sProfType := range aProfTypes {
+		switch sProfType {
+		case "CPU":
+			profileTypes = append(profileTypes, profiler.CPUProfile)
+		case "HEAP":
+			profileTypes = append(profileTypes, profiler.HeapProfile)
+		case "BLOCK":
+			profileTypes = append(profileTypes, profiler.BlockProfile)
+		case "MUTEX":
+			profileTypes = append(profileTypes, profiler.MutexProfile)
+		case "GOROUTINE":
+			profileTypes = append(profileTypes, profiler.GoroutineProfile)
+		default:
+			return errors.NewPranaErrorf(errors.InvalidConfiguration, "Unknown Datadog profile type: %s", sProfType)
+		}
+	}
+
+	agentAddress := fmt.Sprintf("%s:%d", ddHost, s.conf.DDProfilerPort)
+
+	log.Debugf("starting Datadog continuous profiler with service name: %s environment %s version %s agent address %s profile types %s",
+		s.conf.DDProfilerServiceName, s.conf.DDProfilerEnvironmentName, s.conf.DDProfilerVersionName, agentAddress, ddProfileTypes)
+
+	return profiler.Start(
+		profiler.WithService(s.conf.DDProfilerServiceName),
+		profiler.WithEnv(s.conf.DDProfilerEnvironmentName),
+		profiler.WithVersion(s.conf.DDProfilerVersionName),
+		profiler.WithAgentAddr(agentAddress),
+		profiler.WithProfileTypes(profileTypes...),
+	)
+}
+
 func (s *Server) Stop() error {
 	if !s.started {
 		return nil
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	if s.conf.DDProfilerTypes != "" {
+		profiler.Stop()
+	}
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
