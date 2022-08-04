@@ -113,14 +113,19 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		return nil
 	})
 
-	numEntries := rowsBatch.Len()
-	outRows := t.rowsFactory.NewRows(numEntries)
 	rc := 0
-	entries := make([]RowsEntry, numEntries)
+
+	var outRows *common.Rows
+	var entries []RowsEntry
+	numEntries := rowsBatch.Len()
+	hasConsumers := len(t.consumingNodes) > 0
+	if hasConsumers {
+		outRows = t.rowsFactory.NewRows(numEntries)
+		entries = make([]RowsEntry, numEntries)
+	}
 	for i := 0; i < numEntries; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
-		receiverIndex := rowsBatch.ReceiverIndex(i)
 
 		if currentRow != nil {
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
@@ -128,27 +133,32 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			// TODO lru cache and bloom filter (?) to reduce get
-			v, err := t.store.LinearizableGet(ctx.WriteBatch.ShardID, keyBuff)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			pi := -1
-			if v != nil {
-				// Row already exists in storage - this is the case where a new rows comes into a source for the same key
-				// we won't have previousRow provided for us in this case as Kafka does not provide this
-				if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
+			if hasConsumers {
+				// We do a linearizabe get as there is the possibility that the previous write for the same key has not
+				// yet been applied to the state machine of the replica where the processor is running. Raft only
+				// requires replication to a quorum for write to complete and that quorum might not contain the processor
+				// replica
+				v, err := t.store.LinearizableGet(ctx.WriteBatch.ShardID, keyBuff)
+				if err != nil {
 					return errors.WithStack(err)
 				}
-				pi = rc
+				pi := -1
+				if v != nil {
+					// Row already exists in storage - this is the case where a new rows comes into a source for the same key
+					// we won't have previousRow provided for us in this case as Kafka does not provide this
+					if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
+						return errors.WithStack(err)
+					}
+					pi = rc
+					rc++
+				}
+				outRows.AppendRow(*currentRow)
+				ci := rc
 				rc++
+				entries[i].prevIndex = pi
+				entries[i].currIndex = ci
+				entries[i].receiverIndex = rowsBatch.ReceiverIndex(i)
 			}
-			outRows.AppendRow(*currentRow)
-			ci := rc
-			rc++
-			entries[i].prevIndex = pi
-			entries[i].currIndex = ci
-			entries[i].receiverIndex = receiverIndex
 			var valueBuff []byte
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
@@ -162,16 +172,21 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			outRows.AppendRow(*prevRow)
-			entries[i].prevIndex = rc
-			entries[i].currIndex = -1
-			entries[i].receiverIndex = receiverIndex
-			rc++
+			if hasConsumers {
+				outRows.AppendRow(*prevRow)
+				entries[i].prevIndex = rc
+				entries[i].currIndex = -1
+				entries[i].receiverIndex = rowsBatch.ReceiverIndex(i)
+				rc++
+			}
 			ctx.WriteBatch.AddDelete(keyBuff)
 		}
 	}
-	err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
-	return errors.WithStack(err)
+	if hasConsumers {
+		err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func (t *TableExecutor) handleForwardAndCapture(rowsBatch RowsBatch, ctx *ExecutionContext) error {
