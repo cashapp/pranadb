@@ -1,6 +1,7 @@
 package remoting
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"sync"
@@ -14,25 +15,20 @@ type Client struct {
 var ErrInsufficientServers = errors.New("insufficient servers available")
 
 func (c *Client) Broadcast(request ClusterMessage, minServers int, serverAddresses ...string) error {
-	var conns []*clientConnection
+	rh := newBroadcastRespHandler()
+	sendCount := 0 //nolint:ifshort
 	for _, serverAddress := range serverAddresses {
 		conn, err := c.getConnection(serverAddress)
 		if err != nil {
 			// best effort - ignore the error
 			continue
 		}
-		conns = append(conns, conn)
-	}
-	rh := &broadcastRespHandler{ch: make(chan error, 1), numResponses: len(conns)}
-	sendCount := 0 //nolint:ifshort
-	for _, conn := range conns {
-		if err := conn.SendRequestAsync(request, rh); err != nil {
-			c.connections.Delete(conn.serverAddress)
-			// best effort - ignore the error
-		} else {
-			sendCount++
+		if err := c.sendRequestWithRetry(conn, request, rh); err != nil {
+			continue
 		}
+		sendCount++
 	}
+	rh.setRequiredResponses(sendCount)
 	if sendCount < minServers {
 		return ErrInsufficientServers
 	}
@@ -42,18 +38,18 @@ func (c *Client) Broadcast(request ClusterMessage, minServers int, serverAddress
 func (c *Client) SendRPC(request ClusterMessage, serverAddress string) (ClusterMessage, error) {
 	conn, err := c.getConnection(serverAddress)
 	if err != nil {
+		log.Errorf("got err 0 %v", err)
 		return nil, err
 	}
 	rh := &rpcRespHandler{ch: make(chan respHolder, 1)}
-	if err := conn.SendRequestAsync(request, rh); err != nil {
-		c.connections.Delete(serverAddress)
+	if err := c.sendRequestWithRetry(conn, request, rh); err != nil {
+		// Note we do not delete connections on failure - closed connections remain in the map and will be attempted
+		// to be recreated next time a request attempt is made. Actively deleting connections introduces a race condition
+		// where we could have more than one connection to the same server at same time
 		return nil, err
 	}
-	resp, err := rh.waitForResponse()
-	if err != nil {
-		c.connections.Delete(serverAddress)
-	}
-	return resp, err
+
+	return rh.waitForResponse()
 }
 
 func (c *Client) Stop() {
@@ -62,7 +58,7 @@ func (c *Client) Stop() {
 		if !ok {
 			panic("not a clientConnection")
 		}
-		cc.Stop()
+		cc.Close()
 		c.connections.Delete(sa)
 		return true
 	})
@@ -87,27 +83,50 @@ func (t *rpcRespHandler) waitForResponse() (ClusterMessage, error) {
 }
 
 type broadcastRespHandler struct {
-	ch           chan error
-	failed       bool
-	numResponses int
-	respCount    int
-	lock         common.SpinLock
+	ch                chan error
+	requiredResponses int // The total number of responses required
+	respCount         int // The number of responses so far
+	lock              common.SpinLock
+	err               error
+}
+
+func newBroadcastRespHandler() *broadcastRespHandler {
+	return &broadcastRespHandler{requiredResponses: -1, ch: make(chan error, 1)}
+}
+
+func (t *broadcastRespHandler) setRequiredResponses(requiredResponses int) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.requiredResponses = requiredResponses
+	t.checkSendToChannel()
 }
 
 func (t *broadcastRespHandler) HandleResponse(resp ClusterMessage, err error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	if t.failed {
+	if t.err != nil {
+		// Already failed
 		return
 	}
 	if err != nil {
-		t.ch <- err
-		t.failed = true
+		t.err = err
+	} else {
+		t.respCount++
+	}
+	t.checkSendToChannel()
+}
+
+func (t *broadcastRespHandler) checkSendToChannel() {
+	if t.requiredResponses == -1 {
+		// Required responses not yet set
 		return
 	}
-	t.respCount++
-	if t.respCount == t.numResponses {
+	if t.err != nil {
+		t.ch <- t.err
+	} else if t.respCount == t.requiredResponses {
 		t.ch <- nil
+	} else if t.respCount > t.requiredResponses {
+		panic("too many responses")
 	}
 }
 
@@ -121,7 +140,7 @@ func (c *Client) getConnection(serverAddress string) (*clientConnection, error) 
 	var conn *clientConnection
 	if !ok {
 		var err error
-		conn, err = c.maybeCreateAndCacheConnection(serverAddress)
+		conn, err = c.maybeCreateAndCacheConnection(serverAddress, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -134,16 +153,20 @@ func (c *Client) getConnection(serverAddress string) (*clientConnection, error) 
 	return conn, nil
 }
 
-func (c *Client) maybeCreateAndCacheConnection(serverAddress string) (*clientConnection, error) {
+func (c *Client) maybeCreateAndCacheConnection(serverAddress string, oldConn *clientConnection) (*clientConnection, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	cl, ok := c.connections.Load(serverAddress) // check again under the lock
+	cl, ok := c.connections.Load(serverAddress) // check again under the lock - another gr might have created one
 	if ok {
 		cc, ok := cl.(*clientConnection)
 		if !ok {
 			panic("not a clientConnection")
 		}
-		return cc, nil
+		// If we're recreating a connection after a failure, then the old conn will still be in the map - we don't
+		// want to return that
+		if oldConn == nil || oldConn != cc {
+			return cc, nil
+		}
 	}
 	cc, err := createConnection(serverAddress)
 	if err != nil {
@@ -151,4 +174,22 @@ func (c *Client) maybeCreateAndCacheConnection(serverAddress string) (*clientCon
 	}
 	c.connections.Store(serverAddress, cc)
 	return cc, nil
+}
+
+func (c *Client) sendRequestWithRetry(conn *clientConnection, request ClusterMessage, rh responseHandler) error {
+	if err := conn.SendRequestAsync(request, rh); err != nil {
+		log.Errorf("got err 1 %v", err)
+		// It's possible the connection is cached but is closed - e.g. it hasn't been used for some time and has
+		// been closed by a NAT / firewall - in this case we will try and connect again
+		conn, err = c.maybeCreateAndCacheConnection(conn.serverAddress, conn)
+		if err != nil {
+			log.Errorf("got err 2 %v", err)
+			return err
+		}
+		if err = conn.SendRequestAsync(request, rh); err != nil {
+			log.Errorf("got err 3 %v", err)
+			return err
+		}
+	}
+	return nil
 }
