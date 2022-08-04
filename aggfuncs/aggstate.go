@@ -149,3 +149,7 @@ func (as *AggState) IsSet(index int) bool {
 func (as *AggState) IsChanged() bool {
 	return as.changed
 }
+
+func (as *AggState) SetUnchanged() {
+	as.changed = false
+}

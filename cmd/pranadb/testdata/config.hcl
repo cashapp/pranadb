@@ -56,6 +56,7 @@ raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
 disable-fsync                     = true
+aggregation-cache-size-rows       = 1234
 
 dd-profiler-types                 = "HEAP,CPU"
 dd-profiler-service-name          = "my-service"

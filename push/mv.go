@@ -31,7 +31,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		cluster: pe.cluster,
 		sharder: pe.sharder,
 	}
-	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
+	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator, pe.cfg)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

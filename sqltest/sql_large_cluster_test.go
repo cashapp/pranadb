@@ -26,3 +26,11 @@ func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
 	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
 	testSQL(t, false, 7, 5)
 }
+
+func TestSQLClusteredSevenNodesReplicationThree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short: skipped")
+	}
+	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
+	testSQL(t, false, 7, 3)
+}

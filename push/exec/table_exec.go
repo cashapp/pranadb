@@ -118,8 +118,8 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 	var outRows *common.Rows
 	var entries []RowsEntry
 	numEntries := rowsBatch.Len()
-	hasConsumers := len(t.consumingNodes) > 0
-	if hasConsumers {
+	hasDownStream := len(t.consumingNodes) > 0 || t.filling
+	if hasDownStream {
 		outRows = t.rowsFactory.NewRows(numEntries)
 		entries = make([]RowsEntry, numEntries)
 	}
@@ -133,7 +133,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			if hasConsumers {
+			if hasDownStream {
 				// We do a linearizabe get as there is the possibility that the previous write for the same key has not
 				// yet been applied to the state machine of the replica where the processor is running. Raft only
 				// requires replication to a quorum for write to complete and that quorum might not contain the processor
@@ -172,7 +172,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			if hasConsumers {
+			if hasDownStream {
 				outRows.AppendRow(*prevRow)
 				entries[i].prevIndex = rc
 				entries[i].currIndex = -1
@@ -182,7 +182,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			ctx.WriteBatch.AddDelete(keyBuff)
 		}
 	}
-	if hasConsumers {
+	if hasDownStream {
 		err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
 		return errors.WithStack(err)
 	}

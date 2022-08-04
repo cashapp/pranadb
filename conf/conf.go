@@ -15,6 +15,7 @@ const (
 	DefaultRaftRTTMs                  = 50
 	DefaultRaftHeartbeatRTT           = 30
 	DefaultRaftElectionRTT            = 300
+	DefaultAggregationCacheSizeRows   = 20000
 )
 
 type Config struct {
@@ -57,6 +58,7 @@ type Config struct {
 	DDProfilerServiceName            string
 	DDProfilerEnvironmentName        string
 	DDProfilerVersionName            string
+	AggregationCacheSizeRows         int // The maximum number of rows for an aggregation to cache in memory
 }
 
 func (c *Config) ApplyDefaults() {
@@ -86,6 +88,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.RaftElectionRTT == 0 {
 		c.RaftElectionRTT = DefaultRaftElectionRTT
+	}
+	if c.AggregationCacheSizeRows == 0 {
+		c.AggregationCacheSizeRows = DefaultAggregationCacheSizeRows
 	}
 }
 
@@ -216,17 +221,19 @@ func NewDefaultConfig() *Config {
 		RaftRTTMs:                  DefaultRaftRTTMs,
 		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:            DefaultRaftElectionRTT,
+		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
 	}
 }
 
 func NewTestConfig(fakeKafkaID int64) *Config {
 	return &Config{
-		RaftRTTMs:        DefaultRaftRTTMs,
-		RaftHeartbeatRTT: DefaultRaftHeartbeatRTT,
-		RaftElectionRTT:  DefaultRaftElectionRTT,
-		NodeID:           0,
-		NumShards:        10,
-		TestServer:       true,
+		RaftRTTMs:                DefaultRaftRTTMs,
+		RaftHeartbeatRTT:         DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:          DefaultRaftElectionRTT,
+		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
+		NodeID:                   0,
+		NumShards:                10,
+		TestServer:               true,
 		KafkaBrokers: BrokerConfigs{
 			"testbroker": BrokerConfig{
 				ClientType: BrokerClientFake,
