@@ -1,6 +1,3 @@
-//go:build largecluster
-// +build largecluster
-
 package sqltest
 
 import (
@@ -19,18 +16,18 @@ func TestSQLClusteredFiveNodes(t *testing.T) {
 	testSQL(t, false, 5, 3)
 }
 
-func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
-	testSQL(t, false, 7, 5)
-}
-
-func TestSQLClusteredSevenNodesReplicationThree(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: skipped")
-	}
-	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
-	testSQL(t, false, 7, 3)
-}
+//func TestSQLClusteredSevenNodesReplicationFive(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
+//	testSQL(t, false, 7, 5)
+//}
+//
+//func TestSQLClusteredSevenNodesReplicationThree(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredSevenNodesReplicationFive")
+//	testSQL(t, false, 7, 3)
+//}
