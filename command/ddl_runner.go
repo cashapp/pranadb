@@ -205,7 +205,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 	}
 	phase := ddlInfo.GetPhase()
 	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
-	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, skey,
+	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, ddlInfo.Sql,
 		d.ce.cluster.GetNodeID(), ddlInfo.GetOriginatingNodeId())
 	if phase == 0 {
 		if !ok {
@@ -222,7 +222,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 		log.Warnf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		return nil
 	}
-	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), skey)
+	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), com.SQL())
 	err := com.OnPhase(phase)
 	if err != nil {
 		com.Cleanup()
@@ -265,7 +265,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 }
 
 func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *clustermsgs.DDLStatementInfo) error {
-	log.Debugf("Running DDL command %d %s", command.CommandType(), commandKey)
+	log.Debugf("Running DDL command %d %s", command.CommandType(), ddlInfo.Sql)
 	if err := command.Before(); err != nil {
 		d.commands.Delete(commandKey)
 		return errors.WithStack(err)

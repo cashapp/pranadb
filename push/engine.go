@@ -110,19 +110,26 @@ func (p *Engine) Ready() error {
 }
 
 func (p *Engine) Stop() error {
+	log.Debug("Push engine stop() called")
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	log.Debug("Push engine stop() got lock")
 	if !p.started {
+		log.Debug("Push engine stop() not started!")
 		return nil
 	}
+	log.Debug("Push engine stop() stopping sources")
 	for _, src := range p.sources {
 		if err := src.Stop(); err != nil {
 			return errors.WithStack(err)
 		}
+		log.Debug("Push engine stopped source")
 	}
+	log.Debug("push engine stopping schedulers")
 	for _, sh := range p.schedulers {
 		sh.Stop()
 	}
+	log.Debug("push engine schedulers stopped")
 	p.createMaps() // Clear the internal state
 	p.started = false
 	return nil
