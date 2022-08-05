@@ -205,6 +205,8 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 	}
 	phase := ddlInfo.GetPhase()
 	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
+	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, skey,
+		d.ce.cluster.GetNodeID(), ddlInfo.GetOriginatingNodeId())
 	if phase == 0 {
 		if !ok {
 			if originatingNode {
@@ -220,10 +222,12 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 		log.Warnf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		return nil
 	}
+	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), skey)
 	err := com.OnPhase(phase)
 	if err != nil {
 		com.Cleanup()
 	}
+	log.Debugf("Running phase %d for DDL message %d %s returned err %v", phase, com.CommandType(), skey, err)
 	if phase == int32(com.NumPhases()-1) {
 		// Final phase so delete the command
 		d.commands.Delete(skey)
@@ -232,6 +236,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
+	log.Debugf("Attempting to run DDL command %d", command.CommandType())
 	lockName := getLockName(command.SchemaName())
 	if err := d.getLock(lockName); err != nil {
 		return errors.WithStack(err)
@@ -260,20 +265,25 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 }
 
 func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *clustermsgs.DDLStatementInfo) error {
+	log.Debugf("Running DDL command %d %s", command.CommandType(), commandKey)
 	if err := command.Before(); err != nil {
 		d.commands.Delete(commandKey)
 		return errors.WithStack(err)
 	}
+	log.Debugf("Executed before for DDL command %d %s", command.CommandType(), commandKey)
 	for phase := 0; phase < command.NumPhases(); phase++ {
+		log.Debugf("Broadcasting phase %d for DDL command %d %s", phase, command.CommandType(), commandKey)
 		err := d.broadcastDDL(int32(phase), ddlInfo)
 		if err == nil {
 			err = command.AfterPhase(int32(phase))
 		}
 		if err != nil {
+			log.Debugf("Error return from broadcasting phase %d for DDL command %d %s %v cancel will be broadcast", phase, command.CommandType(), commandKey, err)
 			// Broadcast a cancel to clean up command state across the cluster
 			if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
 				// Ignore
 			}
+			log.Debugf("Broadcast of cancel returned for DDL command %d %s", command.CommandType(), commandKey)
 			return errors.WithStack(err)
 		}
 	}
@@ -291,6 +301,7 @@ func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *clustermsgs.DDLSta
 }
 
 func (d *DDLCommandRunner) getLock(lockName string) error {
+	log.Debugf("Attempting to get DDL lock %s", lockName)
 	timeout := getSchemaLockAttemptTimeout()
 	start := time.Now()
 	for {
@@ -299,6 +310,7 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 			return errors.WithStack(err)
 		}
 		if ok {
+			log.Debugf("DDL lock %s obtained", lockName)
 			return nil
 		}
 		if time.Now().Sub(start) > timeout {
