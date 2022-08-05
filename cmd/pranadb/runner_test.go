@@ -83,6 +83,7 @@ func createConfigWithAllFields() conf.Config {
 		RaftElectionRTT:            300,
 		RaftHeartbeatRTT:           30,
 		DisableFsync:               true,
+		AggregationCacheSizeRows:   1234,
 
 		DDProfilerTypes:           "HEAP,CPU",
 		DDProfilerServiceName:     "my-service",
