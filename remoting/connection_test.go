@@ -32,7 +32,7 @@ func TestSendRequest(t *testing.T) {
 	require.Equal(t, "badgers", resp.SomeField)
 	require.Equal(t, 1, list.getCalledCount())
 
-	conn.Stop()
+	conn.Close()
 }
 
 func TestSendConcurrentRequests(t *testing.T) {
@@ -62,7 +62,7 @@ func TestSendConcurrentRequests(t *testing.T) {
 	}
 	require.Equal(t, numRequests, list.getCalledCount())
 
-	conn.Stop()
+	conn.Close()
 }
 
 func TestResponseInternalError(t *testing.T) {
@@ -109,7 +109,7 @@ func testResponseError(t *testing.T, respErr error, checkFunc func(*testing.T, e
 
 	checkFunc(t, perr)
 
-	conn.Stop()
+	conn.Close()
 }
 
 func TestConnectFailedNoServer(t *testing.T) {
@@ -137,7 +137,7 @@ func TestCloseConnectionFromServer(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, ErrConnectionClosed, err)
 
-	conn.Stop()
+	conn.Close()
 }
 
 func TestUseOfClosedConnection(t *testing.T) {
@@ -147,7 +147,7 @@ func TestUseOfClosedConnection(t *testing.T) {
 	conn, err := createConnection(defaultServerAddress)
 	require.NoError(t, err)
 
-	conn.Stop()
+	conn.Close()
 
 	handler := newRespHandler()
 	err = conn.SendRequestAsync(&clustermsgs.RemotingTestMessage{SomeField: "badgers"}, handler)
@@ -183,7 +183,7 @@ func TestUnblockInProgressRequests(t *testing.T) {
 	}
 	serverListener.unlock()
 
-	conn.Stop()
+	conn.Close()
 }
 
 func startServerWithListener(t *testing.T, listener ClusterMessageHandler) *server {

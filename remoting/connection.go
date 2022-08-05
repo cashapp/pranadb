@@ -83,7 +83,7 @@ func (c *clientConnection) start() {
 	})
 }
 
-func (c *clientConnection) Stop() {
+func (c *clientConnection) Close() {
 	c.lock.Lock()
 	c.closed = true
 	c.lock.Unlock() // Note, we must unlock before closing the connection to avoid deadlock
@@ -132,8 +132,10 @@ func createNetConnection(serverAddress string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = nc.SetNoDelay(true)
-	if err != nil {
+	if err = nc.SetNoDelay(true); err != nil {
+		return nil, err
+	}
+	if err = nc.SetKeepAlive(true); err != nil {
 		return nil, err
 	}
 	return nc, nil

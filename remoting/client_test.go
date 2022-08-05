@@ -77,10 +77,39 @@ func TestRPCConnectionError(t *testing.T) {
 
 	server.closeNetConns()
 
+	// We sleep a bit to give time for the client connections to be closed, they'll now be in the map, but closed
+	time.Sleep(500 * time.Millisecond)
+
+	// Try and send another message - should still get through as connection will be recreated
+	msg = &clustermsgs.RemotingTestMessage{SomeField: "foxes"}
+	r, err = client.SendRPC(msg, defaultServerAddress)
+	require.NoError(t, err)
+	resp, ok = r.(*clustermsgs.RemotingTestMessage)
+	require.True(t, ok)
+	require.Equal(t, "foxes", resp.SomeField)
+
+	client.Stop()
+}
+
+func TestRPCServerNotAvailable(t *testing.T) {
+	server := startServerWithListener(t, &echoListener{})
+
+	client := &Client{}
+
+	// Send request successfully
+	msg := &clustermsgs.RemotingTestMessage{SomeField: "badgers"}
+	r, err := client.SendRPC(msg, defaultServerAddress)
+	require.NoError(t, err)
+	resp, ok := r.(*clustermsgs.RemotingTestMessage)
+	require.True(t, ok)
+	require.Equal(t, "badgers", resp.SomeField)
+
+	stopServers(t, server)
+
+	// Try and send another message - should not get through
 	r, err = client.SendRPC(msg, defaultServerAddress)
 	require.Error(t, err)
 	require.Nil(t, r)
-	require.Equal(t, ErrConnectionClosed, err)
 
 	client.Stop()
 }
@@ -298,9 +327,12 @@ func TestBroadcastConnectionError(t *testing.T) {
 		server.closeNetConns()
 	}
 
-	// Try and send again
-	err = client.Broadcast(msg, 1, serverAddresses...)
-	require.Error(t, err)
+	// We sleep to allow time for the client connections to be closed
+	time.Sleep(500 * time.Millisecond)
+
+	// Try and send again - we should get through to all three
+	err = client.Broadcast(msg, 3, serverAddresses...)
+	require.NoError(t, err)
 
 	client.Stop()
 }
