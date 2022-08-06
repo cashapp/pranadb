@@ -195,14 +195,7 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 	if len(indexColMap) != len(ast.ColumnNames) {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Index cannot contain same column multiple times")
 	}
-	info := &common.IndexInfo{
-		SchemaName: c.SchemaName(),
-		ID:         c.tableSequences[0],
-		TableName:  ast.TableName,
-		Name:       ast.Name,
-		IndexCols:  indexCols,
-	}
-	return info, nil
+	return common.NewIndexInfo(c.SchemaName(), c.tableSequences[0], ast.TableName, ast.Name, indexCols), nil
 }
 
 func (c *CreateIndexCommand) GetExtraData() []byte {

@@ -632,14 +632,14 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 			p.meta.DeleteSchemaIfEmpty(schema)
 		}()
 		tabName := fmt.Sprintf("tmp_source_filter_%d", tmpID)
-		tabInfo := &common.TableInfo{
-			ID:             tmpID,
-			SchemaName:     schemaName,
-			Name:           tabName,
-			PrimaryKeyCols: sourceInfo.PrimaryKeyCols,
-			ColumnNames:    sourceInfo.ColumnNames,
-			ColumnTypes:    sourceInfo.ColumnTypes,
-		}
+		tabInfo := common.NewTableInfo(
+			tmpID,
+			schemaName,
+			tabName,
+			sourceInfo.PrimaryKeyCols,
+			sourceInfo.ColumnNames,
+			sourceInfo.ColumnTypes,
+		)
 		tmpSourceInfo := &common.SourceInfo{
 			TableInfo:  tabInfo,
 			OriginInfo: nil,
