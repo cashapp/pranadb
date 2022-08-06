@@ -504,7 +504,7 @@ func (p *Engine) WaitForProcessingToComplete() error {
 		return errors.WithStack(err)
 	}
 
-	//// Wait for no rows in the receiver table
+	// Wait for no rows in the receiver table
 	log.Println("waiting for no rows in receiver")
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
@@ -535,7 +535,9 @@ func (p *Engine) WaitForSchedulers() error {
 }
 
 func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
-	shardIDs := p.cluster.GetLocalShardIDs()
+	p.localShardsLock.Lock()
+	defer p.localShardsLock.Unlock()
+	shardIDs := p.localLeaderShards
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, errors.WithStack(err)
