@@ -23,6 +23,7 @@ type CreateIndexCommand struct {
 	ast            *parser.CreateIndex
 	toDeleteBatch  *cluster.ToDeleteBatch
 	interruptor    interruptor.Interruptor
+	leadersMap     map[uint64]uint64
 }
 
 func (c *CreateIndexCommand) CommandType() DDLCommandType {
@@ -46,7 +47,11 @@ func (c *CreateIndexCommand) Cancel() {
 }
 
 func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, createIndexSQL string,
-	tableSequences []uint64, ast *parser.CreateIndex) *CreateIndexCommand {
+	tableSequences []uint64, ast *parser.CreateIndex) (*CreateIndexCommand, error) {
+	leadersMap, err := e.cluster.GetLeadersMap()
+	if err != nil {
+		return nil, err
+	}
 	return &CreateIndexCommand{
 		e:              e,
 		schema:         schema,
@@ -54,10 +59,11 @@ func NewOriginatingCreateIndexCommand(e *Executor, pl *parplan.Planner, schema *
 		createIndexSQL: createIndexSQL,
 		tableSequences: tableSequences,
 		ast:            ast,
-	}
+		leadersMap:     leadersMap,
+	}, nil
 }
 
-func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string, tableSequences []uint64) *CreateIndexCommand {
+func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string, tableSequences []uint64, extraData []byte) *CreateIndexCommand {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	pl := parplan.NewPlanner(schema)
 	return &CreateIndexCommand{
@@ -66,6 +72,7 @@ func NewCreateIndexCommand(e *Executor, schemaName string, createIndexSQL string
 		pl:             pl,
 		createIndexSQL: createIndexSQL,
 		tableSequences: tableSequences,
+		leadersMap:     deserializeLeadersMap(extraData),
 	}
 }
 
@@ -119,8 +126,25 @@ func (c *CreateIndexCommand) onPhase0() error {
 		return err
 	}
 
+	var localLeaderShards []uint64
+	for shardID, nodeID := range c.leadersMap {
+		if nodeID == uint64(c.e.cluster.GetNodeID()) {
+			localLeaderShards = append(localLeaderShards, shardID)
+		}
+	}
+
+	if err := c.e.cluster.RegisterStartFill(c.leadersMap, &c.interruptor); err != nil {
+		return err
+	}
+
 	// We create the index but we don't register it yet
-	return c.e.pushEngine.CreateIndex(c.indexInfo, true, &c.interruptor)
+	if err := c.e.pushEngine.CreateIndex(c.indexInfo, true, localLeaderShards, &c.interruptor); err != nil {
+		return err
+	}
+
+	c.e.cluster.RegisterEndFill()
+
+	return nil
 }
 
 func (c *CreateIndexCommand) onPhase1() error {
@@ -156,6 +180,7 @@ func (c *CreateIndexCommand) Cleanup() {
 	if err := c.e.pushEngine.UnattachIndex(c.indexInfo); err != nil {
 		// Ignore
 	}
+	c.e.cluster.RegisterEndFill()
 }
 
 func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.IndexInfo, error) {
@@ -199,5 +224,5 @@ func (c *CreateIndexCommand) getIndexInfo(ast *parser.CreateIndex) (*common.Inde
 }
 
 func (c *CreateIndexCommand) GetExtraData() []byte {
-	return nil
+	return serializeLeadersMap(c.leadersMap)
 }

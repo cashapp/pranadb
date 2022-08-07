@@ -123,7 +123,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 	for i := 0; i < indexRows.RowCount(); i++ {
 		indexRow := indexRows.GetRow(i)
 		info := meta.DecodeIndexInfoRow(&indexRow)
-		if err := l.pushEngine.CreateIndex(info, false, &interruptor.Interruptor{}); err != nil {
+		if err := l.pushEngine.CreateIndex(info, false, nil, &interruptor.Interruptor{}); err != nil {
 			return err
 		}
 		if err := l.meta.RegisterIndex(info); err != nil {

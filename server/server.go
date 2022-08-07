@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
@@ -45,6 +46,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	var ddlClient remoting.Broadcaster
 	var ddlResetClient remoting.Broadcaster
 	var remotingServer remoting.Server
+	stopSignaller := &common.AtomicBool{}
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
 		fakeRemotingServer := remoting.NewFakeServer()
@@ -53,7 +55,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		ddlResetClient = remoting.NewFakeClient(fakeRemotingServer)
 	} else {
 		var err error
-		drag, err := dragon.NewDragon(config)
+		drag, err := dragon.NewDragon(config, stopSignaller)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -63,6 +65,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		ddlResetClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
+		remotingServer.RegisterMessageHandler(remoting.ClusterMessageLeaderInfos, drag.GetLeaderInfosHandler())
 	}
 	metaController := meta.NewController(clus)
 	shardr := sharder.NewSharder(clus)
@@ -96,10 +99,10 @@ func NewServer(config conf.Config) (*Server, error) {
 		clus,
 		shardr,
 		commandExecutor,
-		pushEngine,
 		pullEngine,
 		protoRegistry,
 		schemaLoader,
+		pushEngine,
 		theMetrics,
 		apiServer,
 		failureInjector,
@@ -122,6 +125,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		services:        services,
 		metrics:         theMetrics,
 		failureinjector: failureInjector,
+		stopSignaller:   stopSignaller,
 	}
 	return &server, nil
 }
@@ -146,6 +150,7 @@ type Server struct {
 	debugServer     *http.Server
 	metrics         *metrics.Server
 	failureinjector failinject.Injector
+	stopSignaller   *common.AtomicBool
 }
 
 type service interface {
@@ -159,6 +164,7 @@ func (s *Server) Start() error {
 	if s.started {
 		return nil
 	}
+	s.stopSignaller.Set(false)
 
 	if err := s.maybeEnabledDatadogProfiler(); err != nil {
 		return err
@@ -176,11 +182,9 @@ func (s *Server) Start() error {
 		return errors.WithStack(err)
 	}
 
-	if err := s.pushEngine.Ready(); err != nil {
-		return errors.WithStack(err)
+	if err := s.pullEngine.SetAvailable(); err != nil {
+		return err
 	}
-
-	s.pullEngine.SetAvailable()
 
 	s.lifeCycleMgr.SetActive(true)
 
@@ -243,6 +247,7 @@ func (s *Server) Stop() error {
 	if s.conf.DDProfilerTypes != "" {
 		profiler.Stop()
 	}
+	s.stopSignaller.Set(true)
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
 		if err := s.debugServer.Close(); err != nil {
