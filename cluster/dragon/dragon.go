@@ -85,6 +85,7 @@ type Dragon struct {
 	requestClientsLock           sync.Mutex
 	saveSnapshotCount            int64
 	restoreSnapshotCount         int64
+	procMgr *procManager
 }
 
 type snapshot struct {
@@ -335,6 +336,7 @@ func (d *Dragon) start0() error {
 		RaftAddress:    nodeAddress,
 		EnableMetrics:  d.cnf.EnableMetrics,
 		Expert:         config.GetDefaultExpertConfig(),
+		RaftEventListener: d.procMgr,
 	}
 	nhc.Expert.LogDB.EnableFsync = !d.cnf.DisableFsync
 
@@ -354,6 +356,9 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 	if d.started {
 		return nil
 	}
+
+	d.procMgr = newProcManager(d)
+	d.procMgr.Start()
 
 	if err := d.start0(); err != nil {
 		return err
@@ -446,6 +451,7 @@ func (d *Dragon) Stop() error {
 		log.Debug("not started")
 		return nil
 	}
+	d.procMgr.Stop()
 	d.nh.Stop()
 	log.Debug("stopped node host")
 	d.nh = nil
@@ -696,14 +702,6 @@ func (d *Dragon) joinShardGroups() error {
 		}
 	}
 	return nil
-}
-
-// One of the replicas is chosen in a deterministic way to do the processing for the shard - i.e. to handle any
-// incoming rows. It doesn't matter whether this replica is the raft leader or not, but every raft replica needs
-// to come to the same decision as to who is the processor - that is why we handle the remove node event through
-// the same state machine as processing writes.
-func calcProcessingNode(nodeIDs []int, shardID uint64) int {
-	return nodeIDs[shardID%uint64(len(nodeIDs))]
 }
 
 func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
@@ -1083,22 +1081,22 @@ func (d *Dragon) sendPropose(shardID uint64, request []byte, localOnly bool) (ui
 	return uint64(clusterResp.RetVal), clusterResp.GetResponseBody(), nil
 }
 
-func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
-	nids, ok := d.shardAllocs[shardID]
-	if !ok {
-		panic("can't find shard allocs")
-	}
-	processorNode := calcProcessingNode(nids, shardID)
-	serverAddresses := make([]string, 0, len(nids))
-	processorAddress := d.cnf.NotifListenAddresses[processorNode]
-	serverAddresses = append(serverAddresses, processorAddress) // We favour the processor
-	for _, nid := range nids {
-		if nid != processorNode {
-			serverAddresses = append(serverAddresses, d.cnf.NotifListenAddresses[nid])
-		}
-	}
-	return serverAddresses
-}
+//func (d *Dragon) getServerAddressesForShard(shardID uint64) []string {
+//	nids, ok := d.shardAllocs[shardID]
+//	if !ok {
+//		panic("can't find shard allocs")
+//	}
+//	processorNode := calcProcessingNode(nids, shardID)
+//	serverAddresses := make([]string, 0, len(nids))
+//	processorAddress := d.cnf.NotifListenAddresses[processorNode]
+//	serverAddresses = append(serverAddresses, processorAddress) // We favour the processor
+//	for _, nid := range nids {
+//		if nid != processorNode {
+//			serverAddresses = append(serverAddresses, d.cnf.NotifListenAddresses[nid])
+//		}
+//	}
+//	return serverAddresses
+//}
 
 func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 
@@ -1156,11 +1154,7 @@ func (d *Dragon) getOrCreateRequestClient(shardID uint64) (*remoting.RPCWrapper,
 	if cl != nil {
 		return cl, nil
 	}
-	nids, ok := d.shardAllocs[shardID]
-	if !ok {
-		panic("can't find shard allocs")
-	}
-	processorNode := calcProcessingNode(nids, shardID)
+	processorNode := d.procMgr.getLeaderNode(shardID)
 	processorAddress := d.cnf.NotifListenAddresses[processorNode]
 	wrapper := remoting.NewRPCWrapper(processorAddress)
 	d.requestClientMap.Store(shardID, wrapper)
@@ -1279,9 +1273,26 @@ func (d *Dragon) RestoreSnapshotCount() int64 {
 
 func (d *Dragon) SyncStore() error {
 	d.lock.RLock()
-	d.lock.RUnlock()
+	defer d.lock.RUnlock()
 	if !d.started {
 		return nil
 	}
 	return syncPebble(d.pebble)
+}
+
+func (d *Dragon) setLeader(shardID uint64) error {
+	var buff []byte
+	buff = append(buff, shardStateMachineCommandSetLeader)
+	buff = common.AppendUint64ToBufferLE(buff, uint64(d.cnf.NodeID))
+	cs := d.nh.GetNoOPSession(shardID)
+	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	defer cancel()
+	res, err := d.nh.SyncPropose(ctx, cs, buff)
+	if err != nil {
+		return err
+	}
+	if res.Value != shardStateMachineResponseOK {
+		return errors.Errorf("unexpected return value from setLeader %d", res.Value)
+	}
+	return nil
 }

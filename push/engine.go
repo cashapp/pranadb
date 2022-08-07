@@ -285,12 +285,12 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 	return te, nil
 }
 
-func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
+func (p *Engine) CreateShardListener(epoch uint64, shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.localShardsLock.Lock()
 	defer p.localShardsLock.Unlock()
-	sh := sched.NewShardScheduler(shardID, p, p.cluster)
+	sh := sched.NewShardScheduler(epoch, shardID, p, p.cluster)
 	p.schedulers[shardID] = sh
 	p.localLeaderShards = append(p.localLeaderShards, shardID)
 	return &shardListener{
@@ -309,17 +309,17 @@ type RawRow struct {
 	Row              []byte
 }
 
-func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
+func (p *Engine) HandleBatch(epoch uint64, shardID uint64, rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
 	rawRows := make(map[uint64][]RawRow)
 
 	if first {
 		// For the first batch we actually load it directly from the receiver table - there may be pending data there
 		// That was undelivered from the last time the server was started - we need to deliver everything in there first
-		return p.loadReceivedRows(shardID)
+		return p.loadReceivedRows(epoch, shardID)
 	}
 
 	receiveBatch := &receiveBatch{
-		writeBatch: cluster.NewWriteBatch(shardID),
+		writeBatch: cluster.NewWriteBatch(epoch, shardID),
 	}
 
 	nr := len(rowsBatch)
@@ -372,7 +372,7 @@ type receiveBatch struct {
 	rawRows    map[uint64][]RawRow
 }
 
-func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
+func (p *Engine) loadReceivedRows(epoch uint64, receivingShardID uint64) (int64, error) {
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
 
@@ -387,7 +387,7 @@ func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
 	}
 
 	batch := &receiveBatch{
-		writeBatch: cluster.NewWriteBatch(receivingShardID),
+		writeBatch: cluster.NewWriteBatch(epoch, receivingShardID),
 		rawRows:    make(map[uint64][]RawRow),
 	}
 
@@ -723,7 +723,7 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			if err != nil {
 				return err
 			}
-			wb := cluster.NewWriteBatch(shardID)
+			wb := cluster.NewWriteBatch(0, shardID) // Epoch doesn't matter as writing locally
 			for i, kv := range pairs {
 				if skipFirst && i == 0 {
 					continue

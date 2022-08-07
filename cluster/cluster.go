@@ -247,7 +247,7 @@ type KVPair struct {
 }
 
 type ShardListenerFactory interface {
-	CreateShardListener(shardID uint64) ShardListener
+	CreateShardListener(epoch uint64, shardID uint64) ShardListener
 }
 
 type ForwardRow struct {
@@ -260,4 +260,5 @@ type ForwardRow struct {
 
 type ShardListener interface {
 	RemoteWriteOccurred(forwardRows []ForwardRow)
+	Close()
 }

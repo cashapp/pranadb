@@ -192,7 +192,7 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly boo
 	if !ok {
 		receiverSequence = 0
 	}
-	filteredBatch := cluster.NewWriteBatch(batch.ShardID)
+	filteredBatch := cluster.NewWriteBatch(batch.Epoch, batch.ShardID)
 	dedupMap, ok := f.dedupMaps[batch.ShardID]
 	if !ok {
 		dedupMap = make(map[string]uint64)
@@ -377,7 +377,7 @@ func (f *FakeCluster) startShardListeners() {
 		return
 	}
 	for _, shardID := range f.allShardIds {
-		shardListener := f.shardListenerFactory.CreateShardListener(shardID)
+		shardListener := f.shardListenerFactory.CreateShardListener(0, shardID)
 		f.shardListeners[shardID] = shardListener
 	}
 }

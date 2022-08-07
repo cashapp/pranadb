@@ -223,7 +223,7 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	} else {
 		nextSeq = ls.(int64) + 1
 	}
-	wb := cluster.NewWriteBatch(shardID)
+	wb := cluster.NewWriteBatch(ctx.WriteBatch.Epoch, shardID)
 	numRows := rowsBatch.Len()
 	for i := 0; i < numRows; i++ {
 		row := rowsBatch.CurrentRow(i)
@@ -507,7 +507,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 			return errors.WithStack(err)
 		}
 	}
-	wb := cluster.NewWriteBatch(shardID)
+	wb := cluster.NewWriteBatch(0, shardID) // Epoch doesn't matter here
 
 	// When we fill it's important that we have duplicate detection as forward writes caused in fills (e.g. for aggregations)
 	// can be retried in case of Raft timeout.

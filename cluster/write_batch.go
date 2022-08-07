@@ -6,6 +6,7 @@ import (
 
 // WriteBatch represents some Puts and deletes that will be written atomically by the underlying storage implementation
 type WriteBatch struct {
+	Epoch              uint64
 	ShardID            uint64
 	Puts               []byte
 	Deletes            []byte
@@ -14,8 +15,9 @@ type WriteBatch struct {
 	committedCallbacks []CommittedCallback
 }
 
-func NewWriteBatch(shardID uint64) *WriteBatch {
+func NewWriteBatch(epoch uint64, shardID uint64) *WriteBatch {
 	return &WriteBatch{
+		Epoch: epoch,
 		ShardID: shardID,
 	}
 }
@@ -46,6 +48,7 @@ func (wb *WriteBatch) HasPuts() bool {
 }
 
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
+	buff = common.AppendUint64ToBufferLE(buff, wb.Epoch)
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeletes))
 	buff = append(buff, wb.Puts...)

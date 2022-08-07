@@ -38,6 +38,7 @@ var (
 )
 
 type ShardScheduler struct {
+	epoch uint64
 	shardID                      uint64
 	actions                      chan struct{}
 	started                      bool
@@ -60,7 +61,7 @@ type ShardScheduler struct {
 }
 
 type RowsBatchHandler interface {
-	HandleBatch(shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
+	HandleBatch(epoch uint64, shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
 }
 
 type BatchEntry struct {
@@ -73,13 +74,14 @@ type WriteBatchEntry struct {
 	completionChannels []chan error
 }
 
-func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster) *ShardScheduler {
+func NewShardScheduler(epoch uint64, shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster) *ShardScheduler {
 	sShardID := fmt.Sprintf("shard-%04d", shardID)
 	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
 	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
 	batchProcessingTimeHistogram := batchProcessingTimeVec.WithLabelValues(sShardID)
 	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
 	ss := &ShardScheduler{
+		epoch: epoch,
 		shardID:                      shardID,
 		actions:                      make(chan struct{}, 1),
 		batchHandler:                 batchHandler,
@@ -327,7 +329,7 @@ func (s *ShardScheduler) runLoop() {
 }
 
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool) bool {
-	lastSequence, err := s.batchHandler.HandleBatch(s.shardID, rowsToProcess, first)
+	lastSequence, err := s.batchHandler.HandleBatch(s.epoch, s.shardID, rowsToProcess, first)
 	if err != nil {
 		log.Errorf("failed to process batch: %+v", err)
 		s.setFailed(err)

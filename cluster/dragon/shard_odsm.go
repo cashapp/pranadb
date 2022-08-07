@@ -21,24 +21,17 @@ const (
 	shardStateMachineLookupGet           byte   = 3
 	shardStateMachineCommandWrite        byte   = 1
 	shardStateMachineCommandForwardWrite byte   = 2
+	shardStateMachineCommandSetLeader    byte   = 3
 	shardStateMachineResponseOK          uint64 = 1
+	shardStateMachineResponseWrongEpoch  uint64 = 2
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
-	processorNode := calcProcessingNode(nodeIDs, shardID)
-	processor := nodeID == processorNode
 	ssm := ShardOnDiskStateMachine{
 		nodeID:    nodeID,
 		nodeIDs:   nodeIDs,
 		shardID:   shardID,
 		dragon:    d,
-		processor: processor,
-	}
-	if processor {
-		if d.shardListenerFactory == nil {
-			panic("no shard listener")
-		}
-		ssm.shardListener = d.shardListenerFactory.CreateShardListener(shardID)
 	}
 	return &ssm
 }
@@ -48,13 +41,14 @@ type ShardOnDiskStateMachine struct {
 	shardID          uint64
 	dragon           *Dragon
 	nodeIDs          []int
-	processor        bool
 	shardListener    cluster.ShardListener
 	dedupSequences   map[string]uint64
 	receiverSequence uint64
 	forwardRows      []cluster.ForwardRow
 	lock             sync.Mutex
 	lastIndex        uint64
+	epoch            uint64
+	leaderNodeID     int64
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
@@ -69,7 +63,28 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 		return 0, err
 	}
 	s.receiverSequence = receiverSequence
+	leaderNodeID, epoch, err := s.loadLeaderInfo(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return 0, err
+	}
+	s.leaderNodeID = leaderNodeID
+	s.epoch = epoch
 	return lastRaftIndex, nil
+}
+
+func (s *ShardOnDiskStateMachine) loadLeaderInfo(peb *pebble.DB, shardID uint64) (int64, uint64, error) {
+	key := table.EncodeTableKeyPrefix(common.ShardLeaderTableID, shardID, 16)
+	vb, closer, err := peb.Get(key)
+	defer common.InvokeCloser(closer)
+	if err == pebble.ErrNotFound {
+		return -1, 1, nil // Note - epoch starts at 1
+	}
+	if err != nil {
+		return 0, 0, errors.WithStack(err)
+	}
+	nodeID, _ := common.ReadUint64FromBufferLE(vb, 0)
+	epoch, _ := common.ReadUint64FromBufferLE(vb, 8)
+	return int64(nodeID), epoch, nil
 }
 
 func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, error) {
@@ -98,6 +113,10 @@ func (s *ShardOnDiskStateMachine) writeSequences(batch *pebble.Batch, lastRaftIn
 	return batch.Set(key, vb, nil)
 }
 
+func (s *ShardOnDiskStateMachine) isProcessor() bool {
+	return int64(s.nodeID) == s.leaderNodeID
+}
+
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -113,15 +132,29 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		command := cmdBytes[0]
 		switch command {
 		case shardStateMachineCommandForwardWrite:
-			if s.forwardRows == nil && s.processor {
+			if s.forwardRows == nil && s.isProcessor() {
 				// Most likely the entries will be all forward writes
 				s.forwardRows = make([]cluster.ForwardRow, 0, len(entries))
 			}
-			if err := s.handleWrite(batch, cmdBytes, true, timestamp); err != nil {
+			ok, err := s.handleWrite(batch, cmdBytes, true, timestamp)
+			if err != nil {
 				return nil, err
 			}
+			if !ok {
+				entries[i].Result = statemachine.Result{Value: shardStateMachineResponseWrongEpoch}
+				continue
+			}
 		case shardStateMachineCommandWrite:
-			if err := s.handleWrite(batch, cmdBytes, false, timestamp); err != nil {
+			ok, err := s.handleWrite(batch, cmdBytes, false, timestamp)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			if !ok {
+				entries[i].Result = statemachine.Result{Value: shardStateMachineResponseWrongEpoch}
+				continue
+			}
+		case shardStateMachineCommandSetLeader:
+			if err := s.handleSetLeader(batch, cmdBytes); err != nil {
 				return nil, errors.WithStack(err)
 			}
 		default:
@@ -155,8 +188,17 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	return entries, nil
 }
 
-func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp uint64) error {
-	puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
+func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp uint64) (bool, error) {
+	// We need an epoch - duplicate detection by itself isn't sufficient to ensure rows aren't processed and stored more than once
+	// by more than one procesor for the same shard, as any local raft writes (not forward) done during processing don't have duplicate detection.
+	// Also FIXME - don't forget, if a local batch processing write batch fails because of wrong epoch then we need to clear any in memory state - e.g.
+	// aggregation caches.
+	epoch, puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
+	// epoch == 0 means "don't check" - our actual epochs start at 1
+	if epoch != 0 && epoch != s.epoch {
+		log.Warnf("write batch rejected as from wrong epoch, current %d batch epoch %d", s.epoch, epoch)
+		return false, nil
+	}
 	hasDups := false
 	for _, kvPair := range puts {
 
@@ -167,7 +209,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 
 			ignore, err := s.checkDedup(dedupKey, batch)
 			if err != nil {
-				return err
+				return false, err
 			}
 			if ignore {
 				hasDups = true
@@ -185,7 +227,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 			key = common.AppendUint64ToBufferBE(key, s.receiverSequence)
 			key = append(key, remoteConsumerBytes...)
 
-			if s.processor {
+			if s.isProcessor() {
 				remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)
 				s.forwardRows = append(s.forwardRows, cluster.ForwardRow{
 					ReceiverSequence: s.receiverSequence,
@@ -202,7 +244,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 		}
 
 		if err := batch.Set(key, kvPair.Value, nil); err != nil {
-			return errors.WithStack(err)
+			return false, errors.WithStack(err)
 		}
 	}
 	if forward && len(deletes) != 0 {
@@ -211,18 +253,19 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 	for _, k := range deletes {
 		s.checkKey(k)
 		if err := batch.Delete(k, nil); err != nil {
-			return errors.WithStack(err)
+			return false, errors.WithStack(err)
 		}
 	}
 	if hasDups {
 		log.Warnf("Write batch in shard %d - contained duplicates - these were screened out", s.shardID)
 	}
-	return nil
+	return true, nil
 }
 
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
-func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (puts []cluster.KVPair, deletes [][]byte) {
+func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (epoch uint64, puts []cluster.KVPair, deletes [][]byte) {
+	epoch, offset = common.ReadUint64FromBufferLE(buff, offset)
 	var numPuts, numDeletes uint32
 	numPuts, offset = common.ReadUint32FromBufferLE(buff, offset)
 	numDeletes, offset = common.ReadUint32FromBufferLE(buff, offset)
@@ -261,7 +304,7 @@ func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int,
 		offset += kLen
 		deletes[i] = k
 	}
-	return puts, deletes
+	return epoch, puts, deletes
 }
 
 func (s *ShardOnDiskStateMachine) checkDedup(key []byte, batch *pebble.Batch) (ignore bool, err error) {
@@ -292,6 +335,75 @@ func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
 	if s.shardID != sid {
 		panic(fmt.Sprintf("invalid key in sm write, expected %d actual %d", s.shardID, sid))
 	}
+}
+
+func (s *ShardOnDiskStateMachine) handleSetLeader(batch *pebble.Batch, bytes []byte) error {
+
+	// FIXME - we should also pass in term here and check that term doesn't go backwards
+	// this guards against the case where setLeader from a later leadership update gets handled before an earlier one
+
+	// We don't need epoch as duplicate detection will reject any rows that attempt to
+
+	newLeaderNodeID, _ := common.ReadUint64FromBufferLE(bytes, 1)
+	// Increment the epoch and persist the leader node id and epoch
+	key := table.EncodeTableKeyPrefix(common.ShardLeaderTableID, s.shardID, 16)
+	var value []byte
+	value = common.AppendUint64ToBufferLE(value, newLeaderNodeID)
+	value = common.AppendUint64ToBufferLE(value, uint64(s.epoch) + 1)
+	if err := batch.Set(key, value, nil); err != nil {
+		return err
+	}
+	if s.leaderNodeID == int64(newLeaderNodeID) {
+		panic("already leader")
+	}
+
+	prevLeaderNodeID := s.leaderNodeID
+	s.epoch++
+	s.leaderNodeID = int64(newLeaderNodeID)
+	thisNodeID := uint64(s.nodeID)
+	if newLeaderNodeID == thisNodeID {
+		if s.shardListener != nil {
+			panic("already has listener")
+		}
+		// This node has become leader and not already leader
+
+		// Please note that the concept of "leader" as set here is not strictly in step with the actual Raft leader
+		// When actual raft leadership changes there is a window before setLeader is called where the actual raft leader
+		// and what this group thinks is the raft leader are different. But that does not matter. What matters is that
+		// all replicas agree on who the "leader" is and that most of the time it's the same as the actual Raft leader
+		// (for performance reasons). The key thing is that processing only occurs on one replica of the cluster at any one
+		// time.
+		s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(uint64(s.epoch), s.shardID)
+	} else if newLeaderNodeID != thisNodeID && prevLeaderNodeID == int64(thisNodeID) {
+		// We were leader but not any more
+		if s.shardListener == nil {
+			panic("no shard listener")
+		}
+		s.shardListener.Close()
+		s.shardListener = nil
+	}
+
+
+
+
+
+
+
+	/*
+	If we're already the leader - log a warning
+
+
+	Maintain a mapping of shardID -> newLeaderNodeID in storage saying which node is the leader, we also store the "epoch"
+	(like term but to avoid confusion)
+	We load this at startup and also check it here
+	If we are the leader we create a processor
+	If we were leader but not any more remove processors
+
+
+	If we're not the leader any more close the processor
+	If we are the leader start the processor
+	 */
+	return nil
 }
 
 func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
@@ -397,6 +509,12 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 		return err
 	}
 	s.receiverSequence = receiverSequence
+	leaderNodeID, epoch, err := s.loadLeaderInfo(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return err
+	}
+	s.leaderNodeID = leaderNodeID
+	s.epoch = epoch
 	log.Debugf("data shard %d recover from snapshot done on node %d", s.shardID, s.dragon.cnf.NodeID)
 	atomic.AddInt64(&s.dragon.restoreSnapshotCount, 1)
 	return nil

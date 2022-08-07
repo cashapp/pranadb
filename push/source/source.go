@@ -380,7 +380,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 		forwardBatch, ok := forwardBatches[destShardID]
 		if !ok {
-			forwardBatch = cluster.NewWriteBatch(destShardID)
+			forwardBatch = cluster.NewWriteBatch(0, destShardID)
 			forwardBatches[destShardID] = forwardBatch
 		}
 

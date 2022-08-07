@@ -230,7 +230,7 @@ func (c *Controller) RegisterIndex(indexInfo *common.IndexInfo) error {
 func (c *Controller) PersistIndex(indexInfo *common.IndexInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	wb := cluster.NewWriteBatch(0, cluster.SystemSchemaShardID)
 	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
@@ -280,7 +280,7 @@ func (c *Controller) RegisterSource(sourceInfo *common.SourceInfo) error {
 func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	wb := cluster.NewWriteBatch(0, cluster.SystemSchemaShardID)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
@@ -290,7 +290,7 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	wb := cluster.NewWriteBatch(0, cluster.SystemSchemaShardID)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeMaterializedViewInfoToRow(mvInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
@@ -428,7 +428,7 @@ func (c *Controller) DeleteEntityWithID(tableID uint64) error {
 }
 
 func (c *Controller) deleteTableWithID(tableID uint64) error {
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	wb := cluster.NewWriteBatch(0, cluster.SystemSchemaShardID)
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(tableID))
@@ -437,7 +437,7 @@ func (c *Controller) deleteTableWithID(tableID uint64) error {
 }
 
 func (c *Controller) deleteIndexWithID(indexID uint64) error {
-	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	wb := cluster.NewWriteBatch(0, cluster.SystemSchemaShardID)
 	var key []byte
 	key = table.EncodeTableKeyPrefix(common.IndexTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(indexID))
