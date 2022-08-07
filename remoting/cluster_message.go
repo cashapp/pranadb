@@ -24,6 +24,7 @@ const (
 	ClusterMessageForwardWriteRequest
 	ClusterMessageForwardWriteResponse
 	ClusterMessageConsumerSetRate
+	ClusterMessageLeaderInfos
 	ClusterMessageRemotingTestMessage
 )
 
@@ -49,6 +50,8 @@ func TypeForClusterMessage(clusterMessage ClusterMessage) ClusterMessageType {
 		return ClusterMessageForwardWriteResponse
 	case *clustermsgs.ConsumerSetRate:
 		return ClusterMessageConsumerSetRate
+	case *clustermsgs.LeaderInfosMessage:
+		return ClusterMessageLeaderInfos
 	case *clustermsgs.RemotingTestMessage:
 		return ClusterMessageRemotingTestMessage
 	default:
@@ -94,6 +97,8 @@ func DeserializeClusterMessage(data []byte) (ClusterMessage, error) {
 		msg = &clustermsgs.ReloadProtobuf{}
 	case ClusterMessageConsumerSetRate:
 		msg = &clustermsgs.ConsumerSetRate{}
+	case ClusterMessageLeaderInfos:
+		msg = &clustermsgs.LeaderInfosMessage{}
 	case ClusterMessageRemotingTestMessage:
 		msg = &clustermsgs.RemotingTestMessage{}
 	default:

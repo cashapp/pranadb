@@ -3,6 +3,7 @@ package integration
 import (
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/common"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -299,7 +300,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		cnf.DataDir = dataDir
 		cnf.ReplicationFactor = 3
 		cnf.TestServer = true
-		clus, err := dragon.NewDragon(*cnf)
+		clus, err := dragon.NewDragon(*cnf, &common.AtomicBool{})
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

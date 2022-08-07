@@ -44,12 +44,20 @@ func (c *clientConnection) SendRequestAsync(message ClusterMessage, respHandler 
 	if c.closed {
 		return ErrConnectionClosed
 	}
-	seq := atomic.AddInt64(&c.reqSequence, 1)
-	c.respHandlers.Store(seq, respHandler)
-	cr := &ClusterRequest{
-		requiresResponse: true,
-		sequence:         seq,
-		requestMessage:   message,
+	var cr *ClusterRequest
+	if respHandler != nil {
+		seq := atomic.AddInt64(&c.reqSequence, 1)
+		c.respHandlers.Store(seq, respHandler)
+		cr = &ClusterRequest{
+			requiresResponse: true,
+			sequence:         seq,
+			requestMessage:   message,
+		}
+	} else {
+		cr = &ClusterRequest{
+			requiresResponse: false,
+			requestMessage:   message,
+		}
 	}
 	buf, err := cr.serialize(nil)
 	if err != nil {

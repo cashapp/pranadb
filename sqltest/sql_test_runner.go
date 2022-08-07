@@ -108,6 +108,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 		DisableLevelTruncation: true,
 		TimestampFormat:        pranalog.TimestampFormat,
 	})
+	log.SetLevel(log.TraceLevel)
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
@@ -375,8 +376,6 @@ func (st *sqlTest) run() {
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
 
-	log.SetLevel(log.TraceLevel)
-
 	log.Infof("Running sql test %s", st.testName)
 
 	require := st.testSuite.suite.Require()
@@ -414,7 +413,12 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 	st.cli = st.createCli(require)
 	numIters := 1
 	for i, command := range commands {
-		st.output.WriteString(command + ";\n")
+		waitForInd := strings.Index(command, "wait for results")
+		if waitForInd != -1 {
+			st.output.WriteString(command[:waitForInd-1] + ";\n")
+		} else {
+			st.output.WriteString(command + ";\n")
+		}
 		command = trimBothEnds(command)
 		if command == "" {
 			continue
@@ -644,26 +648,6 @@ func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName s
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok)
-}
-
-func (st *sqlTest) getAllRowsInTable(tableID uint64) (int, error) {
-	totRows := 0
-	for _, prana := range st.testSuite.pranaCluster {
-		scheds, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-		for shardID := range scheds {
-			keyStartPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
-			keyEndPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
-			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100000)
-			if err != nil {
-				return 0, errors.WithStack(err)
-			}
-			totRows += len(pairs)
-		}
-	}
-	return totRows, nil
 }
 
 func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Server, displayRows bool) (bool, error) {
@@ -1210,21 +1194,49 @@ func (st *sqlTest) waitForSchedulers(require *require.Assertions) {
 
 func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement string) {
 	start := time.Now()
-	isUse := strings.HasPrefix(strings.ToLower(statement), "use ")
-	resChan, err := st.cli.ExecuteStatement(statement, nil)
-	require.NoError(err)
-	lastLine := ""
-	for line := range resChan {
-		log.Infof("output:%s", line)
-		st.output.WriteString(line + "\n")
-		lastLine = line
+	ind := strings.Index(statement, "wait for results")
+	var waitUntilResults string
+	if ind != -1 {
+		waitUntilResults = statement[ind+17:] + "\n"
+		statement = statement[:ind]
 	}
-	if isUse && strings.HasPrefix(lastLine, "0 rows returned") {
+	isUse := strings.HasPrefix(strings.ToLower(statement), "use ")
+
+	var res string
+	if waitUntilResults == "" {
+		res = st.execStatement(require, statement)
+		log.Infof("output:%s", res)
+		st.output.WriteString(res)
+	} else {
+		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
+			res = st.execStatement(require, statement)
+			return res == waitUntilResults, nil
+		}, 1*time.Minute, 100*time.Millisecond)
+		require.NoError(err)
+		res = st.execStatement(require, statement)
+		if !ok {
+			st.output.WriteString("DOES NOT MATCH EXPECTED\n")
+		}
+		st.output.WriteString(res)
+	}
+
+	if isUse && strings.HasSuffix(res, "0 rows returned\n") {
 		st.currentSchema = strings.ToLower(statement[4:])
 	}
 	end := time.Now()
 	dur := end.Sub(start)
 	log.Infof("Statement execute time ms %d", dur.Milliseconds())
+}
+
+func (st *sqlTest) execStatement(require *require.Assertions, statement string) string {
+	resChan, err := st.cli.ExecuteStatement(statement, nil)
+	require.NoError(err)
+	sb := strings.Builder{}
+	for line := range resChan {
+		sb.WriteString(line)
+		sb.WriteRune('\n')
+	}
+	return sb.String()
 }
 
 func (st *sqlTest) choosePrana() *server.Server {

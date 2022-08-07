@@ -46,11 +46,13 @@ func NewRemoteExecutor(remoteDAG PullExecutor, queryInfo *cluster.QueryExecution
 		re.queryInfo.SystemQuery = true
 		lq := strings.ToLower(re.queryInfo.Query)
 		if (strings.Index(lq, fmt.Sprintf("from %s ", meta.TableDefTableName)) != -1) ||
-			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) {
+			(strings.Index(lq, fmt.Sprintf("from %s ", meta.IndexDefTableName)) != -1) ||
+			(strings.HasSuffix(lq, fmt.Sprintf("from %s", meta.ProtobufTableName))) {
 			re.singlePointGetQueryInfo = re.createGetterQueryExecInfo(re.queryInfo, cluster.SystemSchemaShardID)
 			return &re
 		}
 	}
+
 	numPointGets := len(pointGetShardIDs)
 	if numPointGets == 1 {
 		// It's a single point get
