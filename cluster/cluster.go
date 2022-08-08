@@ -19,7 +19,7 @@ type Cluster interface {
 	ExecuteForwardBatch(shardID uint64, batch []byte) error
 
 	// WriteBatch writes a batch reliably to storage
-	WriteBatch(batch *WriteBatch, localOnly bool) error
+	WriteBatch(batch *WriteBatch, localOnly bool, timeout bool) error
 
 	// WriteForwardBatch writes a batch reliably for forwarding to another shard
 	WriteForwardBatch(batch *WriteBatch, localOnly bool) error
@@ -72,6 +72,8 @@ type Cluster interface {
 	Stop() error
 
 	PostStartChecks(queryExec common.SimpleQueryExec) error
+
+	WaitUntilShardsHaveLeaders()
 
 	SyncStore() error
 }
@@ -247,7 +249,7 @@ type KVPair struct {
 }
 
 type ShardListenerFactory interface {
-	CreateShardListener(epoch uint64, shardID uint64) ShardListener
+	CreateShardListener(shardID uint64) ShardListener
 }
 
 type ForwardRow struct {

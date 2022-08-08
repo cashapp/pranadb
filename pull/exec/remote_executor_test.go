@@ -165,6 +165,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) WaitUntilShardsHaveLeaders() {
+	panic("implement me")
+}
+
 func (t *testCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	panic("implement me")
 }
@@ -238,7 +242,7 @@ func (t *testCluster) DeleteAllDataInRangeForShard(shardID uint64, startPrefix [
 	panic("should not be called")
 }
 
-func (t *testCluster) WriteBatch(batch *cluster.WriteBatch, localOnly bool) error {
+func (t *testCluster) WriteBatch(batch *cluster.WriteBatch, localOnly bool, timeout bool) error {
 	panic("should not be called")
 }
 

@@ -205,7 +205,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 	}
 	phase := ddlInfo.GetPhase()
 	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
-	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, skey,
+	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, ddlInfo.Sql,
 		d.ce.cluster.GetNodeID(), ddlInfo.GetOriginatingNodeId())
 	if phase == 0 {
 		if !ok {
@@ -222,12 +222,12 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 		log.Warnf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		return nil
 	}
-	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), skey)
+	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), ddlInfo.Sql)
 	err := com.OnPhase(phase)
 	if err != nil {
 		com.Cleanup()
 	}
-	log.Debugf("Running phase %d for DDL message %d %s returned err %v", phase, com.CommandType(), skey, err)
+	log.Debugf("Running phase %d for DDL message %d %s returned err %v", phase, com.CommandType(), ddlInfo.Sql, err)
 	if phase == int32(com.NumPhases()-1) {
 		// Final phase so delete the command
 		d.commands.Delete(skey)
@@ -265,25 +265,25 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 }
 
 func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *clustermsgs.DDLStatementInfo) error {
-	log.Debugf("Running DDL command %d %s", command.CommandType(), commandKey)
+	log.Debugf("Running DDL command %d %s", command.CommandType(), ddlInfo.Sql)
 	if err := command.Before(); err != nil {
 		d.commands.Delete(commandKey)
 		return errors.WithStack(err)
 	}
-	log.Debugf("Executed before for DDL command %d %s", command.CommandType(), commandKey)
+	log.Debugf("Executed before for DDL command %d %s", command.CommandType(), ddlInfo.Sql)
 	for phase := 0; phase < command.NumPhases(); phase++ {
-		log.Debugf("Broadcasting phase %d for DDL command %d %s", phase, command.CommandType(), commandKey)
+		log.Debugf("Broadcasting phase %d for DDL command %d %s", phase, command.CommandType(), ddlInfo.Sql)
 		err := d.broadcastDDL(int32(phase), ddlInfo)
 		if err == nil {
 			err = command.AfterPhase(int32(phase))
 		}
 		if err != nil {
-			log.Debugf("Error return from broadcasting phase %d for DDL command %d %s %v cancel will be broadcast", phase, command.CommandType(), commandKey, err)
+			log.Debugf("Error return from broadcasting phase %d for DDL command %d %s %v cancel will be broadcast", phase, command.CommandType(), ddlInfo.Sql, err)
 			// Broadcast a cancel to clean up command state across the cluster
 			if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
 				// Ignore
 			}
-			log.Debugf("Broadcast of cancel returned for DDL command %d %s", command.CommandType(), commandKey)
+			log.Debugf("Broadcast of cancel returned for DDL command %d %s", command.CommandType(), ddlInfo.Sql)
 			return errors.WithStack(err)
 		}
 	}

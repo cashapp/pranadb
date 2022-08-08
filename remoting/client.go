@@ -1,7 +1,6 @@
 package remoting
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"sync"
@@ -35,10 +34,22 @@ func (c *Client) Broadcast(request ClusterMessage, minServers int, serverAddress
 	return rh.waitForResponse()
 }
 
+func (c *Client) BroadcastOneWay(request ClusterMessage, serverAddresses ...string) {
+	for _, serverAddress := range serverAddresses {
+		conn, err := c.getConnection(serverAddress)
+		if err != nil {
+			// best effort - ignore the error
+			continue
+		}
+		if err := c.sendRequestWithRetry(conn, request, nil); err != nil {
+			continue
+		}
+	}
+}
+
 func (c *Client) SendRPC(request ClusterMessage, serverAddress string) (ClusterMessage, error) {
 	conn, err := c.getConnection(serverAddress)
 	if err != nil {
-		log.Errorf("got err 0 %v", err)
 		return nil, err
 	}
 	rh := &rpcRespHandler{ch: make(chan respHolder, 1)}
@@ -178,16 +189,13 @@ func (c *Client) maybeCreateAndCacheConnection(serverAddress string, oldConn *cl
 
 func (c *Client) sendRequestWithRetry(conn *clientConnection, request ClusterMessage, rh responseHandler) error {
 	if err := conn.SendRequestAsync(request, rh); err != nil {
-		log.Errorf("got err 1 %v", err)
 		// It's possible the connection is cached but is closed - e.g. it hasn't been used for some time and has
 		// been closed by a NAT / firewall - in this case we will try and connect again
 		conn, err = c.maybeCreateAndCacheConnection(conn.serverAddress, conn)
 		if err != nil {
-			log.Errorf("got err 2 %v", err)
 			return err
 		}
 		if err = conn.SendRequestAsync(request, rh); err != nil {
-			log.Errorf("got err 3 %v", err)
 			return err
 		}
 	}

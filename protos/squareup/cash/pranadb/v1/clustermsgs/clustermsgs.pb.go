@@ -576,6 +576,108 @@ func (x *ConsumerSetRate) GetRate() int64 {
 	return 0
 }
 
+type LeaderInfosMessage struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	LeaderInfos []*LeaderInfo `protobuf:"bytes,1,rep,name=leader_infos,json=leaderInfos,proto3" json:"leader_infos,omitempty"`
+}
+
+func (x *LeaderInfosMessage) Reset() {
+	*x = LeaderInfosMessage{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LeaderInfosMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeaderInfosMessage) ProtoMessage() {}
+
+func (x *LeaderInfosMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeaderInfosMessage.ProtoReflect.Descriptor instead.
+func (*LeaderInfosMessage) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *LeaderInfosMessage) GetLeaderInfos() []*LeaderInfo {
+	if x != nil {
+		return x.LeaderInfos
+	}
+	return nil
+}
+
+type LeaderInfo struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ShardId int64 `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+	NodeId  int64 `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+}
+
+func (x *LeaderInfo) Reset() {
+	*x = LeaderInfo{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[11]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LeaderInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeaderInfo) ProtoMessage() {}
+
+func (x *LeaderInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[11]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeaderInfo.ProtoReflect.Descriptor instead.
+func (*LeaderInfo) Descriptor() ([]byte, []int) {
+	return file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *LeaderInfo) GetShardId() int64 {
+	if x != nil {
+		return x.ShardId
+	}
+	return 0
+}
+
+func (x *LeaderInfo) GetNodeId() int64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
 type RemotingTestMessage struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -587,7 +689,7 @@ type RemotingTestMessage struct {
 func (x *RemotingTestMessage) Reset() {
 	*x = RemotingTestMessage{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[10]
+		mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -600,7 +702,7 @@ func (x *RemotingTestMessage) String() string {
 func (*RemotingTestMessage) ProtoMessage() {}
 
 func (x *RemotingTestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[10]
+	mi := &file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -613,7 +715,7 @@ func (x *RemotingTestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemotingTestMessage.ProtoReflect.Descriptor instead.
 func (*RemotingTestMessage) Descriptor() ([]byte, []int) {
-	return file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescGZIP(), []int{10}
+	return file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RemotingTestMessage) GetSomeField() string {
@@ -688,15 +790,26 @@ var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDesc = []byte
 	0x6f, 0x75, 0x72, 0x63, 0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
 	0x52, 0x0a, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04,
 	0x72, 0x61, 0x74, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x72, 0x61, 0x74, 0x65,
-	0x22, 0x34, 0x0a, 0x13, 0x52, 0x65, 0x6d, 0x6f, 0x74, 0x69, 0x6e, 0x67, 0x54, 0x65, 0x73, 0x74,
-	0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x73, 0x6f, 0x6d, 0x65, 0x5f,
-	0x66, 0x69, 0x65, 0x6c, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x73, 0x6f, 0x6d,
-	0x65, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x42, 0x49, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72,
-	0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75,
-	0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61,
-	0x64, 0x62, 0x2f, 0x76, 0x31, 0x2f, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x6d, 0x73, 0x67,
-	0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x22, 0x69, 0x0a, 0x12, 0x4c, 0x65, 0x61, 0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x73, 0x4d,
+	0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x53, 0x0a, 0x0c, 0x6c, 0x65, 0x61, 0x64, 0x65, 0x72,
+	0x5f, 0x69, 0x6e, 0x66, 0x6f, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x30, 0x2e, 0x73,
+	0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2e, 0x63, 0x61, 0x73, 0x68, 0x2e, 0x70, 0x72, 0x61,
+	0x6e, 0x61, 0x64, 0x62, 0x2e, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x6d, 0x73, 0x67, 0x73,
+	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x65, 0x61, 0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x0b,
+	0x6c, 0x65, 0x61, 0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x73, 0x22, 0x40, 0x0a, 0x0a, 0x4c,
+	0x65, 0x61, 0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61,
+	0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x07, 0x73, 0x68, 0x61,
+	0x72, 0x64, 0x49, 0x64, 0x12, 0x17, 0x0a, 0x07, 0x6e, 0x6f, 0x64, 0x65, 0x5f, 0x69, 0x64, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x06, 0x6e, 0x6f, 0x64, 0x65, 0x49, 0x64, 0x22, 0x34, 0x0a,
+	0x13, 0x52, 0x65, 0x6d, 0x6f, 0x74, 0x69, 0x6e, 0x67, 0x54, 0x65, 0x73, 0x74, 0x4d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x73, 0x6f, 0x6d, 0x65, 0x5f, 0x66, 0x69, 0x65,
+	0x6c, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x73, 0x6f, 0x6d, 0x65, 0x46, 0x69,
+	0x65, 0x6c, 0x64, 0x42, 0x49, 0x5a, 0x47, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f,
+	0x6d, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65, 0x75, 0x70, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61,
+	0x64, 0x62, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x73, 0x2f, 0x73, 0x71, 0x75, 0x61, 0x72, 0x65,
+	0x75, 0x70, 0x2f, 0x63, 0x61, 0x73, 0x68, 0x2f, 0x70, 0x72, 0x61, 0x6e, 0x61, 0x64, 0x62, 0x2f,
+	0x76, 0x31, 0x2f, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x6d, 0x73, 0x67, 0x73, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -711,7 +824,7 @@ func file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescGZIP() [
 	return file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDescData
 }
 
-var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_goTypes = []interface{}{
 	(*DDLStatementInfo)(nil),            // 0: squareup.cash.pranadb.clustermsgs.v1.DDLStatementInfo
 	(*DDLCancelMessage)(nil),            // 1: squareup.cash.pranadb.clustermsgs.v1.DDLCancelMessage
@@ -723,14 +836,17 @@ var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_goTypes = []inte
 	(*ClusterReadRequest)(nil),          // 7: squareup.cash.pranadb.clustermsgs.v1.ClusterReadRequest
 	(*ClusterReadResponse)(nil),         // 8: squareup.cash.pranadb.clustermsgs.v1.ClusterReadResponse
 	(*ConsumerSetRate)(nil),             // 9: squareup.cash.pranadb.clustermsgs.v1.ConsumerSetRate
-	(*RemotingTestMessage)(nil),         // 10: squareup.cash.pranadb.clustermsgs.v1.RemotingTestMessage
+	(*LeaderInfosMessage)(nil),          // 10: squareup.cash.pranadb.clustermsgs.v1.LeaderInfosMessage
+	(*LeaderInfo)(nil),                  // 11: squareup.cash.pranadb.clustermsgs.v1.LeaderInfo
+	(*RemotingTestMessage)(nil),         // 12: squareup.cash.pranadb.clustermsgs.v1.RemotingTestMessage
 }
 var file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	11, // 0: squareup.cash.pranadb.clustermsgs.v1.LeaderInfosMessage.leader_infos:type_name -> squareup.cash.pranadb.clustermsgs.v1.LeaderInfo
+	1,  // [1:1] is the sub-list for method output_type
+	1,  // [1:1] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_init() }
@@ -860,6 +976,30 @@ func file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_init() {
 			}
 		}
 		file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LeaderInfosMessage); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LeaderInfo); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*RemotingTestMessage); i {
 			case 0:
 				return &v.state
@@ -878,7 +1018,7 @@ func file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_squareup_cash_pranadb_clustermsgs_v1_clustermsgs_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

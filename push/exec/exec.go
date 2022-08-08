@@ -40,7 +40,7 @@ func (e *ExecutionContext) AddToForwardBatch(shardID uint64, key []byte, value [
 	}
 	remoteBatch, ok := e.RemoteBatches[shardID]
 	if !ok {
-		remoteBatch = cluster.NewWriteBatch(e.WriteBatch.Epoch, shardID)
+		remoteBatch = cluster.NewWriteBatch(shardID)
 		e.RemoteBatches[shardID] = remoteBatch
 	}
 	remoteBatch.AddPut(key, value)

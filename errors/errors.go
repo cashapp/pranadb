@@ -24,6 +24,7 @@ const (
 	InvalidParamCount
 	Timeout
 	DdlCancelled
+	Unavailable
 )
 
 // Ingest errors

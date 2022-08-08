@@ -19,13 +19,12 @@ package fake
 import (
 	"bytes"
 	"fmt"
+	"github.com/google/btree"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
-
-	"github.com/google/btree"
 
 	"github.com/squareup/pranadb/common"
 )
@@ -192,7 +191,7 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly boo
 	if !ok {
 		receiverSequence = 0
 	}
-	filteredBatch := cluster.NewWriteBatch(batch.Epoch, batch.ShardID)
+	filteredBatch := cluster.NewWriteBatch(batch.ShardID)
 	dedupMap, ok := f.dedupMaps[batch.ShardID]
 	if !ok {
 		dedupMap = make(map[string]uint64)
@@ -248,10 +247,10 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly boo
 }
 
 func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
-	return f.WriteBatch(batch, true)
+	return f.WriteBatch(batch, true, false)
 }
 
-func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch, _ bool) error {
+func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch, _ bool, timeout bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.writeBatchInternal(batch, false, nil); err != nil {
@@ -377,7 +376,7 @@ func (f *FakeCluster) startShardListeners() {
 		return
 	}
 	for _, shardID := range f.allShardIds {
-		shardListener := f.shardListenerFactory.CreateShardListener(0, shardID)
+		shardListener := f.shardListenerFactory.CreateShardListener(shardID)
 		f.shardListeners[shardID] = shardListener
 	}
 }
@@ -438,4 +437,7 @@ func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 
 func (f *FakeCluster) SyncStore() error {
 	return nil
+}
+
+func (f *FakeCluster) WaitUntilShardsHaveLeaders() {
 }

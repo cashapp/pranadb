@@ -3,6 +3,7 @@ package integration
 import (
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/common"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -75,7 +76,7 @@ func TestLocalPutGet(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.WriteBatch(&writeBatch, false)
+	err := node.WriteBatch(&writeBatch, false, false)
 	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
@@ -98,7 +99,7 @@ func TestLocalPutDelete(t *testing.T) {
 
 	writeBatch := createWriteBatchWithPuts(localShard, kvPair)
 
-	err := node.WriteBatch(&writeBatch, false)
+	err := node.WriteBatch(&writeBatch, false, false)
 	require.NoError(t, err)
 
 	res, err := node.LocalGet(key)
@@ -107,7 +108,7 @@ func TestLocalPutDelete(t *testing.T) {
 
 	deleteBatch := createWriteBatchWithDeletes(localShard, key)
 
-	err = node.WriteBatch(&deleteBatch, false)
+	err = node.WriteBatch(&deleteBatch, false, false)
 	require.NoError(t, err)
 
 	res, err = node.LocalGet(key)
@@ -148,7 +149,7 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 		wb.AddPut(kvPair.Key, kvPair.Value)
 	}
 
-	err := node.WriteBatch(wb, false)
+	err := node.WriteBatch(wb, false, false)
 	require.NoError(t, err)
 
 	keyStart := []byte("foo-06")
@@ -299,7 +300,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		cnf.DataDir = dataDir
 		cnf.ReplicationFactor = 3
 		cnf.TestServer = true
-		clus, err := dragon.NewDragon(*cnf)
+		clus, err := dragon.NewDragon(*cnf, &common.AtomicBool{})
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

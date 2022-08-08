@@ -3,95 +3,96 @@ package dragon
 import (
 	"github.com/lni/dragonboat/v3/raftio"
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"sync"
+	"time"
 )
 
-func newProcManager(d *Dragon) *procManager {
+func newProcManager(d *Dragon, serverAddresses []string) *procManager {
 	return &procManager{
-		nodeID: d.cnf.NodeID,
-		dragon: d,
-		leaderShards: map[uint64]struct{}{},
+		nodeID:           uint64(d.cnf.NodeID),
+		dragon:           d,
 		setLeaderChannel: make(chan uint64, 10),
+		serverAddresses:  serverAddresses,
 	}
 }
 
 type procManager struct {
-	nodeID int
-	dragon *Dragon
-	leaderShards map[uint64]struct{} // do we need this
+	started          bool
+	nodeID           uint64
+	dragon           *Dragon
 	setLeaderChannel chan uint64
-	closeWG sync.WaitGroup
-	lock sync.Mutex
+	closeWG          sync.WaitGroup
+	lock             sync.Mutex
+	broadcastTimer   *time.Timer
+	broadcastClient  *remoting.Client
+	serverAddresses  []string
+	leaders          sync.Map
+}
+
+func (p *procManager) getLeaderNode(shardID uint64) (uint64, bool) {
+	l, ok := p.leaders.Load(shardID)
+	if !ok {
+		return 0, false
+	}
+	leader, ok := l.(uint64)
+	if !ok {
+		panic("not a uint64")
+	}
+	return leader, true
+}
+
+func (p *procManager) setLeaderNode(shardID uint64, nodeID uint64) {
+	p.leaders.Store(shardID, nodeID)
 }
 
 func (p *procManager) LeaderUpdated(info raftio.LeaderInfo) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	log.Infof("node %d received leader updated cluster id %d node id %d term %d leader id %d",
-		p.nodeID, info.ClusterID, info.NodeID, info.Term, info.LeaderID)
-	if info.NodeID != uint64(p.nodeID) + 1 {
+	//log.Infof("node %d received leader updated cluster id %d node id %d term %d leader id %d",
+	//	p.nodeID, info.ClusterID, info.NodeID, info.Term, info.LeaderID)
+	if info.NodeID != p.nodeID+1 {
 		panic("received leader info on wrong node")
 	}
 	// When a later node joins, it won't receive info for membership changes before it joined - but it will
-	// know if becomes the leader for a node, or some other node takes over leadership
-	if info.LeaderID == uint64(p.nodeID) + 1 {
-		p.leaderShards[info.ClusterID] = struct{}{}
+	// know if it becomes the leader for a node, or some other node takes over leadership
+
+	if info.LeaderID == p.nodeID+1 && info.ClusterID >= cluster.DataShardIDBase {
+		// We've become leader for a data shard
 		p.setLeaderChannel <- info.ClusterID
-	} else {
-		delete(p.leaderShards, info.ClusterID)
+	}
+	p.setLeaderNode(info.ClusterID, info.LeaderID-1)
+}
+
+func (p *procManager) handleLeaderInfosMessage(msg *clustermsgs.LeaderInfosMessage) {
+	for _, leaderInfo := range msg.LeaderInfos {
+		p.setLeaderNode(uint64(leaderInfo.ShardId), uint64(leaderInfo.NodeId))
 	}
 }
 
-/*
-We won't receive leader updates here for shards which don't have a local replica.
-So, periodically we must ping all other nodes, and ask for their leader maps, then we add it to this map, we must get the term
-too and not overwrite if it's an earlier term.
-Then we can maintain a map of shard_id -> node id for the whole cluster
-
-When nodes call a leader, e.g. forwarding to a processor, it's possible the processor hasn't been started yet, or is old, in either
-case an error will be returned and the request can be retried after getting the leader again and retrying
- */
-
-func (p *procManager) getLeaderNode(shardID uint64) int {
-	// TODO
-	return 0
-}
-
-func (p *procManager) waitForShardsToBeReady(shardIDs []uint64) {
-	// TODO
-	// wait until all nodes have leaders-  take the place of ping lookup
-}
-
-/*
-Timeout policy
-
-In the case of loss of nodes where quorum is maintained, should never have to wait much longer than election interval.
-In the case quorum is lost an node needs to be brought back up, need to wait as long as node restart interval.
-
-So.... we should tune up timeouts such that scheduler fail doesn't get called under these circumstances. Scheduler fail should never
-be called if a write fails because leader not available. Instead it should be retried after delay, unless the scheduler is stopped.
-Scheduler fail should only be called for unexpected errors not due to node failure.
-
-However, queueing of forward writes on processor - these should timeout in good time, and the source should be stopped temporarily with retry.
-
- */
-
 func (p *procManager) Start() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.broadcastClient = &remoting.Client{}
 	p.closeWG.Add(1)
 	go p.setLeaderLoop()
+	p.started = true
+	p.scheduleBroadcast()
 }
 
 func (p *procManager) Stop() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	p.started = false
+	p.broadcastTimer.Stop()
+	p.broadcastClient.Stop()
 	close(p.setLeaderChannel)
 	p.closeWG.Wait()
 }
 
 func (p *procManager) setLeaderLoop() {
 	for {
-		shardID, ok := <- p.setLeaderChannel
+		shardID, ok := <-p.setLeaderChannel
 		if !ok {
 			break
 		}
@@ -104,3 +105,32 @@ func (p *procManager) setLeaderLoop() {
 	p.closeWG.Done()
 }
 
+func (p *procManager) scheduleBroadcast() {
+	if !p.started {
+		return
+	}
+	p.broadcastTimer = time.AfterFunc(1*time.Second, p.broadcastInfo)
+}
+
+func (p *procManager) broadcastInfo() {
+	var infos []*clustermsgs.LeaderInfo
+	p.leaders.Range(func(key, value interface{}) bool {
+		shardID := key.(uint64) //nolint:forcetypeassert
+		nodeID := key.(uint64)  //nolint:forcetypeassert
+		if nodeID == p.nodeID {
+			leaderInfo := &clustermsgs.LeaderInfo{
+				ShardId: int64(shardID),
+				NodeId:  int64(nodeID),
+			}
+			infos = append(infos, leaderInfo)
+		}
+		return true
+	})
+	if len(infos) > 0 {
+		infosMsg := &clustermsgs.LeaderInfosMessage{LeaderInfos: infos}
+		p.broadcastClient.BroadcastOneWay(infosMsg, p.serverAddresses...)
+	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.scheduleBroadcast()
+}

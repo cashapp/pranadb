@@ -1,24 +1,23 @@
 package protolib
 
 import (
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
-	"github.com/squareup/pranadb/remoting"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 type Resolver protodesc.Resolver
@@ -140,7 +139,7 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 			return errors.WithStack(err)
 		}
 	}
-	if err := s.cluster.WriteBatch(wb, false); err != nil {
+	if err := s.cluster.WriteBatch(wb, false, true); err != nil {
 		return errors.WithStack(err)
 	}
 

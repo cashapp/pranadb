@@ -16,7 +16,6 @@ import (
 
 const maxProcessBatchRows = 2000
 const maxForwardWriteBatchSize = 500
-const addForwardRowsTimeout = 1 * time.Minute
 
 var (
 	rowsProcessedVec = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -38,7 +37,6 @@ var (
 )
 
 type ShardScheduler struct {
-	epoch uint64
 	shardID                      uint64
 	actions                      chan struct{}
 	started                      bool
@@ -61,7 +59,7 @@ type ShardScheduler struct {
 }
 
 type RowsBatchHandler interface {
-	HandleBatch(epoch uint64, shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
+	HandleBatch(shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
 }
 
 type BatchEntry struct {
@@ -74,14 +72,13 @@ type WriteBatchEntry struct {
 	completionChannels []chan error
 }
 
-func NewShardScheduler(epoch uint64, shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster) *ShardScheduler {
+func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster) *ShardScheduler {
 	sShardID := fmt.Sprintf("shard-%04d", shardID)
 	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
 	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
 	batchProcessingTimeHistogram := batchProcessingTimeVec.WithLabelValues(sShardID)
 	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
 	ss := &ShardScheduler{
-		epoch: epoch,
 		shardID:                      shardID,
 		actions:                      make(chan struct{}, 1),
 		batchHandler:                 batchHandler,
@@ -100,12 +97,7 @@ func (s *ShardScheduler) AddForwardBatch(writeBatch []byte) error {
 	if err != nil {
 		return err
 	}
-	select {
-	case err := <-ch:
-		return err
-	case <-time.After(addForwardRowsTimeout):
-		return errors.NewPranaErrorf(errors.Timeout, "timed out in waiting for forward write batch to be processed for shard %d", s.shardID)
-	}
+	return <-ch
 }
 
 func getNumPuts(batch []byte) uint32 {
@@ -119,8 +111,11 @@ func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) 
 
 	ch := make(chan error)
 
+	if s.failed {
+		return nil, errors.New("cannot add forward batch, scheduler is failed")
+	}
 	if s.stopped {
-		return nil, errors.New("cannot add forward batch, scheduler is stopped")
+		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot add forward batch, scheduler has stopped")
 	}
 
 	s.forwardWrites = append(s.forwardWrites, WriteBatchEntry{
@@ -329,9 +324,8 @@ func (s *ShardScheduler) runLoop() {
 }
 
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool) bool {
-	lastSequence, err := s.batchHandler.HandleBatch(s.epoch, s.shardID, rowsToProcess, first)
+	lastSequence, err := s.batchHandler.HandleBatch(s.shardID, rowsToProcess, first)
 	if err != nil {
-		log.Errorf("failed to process batch: %+v", err)
 		s.setFailed(err)
 		return false
 	}
@@ -372,6 +366,12 @@ func (s *ShardScheduler) Stop() {
 	// We want to make sure the runLoop has exited before we complete Stop() this means all current batch processing
 	// is complete
 	s.loopExitWaitGroup.Wait()
+}
+
+func (s *ShardScheduler) isStopped() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.stopped
 }
 
 func (s *ShardScheduler) setFailed(err error) {
