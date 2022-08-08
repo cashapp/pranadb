@@ -50,7 +50,7 @@ func (p *procManager) setLeaderNode(shardID uint64, nodeID uint64) {
 
 func (p *procManager) LeaderUpdated(info raftio.LeaderInfo) {
 	//log.Infof("node %d received leader updated cluster id %d node id %d term %d leader id %d",
-	//	p.nodeID, info.ClusterID, info.NodeID, info.Term, info.LeaderID)
+	//   p.nodeID, info.ClusterID, info.NodeID, info.Term, info.LeaderID)
 	if info.NodeID != p.nodeID+1 {
 		panic("received leader info on wrong node")
 	}
@@ -61,7 +61,12 @@ func (p *procManager) LeaderUpdated(info raftio.LeaderInfo) {
 		// We've become leader for a data shard
 		p.setLeaderChannel <- info.ClusterID
 	}
-	p.setLeaderNode(info.ClusterID, info.LeaderID-1)
+	if info.LeaderID > 0 {
+		p.setLeaderNode(info.ClusterID, info.LeaderID-1)
+	} else {
+		// 0 represents no leader
+		p.leaders.Delete(info.ClusterID)
+	}
 }
 
 func (p *procManager) handleLeaderInfosMessage(msg *clustermsgs.LeaderInfosMessage) {
@@ -115,8 +120,8 @@ func (p *procManager) scheduleBroadcast() {
 func (p *procManager) broadcastInfo() {
 	var infos []*clustermsgs.LeaderInfo
 	p.leaders.Range(func(key, value interface{}) bool {
-		shardID := key.(uint64) //nolint:forcetypeassert
-		nodeID := key.(uint64)  //nolint:forcetypeassert
+		shardID := key.(uint64)  //nolint:forcetypeassert
+		nodeID := value.(uint64) //nolint:forcetypeassert
 		if nodeID == p.nodeID {
 			leaderInfo := &clustermsgs.LeaderInfo{
 				ShardId: int64(shardID),

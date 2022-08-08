@@ -34,13 +34,11 @@ import (
 
 type Engine struct {
 	lock              sync.RWMutex
-	localShardsLock   sync.RWMutex
 	started           bool
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
 	materializedViews map[uint64]*MaterializedView
 	remoteConsumers   sync.Map
-	localLeaderShards []uint64
 	cluster           cluster.Cluster
 	sharder           *sharder.Sharder
 	meta              *meta.Controller
@@ -195,10 +193,7 @@ func (p *Engine) RegisterMV(mv *MaterializedView) error {
 
 func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor *interruptor.Interruptor) error {
 
-	schedulers, err := p.GetLocalLeaderSchedulers()
-	if err != nil {
-		return errors.WithStack(err)
-	}
+	shardsIDs := p.getLocalDataShardsForNode()
 
 	te, err := p.getTableExecutorForIndex(indexInfo)
 	if err != nil {
@@ -214,9 +209,8 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor
 
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
-		log.Println("Filling index")
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject, interruptor); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, shardsIDs, p.failInject, interruptor); err != nil {
 			return err
 		}
 	} else {
@@ -274,11 +268,8 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
 	sh := sched.NewShardScheduler(shardID, p, p.cluster)
 	p.schedulers[shardID] = sh
-	p.localLeaderShards = append(p.localLeaderShards, shardID)
 	sh.Start()
 	return &shardListener{
 		shardID: shardID,
@@ -335,15 +326,6 @@ func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow, fir
 func (s *shardListener) Close() {
 	s.sched.Stop()
 	s.p.removeScheduler(s.shardID)
-	s.p.localShardsLock.Lock()
-	defer s.p.localShardsLock.Unlock()
-	var locShards []uint64
-	for _, sid := range s.p.localLeaderShards {
-		if sid != s.shardID {
-			locShards = append(locShards, sid)
-		}
-	}
-	s.p.localLeaderShards = locShards
 }
 
 func (p *Engine) removeScheduler(shardID uint64) {
@@ -496,14 +478,14 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *Engine) WaitForProcessingToComplete() error {
 
-	log.Println("waiting for schedulers")
+	log.Debug("waiting for schedulers")
 	err := p.WaitForSchedulers()
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
 	// Wait for no rows in the receiver table
-	log.Println("waiting for no rows in receiver")
+	log.Debug("waiting for no rows in receiver")
 	err = p.waitForNoRowsInTable(common.ReceiverTableID)
 	if err != nil {
 		return errors.WithStack(err)
@@ -533,9 +515,12 @@ func (p *Engine) WaitForSchedulers() error {
 }
 
 func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
-	shardIDs := p.localLeaderShards
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	var shardIDs []uint64
+	for shardID := range p.schedulers {
+		shardIDs = append(shardIDs, shardID)
+	}
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, errors.WithStack(err)
@@ -586,28 +571,6 @@ func (p *Engine) VerifyNoSourcesOrMVs() error {
 		return errors.Errorf("there is %d materialized view", len(p.materializedViews))
 	}
 	return nil
-}
-
-func (p *Engine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	sched, ok := p.schedulers[shardID]
-	return sched, ok
-}
-
-var initBatchSize = 10000
-var initBatchSizeLock = sync.RWMutex{}
-
-func getInitBatchSize() int {
-	initBatchSizeLock.Lock()
-	defer initBatchSizeLock.Unlock()
-	return initBatchSize
-}
-
-func SetInitBatchSize(batchSize int) {
-	initBatchSizeLock.Lock()
-	defer initBatchSizeLock.Unlock()
-	initBatchSize = batchSize
 }
 
 func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.TableInfo) (*source.Source, error) {
@@ -753,21 +716,6 @@ func (p *Engine) clearState() {
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
-	p.localLeaderShards = nil
-}
-
-func (p *Engine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	schedulers := make(map[uint64]*sched.ShardScheduler, len(p.localLeaderShards))
-	for _, lls := range p.localLeaderShards {
-		sched, ok := p.schedulers[lls]
-		if !ok {
-			panic(fmt.Sprintf("no scheduler for local leader shard %d", lls))
-		}
-		schedulers[lls] = sched
-	}
-	return schedulers, nil
 }
 
 func (p *Engine) IsEmpty() bool {
@@ -838,4 +786,44 @@ func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	return p.schedulers[shardID]
+}
+
+// When creating an index or MV and performing a fill, we want different nodes of the cluster to perform the fill for
+// different sets of shards. The shards for a node should be ones where there is a shard replica on that node but
+// they don't have to be the leader. We don't enquire for the leader shards as that can change if there is a leader election
+// which could cause some shards not being filled or filled more than once.
+// We therefore take all local shards (i.e. those where there is a local replica), and partition them deterministically
+// across the nodes
+func (p *Engine) getLocalDataShardsForNode() []uint64 {
+	nodeID := p.cluster.GetNodeID()
+	allocs := p.cluster.GetShardAllocs()
+	var shardsForNode []uint64
+	for shardID, nodeIDs := range allocs {
+		if shardID < cluster.DataShardIDBase {
+			continue
+		}
+		index := int(shardID) % len(nodeIDs)
+		nid := nodeIDs[index]
+		if nid == nodeID {
+			shardsForNode = append(shardsForNode, shardID)
+		}
+	}
+	return shardsForNode
+}
+
+// Used in testing only
+
+var initBatchSize = 10000
+var initBatchSizeLock = sync.RWMutex{}
+
+func getInitBatchSize() int {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	return initBatchSize
+}
+
+func SetInitBatchSize(batchSize int) {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	initBatchSize = batchSize
 }

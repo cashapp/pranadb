@@ -1,6 +1,7 @@
 package push
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -206,14 +207,9 @@ func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
 		return errors.WithStack(err)
 	}
 
-	// TODO if cluster membership changes while fill is in process we need to abort process and start again
-	schedulers, err := m.pe.GetLocalLeaderSchedulers()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
+	shardIDs := m.pe.getLocalDataShardsForNode()
+	log.Debugf("materialized view fill for shards %v", shardIDs)
 	var chans []chan error
-
 	for i, tableExec := range tes {
 		ts := tss[i]
 		if !tableExec.IsTransient() {
@@ -221,9 +217,8 @@ func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
 			chans = append(chans, ch)
 			// Execute in parallel
 			te := tableExec
-
 			go func() {
-				err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
+				err := te.FillTo(ts, m.Info.Name, m.Info.ID, shardIDs, m.pe.failInject, interruptor)
 				ch <- err
 			}()
 		} else {

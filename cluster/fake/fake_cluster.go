@@ -141,6 +141,14 @@ func (f *FakeCluster) GetLocalShardIDs() []uint64 {
 	return f.allShardIds
 }
 
+func (f *FakeCluster) GetShardAllocs() map[uint64][]int {
+	allocs := make(map[uint64][]int)
+	for _, shardID := range f.allShardIds {
+		allocs[shardID] = []int{f.nodeID}
+	}
+	return allocs
+}
+
 func (f *FakeCluster) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

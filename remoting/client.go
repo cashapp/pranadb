@@ -1,6 +1,7 @@
 package remoting
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"sync"
@@ -39,9 +40,11 @@ func (c *Client) BroadcastOneWay(request ClusterMessage, serverAddresses ...stri
 		conn, err := c.getConnection(serverAddress)
 		if err != nil {
 			// best effort - ignore the error
+			log.Debugf("got err in getting broadcast connection %v", err)
 			continue
 		}
 		if err := c.sendRequestWithRetry(conn, request, nil); err != nil {
+			log.Debugf("got err in broadcasting %v", err)
 			continue
 		}
 	}

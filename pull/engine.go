@@ -106,7 +106,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 	// In order to actually load other schemas we need to execute queries from the system query so we need a way
 	// of executing system queries during the startup process
 	if !queryInfo.SystemQuery && !p.available.Get() {
-		return nil, errors.New("pull engine not available")
+		return nil, errors.NewPranaErrorf(errors.Unavailable, "pull engine not initialised")
 	}
 	if queryInfo.ExecutionID == "" {
 		panic("empty execution id")

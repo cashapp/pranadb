@@ -46,6 +46,8 @@ type Cluster interface {
 	// GetLocalShardIDs returns the ids of the shards on the local node - this includes replicas
 	GetLocalShardIDs() []uint64
 
+	GetShardAllocs() map[uint64][]int
+
 	// GenerateClusterSequence generates a cluster wide unique sequence number
 	GenerateClusterSequence(sequenceName string) (uint64, error)
 

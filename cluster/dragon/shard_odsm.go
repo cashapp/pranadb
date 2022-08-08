@@ -412,7 +412,7 @@ func encodeError(err error) []byte {
 	var buff []byte
 	buff = append(buff, 0) // Zero byte signifies error
 	buff = append(buff, err.Error()...)
-	// Note - we don't send back an error to Dragon if a query failed - we only return an error
+	// Note - we don't send back an error to Dragonboat if a query failed - we only return an error
 	// for an unrecoverable error.
 	return buff
 }

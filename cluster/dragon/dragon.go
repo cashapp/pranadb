@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/squareup/pranadb/remoting"
@@ -14,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/table"
 
 	"github.com/lni/dragonboat/v3/client"
@@ -166,8 +166,11 @@ func (d *Dragon) GetLocalShardIDs() []uint64 {
 	return d.localDataShards
 }
 
-func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
+func (d *Dragon) GetShardAllocs() map[uint64][]int {
+	return d.shardAllocs
+}
 
+func (d *Dragon) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo, rowsFactory *common.RowsFactory) (*common.Rows, error) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 
@@ -272,19 +275,21 @@ func (d *Dragon) start0() error {
 	defer d.lock.Unlock()
 
 	// Dragon logs a lot of non error stuff at error or warn - we screen these out (in tests mainly)
-	//if d.cnf.ScreenDragonLogSpam {
-	//	logger.GetLogger("rsm").SetLevel(logger.ERROR)
-	//	logger.GetLogger("transport").SetLevel(logger.ERROR)
-	//	logger.GetLogger("grpc").SetLevel(logger.ERROR)
-	//	logger.GetLogger("raft").SetLevel(logger.ERROR)
-	//	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
-	//} else {
-	//	logger.GetLogger("rsm").SetLevel(logger.INFO)
-	//	logger.GetLogger("transport").SetLevel(logger.INFO)
-	//	logger.GetLogger("grpc").SetLevel(logger.INFO)
-	//	logger.GetLogger("raft").SetLevel(logger.DEBUG)
-	//	logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
-	//}
+	if d.cnf.ScreenDragonLogSpam {
+		logger.GetLogger("rsm").SetLevel(logger.ERROR)
+		logger.GetLogger("transport").SetLevel(logger.ERROR)
+		logger.GetLogger("grpc").SetLevel(logger.ERROR)
+		logger.GetLogger("raft").SetLevel(logger.ERROR)
+		logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
+	} else {
+		logger.GetLogger("rsm").SetLevel(logger.INFO)
+		logger.GetLogger("transport").SetLevel(logger.INFO)
+		logger.GetLogger("grpc").SetLevel(logger.INFO)
+		logger.GetLogger("raft").SetLevel(logger.DEBUG)
+		logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
+	}
+	//logger.GetLogger("raft").SetLevel(logger.DEBUG)
+	//logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
 	log.Debugf("Starting dragon on node %d", d.cnf.NodeID)
 
 	if d.remoteQueryExecutionCallback == nil {
@@ -402,7 +407,6 @@ func (d *Dragon) WaitUntilShardsHaveLeaders() {
 }
 
 func (d *Dragon) waitUntilShardsHaveLeaders(shardIDs ...uint64) {
-	// TODO do we need a timeout here?
 	for {
 		hasLeaders := true
 		for _, shardID := range shardIDs {

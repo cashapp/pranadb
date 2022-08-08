@@ -108,6 +108,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 		DisableLevelTruncation: true,
 		TimestampFormat:        pranalog.TimestampFormat,
 	})
+	log.SetLevel(log.TraceLevel)
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
@@ -374,8 +375,6 @@ func (st *sqlTest) run() {
 	// Only run one test in the suite at a time
 	st.testSuite.lock.Lock()
 	defer st.testSuite.lock.Unlock()
-
-	log.SetLevel(log.TraceLevel)
 
 	log.Infof("Running sql test %s", st.testName)
 
@@ -644,26 +643,6 @@ func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName s
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(err)
 	require.True(ok)
-}
-
-func (st *sqlTest) getAllRowsInTable(tableID uint64) (int, error) {
-	totRows := 0
-	for _, prana := range st.testSuite.pranaCluster {
-		scheds, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-		for shardID := range scheds {
-			keyStartPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
-			keyEndPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
-			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100000)
-			if err != nil {
-				return 0, errors.WithStack(err)
-			}
-			totRows += len(pairs)
-		}
-	}
-	return totRows, nil
 }
 
 func (st *sqlTest) tableDataLeft(require *require.Assertions, prana *server.Server, displayRows bool) (bool, error) {

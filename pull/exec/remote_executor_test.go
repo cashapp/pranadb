@@ -165,6 +165,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) GetShardAllocs() map[uint64][]int {
+	panic("implement me")
+}
+
 func (t *testCluster) WaitUntilShardsHaveLeaders() {
 	panic("implement me")
 }
