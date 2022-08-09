@@ -14,7 +14,6 @@ func newProcManager(d *Dragon, serverAddresses []string) *procManager {
 	return &procManager{
 		nodeID:           uint64(d.cnf.NodeID),
 		dragon:           d,
-		setLeaderChannel: make(chan uint64, 10),
 		serverAddresses:  serverAddresses,
 	}
 }
@@ -79,6 +78,8 @@ func (p *procManager) Start() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.broadcastClient = &remoting.Client{}
+	p.setLeaderChannel = make(chan uint64, 10)
+	p.leaders = sync.Map{}
 	p.closeWG.Add(1)
 	go p.setLeaderLoop()
 	p.started = true

@@ -59,11 +59,13 @@ func NewDragon(cnf conf.Config, stopSignaller *common.AtomicBool) (*Dragon, erro
 	if len(cnf.RaftAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
-	return &Dragon{
+	dragon := &Dragon{
 		cnf:           cnf,
 		shardSMs:      make(map[uint64]struct{}),
 		stopSignaller: stopSignaller,
-	}, nil
+	}
+	dragon.procMgr = newProcManager(dragon, cnf.NotifListenAddresses)
+	return dragon, nil
 }
 
 type Dragon struct {
@@ -357,7 +359,6 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	d.requestClient = &remoting.Client{}
 
-	d.procMgr = newProcManager(d, d.cnf.NotifListenAddresses)
 	d.procMgr.Start()
 
 	if err := d.start0(); err != nil {
