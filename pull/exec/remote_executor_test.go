@@ -169,10 +169,6 @@ func (t *testCluster) GetShardAllocs() map[uint64][]int {
 	panic("implement me")
 }
 
-func (t *testCluster) WaitUntilShardsHaveLeaders() {
-	panic("implement me")
-}
-
 func (t *testCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	panic("implement me")
 }

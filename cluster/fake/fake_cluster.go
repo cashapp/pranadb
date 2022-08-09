@@ -446,6 +446,3 @@ func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 func (f *FakeCluster) SyncStore() error {
 	return nil
 }
-
-func (f *FakeCluster) WaitUntilShardsHaveLeaders() {
-}

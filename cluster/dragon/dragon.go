@@ -386,42 +386,11 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return errors.WithStack(err)
 	}
 
-	log.Debugf("Waiting for all shards to have leaders on node %d", d.cnf.NodeID)
-
-	d.waitUntilShardsHaveLeaders()
-
-	log.Debugf("All shards have leaders on node %d", d.cnf.NodeID)
-
 	d.started = true
 
 	log.Infof("Prana node %d dragon started", d.cnf.NodeID)
 
 	return nil
-}
-
-func (d *Dragon) WaitUntilShardsHaveLeaders() {
-	log.Infof("dragon node %d waiting until all shards have leaders", d.cnf.NodeID)
-	d.waitUntilShardsHaveLeaders(locksClusterID)
-	d.waitUntilShardsHaveLeaders(tableSequenceClusterID)
-	d.waitUntilShardsHaveLeaders(d.allDataShards...)
-	log.Infof("dragon node %d all shards now have leaders", d.cnf.NodeID)
-}
-
-func (d *Dragon) waitUntilShardsHaveLeaders(shardIDs ...uint64) {
-	for {
-		hasLeaders := true
-		for _, shardID := range shardIDs {
-			_, ok := d.procMgr.getLeaderNode(shardID)
-			if !ok {
-				hasLeaders = false
-				break
-			}
-		}
-		if hasLeaders {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
 }
 
 func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byte, error) {

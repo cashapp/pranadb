@@ -75,8 +75,6 @@ type Cluster interface {
 
 	PostStartChecks(queryExec common.SimpleQueryExec) error
 
-	WaitUntilShardsHaveLeaders()
-
 	SyncStore() error
 }
 

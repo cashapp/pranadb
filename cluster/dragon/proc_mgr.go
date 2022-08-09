@@ -12,9 +12,9 @@ import (
 
 func newProcManager(d *Dragon, serverAddresses []string) *procManager {
 	return &procManager{
-		nodeID:           uint64(d.cnf.NodeID),
-		dragon:           d,
-		serverAddresses:  serverAddresses,
+		nodeID:          uint64(d.cnf.NodeID),
+		dragon:          d,
+		serverAddresses: serverAddresses,
 	}
 }
 

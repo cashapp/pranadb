@@ -60,8 +60,14 @@ func (p *Engine) Stop() error {
 	return nil
 }
 
-func (p *Engine) SetAvailable() {
+func (p *Engine) SetAvailable() error {
+	// We execute a query which will fan out to all shards and wait until they are available
+	_, err := p.ExecuteQuery("sys", "select * from dummy")
+	if err != nil {
+		return err
+	}
 	p.available.Set(true)
+	return nil
 }
 
 func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string, argTypes []common.ColumnType,

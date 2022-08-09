@@ -182,7 +182,9 @@ func (s *Server) Start() error {
 		return errors.WithStack(err)
 	}
 
-	s.pullEngine.SetAvailable()
+	if err := s.pullEngine.SetAvailable(); err != nil {
+		return err
+	}
 
 	s.lifeCycleMgr.SetActive(true)
 

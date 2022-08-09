@@ -19,6 +19,7 @@ const (
 	TableDefTableName = "tables"
 	IndexDefTableName = "indexes"
 	ProtobufTableName = "protos"
+	DummyTableName    = "dummy"
 )
 
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
@@ -63,6 +64,17 @@ var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 	[]common.ColumnType{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
+	})}
+
+// DummyTableInfo - Dummy is a simple table that we execute a query against at startup to ensure all shards are available
+var DummyTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.DummyTableID,
+	SystemSchemaName,
+	DummyTableName,
+	[]int{0},
+	[]string{"x"},
+	[]common.ColumnType{
+		common.BigIntColumnType,
 	})}
 
 type Controller struct {
@@ -450,6 +462,7 @@ func (c *Controller) registerSystemSchema() {
 	schema.PutTable(TableDefTableInfo.Name, TableDefTableInfo)
 	schema.PutTable(IndexDefTableInfo.Name, IndexDefTableInfo)
 	schema.PutTable(ProtobufTableInfo.Name, ProtobufTableInfo)
+	schema.PutTable(DummyTableInfo.Name, DummyTableInfo)
 }
 
 // DeleteSchemaIfEmpty - Schema are removed once they have no more tables
