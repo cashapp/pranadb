@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/squareup/pranadb/remoting"
 	"math"
@@ -1252,4 +1253,16 @@ func (d *Dragon) setLeader(shardID uint64) error {
 		return errors.Errorf("unexpected return value from setLeader %d", res.Value)
 	}
 	return nil
+}
+
+func (d *Dragon) GetLeadersMap() map[uint64]uint64 {
+	return d.procMgr.getLeadersMap()
+}
+
+func (d *Dragon) RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error {
+	return d.procMgr.registerStartFill(expectedLeaders, interruptor)
+}
+
+func (d *Dragon) RegisterEndFill() {
+	d.procMgr.registerEndFill()
 }

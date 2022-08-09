@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 )
 
 const (
@@ -76,6 +77,12 @@ type Cluster interface {
 	PostStartChecks(queryExec common.SimpleQueryExec) error
 
 	SyncStore() error
+
+	GetLeadersMap() map[uint64]uint64
+
+	RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error
+
+	RegisterEndFill()
 }
 
 type ToDeleteBatch struct {

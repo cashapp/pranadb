@@ -811,6 +811,16 @@ func (p *Engine) getLocalDataShardsForNode() []uint64 {
 	return shardsForNode
 }
 
+func (p *Engine) getLocalLeaderShards() []uint64 {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	var shardIDs []uint64
+	for shardID := range p.schedulers {
+		shardIDs = append(shardIDs, shardID)
+	}
+	return shardIDs
+}
+
 // Used in testing only
 
 var initBatchSize = 10000

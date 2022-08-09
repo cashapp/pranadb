@@ -25,6 +25,7 @@ type CreateMVCommand struct {
 	ast            *parser.CreateMaterializedView
 	toDeleteBatch  *cluster.ToDeleteBatch
 	interruptor    interruptor.Interruptor
+	leadersMap     map[uint64]uint64
 }
 
 func (c *CreateMVCommand) CommandType() DDLCommandType {
@@ -49,6 +50,7 @@ func (c *CreateMVCommand) Cancel() {
 
 func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *common.Schema, sql string,
 	tableSequences []uint64, ast *parser.CreateMaterializedView) *CreateMVCommand {
+	leadersMap := e.cluster.GetLeadersMap()
 	return &CreateMVCommand{
 		e:              e,
 		schema:         schema,
@@ -56,10 +58,11 @@ func NewOriginatingCreateMVCommand(e *Executor, pl *parplan.Planner, schema *com
 		ast:            ast,
 		createMVSQL:    sql,
 		tableSequences: tableSequences,
+		leadersMap:     leadersMap,
 	}
 }
 
-func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tableSequences []uint64) *CreateMVCommand {
+func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tableSequences []uint64, extraData []byte) *CreateMVCommand {
 	schema := e.metaController.GetOrCreateSchema(schemaName)
 	pl := parplan.NewPlanner(schema)
 	return &CreateMVCommand{
@@ -68,6 +71,7 @@ func NewCreateMVCommand(e *Executor, schemaName string, createMVSQL string, tabl
 		pl:             pl,
 		createMVSQL:    createMVSQL,
 		tableSequences: tableSequences,
+		leadersMap:     deserializeLeadersMap(extraData),
 	}
 }
 
@@ -126,6 +130,10 @@ func (c *CreateMVCommand) onPhase0() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	if err := c.e.cluster.RegisterStartFill(c.leadersMap, &c.interruptor); err != nil {
+		return err
+	}
+
 	// If phase0 on the originating node, mv will already be set
 	// this means we do not have to parse the ast twice
 	if c.mv == nil {
@@ -168,8 +176,20 @@ func (c *CreateMVCommand) onPhase1() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	var localLeaderShards []uint64
+	for shardID, nodeID := range c.leadersMap {
+		if nodeID == uint64(c.e.cluster.GetNodeID()) {
+			localLeaderShards = append(localLeaderShards, shardID)
+		}
+	}
+
 	// Fill the MV from it's feeding sources and MVs
-	return c.mv.Fill(&c.interruptor)
+	if err := c.mv.Fill(localLeaderShards, &c.interruptor); err != nil {
+		return err
+	}
+
+	c.e.cluster.RegisterEndFill()
+	return nil
 }
 
 func (c *CreateMVCommand) onPhase2() error {
@@ -229,6 +249,7 @@ func (c *CreateMVCommand) Cleanup() {
 	if err := c.e.pushEngine.RemoveMV(c.mv.Info.ID); err != nil {
 		// Ignore
 	}
+	c.e.cluster.RegisterEndFill()
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {
@@ -260,5 +281,27 @@ func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 }
 
 func (c *CreateMVCommand) GetExtraData() []byte {
-	return nil
+	return serializeLeadersMap(c.leadersMap)
+}
+
+func serializeLeadersMap(m map[uint64]uint64) []byte {
+	var buff []byte
+	buff = common.AppendUint32ToBufferLE(buff, uint32(len(m)))
+	for shardID, nodeID := range m {
+		buff = common.AppendUint64ToBufferLE(buff, shardID)
+		buff = common.AppendUint64ToBufferLE(buff, nodeID)
+	}
+	return buff
+}
+
+func deserializeLeadersMap(buff []byte) map[uint64]uint64 {
+	l, offset := common.ReadUint32FromBufferLE(buff, 0)
+	m := make(map[uint64]uint64, l)
+	for i := 0; i < int(l); i++ {
+		var shardID, nodeID uint64
+		shardID, offset = common.ReadUint64FromBufferLE(buff, offset)
+		nodeID, offset = common.ReadUint64FromBufferLE(buff, offset)
+		m[shardID] = nodeID
+	}
+	return m
 }

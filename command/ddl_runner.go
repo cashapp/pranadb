@@ -87,7 +87,7 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 	case DDLCommandTypeCreateSource:
 		return NewCreateSourceCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeCreateMV:
-		return NewCreateMVCommand(e, schemaName, sql, tableSequences)
+		return NewCreateMVCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeDropSource:
 		return NewDropSourceCommand(e, schemaName, sql)
 	case DDLCommandTypeDropMV:

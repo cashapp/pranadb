@@ -201,13 +201,12 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 	return nil
 }
 
-func (m *MaterializedView) Fill(interruptor *interruptor.Interruptor) error {
+func (m *MaterializedView) Fill(shardIDs []uint64, interruptor *interruptor.Interruptor) error {
 	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	shardIDs := m.pe.getLocalDataShardsForNode()
 	log.Debugf("materialized view fill for shards %v", shardIDs)
 	var chans []chan error
 	for i, tableExec := range tes {
