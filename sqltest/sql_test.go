@@ -1,6 +1,3 @@
-//go:build !largecluster
-// +build !largecluster
-
 package sqltest
 
 import (
