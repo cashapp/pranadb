@@ -7,10 +7,9 @@ WORKDIR /tmp/pranadb
 
 # We want to populate the module cache based on the go.{mod,sum} files.
 COPY go.mod .
+COPY . .
 
 RUN go mod download
-
-COPY . .
 
 RUN go build -o ./out/prana ./cmd/prana
 
