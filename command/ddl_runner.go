@@ -2,13 +2,13 @@ package command
 
 import (
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
 	"github.com/squareup/pranadb/remoting"
 )
 
@@ -59,6 +59,8 @@ type DDLCommand interface {
 	// Cleanup will be called if an error occurs during execution of the command, it should perform any clean up logic
 	// to leave the system in a clean state
 	Cleanup()
+
+	GetExtraData() []byte
 }
 
 type DDLCommandType int
@@ -79,10 +81,11 @@ func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	}
 }
 
-func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, sql string, tableSequences []uint64) DDLCommand {
+func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, sql string, tableSequences []uint64,
+	extraData []byte) DDLCommand {
 	switch commandType {
 	case DDLCommandTypeCreateSource:
-		return NewCreateSourceCommand(e, schemaName, sql, tableSequences)
+		return NewCreateSourceCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeCreateMV:
 		return NewCreateMVCommand(e, schemaName, sql, tableSequences)
 	case DDLCommandTypeDropSource:
@@ -115,16 +118,16 @@ type ddlHandler struct {
 	runner *DDLCommandRunner
 }
 
-func (d *ddlHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	return nil, d.runner.HandleDdlMessage(notification)
+func (d *ddlHandler) HandleMessage(clusterMsg remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, d.runner.HandleDdlMessage(clusterMsg)
 }
 
 type cancelHandler struct {
 	runner *DDLCommandRunner
 }
 
-func (a *cancelHandler) HandleMessage(notification remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	return nil, a.runner.HandleCancelMessage(notification)
+func (a *cancelHandler) HandleMessage(clusterMsg remoting.ClusterMessage) (remoting.ClusterMessage, error) {
+	return nil, a.runner.HandleCancelMessage(clusterMsg)
 }
 
 func (d *DDLCommandRunner) DdlHandler() remoting.ClusterMessageHandler {
@@ -135,8 +138,8 @@ func (d *DDLCommandRunner) CancelHandler() remoting.ClusterMessageHandler {
 	return &cancelHandler{runner: d}
 }
 
-func (d *DDLCommandRunner) HandleCancelMessage(notification remoting.ClusterMessage) error {
-	cancelMsg, ok := notification.(*notifications.DDLCancelMessage)
+func (d *DDLCommandRunner) HandleCancelMessage(clusterMsg remoting.ClusterMessage) error {
+	cancelMsg, ok := clusterMsg.(*clustermsgs.DDLCancelMessage)
 	if !ok {
 		panic("not a cancel msg")
 	}
@@ -186,8 +189,8 @@ func getLockName(schemaName string) string {
 	return schemaName + "/"
 }
 
-func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage) error {
-	ddlInfo, ok := notification.(*notifications.DDLStatementInfo)
+func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) error {
+	ddlInfo, ok := ddlMsg.(*clustermsgs.DDLStatementInfo)
 	if !ok {
 		panic("not a ddl statement info")
 	}
@@ -202,20 +205,29 @@ func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage
 	}
 	phase := ddlInfo.GetPhase()
 	originatingNode := ddlInfo.GetOriginatingNodeId() == int64(d.ce.cluster.GetNodeID())
+	log.Debugf("Handling DDL message %d %s on node %d from node %d", ddlInfo.CommandType, skey,
+		d.ce.cluster.GetNodeID(), ddlInfo.GetOriginatingNodeId())
 	if phase == 0 {
 		if !ok {
 			if originatingNode {
-				return errors.Errorf("cannot find command with id %d:%d on originating node", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
+				// Can happen if the command is cancelled - we just ignore
+				return nil
 			}
-			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(), ddlInfo.GetTableSequences())
+			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(),
+				ddlInfo.GetTableSequences(), ddlInfo.GetExtraData())
 			d.commands.Store(skey, com)
 		}
 	} else if !ok {
-		// This can happen if notification comes in after commands are cancelled
+		// This can happen if ddlMsg comes in after commands are cancelled
 		log.Warnf("cannot find command with id %d:%d", ddlInfo.GetOriginatingNodeId(), ddlInfo.GetCommandId())
 		return nil
 	}
+	log.Debugf("Running phase %d for DDL message %d %s", phase, com.CommandType(), skey)
 	err := com.OnPhase(phase)
+	if err != nil {
+		com.Cleanup()
+	}
+	log.Debugf("Running phase %d for DDL message %d %s returned err %v", phase, com.CommandType(), skey, err)
 	if phase == int32(com.NumPhases()-1) {
 		// Final phase so delete the command
 		d.commands.Delete(skey)
@@ -224,6 +236,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(notification remoting.ClusterMessage
 }
 
 func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
+	log.Debugf("Attempting to run DDL command %d", command.CommandType())
 	lockName := getLockName(command.SchemaName())
 	if err := d.getLock(lockName); err != nil {
 		return errors.WithStack(err)
@@ -231,15 +244,16 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	id := atomic.AddInt64(&d.idSeq, 1)
 	commandKey := d.generateCommandKey(uint64(d.ce.cluster.GetNodeID()), uint64(id))
 	d.commands.Store(commandKey, command)
-	ddlInfo := &notifications.DDLStatementInfo{
+	ddlInfo := &clustermsgs.DDLStatementInfo{
 		OriginatingNodeId: int64(d.ce.cluster.GetNodeID()), // TODO do we need this?
 		CommandId:         id,
 		CommandType:       int32(command.CommandType()),
 		SchemaName:        command.SchemaName(),
 		Sql:               command.SQL(),
 		TableSequences:    command.TableSequences(),
+		ExtraData:         command.GetExtraData(),
 	}
-	err := d.RunWithLock(command, ddlInfo)
+	err := d.RunWithLock(commandKey, command, ddlInfo)
 	// We release the lock even if we got an error
 	if _, err2 := d.ce.cluster.ReleaseLock(getLockName(command.SchemaName())); err2 != nil {
 		log.Errorf("failed to release lock %+v", err2)
@@ -250,23 +264,26 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 	return nil
 }
 
-func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notifications.DDLStatementInfo) error {
+func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *clustermsgs.DDLStatementInfo) error {
+	log.Debugf("Running DDL command %d %s", command.CommandType(), commandKey)
 	if err := command.Before(); err != nil {
-		if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
-			// Ignore
-		}
+		d.commands.Delete(commandKey)
 		return errors.WithStack(err)
 	}
+	log.Debugf("Executed before for DDL command %d %s", command.CommandType(), commandKey)
 	for phase := 0; phase < command.NumPhases(); phase++ {
+		log.Debugf("Broadcasting phase %d for DDL command %d %s", phase, command.CommandType(), commandKey)
 		err := d.broadcastDDL(int32(phase), ddlInfo)
 		if err == nil {
 			err = command.AfterPhase(int32(phase))
 		}
 		if err != nil {
+			log.Debugf("Error return from broadcasting phase %d for DDL command %d %s %v cancel will be broadcast", phase, command.CommandType(), commandKey, err)
 			// Broadcast a cancel to clean up command state across the cluster
 			if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
 				// Ignore
 			}
+			log.Debugf("Broadcast of cancel returned for DDL command %d %s", command.CommandType(), commandKey)
 			return errors.WithStack(err)
 		}
 	}
@@ -274,16 +291,17 @@ func (d *DDLCommandRunner) RunWithLock(command DDLCommand, ddlInfo *notification
 }
 
 func (d *DDLCommandRunner) broadcastCancel(schemaName string) error {
-	return d.ce.ddlResetClient.BroadcastSync(&notifications.DDLCancelMessage{SchemaName: schemaName})
+	return d.ce.ddlResetClient.Broadcast(&clustermsgs.DDLCancelMessage{SchemaName: schemaName})
 }
 
-func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *notifications.DDLStatementInfo) error {
+func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *clustermsgs.DDLStatementInfo) error {
 	// Broadcast DDL and wait for responses
 	ddlInfo.Phase = phase
-	return d.ce.notifClient.BroadcastSync(ddlInfo)
+	return d.ce.ddlClient.Broadcast(ddlInfo)
 }
 
 func (d *DDLCommandRunner) getLock(lockName string) error {
+	log.Debugf("Attempting to get DDL lock %s", lockName)
 	timeout := getSchemaLockAttemptTimeout()
 	start := time.Now()
 	for {
@@ -292,6 +310,7 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 			return errors.WithStack(err)
 		}
 		if ok {
+			log.Debugf("DDL lock %s obtained", lockName)
 			return nil
 		}
 		if time.Now().Sub(start) > timeout {

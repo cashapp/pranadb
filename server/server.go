@@ -1,15 +1,18 @@
 package server
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
-	"github.com/squareup/pranadb/remoting"
-	"net/http" //nolint:stylecheck
-	"runtime"
-	"time"
-
 	"github.com/squareup/pranadb/lifecycle"
 	"github.com/squareup/pranadb/metrics"
+	"github.com/squareup/pranadb/remoting"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
+	"net/http" //nolint:stylecheck
+	"os"
+	"reflect"
+	"runtime"
+	"strings"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -39,15 +42,15 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	lifeCycleMgr := lifecycle.NewLifecycleEndpoints(config)
 	var clus cluster.Cluster
-	var notifClient remoting.Client
-	var ddlResetClient remoting.Client
+	var ddlClient remoting.Broadcaster
+	var ddlResetClient remoting.Broadcaster
 	var remotingServer remoting.Server
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
-		fakeNotifier := remoting.NewFakeServer()
-		notifClient = fakeNotifier
-		remotingServer = fakeNotifier
-		ddlResetClient = fakeNotifier
+		fakeRemotingServer := remoting.NewFakeServer()
+		remotingServer = fakeRemotingServer
+		ddlClient = remoting.NewFakeClient(fakeRemotingServer)
+		ddlResetClient = remoting.NewFakeClient(fakeRemotingServer)
 	} else {
 		var err error
 		drag, err := dragon.NewDragon(config)
@@ -56,8 +59,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		}
 		clus = drag
 		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
-		notifClient = remoting.NewClient(config.NotifListenAddresses...)
-		ddlResetClient = remoting.NewClient(config.NotifListenAddresses...)
+		ddlClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
+		ddlResetClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 	}
@@ -66,7 +69,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	pullEngine := pull.NewPullEngine(clus, metaController, shardr)
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
-	protoRegistry.SetNotifier(notifClient.BroadcastSync)
+	protoRegistry.SetNotifier(ddlClient)
 	theMetrics := metrics.NewServer(config, !config.EnableMetrics)
 	var failureInjector failinject.Injector
 	if config.EnableFailureInjector {
@@ -76,9 +79,10 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageLags, pushEngine)
-	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, notifClient, ddlResetClient,
-		protoRegistry, failureInjector)
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageConsumerSetRate, pushEngine.GetLoadClientSetRateHandler())
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageForwardWriteRequest, pushEngine.GetForwardWriteHandler())
+	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
+		protoRegistry, failureInjector, &config)
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLStatement, commandExecutor.DDlCommandRunner().DdlHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
@@ -112,8 +116,8 @@ func NewServer(config conf.Config) (*Server, error) {
 		pullEngine:      pullEngine,
 		commandExecutor: commandExecutor,
 		schemaLoader:    schemaLoader,
-		notifServer:     remotingServer,
-		notifClient:     notifClient,
+		remotingServer:  remotingServer,
+		ddlClient:       ddlClient,
 		apiServer:       apiServer,
 		services:        services,
 		metrics:         theMetrics,
@@ -123,26 +127,25 @@ func NewServer(config conf.Config) (*Server, error) {
 }
 
 type Server struct {
-	lock               sync.RWMutex
-	nodeID             int
-	lifeCycleMgr       *lifecycle.Endpoints
-	cluster            cluster.Cluster
-	shardr             *sharder.Sharder
-	metaController     *meta.Controller
-	pushEngine         *push.Engine
-	pullEngine         *pull.Engine
-	commandExecutor    *command.Executor
-	schemaLoader       *schema.Loader
-	notifServer        remoting.Server
-	notifClient        remoting.Client
-	apiServer          *api.Server
-	services           []service
-	started            bool
-	conf               conf.Config
-	debugServer        *http.Server
-	metrics            *metrics.Server
-	failureinjector    failinject.Injector
-	logGoroutinesTimer *time.Timer
+	lock            sync.RWMutex
+	nodeID          int
+	lifeCycleMgr    *lifecycle.Endpoints
+	cluster         cluster.Cluster
+	shardr          *sharder.Sharder
+	metaController  *meta.Controller
+	pushEngine      *push.Engine
+	pullEngine      *pull.Engine
+	commandExecutor *command.Executor
+	schemaLoader    *schema.Loader
+	remotingServer  remoting.Server
+	ddlClient       remoting.Broadcaster
+	apiServer       *api.Server
+	services        []service
+	started         bool
+	conf            conf.Config
+	debugServer     *http.Server
+	metrics         *metrics.Server
+	failureinjector failinject.Injector
 }
 
 type service interface {
@@ -157,9 +160,14 @@ func (s *Server) Start() error {
 		return nil
 	}
 
+	if err := s.maybeEnabledDatadogProfiler(); err != nil {
+		return err
+	}
+
 	var err error
-	for _, s := range s.services {
-		if err = s.Start(); err != nil {
+	for _, serv := range s.services {
+		log.Printf("prana node %d starting service %s", s.nodeID, reflect.TypeOf(serv).String())
+		if err = serv.Start(); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -178,33 +186,52 @@ func (s *Server) Start() error {
 
 	s.started = true
 
-	s.scheduleLogGoroutinesTimer()
 	log.Infof("Prana server %d started on %s with %d CPUs", s.nodeID, runtime.GOOS, runtime.NumCPU())
 	return nil
 }
 
-func (s *Server) logNumGoroutines() {
-	//s.lock.Lock()
-	//defer s.lock.Unlock()
-	//if !s.started {
-	//	return
-	//}
-	//log.Infof("There are %d goroutines on node %d", runtime.NumGoroutine(), s.conf.NodeID)
-	//var m runtime.MemStats
-	//runtime.ReadMemStats(&m)
-	//log.Infof("Alloc = %v MiB", bytesToMB(m.Alloc))
-	//log.Infof("\tTotalAlloc = %v MiB", bytesToMB(m.TotalAlloc))
-	//log.Infof("\tSys = %v MiB", bytesToMB(m.Sys))
-	//log.Infof("\tNumGC = %v\n", m.NumGC)
-	//s.scheduleLogGoroutinesTimer()
-}
+func (s *Server) maybeEnabledDatadogProfiler() error {
+	ddProfileTypes := s.conf.DDProfilerTypes
+	if ddProfileTypes == "" {
+		return nil
+	}
 
-//func bytesToMB(bytes uint64) uint64 {
-//	return bytes / 1024 / 1024
-//}
+	ddHost := os.Getenv(s.conf.DDProfilerHostEnvVarName)
+	if ddHost == "" {
+		return errors.NewPranaErrorf(errors.InvalidConfiguration, "Env var %s for DD profiler host is not set", s.conf.DDProfilerHostEnvVarName)
+	}
 
-func (s *Server) scheduleLogGoroutinesTimer() {
-	s.logGoroutinesTimer = time.AfterFunc(30*time.Second, s.logNumGoroutines)
+	var profileTypes []profiler.ProfileType
+	aProfTypes := strings.Split(ddProfileTypes, ",")
+	for _, sProfType := range aProfTypes {
+		switch sProfType {
+		case "CPU":
+			profileTypes = append(profileTypes, profiler.CPUProfile)
+		case "HEAP":
+			profileTypes = append(profileTypes, profiler.HeapProfile)
+		case "BLOCK":
+			profileTypes = append(profileTypes, profiler.BlockProfile)
+		case "MUTEX":
+			profileTypes = append(profileTypes, profiler.MutexProfile)
+		case "GOROUTINE":
+			profileTypes = append(profileTypes, profiler.GoroutineProfile)
+		default:
+			return errors.NewPranaErrorf(errors.InvalidConfiguration, "Unknown Datadog profile type: %s", sProfType)
+		}
+	}
+
+	agentAddress := fmt.Sprintf("%s:%d", ddHost, s.conf.DDProfilerPort)
+
+	log.Debugf("starting Datadog continuous profiler with service name: %s environment %s version %s agent address %s profile types %s",
+		s.conf.DDProfilerServiceName, s.conf.DDProfilerEnvironmentName, s.conf.DDProfilerVersionName, agentAddress, ddProfileTypes)
+
+	return profiler.Start(
+		profiler.WithService(s.conf.DDProfilerServiceName),
+		profiler.WithEnv(s.conf.DDProfilerEnvironmentName),
+		profiler.WithVersion(s.conf.DDProfilerVersionName),
+		profiler.WithAgentAddr(agentAddress),
+		profiler.WithProfileTypes(profileTypes...),
+	)
 }
 
 func (s *Server) Stop() error {
@@ -213,9 +240,8 @@ func (s *Server) Stop() error {
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.logGoroutinesTimer != nil {
-		s.logGoroutinesTimer.Stop()
-		s.logGoroutinesTimer = nil
+	if s.conf.DDProfilerTypes != "" {
+		profiler.Stop()
 	}
 	s.lifeCycleMgr.SetActive(false)
 	if s.debugServer != nil {
@@ -224,6 +250,7 @@ func (s *Server) Stop() error {
 		}
 	}
 	for i := len(s.services) - 1; i >= 0; i-- {
+		log.Infof("prana node %d stopping service %s", s.nodeID, reflect.TypeOf(s.services[i]).String())
 		if err := s.services[i].Stop(); err != nil {
 			return errors.WithStack(err)
 		}
@@ -256,12 +283,12 @@ func (s *Server) GetCommandExecutor() *command.Executor {
 	return s.commandExecutor
 }
 
-func (s *Server) GetNotificationsClient() remoting.Client {
-	return s.notifClient
+func (s *Server) GetDDLClient() remoting.Broadcaster {
+	return s.ddlClient
 }
 
-func (s *Server) GetNotificationsServer() remoting.Server {
-	return s.notifServer
+func (s *Server) GetRemotingServer() remoting.Server {
+	return s.remotingServer
 }
 
 func (s *Server) GetAPIServer() *api.Server {

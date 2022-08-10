@@ -12,7 +12,7 @@ import (
 const (
 	readBuffSize                   = 8 * 1024
 	messageHeaderSize              = 5 // 1 byte message type, 4 bytes length
-	maxConcurrentMsgsPerConnection = 10
+	maxConcurrentMsgsPerConnection = 100
 )
 
 type Server interface {
@@ -92,10 +92,7 @@ func (s *server) Stop() error {
 	}
 	// Now close connections
 	s.connections.Range(func(conn, _ interface{}) bool {
-		if err := conn.(*connection).stop(); err != nil {
-			// Log, but continue! We must close all the connections to avoid leaks
-			log.Warnf("failed to close connection %v", err)
-		}
+		conn.(*connection).stop()
 		return true
 	})
 	s.started = false
@@ -133,40 +130,39 @@ func (s *server) DisableResponses() {
 
 func (s *server) newConnection(conn net.Conn) *connection {
 	return &connection{
-		s:              s,
-		conn:           conn,
-		asyncMsgCh:     make(chan []byte, maxConcurrentMsgsPerConnection),
-		readLoopExitCh: make(chan error, 1),
+		s:          s,
+		conn:       conn,
+		asyncMsgCh: make(chan []byte, maxConcurrentMsgsPerConnection),
 	}
 }
 
 type connection struct {
 	s                   *server
 	conn                net.Conn
-	readLoopExitCh      chan error
 	asyncMsgCh          chan []byte
 	asyncMsgsInProgress sync.WaitGroup
+	closeGroup          sync.WaitGroup
 }
 
 func (c *connection) start() {
+	c.closeGroup.Add(1)
 	go c.readLoop()
 	go c.handleMessageLoop()
 }
 
 func (c *connection) readLoop() {
-	readMessage(c.handleMessage, c.readLoopExitCh, c.conn, func() {
+	readMessage(c.handleMessage, c.conn, func() {
 		// We need to close the connection from this side too, to avoid leak of connections in CLOSE_WAIT state
 		if err := c.conn.Close(); err != nil {
 			// Ignore
 		}
 		// And close the async msg channel
 		close(c.asyncMsgCh)
+		c.closeGroup.Done()
 	})
 	c.s.removeConnection(c)
 }
 
-// We execute messages (other than heartbeat) on a different goroutine as we need to be able to answer heartbeats even
-// when we are processing other messages.
 func (c *connection) handleMessageLoop() {
 	for {
 		exec, ok := <-c.asyncMsgCh
@@ -178,20 +174,10 @@ func (c *connection) handleMessageLoop() {
 	}
 }
 
-func (c *connection) handleMessage(msgType messageType, msg []byte) error {
-	if msgType == heartbeatMessageType {
-		if !c.s.responsesDisabled.Get() {
-			if err := writeMessage(heartbeatMessageType, nil, c.conn); err != nil {
-				log.Errorf("failed to write heartbeat %+v", err)
-			}
-		}
-		return nil
-	}
-
+func (c *connection) handleMessage(_ messageType, msg []byte) error {
 	// Handle async
 	c.asyncMsgsInProgress.Add(1)
 	c.asyncMsgCh <- msg
-
 	return nil
 }
 
@@ -209,7 +195,7 @@ func (c *connection) handleMessageAsync0(msg []byte) {
 	handler := c.s.lookupMessageHandler(request.requestMessage)
 	respMsg, respErr := handler.HandleMessage(request.requestMessage)
 	if respErr != nil {
-		log.Errorf("Failed to handle cluster message %+v", respErr)
+		log.Errorf("failed to handle cluster message %+v", respErr)
 	}
 	if request.requiresResponse && !c.s.responsesDisabled.Get() {
 		if err := c.sendResponse(request, respMsg, respErr); err != nil {
@@ -242,14 +228,18 @@ func (c *connection) sendResponse(nf *ClusterRequest, respMsg ClusterMessage, re
 	return errors.WithStack(err)
 }
 
-func (c *connection) stop() error {
+func (c *connection) stop() {
 	if err := c.conn.Close(); err != nil {
-		// Do nothing - connection might already have been closed (e.g. from client)
+		// Do nothing - connection might already have been closed (e.g. from Client)
 	}
-	err, ok := <-c.readLoopExitCh
-	if !ok {
-		panic("channel was closed")
-	}
+	c.closeGroup.Wait()
 	c.asyncMsgsInProgress.Wait() // Wait for all async messages to be processed
-	return errors.WithStack(err)
+}
+
+// Used in testing only
+func (s *server) closeNetConns() {
+	s.connections.Range(func(conn, _ interface{}) bool {
+		conn.(*connection).conn.Close()
+		return true
+	})
 }

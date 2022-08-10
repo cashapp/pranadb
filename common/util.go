@@ -5,6 +5,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -68,15 +69,16 @@ func DoDumpStacks(filterSpam bool) {
 	for i, line := range lines {
 		// Screen out Pebble spam
 		if filterSpam && strings.HasPrefix(line, "goroutine ") {
+			ignoring = false
+			// Does the next line have spam on it? If so ignore everything until the next 'goroutine' line
 			if i != len(lines)-1 {
 				nextLine := lines[i+1]
 				for _, spam := range spamLines {
 					if strings.Index(nextLine, spam) != -1 {
 						ignoring = true
+						break
 					}
 				}
-			} else {
-				ignoring = false
 			}
 		}
 		if !ignoring {
@@ -169,4 +171,17 @@ func (a *AtomicBool) CompareAndSet(expected bool, val bool) bool {
 	return atomic.CompareAndSwapInt32(&a.val, a.toInt(expected), a.toInt(val))
 }
 
-var UnixStart = time.Unix(0, 0)
+func GetOrDefaultIntProperty(propName string, props map[string]string, def int) (int, error) {
+	ncs, ok := props[propName]
+	var res int
+	if ok {
+		nc, err := strconv.ParseInt(ncs, 10, 32)
+		if err != nil {
+			return 0, err
+		}
+		res = int(nc)
+	} else {
+		res = def
+	}
+	return res, nil
+}

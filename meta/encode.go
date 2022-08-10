@@ -31,6 +31,7 @@ func EncodeIndexInfoToRow(info *common.IndexInfo) *common.Row {
 func DecodeIndexInfoRow(row *common.Row) *common.IndexInfo {
 	info := common.IndexInfo{}
 	jsonDecode(row.GetString(3), &info)
+	info.CalcColsSet()
 	return &info
 }
 
@@ -54,6 +55,7 @@ func DecodeSourceInfoRow(row *common.Row) *common.SourceInfo {
 	info := common.SourceInfo{}
 	jsonDecode(row.GetString(4), &info.TableInfo)
 	jsonDecode(row.GetString(5), &info.OriginInfo)
+	info.TableInfo.CalcPKColsSet()
 	return &info
 }
 
@@ -79,6 +81,7 @@ func DecodeMaterializedViewInfoRow(row *common.Row) *common.MaterializedViewInfo
 		OriginInfo: &common.MaterializedViewOriginInfo{},
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
+	info.TableInfo.CalcPKColsSet()
 	return &info
 }
 
@@ -103,6 +106,7 @@ func DecodeInternalTableInfoRow(row *common.Row) *common.InternalTableInfo {
 		MaterializedViewName: row.GetString(7),
 	}
 	jsonDecode(row.GetString(4), &info.TableInfo)
+	info.TableInfo.CalcPKColsSet()
 	return &info
 }
 

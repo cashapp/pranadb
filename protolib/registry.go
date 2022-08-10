@@ -1,6 +1,8 @@
 package protolib
 
 import (
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,8 +13,6 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notifications"
-	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -53,7 +53,7 @@ type ProtoRegistry struct {
 	meta        *meta.Controller
 	cluster     cluster.Cluster
 	queryExec   common.SimpleQueryExec
-	notify      func(message remoting.ClusterMessage) error
+	notify      remoting.Broadcaster
 }
 
 // NewProtoRegistry initializes a new file descriptor store. "loadDir" is an optional directory
@@ -140,18 +140,18 @@ func (s *ProtoRegistry) RegisterFiles(descriptors *descriptorpb.FileDescriptorSe
 			return errors.WithStack(err)
 		}
 	}
-	if err := s.cluster.WriteBatch(wb); err != nil {
+	if err := s.cluster.WriteBatch(wb, false); err != nil {
 		return errors.WithStack(err)
 	}
 
-	if err := s.notify(&notifications.ReloadProtobuf{}); err != nil {
+	if err := s.notify.Broadcast(&clustermsgs.ReloadProtobuf{}); err != nil {
 		return errors.WithStack(err)
 	}
 
 	return nil
 }
 
-func (s *ProtoRegistry) SetNotifier(notify func(message remoting.ClusterMessage) error) {
+func (s *ProtoRegistry) SetNotifier(notify remoting.Broadcaster) {
 	s.notify = notify
 }
 

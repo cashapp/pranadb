@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/interruptor"
 	"strings"
@@ -18,15 +19,16 @@ import (
 )
 
 type CreateSourceCommand struct {
-	lock           sync.Mutex
-	e              *Executor
-	schemaName     string
-	sql            string
-	tableSequences []uint64
-	ast            *parser.CreateSource
-	sourceInfo     *common.SourceInfo
-	source         *source.Source
-	interruptor    interruptor.Interruptor
+	lock            sync.Mutex
+	e               *Executor
+	schemaName      string
+	sql             string
+	tableSequences  []uint64
+	ast             *parser.CreateSource
+	sourceInfo      *common.SourceInfo
+	source          *source.Source
+	interruptor     interruptor.Interruptor
+	consumerGroupID string
 }
 
 func (c *CreateSourceCommand) CommandType() DDLCommandType {
@@ -49,23 +51,36 @@ func (c *CreateSourceCommand) Cancel() {
 	c.interruptor.Interrupt()
 }
 
-func NewOriginatingCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64, ast *parser.CreateSource) *CreateSourceCommand {
+func NewOriginatingCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64,
+	ast *parser.CreateSource, consumerGroupID string) *CreateSourceCommand {
 	ast.Name = strings.ToLower(ast.Name)
 	return &CreateSourceCommand{
-		e:              e,
-		schemaName:     schemaName,
-		sql:            sql,
-		tableSequences: tableSequences,
-		ast:            ast,
+		e:               e,
+		schemaName:      schemaName,
+		sql:             sql,
+		tableSequences:  tableSequences,
+		ast:             ast,
+		consumerGroupID: consumerGroupID,
 	}
 }
 
-func NewCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64) *CreateSourceCommand {
+func CreateConsumerGroupID(clusterID uint64) (string, error) {
+	// We use a random UUID to generate the consumer group ID - we can't rely on cluster-id, schema name and source id
+	// as if the cluster is recreated from scratch these could be the same (sequence gets reset to zero)
+	u, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("prana-%d-%s", clusterID, u.String()), nil
+}
+
+func NewCreateSourceCommand(e *Executor, schemaName string, sql string, tableSequences []uint64, extraData []byte) *CreateSourceCommand {
 	return &CreateSourceCommand{
-		e:              e,
-		schemaName:     schemaName,
-		sql:            sql,
-		tableSequences: tableSequences,
+		e:               e,
+		schemaName:      schemaName,
+		sql:             sql,
+		tableSequences:  tableSequences,
+		consumerGroupID: string(extraData),
 	}
 }
 
@@ -211,6 +226,8 @@ func (c *CreateSourceCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateSourceCommand) Cleanup() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.sourceInfo == nil {
 		return
 	}
@@ -221,6 +238,10 @@ func (c *CreateSourceCommand) Cleanup() {
 	if err := c.e.metaController.DeleteSource(c.sourceInfo.ID); err != nil {
 		// Ignore
 	}
+}
+
+func (c *CreateSourceCommand) GetExtraData() []byte {
+	return []byte(c.consumerGroupID)
 }
 
 // nolint: gocyclo
@@ -266,6 +287,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		colSelectors                               []selector.ColumnSelector
 		brokerName, topicName                      string
 		initialiseFrom                             string
+		transient                                  bool
 	)
 	for _, opt := range ast.OriginInformation {
 		switch {
@@ -304,6 +326,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		case opt.InitialState != "":
 			initialiseFrom = opt.InitialState
 		}
+		if opt.Transient != nil && *opt.Transient {
+			transient = true
+		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "headerEncoding is required")
@@ -330,6 +355,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	if len(colIndex) != len(colNames) {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Duplicate column names")
 	}
+	if initialiseFrom != "" && transient {
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Cannot specify InitialState for a Transient source")
+	}
 
 	pkMap := make(map[int]struct{}, len(pkCols))
 	for _, pkCol := range pkCols {
@@ -340,27 +368,21 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 
 	originInfo := &common.SourceOriginInfo{
-		BrokerName:     brokerName,
-		TopicName:      topicName,
-		HeaderEncoding: headerEncoding,
-		KeyEncoding:    keyEncoding,
-		ValueEncoding:  valueEncoding,
-		IngestFilter:   ingestFilter,
-		ColSelectors:   colSelectors,
-		Properties:     propsMap,
-		InitialState:   initialiseFrom,
+		BrokerName:      brokerName,
+		TopicName:       topicName,
+		HeaderEncoding:  headerEncoding,
+		KeyEncoding:     keyEncoding,
+		ValueEncoding:   valueEncoding,
+		IngestFilter:    ingestFilter,
+		ColSelectors:    colSelectors,
+		Properties:      propsMap,
+		InitialState:    initialiseFrom,
+		ConsumerGroupID: c.consumerGroupID,
+		Transient:       transient,
 	}
-	tableInfo := common.TableInfo{
-		ID:             c.tableSequences[0],
-		SchemaName:     c.schemaName,
-		Name:           ast.Name,
-		PrimaryKeyCols: pkCols,
-		ColumnNames:    colNames,
-		ColumnTypes:    colTypes,
-		IndexInfos:     nil,
-	}
+	tableInfo := common.NewTableInfo(c.tableSequences[0], c.schemaName, ast.Name, pkCols, colNames, colTypes)
 	return &common.SourceInfo{
-		TableInfo:  &tableInfo,
+		TableInfo:  tableInfo,
 		OriginInfo: originInfo,
 	}, nil
 }

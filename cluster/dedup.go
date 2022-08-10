@@ -17,7 +17,6 @@
 package cluster
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
 )
 
@@ -88,8 +87,6 @@ func DoDedup(shardID uint64, dedupKey []byte, dedupMap map[string]uint64) (bool,
 	prevSequence, ok := dedupMap[soid]
 	if ok {
 		if prevSequence >= sequence {
-			log.Warnf("Duplicate forward row detected in shard %d - originator id %v prev seq %d curr seq %d",
-				shardID, oid, prevSequence, sequence)
 			return true, nil
 		}
 	}

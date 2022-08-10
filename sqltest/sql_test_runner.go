@@ -147,6 +147,9 @@ func (w *sqlTestsuite) setupPranaCluster() {
 				"fakeKafkaID": fmt.Sprintf("%d", w.fakeKafka.ID),
 			},
 		},
+		"genbroker": {
+			ClientType: conf.BrokerClientGenerator,
+		},
 	}
 	// We set the table initialisation batch size to be a small number to exercise the batching logic
 	push.SetInitBatchSize(3)
@@ -197,6 +200,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.DisableShardPlacementSanityCheck = true
 			cnf.RaftRTTMs = 25
+			cnf.DisableFsync = true // for performance
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
@@ -883,7 +887,7 @@ func (st *sqlTest) executeKafkaFail(require *require.Assertions, command string)
 	require.NotEmpty(st.currentSchema, "no schema selected")
 	srcInfo, ok := st.prana.GetMetaController().GetSource(st.currentSchema, sourceNae)
 	require.True(ok)
-	groupID := source.GenerateGroupID(TestClusterID, srcInfo)
+	groupID := srcInfo.OriginInfo.ConsumerGroupID
 	err = st.testSuite.fakeKafka.InjectFailure(topicName, groupID, dur)
 	require.NoError(err)
 }

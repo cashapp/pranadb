@@ -146,7 +146,10 @@ func (s *locksODStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *locksODStateMachine) Sync() error {
-	return syncPebble(s.dragon.pebble)
+	if s.dragon.cnf.DisableFsync {
+		return syncPebble(s.dragon.pebble)
+	}
+	return nil
 }
 
 func (s *locksODStateMachine) PrepareSnapshot() (interface{}, error) {

@@ -139,7 +139,20 @@ type TableInfo struct {
 	pKColsSet      map[int]struct{}
 }
 
-func (t *TableInfo) calcPKColsSet() {
+func NewTableInfo(id uint64, schemaName string, name string, pkCols []int, colNames []string, colTypes []ColumnType) *TableInfo {
+	ti := &TableInfo{
+		ID:             id,
+		SchemaName:     schemaName,
+		Name:           name,
+		PrimaryKeyCols: pkCols,
+		ColumnNames:    colNames,
+		ColumnTypes:    colTypes,
+	}
+	ti.CalcPKColsSet()
+	return ti
+}
+
+func (t *TableInfo) CalcPKColsSet() {
 	t.pKColsSet = make(map[int]struct{}, len(t.PrimaryKeyCols))
 	for _, pkCol := range t.PrimaryKeyCols {
 		t.pKColsSet[pkCol] = struct{}{}
@@ -153,9 +166,6 @@ func (t *TableInfo) String() string {
 }
 
 func (t *TableInfo) IsPrimaryKeyCol(colIndex int) bool {
-	if t.pKColsSet == nil {
-		t.calcPKColsSet()
-	}
 	_, ok := t.pKColsSet[colIndex]
 	return ok
 }
@@ -169,7 +179,19 @@ type IndexInfo struct {
 	indexColsSet map[int]struct{}
 }
 
-func (i *IndexInfo) calcColsSet() {
+func NewIndexInfo(schemaName string, id uint64, tableName string, name string, indexCols []int) *IndexInfo {
+	ii := &IndexInfo{
+		SchemaName: schemaName,
+		ID:         id,
+		TableName:  tableName,
+		Name:       name,
+		IndexCols:  indexCols,
+	}
+	ii.CalcColsSet()
+	return ii
+}
+
+func (i *IndexInfo) CalcColsSet() {
 	i.indexColsSet = make(map[int]struct{}, len(i.IndexCols))
 	for _, col := range i.IndexCols {
 		i.indexColsSet[col] = struct{}{}
@@ -177,9 +199,6 @@ func (i *IndexInfo) calcColsSet() {
 }
 
 func (i *IndexInfo) ContainsColIndex(colIndex int) bool {
-	if i.indexColsSet == nil {
-		i.calcColsSet()
-	}
 	_, ok := i.indexColsSet[colIndex]
 	return ok
 }
@@ -302,15 +321,17 @@ func (i *MetaTableInfo) String() string {
 }
 
 type SourceOriginInfo struct {
-	BrokerName     string
-	TopicName      string
-	KeyEncoding    KafkaEncoding
-	ValueEncoding  KafkaEncoding
-	HeaderEncoding KafkaEncoding
-	ColSelectors   []selector.ColumnSelector
-	Properties     map[string]string
-	IngestFilter   string
-	InitialState   string
+	BrokerName      string
+	TopicName       string
+	KeyEncoding     KafkaEncoding
+	ValueEncoding   KafkaEncoding
+	HeaderEncoding  KafkaEncoding
+	ColSelectors    []selector.ColumnSelector
+	Properties      map[string]string
+	IngestFilter    string
+	InitialState    string
+	ConsumerGroupID string
+	Transient       bool
 }
 
 type KafkaEncoding struct {

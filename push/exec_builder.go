@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/tidb/planner"
 
 	"github.com/squareup/pranadb/errors"
@@ -15,7 +16,7 @@ import (
 
 // Builds the push DAG but does not register anything in memory
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
-	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+	seqGenerator common.SeqGenerator, cfg *conf.Config) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
 	physicalPlan, logicalPlan, _, err := pl.QueryToPlan(query, false, false)
@@ -23,7 +24,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 		return nil, nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
-	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
+	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator, cfg)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -44,7 +45,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 
 // nolint: gocyclo
 func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
-	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+	seqGenerator common.SeqGenerator, cfg *conf.Config) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	var executor exec.PushExecutor
 	var err error
@@ -117,39 +118,25 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			pkCols[i] = i + nonFirstRowFuncs
 		}
 
-		//partialTableID := seqGenerator.GenerateSequence()
-		//partialTableName := fmt.Sprintf("%s-partial-aggtable-%d", mvName, aggSequence)
-		//aggSequence++
-		//partialTableInfo := &common.TableInfo{
-		//	ID:             partialTableID,
-		//	SchemaName:     schema.Name,
-		//	Name:           partialTableName,
-		//	PrimaryKeyCols: pkCols,
-		//	IndexInfos:     nil, // TODO
-		//	Internal:       true,
-		//}
 		fullTableID := seqGenerator.GenerateSequence()
 		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
 		aggSequence++
-		fullTableInfo := &common.TableInfo{
-			ID:             fullTableID,
-			SchemaName:     schema.Name,
-			Name:           fullTableName,
-			PrimaryKeyCols: pkCols,
-			IndexInfos:     nil, // TODO
-			Internal:       true,
-		}
-		//partialAggInfo := &common.InternalTableInfo{
-		//	TableInfo:            partialTableInfo,
-		//	MaterializedViewName: mvName,
-		//}
-		//internalTables = append(internalTables, partialAggInfo)
+		fullTableInfo := common.NewTableInfo(
+			fullTableID,
+			schema.Name,
+			fullTableName,
+			pkCols,
+			nil,
+			nil,
+		)
+		fullTableInfo.Internal = true
 		fullAggInfo := &common.InternalTableInfo{
 			TableInfo:            fullTableInfo,
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, fullAggInfo)
-		executor, err = exec.NewAggregator(pkCols, aggFuncs, fullTableInfo, groupByCols, m.cluster, m.sharder)
+		lruCacheSize := cfg.AggregationCacheSizeRows / cfg.NumShards
+		executor, err = exec.NewAggregator(pkCols, aggFuncs, fullTableInfo, groupByCols, m.cluster, m.sharder, lruCacheSize)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
@@ -187,7 +174,7 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
+		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator, cfg)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}

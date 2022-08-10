@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package squareup.cash.pranadb.clustermsgs.v1;
+
+option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs";
+
+message DDLStatementInfo {
+  int64 originating_node_id = 1;
+  int64 command_id = 2;
+  int32 phase = 3;
+  int32 command_type = 4;
+  string schema_name = 5;
+  string sql = 6;
+  repeated uint64 table_sequences = 7;
+  bytes extra_data = 8;
+}
+
+message DDLCancelMessage {
+  string schema_name = 1;
+}
+
+message ReloadProtobuf {
+}
+
+message ClusterProposeRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}
+
+message ClusterProposeResponse {
+  int64 ret_val = 1;
+  bytes response_body = 2;
+}
+
+message ClusterForwardWriteRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}
+
+message ClusterForwardWriteResponse {
+}
+
+message ClusterReadRequest {
+  int64 shard_id = 1;
+  bytes request_body = 2;
+}
+
+message ClusterReadResponse {
+  bytes response_body = 1;
+}
+
+message ConsumerSetRate {
+  string schema_name = 1;
+  string source_name = 2;
+  int64 rate = 3;
+}
+
+message RemotingTestMessage {
+  string some_field = 1;
+}

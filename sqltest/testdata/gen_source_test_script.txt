@@ -1,0 +1,62 @@
+--local only;
+--create topic testtopic;
+use test;
+create source test_source_1(
+    primary_key_field varchar,
+    varchar_field varchar,
+    bigint_field bigint,
+    primary key (primary_key_field)
+) with (
+    brokername = "genbroker",
+    topicname = "testtopic",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        primary_key_field,
+        varchar_field,
+        bigint_field
+    ),
+    properties = (
+        "prana.loadclient.maxmessagesperconsumer" = "10"
+    )
+);
+
+--wait for rows test_source_1 20;
+
+select * from test_source_1 order by primary_key_field;
+
+drop source test_source_1;
+
+create source test_source_2(
+    primary_key_field varchar,
+    varchar_field varchar,
+    bigint_field bigint,
+    primary key (primary_key_field)
+) with (
+    brokername = "genbroker",
+    topicname = "testtopic",
+    headerencoding = "stringbytes",
+    keyencoding = "stringbytes",
+    valueencoding = "json",
+    columnselectors = (
+        primary_key_field,
+        varchar_field,
+        bigint_field
+    ),
+    properties = (
+        "prana.loadclient.maxmessagesperconsumer" = "10",
+        "prana.loadclient.maxrateperconsumer" = "1"
+    )
+);
+
+-- now change rate;
+consumer rate test_source_2 1000000;
+
+--wait for rows test_source_2 20;
+
+select * from test_source_2 order by primary_key_field;
+
+drop source test_source_2;
+
+--delete topic testtopic;

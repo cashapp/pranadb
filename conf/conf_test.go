@@ -2,11 +2,9 @@ package conf
 
 import (
 	"fmt"
-	"testing"
-	"time"
-
 	"github.com/squareup/pranadb/errors"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 type configPair struct {
@@ -47,18 +45,6 @@ func invalidBrokerClientTypeConf() Config {
 		cnfsCopy[k] = bc
 	}
 	cnf.KafkaBrokers = cnfsCopy
-	return cnf
-}
-
-func invalidRemotingHeartbeatInterval() Config {
-	cnf := confAllFields
-	cnf.RemotingHeartbeatInterval = time.Second - 1
-	return cnf
-}
-
-func invalidRemotingHeartbeatTimeout() Config {
-	cnf := confAllFields
-	cnf.RemotingHeartbeatTimeout = time.Millisecond - 1
 	return cnf
 }
 
@@ -204,18 +190,6 @@ func invalidReadyEndpointPath() Config {
 	return cnf
 }
 
-func invalidGlobalIngestLimitRowsPerSecZero() Config {
-	cnf := confAllFields
-	cnf.GlobalIngestLimitRowsPerSec = 0
-	return cnf
-}
-
-func invalidGlobalIngestLimitRowsPerNegative() Config {
-	cnf := confAllFields
-	cnf.GlobalIngestLimitRowsPerSec = -10
-	return cnf
-}
-
 func invalidRaftRTTMsZero() Config {
 	cnf := confAllFields
 	cnf.RaftRTTMs = 0
@@ -264,8 +238,6 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB3000 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB3000 - Invalid configuration: RemotingHeartbeatInterval must be >= 1000000000", invalidRemotingHeartbeatInterval()},
-	{"PDB3000 - Invalid configuration: RemotingHeartbeatTimeout must be >= 1000000", invalidRemotingHeartbeatTimeout()},
 	{"PDB3000 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
@@ -285,8 +257,6 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: StartupEndpointPath must be specified", invalidStartupEndpointPath()},
 	{"PDB3000 - Invalid configuration: LiveEndpointPath must be specified", invalidLiveEndpointPath()},
 	{"PDB3000 - Invalid configuration: ReadyEndpointPath must be specified", invalidReadyEndpointPath()},
-	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerSecZero()},
-	{"PDB3000 - Invalid configuration: GlobalIngestLimitRowsPerSec must be > 0 or -1", invalidGlobalIngestLimitRowsPerNegative()},
 	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsZero()},
 	{"PDB3000 - Invalid configuration: RaftRTTMs must be > 0", invalidRaftRTTMsNegative()},
 	{"PDB3000 - Invalid configuration: RaftHeartbeatRTT must be > 0", invalidRaftHeartbeatRTTZero()},
@@ -324,18 +294,15 @@ var confAllFields = Config{
 			},
 		},
 	},
-	DataSnapshotEntries:         1001,
-	DataCompactionOverhead:      501,
-	SequenceSnapshotEntries:     2001,
-	SequenceCompactionOverhead:  1001,
-	LocksSnapshotEntries:        101,
-	LocksCompactionOverhead:     51,
-	RemotingHeartbeatInterval:   76 * time.Second,
-	RemotingHeartbeatTimeout:    4 * time.Second,
-	EnableAPIServer:             true,
-	APIServerListenAddresses:    []string{"addr7", "addr8", "addr9"},
-	GlobalIngestLimitRowsPerSec: 3000,
-	RaftRTTMs:                   100,
-	RaftHeartbeatRTT:            10,
-	RaftElectionRTT:             100,
+	DataSnapshotEntries:        1001,
+	DataCompactionOverhead:     501,
+	SequenceSnapshotEntries:    2001,
+	SequenceCompactionOverhead: 1001,
+	LocksSnapshotEntries:       101,
+	LocksCompactionOverhead:    51,
+	EnableAPIServer:            true,
+	APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
+	RaftRTTMs:                  100,
+	RaftHeartbeatRTT:           10,
+	RaftElectionRTT:            100,
 }

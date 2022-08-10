@@ -2,14 +2,12 @@ package main
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/stretchr/testify/require"
@@ -71,21 +69,27 @@ func createConfigWithAllFields() conf.Config {
 				},
 			},
 		},
-		DataSnapshotEntries:         1001,
-		DataCompactionOverhead:      501,
-		SequenceSnapshotEntries:     2001,
-		SequenceCompactionOverhead:  1001,
-		LocksSnapshotEntries:        101,
-		LocksCompactionOverhead:     51,
-		RemotingHeartbeatInterval:   76 * time.Second,
-		RemotingHeartbeatTimeout:    5 * time.Second,
-		EnableAPIServer:             true,
-		APIServerListenAddresses:    []string{"addr7", "addr8", "addr9"},
-		MetricsBind:                 "localhost:9102",
-		EnableMetrics:               false,
-		GlobalIngestLimitRowsPerSec: 5000,
-		RaftRTTMs:                   100,
-		RaftElectionRTT:             300,
-		RaftHeartbeatRTT:            30,
+		DataSnapshotEntries:        1001,
+		DataCompactionOverhead:     501,
+		SequenceSnapshotEntries:    2001,
+		SequenceCompactionOverhead: 1001,
+		LocksSnapshotEntries:       101,
+		LocksCompactionOverhead:    51,
+		EnableAPIServer:            true,
+		APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
+		MetricsBind:                "localhost:9102",
+		EnableMetrics:              false,
+		RaftRTTMs:                  100,
+		RaftElectionRTT:            300,
+		RaftHeartbeatRTT:           30,
+		DisableFsync:               true,
+		AggregationCacheSizeRows:   1234,
+
+		DDProfilerTypes:           "HEAP,CPU",
+		DDProfilerServiceName:     "my-service",
+		DDProfilerEnvironmentName: "playing",
+		DDProfilerPort:            1324,
+		DDProfilerVersionName:     "2.3",
+		DDProfilerHostEnvVarName:  "FOO_IP",
 	}
 }

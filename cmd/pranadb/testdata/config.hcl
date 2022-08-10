@@ -26,8 +26,6 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-remoting-heartbeat-interval       = "76s"
-remoting-heartbeat-timeout        = "5s"
 enable-api-server                 = true
 api-server-listen-addresses       = [
   "addr7",
@@ -54,7 +52,15 @@ kafka-brokers = {
   }
 }
 
-global-ingest-limit-rows-per-sec = 5000
 raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
+disable-fsync                     = true
+aggregation-cache-size-rows       = 1234
+
+dd-profiler-types                 = "HEAP,CPU"
+dd-profiler-service-name          = "my-service"
+dd-profiler-environment-name      = "playing"
+dd-profiler-port                  = 1324
+dd-profiler-version-name          = "2.3"
+dd-profiler-host-env-var-name     = "FOO_IP"

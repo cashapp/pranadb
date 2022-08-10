@@ -22,13 +22,13 @@ const (
 )
 
 // TableDefTableInfo is a static definition of the table schema for the table schema table.
-var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.SchemaTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           TableDefTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
-	ColumnTypes: []common.ColumnType{
+var TableDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.SchemaTableID,
+	SystemSchemaName,
+	TableDefTableName,
+	[]int{0},
+	[]string{"id", "kind", "schema_name", "name", "table_info", "topic_info", "query", "mv_name"},
+	[]common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
@@ -37,36 +37,33 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	},
-}}
+	})}
 
-var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.IndexTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           IndexDefTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"id", "schema_name", "name", "index_info", "table_name"},
-	ColumnTypes: []common.ColumnType{
+var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.IndexTableID,
+	SystemSchemaName,
+	IndexDefTableName,
+	[]int{0},
+	[]string{"id", "schema_name", "name", "index_info", "table_name"},
+	[]common.ColumnType{
 		common.BigIntColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	},
-}}
+	})}
 
 // ProtobufTableInfo is a static definition of the table schema for the table schema table.
-var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: &common.TableInfo{
-	ID:             common.ProtobufTableID,
-	SchemaName:     SystemSchemaName,
-	Name:           ProtobufTableName,
-	PrimaryKeyCols: []int{0},
-	ColumnNames:    []string{"path", "fd"},
-	ColumnTypes: []common.ColumnType{
+var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
+	common.ProtobufTableID,
+	SystemSchemaName,
+	ProtobufTableName,
+	[]int{0},
+	[]string{"path", "fd"},
+	[]common.ColumnType{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	},
-}}
+	})}
 
 type Controller struct {
 	lock     sync.RWMutex
@@ -237,7 +234,7 @@ func (c *Controller) PersistIndex(indexInfo *common.IndexInfo) error {
 	if err := table.Upsert(IndexDefTableInfo.TableInfo, EncodeIndexInfoToRow(indexInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 // UnregisterIndex removes the index from memory but does not delete it from storage
@@ -287,7 +284,7 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo, internalTables []*common.InternalTableInfo) error {
@@ -302,7 +299,7 @@ func (c *Controller) PersistMaterializedView(mvInfo *common.MaterializedViewInfo
 			return errors.WithStack(err)
 		}
 	}
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) checkTableID(tableID uint64) error {
@@ -436,7 +433,7 @@ func (c *Controller) deleteTableWithID(tableID uint64) error {
 	key = table.EncodeTableKeyPrefix(common.SchemaTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(tableID))
 	wb.AddDelete(key)
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) deleteIndexWithID(indexID uint64) error {
@@ -445,7 +442,7 @@ func (c *Controller) deleteIndexWithID(indexID uint64) error {
 	key = table.EncodeTableKeyPrefix(common.IndexTableID, cluster.SystemSchemaShardID, 24)
 	key = common.KeyEncodeInt64(key, int64(indexID))
 	wb.AddDelete(key)
-	return c.cluster.WriteBatch(wb)
+	return c.cluster.WriteBatch(wb, false)
 }
 
 func (c *Controller) registerSystemSchema() {

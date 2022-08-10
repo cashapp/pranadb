@@ -2,6 +2,9 @@ package command
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -20,7 +23,6 @@ import (
 	"github.com/squareup/pranadb/pull"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
-	"github.com/squareup/pranadb/remoting"
 )
 
 type Executor struct {
@@ -32,13 +34,14 @@ type Executor struct {
 	execCtxIDSequence int64
 	ddlRunner         *DDLCommandRunner
 	failureInjector   failinject.Injector
-	notifClient       remoting.Client
-	ddlResetClient    remoting.Client
+	ddlClient         remoting.Broadcaster
+	ddlResetClient    remoting.Broadcaster
+	config            *conf.Config
 }
 
 func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine, pullEngine *pull.Engine,
-	cluster cluster.Cluster, notifClient remoting.Client, ddlResetClient remoting.Client, protoRegistry protolib.Resolver,
-	failureInjector failinject.Injector) *Executor {
+	cluster cluster.Cluster, ddlClient remoting.Broadcaster, ddlResetClient remoting.Broadcaster, protoRegistry protolib.Resolver,
+	failureInjector failinject.Injector, config *conf.Config) *Executor {
 	ex := &Executor{
 		cluster:           cluster,
 		metaController:    metaController,
@@ -47,8 +50,9 @@ func NewCommandExecutor(metaController *meta.Controller, pushEngine *push.Engine
 		protoRegistry:     protoRegistry,
 		execCtxIDSequence: -1,
 		failureInjector:   failureInjector,
-		notifClient:       notifClient,
+		ddlClient:         ddlClient,
 		ddlResetClient:    ddlResetClient,
+		config:            config,
 	}
 	commandRunner := NewDDLCommandRunner(ex)
 	ex.ddlRunner = commandRunner
@@ -60,17 +64,13 @@ func (e *Executor) DDlCommandRunner() *DDLCommandRunner {
 }
 
 func (e *Executor) Start() error {
-	if err := e.notifClient.Start(); err != nil {
-		return err
-	}
-	return e.ddlResetClient.Start()
+	return nil
 }
 
 func (e *Executor) Stop() error {
-	if err := e.notifClient.Stop(); err != nil {
-		return err
-	}
-	return e.ddlResetClient.Stop()
+	e.ddlClient.Stop()
+	e.ddlResetClient.Stop()
+	return nil
 }
 
 // ExecuteSQLStatement executes a synchronous SQL statement.
@@ -95,7 +95,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source)
+		consumerGroupID, err := CreateConsumerGroupID(e.config.ClusterID)
+		if err != nil {
+			return nil, err
+		}
+		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source, consumerGroupID)
 		err = e.ddlRunner.RunCommand(command)
 		if err != nil {
 			return nil, errors.WithStack(err)
@@ -170,6 +174,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		return rows, nil
 	case ast.ResetDdl != "":
 		if err := e.DDlCommandRunner().Cancel(ast.ResetDdl); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
+	case ast.ConsumerRate != nil:
+		if err := e.execConsumerRate(execCtx, ast.ConsumerRate.SourceName, ast.ConsumerRate.Rate); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -322,6 +331,14 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 		panic(fmt.Sprintf("unknown table kind: '%s'", kind))
 	}
 	return describeRows(tableInfo)
+}
+
+func (e *Executor) execConsumerRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
+	return e.ddlClient.Broadcast(&clustermsgs.ConsumerSetRate{
+		SchemaName: execCtx.Schema.Name,
+		SourceName: sourceName,
+		Rate:       rate,
+	})
 }
 
 func (e *Executor) Empty() bool {

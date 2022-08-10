@@ -2,24 +2,20 @@ package conf
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/squareup/pranadb/errors"
 )
 
 const (
-	DefaultDataSnapshotEntries         = 10000
-	DefaultDataCompactionOverhead      = 2500
-	DefaultSequenceSnapshotEntries     = 1000
-	DefaultSequenceCompactionOverhead  = 250
-	DefaultLocksSnapshotEntries        = 1000
-	DefaultLocksCompactionOverhead     = 250
-	DefaultRemotingHeartbeatInterval   = 10 * time.Second
-	DefaultRemotingHeartbeatTimeout    = 5 * time.Second
-	DefaultGlobalIngestLimitRowsPerSec = 1000
-	DefaultRaftRTTMs                   = 50
-	DefaultRaftHeartbeatRTT            = 30
-	DefaultRaftElectionRTT             = 300
+	DefaultDataSnapshotEntries        = 50000
+	DefaultDataCompactionOverhead     = 5000
+	DefaultSequenceSnapshotEntries    = 1000
+	DefaultSequenceCompactionOverhead = 50
+	DefaultLocksSnapshotEntries       = 1000
+	DefaultLocksCompactionOverhead    = 50
+	DefaultRaftRTTMs                  = 50
+	DefaultRaftHeartbeatRTT           = 30
+	DefaultRaftElectionRTT            = 300
+	DefaultAggregationCacheSizeRows   = 20000
 )
 
 type Config struct {
@@ -38,8 +34,6 @@ type Config struct {
 	SequenceCompactionOverhead       int
 	LocksSnapshotEntries             int
 	LocksCompactionOverhead          int
-	RemotingHeartbeatInterval        time.Duration
-	RemotingHeartbeatTimeout         time.Duration
 	EnableAPIServer                  bool
 	APIServerListenAddresses         []string
 	EnableSourceStats                bool
@@ -51,13 +45,53 @@ type Config struct {
 	LiveEndpointPath                 string
 	MetricsBind                      string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
 	EnableMetrics                    bool
-	GlobalIngestLimitRowsPerSec      int
 	EnableFailureInjector            bool
 	ScreenDragonLogSpam              bool
 	DisableShardPlacementSanityCheck bool
 	RaftRTTMs                        int
 	RaftElectionRTT                  int
 	RaftHeartbeatRTT                 int
+	DisableFsync                     bool
+	DDProfilerTypes                  string
+	DDProfilerHostEnvVarName         string
+	DDProfilerPort                   int
+	DDProfilerServiceName            string
+	DDProfilerEnvironmentName        string
+	DDProfilerVersionName            string
+	AggregationCacheSizeRows         int // The maximum number of rows for an aggregation to cache in memory
+}
+
+func (c *Config) ApplyDefaults() {
+	if c.DataSnapshotEntries == 0 {
+		c.DataSnapshotEntries = DefaultDataSnapshotEntries
+	}
+	if c.DataCompactionOverhead == 0 {
+		c.DataCompactionOverhead = DefaultDataCompactionOverhead
+	}
+	if c.SequenceSnapshotEntries == 0 {
+		c.SequenceSnapshotEntries = DefaultSequenceSnapshotEntries
+	}
+	if c.SequenceCompactionOverhead == 0 {
+		c.SequenceCompactionOverhead = DefaultSequenceCompactionOverhead
+	}
+	if c.LocksSnapshotEntries == 0 {
+		c.LocksSnapshotEntries = DefaultLocksSnapshotEntries
+	}
+	if c.LocksCompactionOverhead == 0 {
+		c.LocksCompactionOverhead = DefaultLocksCompactionOverhead
+	}
+	if c.RaftRTTMs == 0 {
+		c.RaftRTTMs = DefaultRaftRTTMs
+	}
+	if c.RaftHeartbeatRTT == 0 {
+		c.RaftHeartbeatRTT = DefaultRaftHeartbeatRTT
+	}
+	if c.RaftElectionRTT == 0 {
+		c.RaftElectionRTT = DefaultRaftElectionRTT
+	}
+	if c.AggregationCacheSizeRows == 0 {
+		c.AggregationCacheSizeRows = DefaultAggregationCacheSizeRows
+	}
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -78,12 +112,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError(fmt.Sprintf("KafkaBroker %s, invalid ClientType, must be %d or %d",
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
-	}
-	if c.RemotingHeartbeatInterval < 1*time.Second {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatInterval must be >= %d", time.Second))
-	}
-	if c.RemotingHeartbeatTimeout < 1*time.Millisecond {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("RemotingHeartbeatTimeout must be >= %d", time.Millisecond))
 	}
 	if c.EnableAPIServer {
 		if len(c.APIServerListenAddresses) == 0 {
@@ -151,9 +179,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("ReadyEndpointPath must be specified")
 		}
 	}
-	if c.GlobalIngestLimitRowsPerSec < -1 || c.GlobalIngestLimitRowsPerSec == 0 {
-		return errors.NewInvalidConfigurationError("GlobalIngestLimitRowsPerSec must be > 0 or -1")
-	}
 	if c.RaftRTTMs < 1 {
 		return errors.NewInvalidConfigurationError("RaftRTTMs must be > 0")
 	}
@@ -177,6 +202,7 @@ const (
 	BrokerClientTypeUnknown                  = 0
 	BrokerClientFake        BrokerClientType = 1
 	BrokerClientDefault                      = 2
+	BrokerClientGenerator                    = 3
 )
 
 type BrokerConfig struct {
@@ -186,32 +212,28 @@ type BrokerConfig struct {
 
 func NewDefaultConfig() *Config {
 	return &Config{
-		DataSnapshotEntries:         DefaultDataSnapshotEntries,
-		DataCompactionOverhead:      DefaultDataCompactionOverhead,
-		SequenceSnapshotEntries:     DefaultSequenceSnapshotEntries,
-		SequenceCompactionOverhead:  DefaultSequenceCompactionOverhead,
-		LocksSnapshotEntries:        DefaultLocksSnapshotEntries,
-		LocksCompactionOverhead:     DefaultLocksCompactionOverhead,
-		RemotingHeartbeatInterval:   DefaultRemotingHeartbeatInterval,
-		RemotingHeartbeatTimeout:    DefaultRemotingHeartbeatTimeout,
-		GlobalIngestLimitRowsPerSec: DefaultGlobalIngestLimitRowsPerSec,
-		RaftRTTMs:                   DefaultRaftRTTMs,
-		RaftHeartbeatRTT:            DefaultRaftHeartbeatRTT,
-		RaftElectionRTT:             DefaultRaftElectionRTT,
+		DataSnapshotEntries:        DefaultDataSnapshotEntries,
+		DataCompactionOverhead:     DefaultDataCompactionOverhead,
+		SequenceSnapshotEntries:    DefaultSequenceSnapshotEntries,
+		SequenceCompactionOverhead: DefaultSequenceCompactionOverhead,
+		LocksSnapshotEntries:       DefaultLocksSnapshotEntries,
+		LocksCompactionOverhead:    DefaultLocksCompactionOverhead,
+		RaftRTTMs:                  DefaultRaftRTTMs,
+		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:            DefaultRaftElectionRTT,
+		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
 	}
 }
 
 func NewTestConfig(fakeKafkaID int64) *Config {
 	return &Config{
-		RemotingHeartbeatInterval:   DefaultRemotingHeartbeatInterval,
-		RemotingHeartbeatTimeout:    DefaultRemotingHeartbeatTimeout,
-		GlobalIngestLimitRowsPerSec: DefaultGlobalIngestLimitRowsPerSec,
-		RaftRTTMs:                   DefaultRaftRTTMs,
-		RaftHeartbeatRTT:            DefaultRaftHeartbeatRTT,
-		RaftElectionRTT:             DefaultRaftElectionRTT,
-		NodeID:                      0,
-		NumShards:                   10,
-		TestServer:                  true,
+		RaftRTTMs:                DefaultRaftRTTMs,
+		RaftHeartbeatRTT:         DefaultRaftHeartbeatRTT,
+		RaftElectionRTT:          DefaultRaftElectionRTT,
+		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
+		NodeID:                   0,
+		NumShards:                10,
+		TestServer:               true,
 		KafkaBrokers: BrokerConfigs{
 			"testbroker": BrokerConfig{
 				ClientType: BrokerClientFake,

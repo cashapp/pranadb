@@ -125,8 +125,24 @@ type SourceOriginInformation struct {
 	ValueEncoding  string                        `|"ValueEncoding" "=" @String`
 	IngestFilter   string                        `|"IngestFilter" "=" @String`
 	InitialState   string                        `|"InitialState" "=" @String`
+	Transient      *Boolean                      `|"Transient" "=" @Ident`
 	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
 	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+}
+
+type Boolean bool
+
+func (b *Boolean) Capture(values []string) error {
+	lv := strings.ToLower(values[0])
+	if lv == "true" {
+		*b = true
+	} else if lv == "false" {
+		*b = false
+	} else {
+		return participle.Errorf(lexer.Position{}, "invalid value for 'Transient' field in source definition: %s", values[0])
+	}
+	*b = values[0] == "true"
+	return nil
 }
 
 type ColSelector struct {
@@ -172,13 +188,19 @@ type Show struct {
 	TableName string `("ON" @Ident)?`
 }
 
+type ConsumerRate struct {
+	SourceName string `@Ident`
+	Rate       int64  `@Number`
+}
+
 // AST root.
 type AST struct {
-	Select   string  // Unaltered SELECT statement, if any.
-	Use      string  `(  "USE" @Ident`
-	Drop     *Drop   ` | "DROP" @@ `
-	Create   *Create ` | "CREATE" @@ `
-	Show     *Show   ` | "SHOW" @@ `
-	Describe string  ` | "DESCRIBE" @Ident `
-	ResetDdl string  ` | "RESET" "DDL" @Ident ) ';'?`
+	Select       string        // Unaltered SELECT statement, if any.
+	Use          string        `(  "USE" @Ident`
+	Drop         *Drop         ` | "DROP" @@ `
+	Create       *Create       ` | "CREATE" @@ `
+	Show         *Show         ` | "SHOW" @@ `
+	Describe     string        ` | "DESCRIBE" @Ident `
+	ConsumerRate *ConsumerRate ` | "CONSUMER" "RATE" @@ `
+	ResetDdl     string        ` | "RESET" "DDL" @Ident ) ';'?`
 }

@@ -19,7 +19,7 @@ func (p *PaymentGenerator) Name() string {
 	return "payments"
 }
 
-func (p *PaymentGenerator) GenerateMessage(index int64, rnd *rand.Rand) (*kafka.Message, error) {
+func (p *PaymentGenerator) GenerateMessage(_ int32, index int64, rnd *rand.Rand) (*kafka.Message, error) {
 
 	paymentTypes := []string{"btc", "p2p", "other"}
 	currencies := []string{"gbp", "usd", "eur", "aud"}

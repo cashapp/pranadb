@@ -1,0 +1,43 @@
+
+é
+6squareup/cash/pranadb/clustermsgs/v1/clustermsgs.proto$squareup.cash.pranadb.clustermsgs.v1"•
+DDLStatementInfo.
+originating_node_id (RoriginatingNodeId
+
+command_id (R	commandId
+phase (Rphase!
+command_type (RcommandType
+schema_name (	R
+schemaName
+sql (	Rsql'
+table_sequences (RtableSequences
+
+extra_data (R	extraData"3
+DDLCancelMessage
+schema_name (	R
+schemaName"
+ReloadProtobuf"U
+ClusterProposeRequest
+shard_id (RshardId!
+request_body (RrequestBody"V
+ClusterProposeResponse
+ret_val (RretVal#
+response_body (RresponseBody"Z
+ClusterForwardWriteRequest
+shard_id (RshardId!
+request_body (RrequestBody"
+ClusterForwardWriteResponse"R
+ClusterReadRequest
+shard_id (RshardId!
+request_body (RrequestBody":
+ClusterReadResponse#
+response_body (RresponseBody"g
+ConsumerSetRate
+schema_name (	R
+schemaName
+source_name (	R
+sourceName
+rate (Rrate"4
+RemotingTestMessage
+
+some_field (	R	someFieldBIZGgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgsbproto3

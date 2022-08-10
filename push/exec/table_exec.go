@@ -30,10 +30,10 @@ type TableExecutor struct {
 	fillTableID        uint64
 	uncommittedBatches sync.Map
 	delayer            interruptor.InterruptManager
-	lagProvider        util.LagProvider
+	transient          bool
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagProvider util.LagProvider) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool) *TableExecutor {
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -46,8 +46,12 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, lagPro
 		store:          store,
 		consumingNodes: make(map[string]PushExecutor),
 		delayer:        interruptor.GetInterruptManager(),
-		lagProvider:    lagProvider,
+		transient:      transient,
 	}
+}
+
+func (t *TableExecutor) IsTransient() bool {
+	return t.transient
 }
 
 func (t *TableExecutor) ReCalcSchemaFromChildren() error {
@@ -95,6 +99,11 @@ func (t *TableExecutor) waitForNoUncommittedBatches() error {
 
 func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	if t.transient {
+		return t.ForwardToConsumingNodes(rowsBatch, ctx)
+	}
 
 	// We keep track of uncommitted batches
 	sid := ctx.WriteBatch.ShardID
@@ -104,14 +113,19 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 		return nil
 	})
 
-	numEntries := rowsBatch.Len()
-	outRows := t.rowsFactory.NewRows(numEntries)
 	rc := 0
-	entries := make([]RowsEntry, numEntries)
+
+	var outRows *common.Rows
+	var entries []RowsEntry
+	numEntries := rowsBatch.Len()
+	hasDownStream := len(t.consumingNodes) > 0 || t.filling
+	if hasDownStream {
+		outRows = t.rowsFactory.NewRows(numEntries)
+		entries = make([]RowsEntry, numEntries)
+	}
 	for i := 0; i < numEntries; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
-		receiverIndex := rowsBatch.ReceiverIndex(i)
 
 		if currentRow != nil {
 			keyBuff := table.EncodeTableKeyPrefix(t.TableInfo.ID, ctx.WriteBatch.ShardID, 32)
@@ -119,26 +133,32 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			v, err := t.store.LocalGet(keyBuff)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			pi := -1
-			if v != nil {
-				// Row already exists in storage - this is the case where a new rows comes into a source for the same key
-				// we won't have previousRow provided for us in this case as Kafka does not provide this
-				if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
+			if hasDownStream {
+				// We do a linearizabe get as there is the possibility that the previous write for the same key has not
+				// yet been applied to the state machine of the replica where the processor is running. Raft only
+				// requires replication to a quorum for write to complete and that quorum might not contain the processor
+				// replica
+				v, err := t.store.LinearizableGet(ctx.WriteBatch.ShardID, keyBuff)
+				if err != nil {
 					return errors.WithStack(err)
 				}
-				pi = rc
+				pi := -1
+				if v != nil {
+					// Row already exists in storage - this is the case where a new rows comes into a source for the same key
+					// we won't have previousRow provided for us in this case as Kafka does not provide this
+					if err := common.DecodeRow(v, t.colTypes, outRows); err != nil {
+						return errors.WithStack(err)
+					}
+					pi = rc
+					rc++
+				}
+				outRows.AppendRow(*currentRow)
+				ci := rc
 				rc++
+				entries[i].prevIndex = pi
+				entries[i].currIndex = ci
+				entries[i].receiverIndex = rowsBatch.ReceiverIndex(i)
 			}
-			outRows.AppendRow(*currentRow)
-			ci := rc
-			rc++
-			entries[i].prevIndex = pi
-			entries[i].currIndex = ci
-			entries[i].receiverIndex = receiverIndex
 			var valueBuff []byte
 			valueBuff, err = common.EncodeRow(currentRow, t.colTypes, valueBuff)
 			if err != nil {
@@ -152,17 +172,21 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			outRows.AppendRow(*prevRow)
-			entries[i].prevIndex = rc
-			entries[i].currIndex = -1
-			entries[i].receiverIndex = receiverIndex
-			rc++
+			if hasDownStream {
+				outRows.AppendRow(*prevRow)
+				entries[i].prevIndex = rc
+				entries[i].currIndex = -1
+				entries[i].receiverIndex = rowsBatch.ReceiverIndex(i)
+				rc++
+			}
 			ctx.WriteBatch.AddDelete(keyBuff)
 		}
 	}
-	err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
-	t.lock.RUnlock()
-	return errors.WithStack(err)
+	if hasDownStream {
+		err := t.handleForwardAndCapture(NewRowsBatch(outRows, entries), ctx)
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func (t *TableExecutor) handleForwardAndCapture(rowsBatch RowsBatch, ctx *ExecutionContext) error {
@@ -513,13 +537,10 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	if err := pe.HandleRows(batch, ctx); err != nil {
 		return errors.WithStack(err)
 	}
-	if !util.MaybeThrottleIfLagging(t.store.GetAllShardIDs(), t.lagProvider, 5*time.Second) {
-		// FIXME - fail?
-	}
 	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
 		return err
 	}
-	return t.store.WriteBatch(wb)
+	return t.store.WriteBatch(wb, false)
 }
 
 func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,

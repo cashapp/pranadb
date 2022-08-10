@@ -70,6 +70,8 @@ select * from test_mv_1;
 
 --wait for schedulers;
 
+--pause 2000;
+
 -- state should be resolved;
 
 use test;

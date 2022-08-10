@@ -558,6 +558,9 @@ type FakeMessageProvider struct {
 	rebalanceCB RebalanceCallback
 }
 
+func (f *FakeMessageProvider) SetMaxRate(rate int) {
+}
+
 func (f *FakeMessageProvider) SetRebalanceCallback(callback RebalanceCallback) {
 	f.rebalanceCB = callback
 }

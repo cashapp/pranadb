@@ -46,14 +46,14 @@ func TestSnapshot(t *testing.T) {
 		}
 		wb.AddPut(key, []byte(value))
 		if i%batchSize == 0 {
-			err := node.WriteBatch(wb)
+			err := node.WriteBatch(wb, false)
 			require.NoError(t, err)
 			log.Info("wrote batch")
 			wb = nil
 		}
 	}
 	if wb != nil {
-		err := node.WriteBatch(wb)
+		err := node.WriteBatch(wb, false)
 		require.NoError(t, err)
 		log.Info("wrote batch")
 	}

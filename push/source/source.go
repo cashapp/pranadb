@@ -1,9 +1,9 @@
 package source
 
 import (
-	"fmt"
+	"github.com/squareup/pranadb/kafka/load"
+
 	"github.com/squareup/pranadb/push/util"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,10 +38,6 @@ const (
 type RowProcessor interface {
 }
 
-type IngestLimiter interface {
-	Limit()
-}
-
 type Source struct {
 	sourceInfo              *common.SourceInfo
 	tableExecutor           *exec.TableExecutor
@@ -65,10 +61,10 @@ type Source struct {
 	bytesIngestedCounter    metrics.Counter
 	ingestDurationHistogram metrics.Observer
 	ingestRowSizeHistogram  metrics.Observer
-	globalRateLimiter       IngestLimiter
 	ingestExpressions       []*common.Expression
-	lagProvider             util.LagProvider
-	offsetsForPartition     sync.Map
+	cfg                     *conf.Config
+	restartTimer            *time.Timer
+	stopped                 bool // represents a hard stop - not a stop then a restart after delay
 }
 
 var (
@@ -95,10 +91,20 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
-	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
-	globalRateLimiter IngestLimiter, lagProvider util.LagProvider) (*Source, error) {
-	// TODO we should validate the sourceinfo - e.g. check that number of col selectors, column names and column types are the same
-	var msgProvFact kafka.MessageProviderFactory
+	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) (*Source, error) {
+	numConsumers, err := common.GetOrDefaultIntProperty(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	pollTimeoutMs, err := common.GetOrDefaultIntProperty(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	maxPollMessages, err := common.GetOrDefaultIntProperty(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	ti := sourceInfo.OriginInfo
 	var brokerConf conf.BrokerConfig
 	var ok bool
@@ -109,7 +115,8 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
 	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
-	groupID := GenerateGroupID(cfg.ClusterID, sourceInfo)
+	groupID := sourceInfo.OriginInfo.ConsumerGroupID
+	var msgProvFact kafka.MessageProviderFactory
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
 		var err error
@@ -119,21 +126,15 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		}
 	case conf.BrokerClientDefault:
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
+	case conf.BrokerClientGenerator:
+		msgProvFact, err = load.NewMessageProviderFactory(10000, numConsumers, cluster.GetNodeID(), sourceInfo.OriginInfo.Properties)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unsupported broker client type %d", brokerConf.ClientType)
 	}
-	numConsumers, err := getOrDefaultIntValue(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	pollTimeoutMs, err := getOrDefaultIntValue(pollTimeoutPropName, sourceInfo.OriginInfo.Properties, defaultPollTimeoutMs)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	maxPollMessages, err := getOrDefaultIntValue(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+
 	rowsIngestedCounter := rowsIngestedVec.WithLabelValues(sourceInfo.Name)
 	batchesIngestedCounter := batchesIngestedVec.WithLabelValues(sourceInfo.Name)
 	bytesIngestedCounter := bytesIngestedVec.WithLabelValues(sourceInfo.Name)
@@ -156,47 +157,28 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		bytesIngestedCounter:    bytesIngestedCounter,
 		ingestDurationHistogram: ingestDurationHistogram,
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
-		globalRateLimiter:       globalRateLimiter,
 		ingestExpressions:       ingestExpressions,
-		lagProvider:             lagProvider,
+		cfg:                     cfg,
 	}
 	source.commitOffsets.Set(true)
 	return source, nil
 }
 
 func (s *Source) Start() error {
-	log.Infof("Starting source %s.%s", s.sourceInfo.SchemaName, s.sourceInfo.Name)
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.started {
-		return nil
-	}
-
-	if len(s.msgConsumers) != 0 {
-		panic("more than zero consumers!")
-	}
-
-	for i := 0; i < s.numConsumersPerSource; i++ {
-		msgProvider, err := s.msgProvFact.NewMessageProvider()
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
-			s.maxPollMessages, s)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		s.msgConsumers = append(s.msgConsumers, consumer)
-	}
-
-	s.started = true
-	return nil
+	return s.start()
 }
 
 func (s *Source) Stop() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.stopped = true // hard stop - no restart
+	if s.restartTimer != nil {
+		s.restartTimer.Stop()
+	}
 	return s.stop()
 }
 
@@ -207,6 +189,9 @@ func (s *Source) IsRunning() bool {
 }
 
 func (s *Source) Drop() error {
+	if s.tableExecutor.IsTransient() {
+		return nil
+	}
 	// Delete the deduplication ids for the source
 	log.Printf("dropping source %s %d", s.sourceInfo.Name, s.sourceInfo.ID)
 	startPrefix := common.AppendUint64ToBufferBE(nil, common.ForwardDedupTableID)
@@ -238,19 +223,19 @@ func (s *Source) GetConsumingMVs() []string {
 	return s.tableExecutor.GetConsumingMvNames()
 }
 
-// An error occurred in the consumer
-func (s *Source) consumerError(err error, clientError bool) {
+func (s *Source) ingestError(err error, clientError bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if !s.started {
 		return
-		//panic("Got consumer error but souce is not started")
-	}
-	log.Errorf("Failure in consumer, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
-	if err2 := s.stop(); err2 != nil {
-		return
 	}
 	if clientError {
+		// Probably Kafka is unavailable
+		log.Warnf("Failure in Kafka client, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
+		if err2 := s.stop(); err2 != nil {
+			return
+		}
+		// We retry connecting with exponentially increasing delay
 		var delay time.Duration
 		if s.lastRestartDelay != 0 {
 			delay = s.lastRestartDelay
@@ -260,14 +245,58 @@ func (s *Source) consumerError(err error, clientError bool) {
 		} else {
 			delay = initialRestartDelay
 		}
-		log.Warnf("Will attempt restart of source after delay of %d ms", delay.Milliseconds())
-		time.AfterFunc(delay, func() {
-			err := s.Start()
-			if err != nil {
-				log.Errorf("Failed to start source %+v", err)
-			}
-		})
+		s.restartAfterDelay(delay)
+		return
 	}
+
+	// Unexpected error in ingest, log and stop source.
+	log.Errorf("Failure in ingest, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
+	if err2 := s.stop(); err2 != nil {
+		return
+	}
+}
+
+func (s *Source) restartAfterDelay(delay time.Duration) {
+	log.Warnf("Will attempt restart of source %s.%s after delay of %d ms", s.sourceInfo.SchemaName, s.sourceInfo.Name, delay.Milliseconds())
+	s.restartTimer = time.AfterFunc(delay, func() {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		if s.stopped {
+			return
+		}
+		err := s.start()
+		if err != nil {
+			log.Errorf("Failed to start source %+v", err)
+		}
+	})
+}
+
+func (s *Source) start() error {
+	log.Infof("Starting source %s.%s", s.sourceInfo.SchemaName, s.sourceInfo.Name)
+
+	if s.started {
+		return nil
+	}
+
+	if len(s.msgConsumers) != 0 {
+		panic("more than zero consumers!")
+	}
+
+	for i := 0; i < s.numConsumersPerSource; i++ {
+		msgProvider, err := s.msgProvFact.NewMessageProvider()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
+			s.maxPollMessages, s)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		s.msgConsumers = append(s.msgConsumers, consumer)
+	}
+
+	s.started = true
+	return nil
 }
 
 func (s *Source) stop() error {
@@ -359,19 +388,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		forwardKey := util.EncodeKeyForForwardIngest(tableID, uint64(kMsg.PartInfo.PartitionID),
 			uint64(kMsg.PartInfo.Offset+1), tableID)
 
-		// Sanity check
-		v, ok := s.offsetsForPartition.Load(kMsg.PartInfo.PartitionID)
-		if ok {
-			prevOffset, ok := v.(int64)
-			if !ok {
-				panic("not an int64")
-			}
-			if kMsg.PartInfo.Offset != prevOffset+1 {
-				panic(fmt.Sprintf("offset out of sequence expected %d got %d", prevOffset+1, kMsg.PartInfo.Offset))
-			}
-			s.offsetsForPartition.Store(kMsg.PartInfo.PartitionID, kMsg.PartInfo.Offset)
-		}
-
 		valueBuff := make([]byte, 0, 32)
 		var encodedRow []byte
 		encodedRow, err = common.EncodeRow(&row, colTypes, valueBuff)
@@ -387,10 +403,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		rowsIngested++
 	}
 
-	if !util.MaybeThrottleIfLagging(s.cluster.GetAllShardIDs(), s.lagProvider, 2*time.Second) {
-		// TODO consider stopping sources
-	}
-
 	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
 		log.Errorf("failed to send ingest forward batches %+v", err)
 		return err
@@ -401,6 +413,8 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.rowsIngestedCounter.Add(float64(rowsIngested))
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
+
+	log.Infof("ingested batch of %d", rowsIngested)
 
 	return nil
 }
@@ -421,25 +435,6 @@ func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string
 	return m
 }
 
-func GenerateGroupID(clusterID uint64, sourceInfo *common.SourceInfo) string {
-	return fmt.Sprintf("prana-source-%d-%s-%s-%d", clusterID, sourceInfo.SchemaName, sourceInfo.Name, sourceInfo.ID)
-}
-
-func getOrDefaultIntValue(propName string, props map[string]string, def int) (int, error) {
-	ncs, ok := props[propName]
-	var res int
-	if ok {
-		nc, err := strconv.ParseInt(ncs, 10, 32)
-		if err != nil {
-			return 0, errors.WithStack(err)
-		}
-		res = int(nc)
-	} else {
-		res = def
-	}
-	return res, nil
-}
-
 func (s *Source) addCommittedCount(val int64) {
 	atomic.AddInt64(&s.committedCount, val)
 }
@@ -450,4 +445,14 @@ func (s *Source) GetCommittedCount() int64 {
 
 func (s *Source) SetCommitOffsets(enable bool) {
 	s.commitOffsets.Set(enable)
+}
+
+func (s *Source) SetMaxConsumerRate(rate int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for _, consumer := range s.msgConsumers {
+		provider := consumer.msgProvider
+		provider.SetMaxRate(rate)
+	}
 }

@@ -15,6 +15,7 @@ type MessageProvider interface {
 	Start() error
 	Close() error
 	SetRebalanceCallback(callback RebalanceCallback)
+	SetMaxRate(rate int)
 }
 
 type Message struct {

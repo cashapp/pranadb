@@ -218,6 +218,8 @@ func (c *CreateMVCommand) AfterPhase(phase int32) error {
 }
 
 func (c *CreateMVCommand) Cleanup() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.mv == nil {
 		return
 	}
@@ -255,4 +257,8 @@ func (c *CreateMVCommand) createMV() (*push.MaterializedView, error) {
 		return nil, errors.Errorf("not a create materialized view %s", c.createMVSQL)
 	}
 	return c.createMVFromAST(ast.Create.MaterializedView)
+}
+
+func (c *CreateMVCommand) GetExtraData() []byte {
+	return nil
 }

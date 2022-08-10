@@ -20,13 +20,10 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/remoting"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/squareup/pranadb/errors"
 
 	"github.com/google/btree"
 
@@ -121,6 +118,10 @@ func (f *FakeCluster) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionIn
 	return f.remoteQueryExecutionCallback.ExecuteRemotePullQuery(queryInfo)
 }
 
+func (f *FakeCluster) LinearizableGet(_ uint64, key []byte) ([]byte, error) {
+	return f.LocalGet(key)
+}
+
 func (f *FakeCluster) SetRemoteQueryExecutionCallback(callback cluster.RemoteQueryExecutionCallback) {
 	f.remoteQueryExecutionCallback = callback
 }
@@ -179,7 +180,11 @@ func (f *FakeCluster) Stop() error {
 	return nil
 }
 
-func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
+func (f *FakeCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
+	panic("implement me")
+}
+
+func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -194,7 +199,7 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 		f.dedupMaps[batch.ShardID] = dedupMap
 	}
 	var forwardRows []cluster.ForwardRow
-	timestamp := int64(time.Now().Sub(common.UnixStart))
+	timestamp := common.NanoTime()
 	if err := batch.ForEachPut(func(key []byte, value []byte) error {
 
 		dedupKey := key[:24]            // Next 24 bytes is the dedup key
@@ -243,10 +248,10 @@ func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch) error {
 }
 
 func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
-	return f.WriteBatch(batch)
+	return f.WriteBatch(batch, true)
 }
 
-func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch) error {
+func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.writeBatchInternal(batch, false, nil); err != nil {
@@ -431,5 +436,6 @@ func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 	return nil
 }
 
-func (f *FakeCluster) AddHealthcheckListener(listener remoting.AvailabilityListener) {
+func (f *FakeCluster) SyncStore() error {
+	return nil
 }

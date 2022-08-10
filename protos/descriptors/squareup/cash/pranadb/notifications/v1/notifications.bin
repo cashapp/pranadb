@@ -1,36 +1,0 @@
-
-€
-:squareup/cash/pranadb/notifications/v1/notifications.proto&squareup.cash.pranadb.notifications.v1"ö
-DDLStatementInfo.
-originating_node_id (RoriginatingNodeId
-
-command_id (R	commandId
-phase (Rphase!
-command_type (RcommandType
-schema_name (	R
-schemaName
-sql (	Rsql'
-table_sequences (RtableSequences"3
-DDLCancelMessage
-schema_name (	R
-schemaName"8
-NotificationTestMessage
-
-session_id (	R	sessionId"
-ReloadProtobuf"U
-ClusterProposeRequest
-shard_id (RshardId!
-request_body (RrequestBody"V
-ClusterProposeResponse
-ret_val (RretVal#
-response_body (RresponseBody"R
-ClusterReadRequest
-shard_id (RshardId!
-request_body (RrequestBody":
-ClusterReadResponse#
-response_body (RresponseBody"S
-LagsMessageD
-lags (20.squareup.cash.pranadb.notifications.v1.LagEntryRlags"7
-LagEntry
-shard_id (RshardId
-lag (RlagBKZIgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/notificationsbproto3

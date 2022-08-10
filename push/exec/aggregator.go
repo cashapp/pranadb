@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/squareup/pranadb/aggfuncs"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -9,6 +10,7 @@ import (
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/sharder"
 	"github.com/squareup/pranadb/table"
+	"sync"
 )
 
 type Aggregator struct {
@@ -19,6 +21,9 @@ type Aggregator struct {
 	storage      cluster.Cluster
 	sharder      *sharder.Sharder
 	soloAggShard int64
+	keyCaches    sync.Map
+	cachesLock   sync.Mutex
+	lruCacheSize int
 }
 
 type AggregateFunctionInfo struct {
@@ -29,16 +34,14 @@ type AggregateFunctionInfo struct {
 }
 
 type aggStateHolder struct {
-	aggState        *aggfuncs.AggState
-	initialRowBytes []byte
-	keyBytes        []byte
-	rowBytes        []byte
-	initialRow      *common.Row
-	row             *common.Row
+	aggState   *aggfuncs.AggState
+	keyBytes   []byte
+	initialRow *common.Row
+	row        *common.Row
 }
 
 func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTableInfo *common.TableInfo,
-	groupByCols []int, storage cluster.Cluster, shrdr *sharder.Sharder) (*Aggregator, error) {
+	groupByCols []int, storage cluster.Cluster, shrdr *sharder.Sharder, lruCacheSize int) (*Aggregator, error) {
 
 	colTypes := make([]common.ColumnType, len(aggFunctions))
 	for i, aggFunc := range aggFunctions {
@@ -78,12 +81,12 @@ func NewAggregator(pkCols []int, aggFunctions []*AggregateFunctionInfo, aggTable
 		storage:          storage,
 		sharder:          shrdr,
 		soloAggShard:     soloAggShard,
+		lruCacheSize:     lruCacheSize,
 	}, nil
 }
 
 type stateHolders struct {
 	holdersMap map[string]*aggStateHolder
-	holders    []*aggStateHolder
 }
 
 func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
@@ -157,6 +160,16 @@ func (a *Aggregator) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 // HandleRemoteRows is called when partial aggregation is forwarded from another shard
 func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
 
+	// For each shard and aggregator we maintain a small cache that holds recently accessed rows from the aggregation
+	// this helps in the case the aggregation has a reasonably small number of rows (a common case) as it means we
+	// don't have to load the current row every time from storage before we recalculate the aggregation
+	// This cache is different from the holders map which caches every aggregate row but is scoped to the current batch
+	// The lru cache is not guaranteed to hold every row in the batch
+	keyCache, err := a.getCacheForShard(ctx.WriteBatch.ShardID)
+	if err != nil {
+		return err
+	}
+
 	// Calculate the aggregations
 	holders := &stateHolders{holdersMap: make(map[string]*aggStateHolder)}
 	numRows := rowsBatch.Len()
@@ -164,7 +177,7 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	for i := 0; i < numRows; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
-		if err := a.calcAggregations(prevRow, currentRow, readRows, holders, ctx.WriteBatch.ShardID); err != nil {
+		if err := a.calcAggregations(prevRow, currentRow, readRows, holders, ctx.WriteBatch.ShardID, keyCache); err != nil {
 			return err
 		}
 	}
@@ -179,7 +192,7 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	rc := 0
 
 	// Send the rows to the parent
-	for _, stateHolder := range holders.holders {
+	for _, stateHolder := range holders.holdersMap {
 		if stateHolder.aggState.IsChanged() {
 			prevRow := stateHolder.initialRow
 			currRow := stateHolder.row
@@ -196,6 +209,9 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 				rc++
 			}
 			entries = append(entries, NewRowsEntry(pi, ci, -1))
+			// And put it in the lru cache
+			sKey := common.ByteSliceToStringZeroCopy(stateHolder.keyBytes)
+			keyCache.Add(sKey, stateHolder)
 		}
 	}
 
@@ -203,7 +219,7 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 }
 
 func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
-	aggStateHolders *stateHolders, shardID uint64) error {
+	aggStateHolders *stateHolders, shardID uint64, keyCache *simplelru.LRU) error {
 
 	// Create the key
 	keyBytes, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.AggTableInfo.ID)
@@ -212,7 +228,7 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	}
 
 	// Lookup existing aggregate state
-	stateHolder, err := a.loadAggregateState(keyBytes, readRows, aggStateHolders)
+	stateHolder, err := a.loadAggregateState(shardID, keyBytes, readRows, aggStateHolders, keyCache)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -231,50 +247,66 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	return nil
 }
 
-func (a *Aggregator) loadAggregateState(keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders) (*aggStateHolder, error) {
+func (a *Aggregator) loadAggregateState(shardID uint64, keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders,
+	keyCache *simplelru.LRU) (*aggStateHolder, error) {
 	sKey := common.ByteSliceToStringZeroCopy(keyBytes)
 	stateHolder, ok := aggStateHolders.holdersMap[sKey] // maybe already cached for this batch
 	if !ok {
-		// Nope - try and load the aggregate state from storage
-		rowBytes, err := a.storage.LocalGet(keyBytes)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		var currRow *common.Row
-		if rowBytes != nil {
-			// Doesn't matter if we use partial or full col types here as they are the same
-			if err := common.DecodeRow(rowBytes, a.AggTableInfo.ColumnTypes, readRows); err != nil {
+		// Look in the LRU cache
+		v, ok := keyCache.Get(sKey)
+		if ok {
+			stateHolder, ok = v.(*aggStateHolder)
+			if !ok {
+				panic("not an *aggStateHolder")
+			}
+			aggStateHolders.holdersMap[sKey] = stateHolder
+			stateHolder.aggState.SetUnchanged()
+			stateHolder.initialRow = stateHolder.row
+			stateHolder.row = nil
+		} else {
+			// Try and load the aggregate state from storage
+			// We must use a linearizable get via raft here - even though we are on a replica there is no guarantee that
+			// the data has been applied to the state machine of all replicas when the previous write has completed
+			// successfully.
+			rowBytes, err := a.storage.LinearizableGet(shardID, keyBytes)
+			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			r := readRows.GetRow(readRows.RowCount() - 1)
-			currRow = &r
-		}
-		numCols := len(a.colTypes)
-		aggState := aggfuncs.NewAggState(numCols)
-		stateHolder = &aggStateHolder{
-			aggState: aggState,
-		}
-		stateHolder.keyBytes = keyBytes
-		aggStateHolders.holdersMap[sKey] = stateHolder
-		aggStateHolders.holders = append(aggStateHolders.holders, stateHolder)
-		if currRow != nil {
-			// Initialise the agg state with the row from storage
-			if err := a.initAggStateWithRow(currRow, aggState, numCols); err != nil {
-				return nil, errors.WithStack(err)
+			var currRow *common.Row
+			if rowBytes != nil {
+				// Doesn't matter if we use partial or full col types here as they are the same
+				if err := common.DecodeRow(rowBytes, a.AggTableInfo.ColumnTypes, readRows); err != nil {
+					return nil, errors.WithStack(err)
+				}
+				r := readRows.GetRow(readRows.RowCount() - 1)
+				currRow = &r
 			}
-			stateHolder.initialRow = currRow
-		}
+			numCols := len(a.colTypes)
+			aggState := aggfuncs.NewAggState(numCols)
+			stateHolder = &aggStateHolder{
+				aggState: aggState,
+			}
+			stateHolder.keyBytes = keyBytes
+			aggStateHolders.holdersMap[sKey] = stateHolder
+			if currRow != nil {
+				// Initialise the agg state with the row from storage
+				if err := a.initAggStateWithRow(currRow, aggState, numCols); err != nil {
+					return nil, errors.WithStack(err)
+				}
+				stateHolder.initialRow = currRow
+			}
 
-		// copy the agg state here and set it as a field on the holder
-		stateHolder.initialRowBytes = rowBytes
+			// And put in lru cache
+			keyCache.Add(sKey, stateHolder)
+		}
 	}
 	return stateHolder, nil
 }
 
 func (a *Aggregator) storeAggregateResults(stateHolders *stateHolders, writeBatch *cluster.WriteBatch) error {
-	resultRows := a.rowsFactory.NewRows(len(stateHolders.holders))
+	resultRows := a.rowsFactory.NewRows(len(stateHolders.holdersMap))
 	rowCount := 0
-	for _, stateHolder := range stateHolders.holders {
+	for _, stateHolder := range stateHolders.holdersMap {
 		aggState := stateHolder.aggState
 		if aggState.IsChanged() {
 			for i, colType := range a.colTypes {
@@ -311,7 +343,6 @@ func (a *Aggregator) storeAggregateResults(stateHolders *stateHolders, writeBatc
 				return errors.WithStack(err)
 			}
 			writeBatch.AddPut(stateHolder.keyBytes, valueBuff)
-			stateHolder.rowBytes = valueBuff
 			rowCount++
 		}
 	}
@@ -436,4 +467,29 @@ func createAggFunctions(aggFunctionInfos []*AggregateFunctionInfo, colTypes []co
 func (a *Aggregator) ReCalcSchemaFromChildren() error {
 	// NOOP
 	return nil
+}
+
+func (a *Aggregator) getCacheForShard(shardID uint64) (*simplelru.LRU, error) {
+	var cache *simplelru.LRU
+	v, ok := a.keyCaches.Load(shardID)
+	if !ok {
+		a.cachesLock.Lock()
+		defer a.cachesLock.Unlock()
+		v, ok = a.keyCaches.Load(shardID)
+		if !ok {
+			var err error
+			cache, err = simplelru.NewLRU(a.lruCacheSize, nil)
+			if err != nil {
+				return nil, err
+			}
+			a.keyCaches.Store(shardID, cache)
+		}
+	}
+	if cache == nil {
+		cache, ok = v.(*simplelru.LRU)
+		if !ok {
+			panic("not a *simplelru.LRU")
+		}
+	}
+	return cache, nil
 }
