@@ -3,9 +3,6 @@ package dragon
 import (
 	"context"
 	"fmt"
-	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
-	"github.com/squareup/pranadb/remoting"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -13,9 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/squareup/pranadb/remoting"
-
 	"github.com/lni/dragonboat/v3/logger"
+	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/table"
 
 	"github.com/lni/dragonboat/v3/client"
@@ -319,11 +317,11 @@ func (d *Dragon) start0() error {
 
 	log.Debugf("Opened pebble on node %d", d.cnf.NodeID)
 
-	if err := d.checkConstantShards(d.cnf.NumShards); err != nil {
+	if err := d.CheckConstantShards(d.cnf.NumShards); err != nil {
 		return err
 	}
 
-	if err := d.checkConstantReplicationFactor(d.cnf.ReplicationFactor); err != nil {
+	if err := d.CheckConstantReplicationFactor(d.cnf.ReplicationFactor); err != nil {
 		return err
 	}
 

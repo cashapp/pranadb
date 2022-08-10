@@ -23,7 +23,8 @@ import (
 var dragonCluster []cluster.Cluster
 
 const (
-	numShards = 10
+	numShards         = 10
+	replicationFactor = 3
 )
 
 var dataDir string
@@ -269,6 +270,24 @@ func TestLocksRestart(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestCheckConstantShards(t *testing.T) {
+	for _, dragon := range dragonCluster {
+		err := dragon.CheckConstantShards(numShards)
+		if err != nil {
+			panic(fmt.Sprintf("no. of shards is not constant %v", err))
+		}
+	}
+}
+
+func TestCheckConstantReplicationFactor(t *testing.T) {
+	for _, dragon := range dragonCluster {
+		err := dragon.CheckConstantReplicationFactor(replicationFactor)
+		if err != nil {
+			panic(fmt.Sprintf("no. of shards is not constant %v", err))
+		}
+	}
+}
+
 func stopDragonCluster() {
 	for _, dragon := range dragonCluster {
 		err := dragon.Stop()
@@ -297,7 +316,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		cnf.RaftAddresses = nodeAddresses
 		cnf.NumShards = numShards
 		cnf.DataDir = dataDir
-		cnf.ReplicationFactor = 3
+		cnf.ReplicationFactor = replicationFactor
 		cnf.TestServer = true
 		clus, err := dragon.NewDragon(*cnf)
 		if err != nil {

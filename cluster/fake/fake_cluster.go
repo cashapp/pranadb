@@ -19,11 +19,12 @@ package fake
 import (
 	"bytes"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
-	"strings"
-	"sync"
 
 	"github.com/google/btree"
 
@@ -164,6 +165,14 @@ func (f *FakeCluster) Start() error {
 	}
 	f.startShardListeners()
 	f.started = true
+	return nil
+}
+
+func (f *FakeCluster) CheckConstantReplicationFactor(replicationFactor int) error {
+	return nil
+}
+
+func (f *FakeCluster) CheckConstantShards(numShards int) error {
 	return nil
 }
 

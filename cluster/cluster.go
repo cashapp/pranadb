@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 )
@@ -66,6 +67,10 @@ type Cluster interface {
 	AddToDeleteBatch(batch *ToDeleteBatch) error
 
 	RemoveToDeleteBatch(batch *ToDeleteBatch) error
+
+	CheckConstantReplicationFactor(expectedReplicationFactor int) error
+
+	CheckConstantShards(expectedReplicationFactor int) error
 
 	Start() error
 

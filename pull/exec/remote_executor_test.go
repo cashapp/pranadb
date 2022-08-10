@@ -2,9 +2,10 @@ package exec
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/remoting"
 	"sync"
 	"testing"
+
+	"github.com/squareup/pranadb/remoting"
 
 	"github.com/squareup/pranadb/meta"
 
@@ -178,6 +179,14 @@ func (t *testCluster) LinearizableGet(shardID uint64, key []byte) ([]byte, error
 }
 
 func (t *testCluster) SyncStore() error {
+	return nil
+}
+
+func (t *testCluster) CheckConstantShards(n int) error {
+	return nil
+}
+
+func (t *testCluster) CheckConstantReplicationFactor(r int) error {
 	return nil
 }
 
