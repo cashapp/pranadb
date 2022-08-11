@@ -106,9 +106,7 @@ func (p *Engine) Stop() error {
 		return nil
 	}
 	for _, src := range p.sources {
-		if err := src.Stop(); err != nil {
-			return errors.WithStack(err)
-		}
+		src.Stop()
 	}
 	for _, sh := range p.schedulers {
 		sh.Stop()

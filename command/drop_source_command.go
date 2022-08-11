@@ -116,9 +116,9 @@ func (d *DropSourceCommand) onPhase0() error {
 		return errors.WithStack(err)
 	}
 	// src.Stop() stops the sources consumers, it does not remove it
-	err = src.Stop()
+	src.Stop()
 	log.Debugf("drop source command phase 0 %s.%s stopped sourcer", d.sourceInfo.SchemaName, d.sourceInfo.Name)
-	return err
+	return nil
 }
 
 func (d *DropSourceCommand) onPhase1() error {

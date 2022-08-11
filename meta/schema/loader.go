@@ -134,13 +134,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 	log.Info("Starting sources")
 
 	for _, src := range srcsToStart {
-		if err := src.Start(); err != nil {
-			// We don't prevent startup of the server if a source can't start - a source might not start, e.g.
-			// if the protobuf descriptor isn't found - this could happen if an attempt to create a source is made
-			// without first uploading the proto descriptor. If the server is then restarted after that, it would
-			// prevent the server starting at all if we returned the error from here
-			log.Warnf("Failed to start source %s.%s - %+v", src.TableExecutor().TableInfo.SchemaName, src.TableExecutor().TableInfo.Name, err)
-		}
+		src.Start()
 	}
 
 	return nil

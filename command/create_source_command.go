@@ -205,9 +205,7 @@ func (c *CreateSourceCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Activate the message consumers for the source
-	if err := c.source.Start(); err != nil {
-		return errors.WithStack(err)
-	}
+	c.source.Start()
 
 	// Register the source in the in memory meta data
 	return c.e.metaController.RegisterSource(c.sourceInfo)

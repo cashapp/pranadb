@@ -164,22 +164,30 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	return source, nil
 }
 
-func (s *Source) Start() error {
+func (s *Source) Start() {
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	// Start is async - this is important as starting a source can cause a rebalance to occur which requires all consumers
+	// to call in to getMessage but they can't do this if one of them is blocked in forward writing messages it's ingested
+	// and that forward write is blocked because the shard scheduler hasn't started yet as the schema isn't loaded because
+	// source start hasn't returned!
+	go func() {
+		s.lock.Lock()
+		defer s.lock.Unlock()
 
-	return s.start()
+		if err := s.start(); err != nil {
+			s.handleError(err, true)
+		}
+	}()
 }
 
-func (s *Source) Stop() error {
+func (s *Source) Stop() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.stopped = true // hard stop - no restart
 	if s.restartTimer != nil {
 		s.restartTimer.Stop()
 	}
-	return s.stop()
+	s.stop()
 }
 
 func (s *Source) IsRunning() bool {
@@ -223,7 +231,7 @@ func (s *Source) GetConsumingMVs() []string {
 	return s.tableExecutor.GetConsumingMvNames()
 }
 
-func (s *Source) ingestError(err error, clientError bool) {
+func (s *Source) handleError(err error, clientError bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if !s.started {
@@ -231,10 +239,8 @@ func (s *Source) ingestError(err error, clientError bool) {
 	}
 	if clientError {
 		// Probably Kafka is unavailable
-		log.Warnf("Failure in Kafka client, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
-		if err2 := s.stop(); err2 != nil {
-			return
-		}
+		log.Warnf("Failure in Kafka client, source %s.%s will be retried after delay: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
+		s.stop()
 		// We retry connecting with exponentially increasing delay
 		var delay time.Duration
 		if s.lastRestartDelay != 0 {
@@ -251,9 +257,7 @@ func (s *Source) ingestError(err error, clientError bool) {
 
 	// Unexpected error in ingest, log and stop source.
 	log.Errorf("Failure in ingest, source %s.%s will be stopped: %+v", s.sourceInfo.SchemaName, s.sourceInfo.Name, err)
-	if err2 := s.stop(); err2 != nil {
-		return
-	}
+	s.stop()
 }
 
 func (s *Source) restartAfterDelay(delay time.Duration) {
@@ -287,6 +291,7 @@ func (s *Source) start() error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
+
 		consumer, err := NewMessageConsumer(msgProvider, time.Duration(s.pollTimeoutMs)*time.Millisecond,
 			s.maxPollMessages, s)
 		if err != nil {
@@ -299,23 +304,22 @@ func (s *Source) start() error {
 	return nil
 }
 
-func (s *Source) stop() error {
+func (s *Source) stop() {
 	if !s.started {
-		return nil
+		return
 	}
 	for _, consumer := range s.msgConsumers {
 		if err := consumer.Stop(); err != nil {
-			return errors.WithStack(err)
+			log.Warnf("error in stoping consumer %v", err)
 		}
 	}
 	for _, consumer := range s.msgConsumers {
 		if err := consumer.Close(); err != nil {
-			return errors.WithStack(err)
+			log.Warnf("error in closing consumer %v", err)
 		}
 	}
 	s.msgConsumers = nil
 	s.started = false
-	return nil
 }
 
 func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) error {

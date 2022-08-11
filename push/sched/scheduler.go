@@ -112,14 +112,14 @@ func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	ch := make(chan error)
-
 	if s.failed {
 		return nil, errors.New("cannot add forward batch, scheduler is failed")
 	}
 	if s.stopped {
 		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot add forward batch, scheduler has stopped")
 	}
+
+	ch := make(chan error)
 
 	s.forwardWrites = append(s.forwardWrites, WriteBatchEntry{
 		writeBatch:         writeBatch,

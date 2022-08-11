@@ -71,7 +71,7 @@ func (m *MessageConsumer) consumerError(err error, clientError bool) {
 		log.Errorf("failed to stop message provider %+v", err)
 	}
 	go func() {
-		m.source.ingestError(err, clientError)
+		m.source.handleError(err, clientError)
 	}()
 }
 
