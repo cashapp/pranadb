@@ -5,6 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/table"
@@ -129,7 +130,7 @@ func startDragonNodes(dataDir string, nodes ...int) ([]*dragon.Dragon, error) {
 		cnf.TestServer = true
 		cnf.DataSnapshotEntries = 10
 		cnf.DataCompactionOverhead = 5
-		clus, err := dragon.NewDragon(*cnf)
+		clus, err := dragon.NewDragon(*cnf, &common.AtomicBool{})
 		if err != nil {
 			return nil, err
 		}

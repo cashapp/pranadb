@@ -118,28 +118,31 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			pkCols[i] = i + nonFirstRowFuncs
 		}
 
-		fullTableID := seqGenerator.GenerateSequence()
-		fullTableName := fmt.Sprintf("%s-full-aggtable-%d", mvName, aggSequence)
+		aggTableID := seqGenerator.GenerateSequence()
+		aggTableName := fmt.Sprintf("%s-aggtable-%d", mvName, aggSequence)
 		aggSequence++
-		fullTableInfo := common.NewTableInfo(
-			fullTableID,
+		aggTableInfo := common.NewTableInfo(
+			aggTableID,
 			schema.Name,
-			fullTableName,
+			aggTableName,
 			pkCols,
 			nil,
 			nil,
 		)
-		fullTableInfo.Internal = true
-		fullAggInfo := &common.InternalTableInfo{
-			TableInfo:            fullTableInfo,
+		aggTableInfo.Internal = true
+		aggInfo := &common.InternalTableInfo{
+			TableInfo:            aggTableInfo,
 			MaterializedViewName: mvName,
 		}
-		internalTables = append(internalTables, fullAggInfo)
+		internalTables = append(internalTables, aggInfo)
 		lruCacheSize := cfg.AggregationCacheSizeRows / cfg.NumShards
-		executor, err = exec.NewAggregator(pkCols, aggFuncs, fullTableInfo, groupByCols, m.cluster, m.sharder, lruCacheSize)
+
+		agg, err := exec.NewAggregator(pkCols, aggFuncs, aggTableInfo, groupByCols, m.cluster, m.sharder, lruCacheSize)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
+		m.pe.registerShardFailListener(agg)
+		executor = agg
 	case *planner.PhysicalUnionAll:
 		executor, err = exec.NewUnionAll()
 		if err != nil {

@@ -33,22 +33,21 @@ import (
 )
 
 type Engine struct {
-	lock              sync.RWMutex
-	localShardsLock   sync.RWMutex
-	started           bool
-	schedulers        map[uint64]*sched.ShardScheduler
-	sources           map[uint64]*source.Source
-	materializedViews map[uint64]*MaterializedView
-	remoteConsumers   sync.Map
-	localLeaderShards []uint64
-	cluster           cluster.Cluster
-	sharder           *sharder.Sharder
-	meta              *meta.Controller
-	rnd               *rand.Rand
-	cfg               *conf.Config
-	queryExec         common.SimpleQueryExec
-	protoRegistry     protolib.Resolver
-	failInject        failinject.Injector
+	lock               sync.RWMutex
+	started            bool
+	schedulers         map[uint64]*sched.ShardScheduler
+	sources            map[uint64]*source.Source
+	materializedViews  map[uint64]*MaterializedView
+	remoteConsumers    sync.Map
+	cluster            cluster.Cluster
+	sharder            *sharder.Sharder
+	meta               *meta.Controller
+	rnd                *rand.Rand
+	cfg                *conf.Config
+	queryExec          common.SimpleQueryExec
+	protoRegistry      protolib.Resolver
+	failInject         failinject.Injector
+	shardFailListeners sync.Map
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -81,32 +80,56 @@ func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta
 		protoRegistry: registry,
 		failInject:    failInject,
 	}
-	engine.createMaps()
+	engine.clearState()
 	return engine
 }
 
+// Start - starts - the schedulers, sources are started later
 func (p *Engine) Start() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.started {
-		return nil
+	for _, sched := range p.schedulers {
+		sched.Start()
 	}
 	p.started = true
 	return nil
 }
 
-// Ready signals that the push engine is now ready to receive any incoming data
-func (p *Engine) Ready() error {
-
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
-
-	// Now we can activate the schedulers
-	for _, shardID := range p.localLeaderShards {
-		shard := p.schedulers[shardID]
-		shard.Start()
+// StartSources - starts the sources - these must be started after the engine has been started otherwise we can get into
+// a deadlock where source start is blocked waiting for Kafka rebalance to complete but consumer thread is blocked
+// trying to ingest messages, but this is blocked on checking whether engine is started
+func (p *Engine) StartSources() {
+	p.lock.Lock()
+	var sources []*source.Source
+	for _, source := range p.sources {
+		sources = append(sources, source)
 	}
-	return nil
+	p.lock.Unlock()
+
+	// We *must* start the sources outside the lock, to avoid deadlock
+	for _, source := range sources {
+		if err := source.Start(); err != nil {
+			log.Warnf("faile to start source %+v", err)
+		}
+	}
+}
+
+func (p *Engine) startSchedulers() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	for _, sched := range p.schedulers {
+		sched.Start()
+	}
+}
+
+func (p *Engine) getSources() []*source.Source {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	var sources []*source.Source
+	for _, source := range p.sources {
+		sources = append(sources, source)
+	}
+	return sources
 }
 
 func (p *Engine) Stop() error {
@@ -123,9 +146,15 @@ func (p *Engine) Stop() error {
 	for _, sh := range p.schedulers {
 		sh.Stop()
 	}
-	p.createMaps() // Clear the internal state
+	p.clearState() // Clear the internal state
 	p.started = false
 	return nil
+}
+
+func (p *Engine) IsStarted() bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	return p.started
 }
 
 func (p *Engine) GetSource(sourceID uint64) (*source.Source, error) {
@@ -207,12 +236,7 @@ func (p *Engine) RegisterMV(mv *MaterializedView) error {
 	return nil
 }
 
-func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor *interruptor.Interruptor) error {
-
-	schedulers, err := p.GetLocalLeaderSchedulers()
-	if err != nil {
-		return errors.WithStack(err)
-	}
+func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, shardIDs []uint64, interruptor *interruptor.Interruptor) error {
 
 	te, err := p.getTableExecutorForIndex(indexInfo)
 	if err != nil {
@@ -228,9 +252,8 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, interruptor
 
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
-		log.Println("Filling index")
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject, interruptor); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, shardIDs, p.failInject, interruptor); err != nil {
 			return err
 		}
 	} else {
@@ -288,11 +311,14 @@ func (p *Engine) getTableExecutorForIndex(indexInfo *common.IndexInfo) (*exec.Ta
 func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
-	sh := sched.NewShardScheduler(shardID, p, p.cluster)
+	if _, ok := p.schedulers[shardID]; ok {
+		panic(fmt.Sprintf("there is already a scheduler %d", shardID))
+	}
+	sh := sched.NewShardScheduler(shardID, p, p, p.cluster)
 	p.schedulers[shardID] = sh
-	p.localLeaderShards = append(p.localLeaderShards, shardID)
+	if p.started {
+		sh.Start()
+	}
 	return &shardListener{
 		shardID: shardID,
 		p:       p,
@@ -348,17 +374,6 @@ func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow, fir
 func (s *shardListener) Close() {
 	s.sched.Stop()
 	s.p.removeScheduler(s.shardID)
-	s.p.localShardsLock.Lock()
-	defer s.p.localShardsLock.Unlock()
-	locShards := make([]uint64, len(s.p.localLeaderShards)-1)
-	index := 0
-	for _, sid := range s.p.localLeaderShards {
-		if sid != s.shardID {
-			locShards[index] = sid
-			index++
-		}
-	}
-	s.p.localLeaderShards = locShards
 }
 
 func (p *Engine) removeScheduler(shardID uint64) {
@@ -414,6 +429,7 @@ func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
 func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	ctx := exec.NewExecutionContext(batch.writeBatch, -1)
 	for entityID, rawRows := range batch.rawRows {
+
 		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
 			// Does the entity exist in storage?
@@ -422,17 +438,15 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 				return errors.WithStack(err)
 			}
 			if rows.RowCount() == 1 {
-				// The entity is in storage but not deployed - this might happen if a node joined when a create source/mv
-				// was in progress so did not get the notifications but did see it in storage - in this case
-				// we periodically scan sys.tables to check for any non registered entities TODO
+				// The entity is in storage but not deployed - should not happen - we must throw an error to avoid losing
+				// data
 				return errors.Errorf("entity with id %d not registered", entityID)
 			}
-			// The entity does not exist in storage - it must correspond to a dropped entity - we can ignore the row
-			// and it will get deleted from the receiver table
-			log.Warnf("Received rows - Entity with id %d is not registered and does not exist in storage. Will be ignored as likely corresponds to a dropped source or materialized view.", entityID)
-			continue
+			// This could correspond to a source or mv which failed during fill and was never fully created
+			// but left rows in the receiver table. in this case we can just ignore them
+			log.Warnf("remote consumer %d not loaded", entityID)
+			return nil
 		}
-
 		remoteConsumer := rcVal.(*RemoteConsumer) //nolint:forcetypeassert
 		rows := remoteConsumer.RowsFactory.NewRows(len(rawRows))
 		entries := make([]exec.RowsEntry, len(rawRows))
@@ -461,6 +475,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 			entries[i] = exec.NewRowsEntry(pi, ci, int64(row.ReceiverSequence))
 		}
 		rowsBatch := exec.NewRowsBatch(rows, entries)
+
 		if err := remoteConsumer.RowsHandler.HandleRemoteRows(rowsBatch, ctx); err != nil {
 			return errors.WithStack(err)
 		}
@@ -475,6 +490,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 			delete(ctx.RemoteBatches, shardID)
 		}
 	}
+
 	if localBatch != nil {
 		if err := p.cluster.WriteForwardBatch(localBatch, true); err != nil {
 			return err
@@ -488,6 +504,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	if err := p.failInject.GetFailpoint("process_batch_before_local_commit").CheckFail(); err != nil {
 		return err
 	}
+
 	if err := p.cluster.WriteBatch(batch.writeBatch, true); err != nil {
 		return errors.WithStack(err)
 	}
@@ -498,16 +515,14 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 // WaitForProcessingToComplete is used in tests to wait for all rows have been processed when ingesting test data
 func (p *Engine) WaitForProcessingToComplete() error {
 
-	log.Println("waiting for schedulers")
-	err := p.WaitForSchedulers()
-	if err != nil {
+	log.Debug("waiting for schedulers")
+	if err := p.WaitForSchedulers(); err != nil {
 		return errors.WithStack(err)
 	}
 
 	// Wait for no rows in the receiver table
-	log.Println("waiting for no rows in receiver")
-	err = p.waitForNoRowsInTable(common.ReceiverTableID)
-	if err != nil {
+	log.Debug("waiting for no rows in receiver")
+	if err := p.waitForNoRowsInTable(common.ReceiverTableID); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -535,9 +550,7 @@ func (p *Engine) WaitForSchedulers() error {
 }
 
 func (p *Engine) waitForNoRowsInTable(tableID uint64) error {
-	p.localShardsLock.Lock()
-	defer p.localShardsLock.Unlock()
-	shardIDs := p.localLeaderShards
+	shardIDs := p.cluster.GetLocalShardIDs()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		exist, err := p.ExistRowsInLocalTable(tableID, shardIDs)
 		return !exist, errors.WithStack(err)
@@ -588,28 +601,6 @@ func (p *Engine) VerifyNoSourcesOrMVs() error {
 		return errors.Errorf("there is %d materialized view", len(p.materializedViews))
 	}
 	return nil
-}
-
-func (p *Engine) GetScheduler(shardID uint64) (*sched.ShardScheduler, bool) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	sched, ok := p.schedulers[shardID]
-	return sched, ok
-}
-
-var initBatchSize = 10000
-var initBatchSizeLock = sync.RWMutex{}
-
-func getInitBatchSize() int {
-	initBatchSizeLock.Lock()
-	defer initBatchSizeLock.Unlock()
-	return initBatchSize
-}
-
-func SetInitBatchSize(batchSize int) {
-	initBatchSizeLock.Lock()
-	defer initBatchSizeLock.Unlock()
-	initBatchSize = batchSize
 }
 
 func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.TableInfo) (*source.Source, error) {
@@ -723,7 +714,7 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 			if err != nil {
 				return err
 			}
-			wb := cluster.NewWriteBatch(shardID)
+			wb := cluster.NewWriteBatch(shardID) // Epoch doesn't matter as writing locally
 			for i, kv := range pairs {
 				if skipFirst && i == 0 {
 					continue
@@ -750,25 +741,11 @@ func (p *Engine) LoadInitialStateForTable(shardIDs []uint64, initTableID uint64,
 	return nil
 }
 
-func (p *Engine) createMaps() {
+func (p *Engine) clearState() {
 	p.remoteConsumers = sync.Map{}
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
-}
-
-func (p *Engine) GetLocalLeaderSchedulers() (map[uint64]*sched.ShardScheduler, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	schedulers := make(map[uint64]*sched.ShardScheduler, len(p.localLeaderShards))
-	for _, lls := range p.localLeaderShards {
-		sched, ok := p.schedulers[lls]
-		if !ok {
-			return nil, errors.Errorf("no scheduler for local leader shard %d", lls)
-		}
-		schedulers[lls] = sched
-	}
-	return schedulers, nil
 }
 
 func (p *Engine) IsEmpty() bool {
@@ -829,7 +806,7 @@ func (p *Engine) GetForwardWriteHandler() remoting.ClusterMessageHandler {
 func (p *Engine) handleForwardWriteRequest(req *clustermsgs.ClusterForwardWriteRequest) (remoting.ClusterMessage, error) {
 	scheduler := p.getScheduler(uint64(req.ShardId))
 	if scheduler == nil {
-		return nil, errors.Errorf("cannot find scheduler for shard %d this is most likely because the node for the processor is not available", req.ShardId)
+		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot find scheduler for shard %d", req.ShardId)
 	}
 	err := scheduler.AddForwardBatch(req.GetRequestBody())
 	return &clustermsgs.ClusterForwardWriteResponse{}, err
@@ -839,4 +816,47 @@ func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	return p.schedulers[shardID]
+}
+
+func (p *Engine) getLocalLeaderShards() []uint64 {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	var shardIDs []uint64
+	for shardID := range p.schedulers {
+		shardIDs = append(shardIDs, shardID)
+	}
+	return shardIDs
+}
+
+func (p *Engine) ShardFailed(shardID uint64) {
+	p.shardFailListeners.Range(func(key, _ interface{}) bool {
+		sfl := key.(sched.ShardFailListener) //nolint:forcetypeassert
+		sfl.ShardFailed(shardID)
+		return true
+	})
+}
+
+func (p *Engine) registerShardFailListener(shardFailListener sched.ShardFailListener) {
+	p.shardFailListeners.Store(shardFailListener, struct{}{})
+}
+
+func (p *Engine) unregisterShardFailListener(shardFailListener sched.ShardFailListener) {
+	p.shardFailListeners.Delete(shardFailListener)
+}
+
+// Used in testing only
+
+var initBatchSize = 10000
+var initBatchSizeLock = sync.RWMutex{}
+
+func getInitBatchSize() int {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	return initBatchSize
+}
+
+func SetInitBatchSize(batchSize int) {
+	initBatchSizeLock.Lock()
+	defer initBatchSizeLock.Unlock()
+	initBatchSize = batchSize
 }

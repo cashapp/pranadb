@@ -21,24 +21,16 @@ const (
 	shardStateMachineLookupGet           byte   = 3
 	shardStateMachineCommandWrite        byte   = 1
 	shardStateMachineCommandForwardWrite byte   = 2
+	shardStateMachineCommandSetLeader    byte   = 3
 	shardStateMachineResponseOK          uint64 = 1
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
-	processorNode := calcProcessingNode(nodeIDs, shardID)
-	processor := nodeID == processorNode
 	ssm := ShardOnDiskStateMachine{
-		nodeID:    nodeID,
-		nodeIDs:   nodeIDs,
-		shardID:   shardID,
-		dragon:    d,
-		processor: processor,
-	}
-	if processor {
-		if d.shardListenerFactory == nil {
-			panic("no shard listener")
-		}
-		ssm.shardListener = d.shardListenerFactory.CreateShardListener(shardID)
+		nodeID:  nodeID,
+		nodeIDs: nodeIDs,
+		shardID: shardID,
+		dragon:  d,
 	}
 	return &ssm
 }
@@ -48,13 +40,14 @@ type ShardOnDiskStateMachine struct {
 	shardID          uint64
 	dragon           *Dragon
 	nodeIDs          []int
-	processor        bool
 	shardListener    cluster.ShardListener
 	dedupSequences   map[string]uint64
 	receiverSequence uint64
 	forwardRows      []cluster.ForwardRow
 	lock             sync.Mutex
 	lastIndex        uint64
+	leaderNodeID     int64
+	leaderTerm       int64
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
@@ -69,7 +62,28 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 		return 0, err
 	}
 	s.receiverSequence = receiverSequence
+	leaderNodeID, term, err := s.loadLeaderInfo(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return 0, err
+	}
+	s.leaderNodeID = leaderNodeID
+	s.leaderTerm = term
 	return lastRaftIndex, nil
+}
+
+func (s *ShardOnDiskStateMachine) loadLeaderInfo(peb *pebble.DB, shardID uint64) (int64, int64, error) {
+	key := table.EncodeTableKeyPrefix(common.ShardLeaderTableID, shardID, 16)
+	vb, closer, err := peb.Get(key)
+	defer common.InvokeCloser(closer)
+	if err == pebble.ErrNotFound {
+		return -1, -1, nil
+	}
+	if err != nil {
+		return 0, 0, errors.WithStack(err)
+	}
+	nodeID, _ := common.ReadUint64FromBufferLE(vb, 0)
+	term, _ := common.ReadUint64FromBufferLE(vb, 8)
+	return int64(nodeID), int64(term), nil
 }
 
 func (s *ShardOnDiskStateMachine) loadSequences(peb *pebble.DB, shardID uint64) (uint64, uint64, error) {
@@ -98,6 +112,10 @@ func (s *ShardOnDiskStateMachine) writeSequences(batch *pebble.Batch, lastRaftIn
 	return batch.Set(key, vb, nil)
 }
 
+func (s *ShardOnDiskStateMachine) isProcessor() bool {
+	return int64(s.nodeID) == s.leaderNodeID
+}
+
 func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statemachine.Entry, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -113,7 +131,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		command := cmdBytes[0]
 		switch command {
 		case shardStateMachineCommandForwardWrite:
-			if s.forwardRows == nil && s.processor {
+			if s.forwardRows == nil && s.isProcessor() {
 				// Most likely the entries will be all forward writes
 				s.forwardRows = make([]cluster.ForwardRow, 0, len(entries))
 			}
@@ -122,6 +140,10 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			}
 		case shardStateMachineCommandWrite:
 			if err := s.handleWrite(batch, cmdBytes, false, timestamp); err != nil {
+				return nil, errors.WithStack(err)
+			}
+		case shardStateMachineCommandSetLeader:
+			if err := s.handleSetLeader(batch, cmdBytes); err != nil {
 				return nil, errors.WithStack(err)
 			}
 		default:
@@ -148,7 +170,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 
 	// A forward write is a write which forwards a batch of rows from one shard to another
 	// In this case we want to trigger processing of those rows, if we're the processor
-	if len(s.forwardRows) > 0 {
+	if s.shardListener != nil && len(s.forwardRows) > 0 {
 		s.shardListener.RemoteWriteOccurred(s.forwardRows)
 		s.forwardRows = nil
 	}
@@ -185,7 +207,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 			key = common.AppendUint64ToBufferBE(key, s.receiverSequence)
 			key = append(key, remoteConsumerBytes...)
 
-			if s.processor {
+			if s.isProcessor() {
 				remoteConsumerID, _ := common.ReadUint64FromBufferBE(remoteConsumerBytes, 0)
 				s.forwardRows = append(s.forwardRows, cluster.ForwardRow{
 					ReceiverSequence: s.receiverSequence,
@@ -294,6 +316,52 @@ func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
 	}
 }
 
+func (s *ShardOnDiskStateMachine) handleSetLeader(batch *pebble.Batch, bytes []byte) error {
+
+	newLeaderNodeID, _ := common.ReadUint64FromBufferLE(bytes, 1)
+	term, _ := common.ReadUint64FromBufferLE(bytes, 9)
+	if int64(term) <= s.leaderTerm {
+		// Logs can be replayed and the SM needs to be idempotent, we could also have competing setLeader attempts from
+		// different terms executed in wrong order (theoretically). In either case ignore
+		return nil
+	}
+	// Persist the leader node id and term
+	key := table.EncodeTableKeyPrefix(common.ShardLeaderTableID, s.shardID, 16)
+	var value []byte
+	value = common.AppendUint64ToBufferLE(value, newLeaderNodeID)
+	value = common.AppendUint64ToBufferLE(value, term)
+	if err := batch.Set(key, value, nil); err != nil {
+		return err
+	}
+
+	prevLeaderNodeID := s.leaderNodeID
+	s.leaderNodeID = int64(newLeaderNodeID)
+	s.leaderTerm = int64(term)
+
+	if thisNodeID := uint64(s.nodeID); newLeaderNodeID == thisNodeID {
+		if s.shardListener != nil {
+			panic("already has listener")
+		}
+		// This node has become leader and not already leader
+
+		// Please note that the concept of "leader" as set here is not strictly in step with the actual Raft leader
+		// When actual raft leadership changes there is a window before setLeader is called where the actual raft leader
+		// and what this group thinks is the raft leader are different. But that does not matter. What matters is that
+		// all replicas agree on who the "leader" is and that most of the time it's the same as the actual Raft leader
+		// (for performance reasons). The key thing is that processing only occurs on one replica of the cluster at any one
+		// time.
+		s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(s.shardID)
+	} else if newLeaderNodeID != thisNodeID && prevLeaderNodeID == int64(thisNodeID) {
+		// We were leader but not any more
+		if s.shardListener != nil {
+			// Shard listener could be nil, if this occurs right after startup
+			s.shardListener.Close()
+			s.shardListener = nil
+		}
+	}
+	return nil
+}
+
 func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
 	buff, ok := i.([]byte)
 	if !ok {
@@ -337,7 +405,7 @@ func encodeError(err error) []byte {
 	var buff []byte
 	buff = append(buff, 0) // Zero byte signifies error
 	buff = append(buff, err.Error()...)
-	// Note - we don't send back an error to Dragon if a query failed - we only return an error
+	// Note - we don't send back an error to Dragonboat if a query failed - we only return an error
 	// for an unrecoverable error.
 	return buff
 }
@@ -397,6 +465,12 @@ func (s *ShardOnDiskStateMachine) RecoverFromSnapshot(reader io.Reader, i <-chan
 		return err
 	}
 	s.receiverSequence = receiverSequence
+	leaderNodeID, term, err := s.loadLeaderInfo(s.dragon.pebble, s.shardID)
+	if err != nil {
+		return err
+	}
+	s.leaderNodeID = leaderNodeID
+	s.leaderTerm = term
 	log.Debugf("data shard %d recover from snapshot done on node %d", s.shardID, s.dragon.cnf.NodeID)
 	atomic.AddInt64(&s.dragon.restoreSnapshotCount, 1)
 	return nil

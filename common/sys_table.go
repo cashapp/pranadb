@@ -13,5 +13,7 @@ const (
 	ToDeleteTableID             = 9
 	LocalConfigTableID          = 10
 	ForwardDedupTableID         = 11
+	ShardLeaderTableID          = 12
+	DummyTableID                = 13
 	UserTableIDBase             = 1000
 )

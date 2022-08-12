@@ -109,8 +109,6 @@ select * from test_mv_1 order by col0;
 +---------------------------------------------------------------------------------------------------------------------+
 10 rows returned
 
---we repeat this a few times;
-
 --close client;
 use test;
 0 rows returned

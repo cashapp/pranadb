@@ -45,8 +45,6 @@ use test;
 select * from test_source_1 order by col0;
 select * from test_mv_1 order by col0;
 
---we repeat this a few times;
-
 --close client;
 use test;
 select * from test_source_1 order by col0;

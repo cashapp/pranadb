@@ -5,20 +5,18 @@ package kafkatest
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common/commontest"
 	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/squareup/pranadb/client"
-	"github.com/squareup/pranadb/common/commontest"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
-	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,7 +100,7 @@ create source payments(
 
 	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
 	require.NoError(t, err)
-	res = <-ch
+	<-ch
 	res = <-ch
 	require.Equal(t, "| payment_id | customer_id          | payment_time               | amount     | payment_.. | currency   | fraud_sc.. |", res)
 
@@ -111,29 +109,13 @@ create source payments(
 	err = gm.ProduceMessages("payments", paymentTopicName, numPartitions, 0, numPayments, 0, props)
 	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", int(numPayments), cluster)
-
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
-	require.NoError(t, err)
-	lastLine := ""
-	for line := range ch {
-		lastLine = line
-	}
-	require.Equal(t, "1500 rows returned", lastLine)
+	waitUntilRowsInPayments(t, int(numPayments), cli)
 
 	// Send more messages
 	err = gm.ProduceMessages("payments", paymentTopicName, numPartitions, 0, numPayments, numPayments, props)
 	require.NoError(t, err)
 
-	waitUntilRowsInTable(t, "payments", int(numPayments*2), cluster)
-
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
-	require.NoError(t, err)
-
-	for line := range ch {
-		lastLine = line
-	}
-	require.Equal(t, "3000 rows returned", lastLine)
+	waitUntilRowsInPayments(t, 2*int(numPayments), cli)
 }
 
 func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
@@ -217,50 +199,16 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 	}
 }
 
-func waitUntilRowsInTable(t *testing.T, tableName string, numRows int, cluster []*server.Server) {
-	t.Helper()
-	schema, ok := cluster[0].GetMetaController().GetSchema("test")
-	require.True(t, ok, "can't find test schema")
-	tab, ok := schema.GetTable(tableName)
-	require.True(t, ok, fmt.Sprintf("can't find table %s", tableName))
-	tabInfo := tab.GetTableInfo()
-	totRows := 0
+func waitUntilRowsInPayments(t *testing.T, numRows int, cli *client.Client) {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		var err error
-		totRows, err = getAllRowsInTable(tabInfo.ID, cluster)
+		ch, err := cli.ExecuteStatement("select * from payments order by payment_id", nil)
 		require.NoError(t, err)
-		return totRows == numRows, nil
-	}, 30*time.Second, 100*time.Millisecond)
+		lastLine := ""
+		for line := range ch {
+			lastLine = line
+		}
+		return lastLine == fmt.Sprintf("%d rows returned", numRows), nil
+	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(t, err)
-	if !ok {
-		for _, prana := range cluster {
-			lls, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
-			require.NoError(t, err)
-			var ss []uint64
-			for sid := range lls {
-				ss = append(ss, sid)
-			}
-		}
-	}
-	require.True(t, ok, "Timed out waiting for %d rows in table %s there are %d", numRows, tableName, totRows)
-}
-
-func getAllRowsInTable(tableID uint64, cluster []*server.Server) (int, error) {
-	totRows := 0
-	for _, prana := range cluster {
-		scheds, err := prana.GetPushEngine().GetLocalLeaderSchedulers()
-		if err != nil {
-			return 0, err
-		}
-		for shardID := range scheds {
-			keyStartPrefix := table.EncodeTableKeyPrefix(tableID, shardID, 16)
-			keyEndPrefix := table.EncodeTableKeyPrefix(tableID+1, shardID, 16)
-			pairs, err := prana.GetCluster().LocalScan(keyStartPrefix, keyEndPrefix, 100000)
-			if err != nil {
-				return 0, err
-			}
-			totRows += len(pairs)
-		}
-	}
-	return totRows, nil
+	require.True(t, ok)
 }

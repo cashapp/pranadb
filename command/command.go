@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/table"
@@ -24,6 +25,8 @@ import (
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/squareup/pranadb/push"
 )
+
+const ddlRetryTimeout = 1 * time.Minute
 
 type Executor struct {
 	cluster           cluster.Cluster
@@ -110,9 +113,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateMVCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.MaterializedView)
-		err = e.ddlRunner.RunCommand(command)
+		command, err := NewOriginatingCreateMVCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.MaterializedView)
 		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if err := e.executeCommandWithRetry(command); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -121,9 +126,11 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		command := NewOriginatingCreateIndexCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Index)
-		err = e.ddlRunner.RunCommand(command)
+		command, err := NewOriginatingCreateIndexCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Index)
 		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if err := e.executeCommandWithRetry(command); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -199,6 +206,28 @@ func (e *Executor) GetPushEngine() *push.Engine {
 
 func (e *Executor) GetPullEngine() *pull.Engine {
 	return e.pullEngine
+}
+
+func (e *Executor) executeCommandWithRetry(command DDLCommand) error {
+	start := time.Now()
+	for {
+		err := e.ddlRunner.RunCommand(command)
+		if err != nil {
+			var perr errors.PranaError
+			if errors.As(err, &perr) && perr.Code == errors.DdlRetry {
+				// Some DDL commands like create MV or index can return DdlRetry if they fail because Raft
+				// leadership changed - in this case we retry rather than returning an error as this can be transient
+				// e.g. cluster is starting up or node is being rolled
+				time.Sleep(2 * time.Second)
+				if time.Now().Sub(start) > ddlRetryTimeout {
+					return errors.NewPranaErrorf(errors.Timeout, "timed out in retrying ddl command")
+				}
+				continue
+			}
+			return err
+		}
+		return nil
+	}
 }
 
 func (e *Executor) generateTableIDSequences(numValues int) ([]uint64, error) {
