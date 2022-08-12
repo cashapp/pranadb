@@ -108,7 +108,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 		DisableLevelTruncation: true,
 		TimestampFormat:        pranalog.TimestampFormat,
 	})
-	log.SetLevel(log.TraceLevel)
+	log.SetLevel(log.WarnLevel)
 
 	// Make sure we don't run tests in parallel
 	lock.Lock()
