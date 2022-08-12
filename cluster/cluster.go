@@ -269,3 +269,7 @@ type ShardListener interface {
 	RemoteWriteOccurred(forwardRows []ForwardRow)
 	Close()
 }
+
+type ForwardWriteHandler interface {
+	HandleForwardWrite(shardID uint64, writeBatch []byte) error
+}

@@ -83,8 +83,7 @@ type Dragon struct {
 	nh                           *dragonboat.NodeHost
 	shardAllocs                  map[uint64][]int
 	allDataShards                []uint64
-	localDataShards              []uint64
-	localShardsMap               map[uint64]struct{}
+	localDataShards              []uint64 // Note this is not local *leaders*, it is shards which have a replica locally - it is static
 	started                      bool
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
@@ -95,6 +94,7 @@ type Dragon struct {
 	restoreSnapshotCount         int64
 	procMgr                      *procManager
 	stopSignaller                *common.AtomicBool
+	forwardWriteHandler          cluster.ForwardWriteHandler
 }
 
 type snapshot struct {
@@ -393,7 +393,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 }
 
 func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byte, error) {
-	res, err := d.executeWithRetry(func() (interface{}, error) {
+	res, err := d.executeRaftOpWithRetry(func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		defer cancel()
 		res, err := d.nh.SyncRead(ctx, shardID, request)
@@ -494,18 +494,28 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) er
 				batch.ShardID)
 		}
 	} else {
-		clusterRequest := &clustermsgs.ClusterForwardWriteRequest{
-			ShardId:     int64(batch.ShardID),
-			RequestBody: buff,
-		}
-		log.Tracef("Sending forward write to shard %d", batch.ShardID)
-		resp, err := d.sendRPCToLeader(clusterRequest, batch.ShardID)
-		if err != nil {
-			return err
-		}
-		_, ok := resp.(*clustermsgs.ClusterForwardWriteResponse)
-		if !ok {
-			panic("not a clustermsgs.ClusterForwardWriteResponse")
+		start := time.Now()
+		for {
+			leaderNodeID, ok := d.procMgr.getLeaderNode(batch.ShardID)
+			var err error
+			if ok {
+				if leaderNodeID == uint64(d.cnf.NodeID) {
+					err = d.forwardWriteHandler.HandleForwardWrite(batch.ShardID, buff)
+				} else {
+					request := &clustermsgs.ClusterForwardWriteRequest{
+						ShardId:     int64(batch.ShardID),
+						RequestBody: buff,
+					}
+					address := d.cnf.NotifListenAddresses[leaderNodeID]
+					_, err = d.requestClient.SendRPC(request, address)
+				}
+				if err == nil {
+					return nil
+				}
+			}
+			if err := d.retryLoopCheckError(start, err); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -765,7 +775,6 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 		allNodes[i] = i
 	}
 	d.localDataShards = make([]uint64, 0)
-	d.localShardsMap = map[uint64]struct{}{}
 	d.allDataShards = make([]uint64, numShards)
 	d.shardAllocs = make(map[uint64][]int)
 	for i := 0; i < numShards; i++ {
@@ -786,7 +795,6 @@ func (d *Dragon) generateReplicas(shardID uint64, replicationFactor int, dataSha
 			if dataShard {
 				d.localDataShards = append(d.localDataShards, shardID)
 			}
-			d.localShardsMap[shardID] = struct{}{}
 		}
 	}
 	d.shardAllocs[shardID] = nids
@@ -794,7 +802,7 @@ func (d *Dragon) generateReplicas(shardID uint64, replicationFactor int, dataSha
 
 // Some errors are expected, we should retry in this case
 // See https://github.com/lni/dragonboat/issues/183
-func (d *Dragon) executeWithRetry(f func() (interface{}, error)) (interface{}, error) {
+func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interface{}, error) {
 	start := time.Now()
 	errTimeoutCount := 0
 	for {
@@ -839,7 +847,7 @@ func (d *Dragon) executeWithRetry(f func() (interface{}, error)) (interface{}, e
 }
 
 func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemachine.Result, error) {
-	r, err := d.executeWithRetry(func() (interface{}, error) {
+	r, err := d.executeRaftOpWithRetry(func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		defer cancel()
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
@@ -1023,93 +1031,92 @@ func (d *Dragon) unregisterShardSM(shardID uint64) {
 }
 
 func (d *Dragon) sendPropose(shardID uint64, request []byte, localOnly bool) (uint64, []byte, error) {
-
-	_, ok := d.localShardsMap[shardID]
-	if ok {
-		// We handle this directly
-		cs := d.nh.GetNoOPSession(shardID)
-		res, err := d.proposeWithRetry(cs, request)
-		return res.Value, res.Data, err
-	} else if localOnly {
-		return 0, nil, errors.New("non forward write doesn't have a local shard")
+	start := time.Now()
+	for {
+		leaderNodeID, ok := d.procMgr.getLeaderNode(shardID)
+		var err error
+		if ok {
+			if d.cnf.TestServer || leaderNodeID == uint64(d.cnf.NodeID) {
+				// We handle this directly
+				cs := d.nh.GetNoOPSession(shardID)
+				res, err := d.proposeWithRetry(cs, request)
+				return res.Value, res.Data, err
+			}
+			if localOnly {
+				return 0, nil, errors.Errorf("no local leader for shard %d (localOnly=true)", shardID)
+			}
+			// Send remotely
+			address := d.cnf.NotifListenAddresses[leaderNodeID]
+			clusterRequest := &clustermsgs.ClusterProposeRequest{
+				ShardId:     int64(shardID),
+				RequestBody: request,
+			}
+			var resp remoting.ClusterMessage
+			resp, err = d.requestClient.SendRPC(clusterRequest, address)
+			if err == nil {
+				clusterResp, ok := resp.(*clustermsgs.ClusterProposeResponse)
+				if !ok {
+					panic("not a clustermsgs.ClusterReadResponse")
+				}
+				return uint64(clusterResp.RetVal), clusterResp.GetResponseBody(), nil
+			}
+		}
+		if err := d.retryLoopCheckError(start, err); err != nil {
+			return 0, nil, err
+		}
 	}
-
-	clusterRequest := &clustermsgs.ClusterProposeRequest{
-		ShardId:     int64(shardID),
-		RequestBody: request,
-	}
-	resp, err := d.sendRPCToLeader(clusterRequest, shardID)
-	if err != nil {
-		return 0, nil, err
-	}
-	clusterResp, ok := resp.(*clustermsgs.ClusterProposeResponse)
-	if !ok {
-		panic("not a clustermsgs.ClusterReadResponse")
-	}
-
-	return uint64(clusterResp.RetVal), clusterResp.GetResponseBody(), nil
 }
 
 func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
-
-	// Does the local node have this shard?
-	_, ok := d.localShardsMap[shardID]
-	if ok {
-		// We handle this directly
-		return d.executeSyncReadWithRetry(shardID, request)
-	}
-
-	clusterRequest := &clustermsgs.ClusterReadRequest{
-		ShardId:     int64(shardID),
-		RequestBody: request,
-	}
-	resp, err := d.sendRPCToLeader(clusterRequest, shardID)
-	if err != nil {
-		log.Errorf("failed %v", err)
-		return nil, err
-	}
-	clusterResp, ok := resp.(*clustermsgs.ClusterReadResponse)
-	if !ok {
-		panic("not a clustermsgs.ClusterReadResponse")
-	}
-	return clusterResp.ResponseBody, nil
-}
-
-func (d *Dragon) getLeaderAddressForShard(shardID uint64) (string, bool) {
-	nodeID, ok := d.procMgr.getLeaderNode(shardID)
-	if !ok {
-		return "", false
-	}
-	return d.cnf.NotifListenAddresses[nodeID], true
-}
-
-func (d *Dragon) sendRPCToLeader(request remoting.ClusterMessage, shardID uint64) (remoting.ClusterMessage, error) {
 	start := time.Now()
 	for {
-		address, ok := d.getLeaderAddressForShard(shardID)
-		// TODO should we bypass the RPC and send direct if local node is leader?
+		leaderNodeID, ok := d.procMgr.getLeaderNode(shardID)
+		var err error
 		if ok {
-			resp, err := d.requestClient.SendRPC(request, address)
+			if leaderNodeID == uint64(d.cnf.NodeID) {
+				// We handle this directly
+				return d.executeSyncReadWithRetry(shardID, request)
+			}
+			// Send remotely
+			address := d.cnf.NotifListenAddresses[leaderNodeID]
+			clusterRequest := &clustermsgs.ClusterReadRequest{
+				ShardId:     int64(shardID),
+				RequestBody: request,
+			}
+			var resp remoting.ClusterMessage
+			resp, err = d.requestClient.SendRPC(clusterRequest, address)
 			if err == nil {
-				return resp, nil
-			}
-			// If we get an unavailable error we retry - this happens if the scheduler can't be found or is stopped
-			// on the target. This is probably because the leadership has changed.
-			var perr errors.PranaError
-			if !(errors.As(err, &perr) && perr.Code == errors.Unavailable) {
-				log.Debugf("not an unavailable err so not retrying %v", err)
-				return nil, err
+				clusterResp, ok := resp.(*clustermsgs.ClusterReadResponse)
+				if !ok {
+					panic("not a clustermsgs.ClusterReadResponse")
+				}
+				return clusterResp.GetResponseBody(), nil
 			}
 		}
-		if d.stopSignaller.Get() {
-			// Server is closing
-			return nil, errors.New("server is closing")
-		}
-		time.Sleep(1 * time.Second)
-		if time.Now().Sub(start) >= operationTimeout {
-			return nil, errors.NewPranaErrorf(errors.Timeout, "timed out sending rpc to leader")
+		if err := d.retryLoopCheckError(start, err); err != nil {
+			return nil, err
 		}
 	}
+}
+
+func (d *Dragon) retryLoopCheckError(start time.Time, err error) error {
+	if err != nil {
+		var perr errors.PranaError
+		if !(errors.As(err, &perr) && perr.Code == errors.Unavailable) {
+			log.Debugf("not an unavailable err so not retrying %v", err)
+			return err
+		}
+	}
+	if d.stopSignaller.Get() {
+		// Server is closing
+		return errors.New("server is closing")
+	}
+	// Retry
+	time.Sleep(1 * time.Second)
+	if time.Now().Sub(start) >= operationTimeout {
+		return errors.NewPranaErrorf(errors.Timeout, "timed out sending rpc to leader")
+	}
+	return nil
 }
 
 func (d *Dragon) GetRemoteProposeHandler() remoting.ClusterMessageHandler {
@@ -1268,4 +1275,8 @@ func (d *Dragon) RegisterStartFill(expectedLeaders map[uint64]uint64, interrupto
 
 func (d *Dragon) RegisterEndFill() {
 	d.procMgr.registerEndFill()
+}
+
+func (d *Dragon) SetForwardWriteHandler(forwardWriteHandler cluster.ForwardWriteHandler) {
+	d.forwardWriteHandler = forwardWriteHandler
 }

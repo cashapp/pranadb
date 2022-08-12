@@ -804,12 +804,16 @@ func (p *Engine) GetForwardWriteHandler() remoting.ClusterMessageHandler {
 }
 
 func (p *Engine) handleForwardWriteRequest(req *clustermsgs.ClusterForwardWriteRequest) (remoting.ClusterMessage, error) {
-	scheduler := p.getScheduler(uint64(req.ShardId))
-	if scheduler == nil {
-		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot find scheduler for shard %d", req.ShardId)
-	}
-	err := scheduler.AddForwardBatch(req.GetRequestBody())
+	err := p.HandleForwardWrite(uint64(req.ShardId), req.RequestBody)
 	return &clustermsgs.ClusterForwardWriteResponse{}, err
+}
+
+func (p *Engine) HandleForwardWrite(shardID uint64, writeBatch []byte) error {
+	scheduler := p.getScheduler(shardID)
+	if scheduler == nil {
+		return errors.NewPranaErrorf(errors.Unavailable, "cannot find scheduler for shard %d", shardID)
+	}
+	return scheduler.AddForwardBatch(writeBatch)
 }
 
 func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {
