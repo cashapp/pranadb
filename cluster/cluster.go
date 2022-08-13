@@ -68,10 +68,6 @@ type Cluster interface {
 
 	RemoveToDeleteBatch(batch *ToDeleteBatch) error
 
-	CheckConstantReplicationFactor(expectedReplicationFactor int) error
-
-	CheckConstantShards(expectedReplicationFactor int) error
-
 	Start() error
 
 	Stop() error

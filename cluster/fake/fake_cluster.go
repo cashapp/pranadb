@@ -168,14 +168,6 @@ func (f *FakeCluster) Start() error {
 	return nil
 }
 
-func (f *FakeCluster) CheckConstantReplicationFactor(replicationFactor int) error {
-	return nil
-}
-
-func (f *FakeCluster) CheckConstantShards(numShards int) error {
-	return nil
-}
-
 // Stop resets all ephemeral state for a cluster, allowing it to be used with a new
 // server but keeping all persisted data.
 func (f *FakeCluster) Stop() error {

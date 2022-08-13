@@ -182,14 +182,6 @@ func (t *testCluster) SyncStore() error {
 	return nil
 }
 
-func (t *testCluster) CheckConstantShards(n int) error {
-	return nil
-}
-
-func (t *testCluster) CheckConstantReplicationFactor(r int) error {
-	return nil
-}
-
 func (t *testCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte, endPrefix []byte) error {
 	return nil
 }

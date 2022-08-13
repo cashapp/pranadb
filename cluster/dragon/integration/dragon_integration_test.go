@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -20,7 +21,7 @@ import (
 	"github.com/squareup/pranadb/cluster"
 )
 
-var dragonCluster []cluster.Cluster
+var dragonCluster []*dragon.Dragon
 
 const (
 	numShards         = 10
@@ -57,7 +58,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func getLocalNodeAndLocalShard() (cluster.Cluster, uint64) {
+func getLocalNodeAndLocalShard() (*dragon.Dragon, uint64) {
 	clust := dragonCluster[0]
 	shardID := clust.GetLocalShardIDs()[0]
 	return clust, shardID
@@ -270,22 +271,22 @@ func TestLocksRestart(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestCheckConstantShards(t *testing.T) {
-	for _, dragon := range dragonCluster {
-		err := dragon.CheckConstantShards(numShards)
-		if err != nil {
-			panic(fmt.Sprintf("no. of shards is not constant %v", err))
-		}
-	}
-}
+func TestSetAndGetConfigProperty(t *testing.T) {
+	node, _ := getLocalNodeAndLocalShard()
 
-func TestCheckConstantReplicationFactor(t *testing.T) {
-	for _, dragon := range dragonCluster {
-		err := dragon.CheckConstantReplicationFactor(replicationFactor)
-		if err != nil {
-			panic(fmt.Sprintf("no. of shards is not constant %v", err))
-		}
-	}
+	property := "someproperty"
+	propertyValue := 5
+
+	b := common.AppendUint32ToBufferBE([]byte{}, uint32(propertyValue))
+	err := node.SetConfigProperty(property, b)
+	require.NoError(t, err)
+
+	v, err := node.GetConfigProperty(property)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+
+	val, _ := common.ReadUint32FromBufferBE(v, 0)
+	require.Equal(t, int(val), propertyValue)
 }
 
 func stopDragonCluster() {
@@ -297,7 +298,7 @@ func stopDragonCluster() {
 	}
 }
 
-func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
+func startDragonCluster(dataDir string) ([]*dragon.Dragon, error) {
 
 	nodeAddresses := []string{
 		"localhost:63101",
@@ -306,7 +307,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	}
 
 	chans := make([]chan error, len(nodeAddresses))
-	clusterNodes := make([]cluster.Cluster, len(nodeAddresses))
+	clusterNodes := make([]*dragon.Dragon, len(nodeAddresses))
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
