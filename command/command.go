@@ -184,8 +184,8 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
-	case ast.ConsumerRate != nil:
-		if err := e.execConsumerRate(execCtx, ast.ConsumerRate.SourceName, ast.ConsumerRate.Rate); err != nil {
+	case ast.SourceSetMaxRate != nil:
+		if err := e.execSetMaxSourceIngestRate(execCtx, ast.SourceSetMaxRate.SourceName, ast.SourceSetMaxRate.Rate); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -362,8 +362,8 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 	return describeRows(tableInfo)
 }
 
-func (e *Executor) execConsumerRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
-	return e.ddlClient.Broadcast(&clustermsgs.ConsumerSetRate{
+func (e *Executor) execSetMaxSourceIngestRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
+	return e.ddlClient.Broadcast(&clustermsgs.SourceSetMaxIngestRate{
 		SchemaName: execCtx.Schema.Name,
 		SourceName: sourceName,
 		Rate:       rate,
