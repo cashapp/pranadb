@@ -16,7 +16,6 @@ import (
 
 const maxProcessBatchRows = 2000
 const maxForwardWriteBatchSize = 500
-const addForwardRowsTimeout = 1 * time.Minute
 
 var (
 	rowsProcessedVec = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -47,20 +46,27 @@ type ShardScheduler struct {
 	forwardRows                  []cluster.ForwardRow
 	forwardWrites                []WriteBatchEntry
 	batchHandler                 RowsBatchHandler
+	ShardFailListener            ShardFailListener
 	lastQueuedReceiverSeq        uint64
 	lastProcessedReceiverSeq     uint64
 	stopped                      bool
 	loopExitWaitGroup            sync.WaitGroup
+	queuedWriteRows              int
+	clust                        cluster.Cluster
 	rowsProcessedCounter         metrics.Counter
 	shardLagHistogram            metrics.Observer
 	batchProcessingTimeHistogram metrics.Observer
 	batchSizeHistogram           metrics.Observer
-	queuedWriteRows              int
-	clust                        cluster.Cluster
 }
 
 type RowsBatchHandler interface {
 	HandleBatch(shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
+}
+
+// ShardFailListener is called when a shard fails - this is only caused for unretryable errors where we need to stop
+// processing, and it allows other things (e.g. aggregations) to clear up any in memory state
+type ShardFailListener interface {
+	ShardFailed(shardID uint64)
 }
 
 type BatchEntry struct {
@@ -73,7 +79,7 @@ type WriteBatchEntry struct {
 	completionChannels []chan error
 }
 
-func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster) *ShardScheduler {
+func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailListener ShardFailListener, clust cluster.Cluster) *ShardScheduler {
 	sShardID := fmt.Sprintf("shard-%04d", shardID)
 	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
 	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
@@ -83,6 +89,7 @@ func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust clus
 		shardID:                      shardID,
 		actions:                      make(chan struct{}, 1),
 		batchHandler:                 batchHandler,
+		ShardFailListener:            shardFailListener,
 		rowsProcessedCounter:         rowsProcessedCounter,
 		shardLagHistogram:            shardLagHistogram,
 		batchProcessingTimeHistogram: batchProcessingTimeHistogram,
@@ -98,17 +105,7 @@ func (s *ShardScheduler) AddForwardBatch(writeBatch []byte) error {
 	if err != nil {
 		return err
 	}
-	select {
-	case err := <-ch:
-		return err
-	case <-time.After(addForwardRowsTimeout):
-		return errors.NewPranaErrorf(errors.Timeout, "timed out in waiting for forward write batch to be processed for shard %d", s.shardID)
-	}
-}
-
-func getNumPuts(batch []byte) uint32 {
-	numPuts, _ := common.ReadUint32FromBufferLE(batch, 1)
-	return numPuts
+	return <-ch
 }
 
 func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) {
@@ -117,8 +114,11 @@ func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) 
 
 	ch := make(chan error)
 
+	if s.failed {
+		return nil, errors.New("cannot add forward batch, scheduler is failed")
+	}
 	if s.stopped {
-		return nil, errors.New("cannot add forward batch, scheduler is stopped")
+		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot add forward batch, scheduler has stopped")
 	}
 
 	s.forwardWrites = append(s.forwardWrites, WriteBatchEntry{
@@ -127,32 +127,22 @@ func (s *ShardScheduler) addForwardBatch(writeBatch []byte) (chan error, error) 
 	})
 
 	numPuts := getNumPuts(writeBatch)
-	log.Infof("scheduler %d receiver forward write batch of size %d", s.shardID, numPuts)
+	log.Tracef("scheduler %d received forward write batch of size %d", s.shardID, numPuts)
 	s.queuedWriteRows += int(numPuts)
 
-	if !s.started {
-		// We allow rows to be queued before the scheduler is started
-		return ch, nil
-	}
 	s.maybeStartRunning()
 	return ch, nil
-}
-
-func (s *ShardScheduler) maybeStartRunning() {
-	if !s.processorRunning {
-		s.actions <- struct{}{}
-		s.processorRunning = true
-	}
 }
 
 func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	// If the scheduler has been started but now stopped (shutdown) then we just ignore any rows, any incoming will be persisted
-	// in the receiver table for next time
+	if s.failed {
+		panic("cannot add rows scheduler is failed")
+	}
 	if s.stopped {
-		return
+		panic("cannot add rows scheduler is stopped")
 	}
 
 	// Sanity check
@@ -161,13 +151,8 @@ func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 			panic("non contiguous receiver sequence")
 		}
 	}
-
 	s.forwardRows = append(s.forwardRows, rows...)
 	s.lastQueuedReceiverSeq = rows[len(rows)-1].ReceiverSequence
-	if !s.started {
-		// We allow rows to be queued before the scheduler is started
-		return
-	}
 	s.maybeStartRunning()
 }
 
@@ -238,6 +223,18 @@ func (s *ShardScheduler) getForwardWriteBatch() *WriteBatchEntry {
 	return &batch
 }
 
+func getNumPuts(batch []byte) uint32 {
+	numPuts, _ := common.ReadUint32FromBufferLE(batch, 1)
+	return numPuts
+}
+
+func (s *ShardScheduler) maybeStartRunning() {
+	if s.started && !s.processorRunning {
+		s.actions <- struct{}{}
+		s.processorRunning = true
+	}
+}
+
 func (s *ShardScheduler) runLoop() {
 	defer s.loopExitWaitGroup.Done()
 	first := true
@@ -293,9 +290,7 @@ func (s *ShardScheduler) runLoop() {
 						return
 					}
 					processTime := common.NanoTime() - start
-
-					log.Infof("processed batch of %d rows in %d ms", lr, processTime/1000000)
-
+					log.Tracef("processed batch of %d rows in %d ms", lr, processTime/1000000)
 					s.batchProcessingTimeHistogram.Observe(float64(processTime / 1000000))
 					s.rowsProcessedCounter.Add(float64(lr))
 					s.batchSizeHistogram.Observe(float64(lr))
@@ -304,7 +299,7 @@ func (s *ShardScheduler) runLoop() {
 				start := common.NanoTime()
 				err := s.clust.ExecuteForwardBatch(s.shardID, writeBatch.writeBatch)
 				processTime := common.NanoTime() - start
-				log.Infof("wrote forward rows: %d rows in %d ms", getNumPuts(writeBatch.writeBatch), processTime/1000000)
+				log.Tracef("wrote forward rows: %d rows in %d ms", getNumPuts(writeBatch.writeBatch), processTime/1000000)
 				for _, ch := range writeBatch.completionChannels {
 					ch <- err
 				}
@@ -329,7 +324,6 @@ func (s *ShardScheduler) runLoop() {
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool) bool {
 	lastSequence, err := s.batchHandler.HandleBatch(s.shardID, rowsToProcess, first)
 	if err != nil {
-		log.Errorf("failed to process batch: %+v", err)
 		s.setFailed(err)
 		return false
 	}
@@ -363,6 +357,7 @@ func (s *ShardScheduler) Stop() {
 	close(s.actions)
 	s.started = false
 	s.stopped = true
+	s.processorRunning = false
 	if !s.failed {
 		s.unblockWaitingWrites(errors.New("scheduler is closed"))
 	}
@@ -372,14 +367,23 @@ func (s *ShardScheduler) Stop() {
 	s.loopExitWaitGroup.Wait()
 }
 
+func (s *ShardScheduler) isStopped() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.stopped
+}
+
+// called on unretryable error where we must stop processing
 func (s *ShardScheduler) setFailed(err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	log.Debugf("scheduler %d set failed %v", s.shardID, err)
 	if s.failed || s.stopped {
 		return
 	}
 	s.stopped = true
 	s.failed = true
+	s.ShardFailListener.ShardFailed(s.shardID) // clean up state
 	// We unblock all waiting writes
 	s.unblockWaitingWrites(err)
 	s.processorRunning = false
@@ -418,10 +422,12 @@ func (s *ShardScheduler) WaitForProcessingToComplete(ch chan struct{}) {
 				return
 			}
 			time.Sleep(1 * time.Millisecond)
-			if time.Now().Sub(start) > 5*time.Second {
+			// This timeout must be larger than 2 * callTimeout in dragon - as requests can be retried and they will block the processor
+			if time.Now().Sub(start) > 30*time.Second {
 				s.lock.Lock()
 				defer s.lock.Unlock()
-				log.Warnf("timed out waiting for shard %d processing to complete", s.shardID)
+				log.Warnf("timed out waiting for shard %d processing to complete queued writes %d last processed %d lastQueued %d",
+					s.shardID, s.queuedWriteRows, lastProcessed, lastQueued)
 				ch <- struct{}{}
 				return
 			}

@@ -22,11 +22,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/btree"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/table"
-
-	"github.com/google/btree"
 
 	"github.com/squareup/pranadb/common"
 )
@@ -439,4 +439,19 @@ func (f *FakeCluster) PostStartChecks(queryExec common.SimpleQueryExec) error {
 
 func (f *FakeCluster) SyncStore() error {
 	return nil
+}
+
+func (f *FakeCluster) GetLeadersMap() (map[uint64]uint64, error) {
+	leadersMap := make(map[uint64]uint64)
+	for _, shardID := range f.allShardIds {
+		leadersMap[shardID] = 0
+	}
+	return leadersMap, nil
+}
+
+func (f *FakeCluster) RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error {
+	return nil
+}
+
+func (f *FakeCluster) RegisterEndFill() {
 }

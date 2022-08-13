@@ -12,7 +12,7 @@ import (
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
-// controller and the push engine.
+// controller and the push engine. It does not start the sources.
 type Loader struct {
 	meta       *meta.Controller
 	pushEngine *push.Engine
@@ -46,7 +46,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 	mvTables := make(map[tableKey]*MVTables)
 
 	// MVs must be started in the load order so we maintain a slice
-	var mvsToStart []tableKey
+	var mvsToLoad []tableKey
 	var srcsToStart []*source.Source
 
 	for i := 0; i < tableRows.RowCount(); i++ {
@@ -72,7 +72,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 			}
 			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
 			mvTables[tk] = mvt
-			mvsToStart = append(mvsToStart, tk)
+			mvsToLoad = append(mvsToLoad, tk)
 		case meta.TableKindInternal:
 			info := meta.DecodeInternalTableInfoRow(&tableRow)
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}
@@ -94,7 +94,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 		return errors.WithStack(err)
 	}
 
-	for _, tk := range mvsToStart {
+	for _, tk := range mvsToLoad {
 		mvt := mvTables[tk]
 		schema := l.meta.GetOrCreateSchema(mvt.mvInfo.SchemaName)
 		seqGen := common.NewPreallocSeqGen(mvt.sequences)
@@ -123,23 +123,11 @@ func (l *Loader) Start() error { //nolint:gocyclo
 	for i := 0; i < indexRows.RowCount(); i++ {
 		indexRow := indexRows.GetRow(i)
 		info := meta.DecodeIndexInfoRow(&indexRow)
-		if err := l.pushEngine.CreateIndex(info, false, &interruptor.Interruptor{}); err != nil {
+		if err := l.pushEngine.CreateIndex(info, false, nil, &interruptor.Interruptor{}); err != nil {
 			return err
 		}
 		if err := l.meta.RegisterIndex(info); err != nil {
 			return err
-		}
-	}
-
-	log.Info("Starting sources")
-
-	for _, src := range srcsToStart {
-		if err := src.Start(); err != nil {
-			// We don't prevent startup of the server if a source can't start - a source might not start, e.g.
-			// if the protobuf descriptor isn't found - this could happen if an attempt to create a source is made
-			// without first uploading the proto descriptor. If the server is then restarted after that, it would
-			// prevent the server starting at all if we returned the error from here
-			log.Warnf("Failed to start source %s.%s - %+v", src.TableExecutor().TableInfo.SchemaName, src.TableExecutor().TableInfo.Name, err)
 		}
 	}
 

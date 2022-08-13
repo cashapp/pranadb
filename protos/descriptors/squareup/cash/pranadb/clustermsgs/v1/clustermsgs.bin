@@ -1,5 +1,6 @@
 
-é
+–
+
 6squareup/cash/pranadb/clustermsgs/v1/clustermsgs.proto$squareup.cash.pranadb.clustermsgs.v1"•
 DDLStatementInfo.
 originating_node_id (RoriginatingNodeId
@@ -37,7 +38,13 @@ schemaName"
 schemaName
 source_name (	R
 sourceName
-rate (Rrate"4
+rate (Rrate"i
+LeaderInfosMessageS
+leader_infos (20.squareup.cash.pranadb.clustermsgs.v1.LeaderInfoRleaderInfos"@
+
+LeaderInfo
+shard_id (RshardId
+node_id (RnodeId"4
 RemotingTestMessage
 
 some_field (	R	someFieldBIZGgithub.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgsbproto3

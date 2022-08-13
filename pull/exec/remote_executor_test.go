@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/remoting"
 
 	"github.com/squareup/pranadb/meta"
@@ -164,6 +165,22 @@ type testCluster struct {
 	allShardIds     []uint64
 	rowsByShard     map[uint64]*common.Rows
 	rowsByShardOrig map[uint64]*common.Rows
+}
+
+func (t *testCluster) GetLeadersMap() (map[uint64]uint64, error) {
+	panic("implement me")
+}
+
+func (t *testCluster) RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error {
+	panic("implement me")
+}
+
+func (t *testCluster) RegisterEndFill() {
+	panic("implement me")
+}
+
+func (t *testCluster) GetShardAllocs() map[uint64][]int {
+	panic("implement me")
 }
 
 func (t *testCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {

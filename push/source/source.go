@@ -414,7 +414,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
-	log.Infof("ingested batch of %d", rowsIngested)
+	log.Tracef("ingested batch of %d", rowsIngested)
 
 	return nil
 }

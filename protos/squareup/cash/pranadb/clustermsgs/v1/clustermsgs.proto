@@ -55,6 +55,15 @@ message ConsumerSetRate {
   int64 rate = 3;
 }
 
+message LeaderInfosMessage {
+  repeated LeaderInfo leader_infos = 1;
+}
+
+message LeaderInfo {
+  int64 shard_id = 1;
+  int64 node_id = 2;
+}
+
 message RemotingTestMessage {
   string some_field = 1;
 }

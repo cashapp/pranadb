@@ -5,6 +5,7 @@ import (
 
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 )
 
 const (
@@ -75,6 +76,12 @@ type Cluster interface {
 	PostStartChecks(queryExec common.SimpleQueryExec) error
 
 	SyncStore() error
+
+	GetLeadersMap() (map[uint64]uint64, error)
+
+	RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error
+
+	RegisterEndFill()
 }
 
 type ToDeleteBatch struct {
@@ -261,4 +268,9 @@ type ForwardRow struct {
 
 type ShardListener interface {
 	RemoteWriteOccurred(forwardRows []ForwardRow)
+	Close()
+}
+
+type ForwardWriteHandler interface {
+	HandleForwardWrite(shardID uint64, writeBatch []byte) error
 }

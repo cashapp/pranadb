@@ -319,7 +319,7 @@ func startDragonCluster(dataDir string) ([]*dragon.Dragon, error) {
 		cnf.DataDir = dataDir
 		cnf.ReplicationFactor = replicationFactor
 		cnf.TestServer = true
-		clus, err := dragon.NewDragon(*cnf)
+		clus, err := dragon.NewDragon(*cnf, &common.AtomicBool{})
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

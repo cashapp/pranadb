@@ -68,10 +68,6 @@ select * from test_mv_1;
 
 --restart cluster;
 
---wait for schedulers;
-
---pause 2000;
-
 -- state should be resolved;
 
 use test;

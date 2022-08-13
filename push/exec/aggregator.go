@@ -493,3 +493,8 @@ func (a *Aggregator) getCacheForShard(shardID uint64) (*simplelru.LRU, error) {
 	}
 	return cache, nil
 }
+
+func (a *Aggregator) ShardFailed(shardID uint64) {
+	// We clear the cache for the shard as the data could be retried
+	a.keyCaches.Delete(shardID)
+}

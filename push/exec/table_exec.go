@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
-	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/table"
 	"sync"
@@ -89,7 +88,6 @@ func (t *TableExecutor) waitForNoUncommittedBatches() error {
 		if l == 0 {
 			return nil
 		}
-		log.Trace("waiting for no uncommitted batches")
 		time.Sleep(100 * time.Millisecond)
 		if time.Now().Sub(start) > 10*time.Second {
 			return errors.Error("timed out waiting for no uncommitted batches")
@@ -240,10 +238,10 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	return t.store.WriteBatchLocally(wb)
 }
 
-func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint64, schedulers map[uint64]*sched.ShardScheduler) (*cluster.ToDeleteBatch, error) {
+func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint64, shardIDs []uint64) (*cluster.ToDeleteBatch, error) {
 	log.Debugf("Adding fill table to to_delete new_table_id %d fill_table_id %d", newTableID, fillTableID)
 	var prefixes [][]byte
-	for shardID := range schedulers {
+	for _, shardID := range shardIDs {
 		prefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 16)
 		prefixes = append(prefixes, prefix)
 	}
@@ -259,7 +257,7 @@ func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint
 // are in sync then the operation completes
 //nolint:gocyclo
 func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID uint64,
-	schedulers map[uint64]*sched.ShardScheduler, failInject failinject.Injector, interruptor *interruptor.Interruptor) error {
+	shardIDs []uint64, failInject failinject.Injector, interruptor *interruptor.Interruptor) error {
 
 	log.Debug("Starting table executor fill")
 
@@ -269,7 +267,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	}
 	fillTableID += common.UserTableIDBase
 
-	toDeleteBatch, err := t.addFillTableToDelete(newTableID, fillTableID, schedulers)
+	toDeleteBatch, err := t.addFillTableToDelete(newTableID, fillTableID, shardIDs)
 	if err != nil {
 		return err
 	}
@@ -292,7 +290,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	receiverSequences := sync.Map{}
 
 	// start the fill - this takes a snapshot and fills from there
-	ch, err := t.startReplayFromSnapshot(pe, schedulers, interruptor, &receiverSequences, fillTableID)
+	ch, err := t.startReplayFromSnapshot(pe, shardIDs, interruptor, &receiverSequences, fillTableID)
 	if err != nil {
 		t.lock.Unlock()
 		return errors.WithStack(err)
@@ -396,7 +394,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	// Delete the fill table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, fillTableID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, fillTableID+1)
-	for shardID := range schedulers {
+	for _, shardID := range shardIDs {
 		if err := t.store.DeleteAllDataInRangeForShardLocally(shardID, tableStartPrefix, tableEndPrefix); err != nil {
 			return errors.WithStack(err)
 		}
@@ -416,7 +414,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	return nil
 }
 
-func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
+func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, shardIDs []uint64,
 	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) (chan error, error) {
 	log.Trace("Starting replay from snapshot")
 	snapshot, err := t.store.CreateSnapshot()
@@ -425,7 +423,7 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, interruptor, receiverSeqs, fillTableID)
+		err := t.performReplayFromSnapshot(snapshot, pe, shardIDs, interruptor, receiverSeqs, fillTableID)
 		snapshot.Close()
 		ch <- err
 		log.Trace("Replay from snapshot complete")
@@ -434,12 +432,12 @@ func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[
 	return ch, nil
 }
 
-func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
+func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, shardIDs []uint64,
 	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) error {
 	numRows := 0
-	chans := make([]chan error, 0, len(schedulers))
+	chans := make([]chan error, 0, len(shardIDs))
 
-	for shardID := range schedulers {
+	for _, shardID := range shardIDs {
 		ch := make(chan error, 1)
 		chans = append(chans, ch)
 		// We don't execute on the shard schedulers - we can't as this would require schedulers to be running which would
@@ -493,7 +491,7 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 				return errors.WithStack(err)
 			}
 			// Otherwise we wait for all goroutines to cancel before returning
-			log.Println("Waiting for all snapshot fill goroutines to complete")
+			log.Debug("Waiting for all snapshot fill goroutines to complete")
 		}
 	}
 	return errors.WithStack(err)
@@ -507,7 +505,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 			return errors.WithStack(err)
 		}
 	}
-	wb := cluster.NewWriteBatch(shardID)
+	wb := cluster.NewWriteBatch(shardID) // Epoch doesn't matter here
 
 	// When we fill it's important that we have duplicate detection as forward writes caused in fills (e.g. for aggregations)
 	// can be retried in case of Raft timeout.
@@ -540,7 +538,7 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store); err != nil {
 		return err
 	}
-	return t.store.WriteBatch(wb, false)
+	return t.store.WriteBatch(wb, true)
 }
 
 func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,
