@@ -1,5 +1,5 @@
 
-ñ
+ù
 
 6squareup/cash/pranadb/clustermsgs/v1/clustermsgs.proto$squareup.cash.pranadb.clustermsgs.v1"ï
 DDLStatementInfo.
@@ -32,8 +32,8 @@ schemaName"
 shard_id (RshardId!
 request_body (RrequestBody":
 ClusterReadResponse#
-response_body (RresponseBody"g
-ConsumerSetRate
+response_body (RresponseBody"n
+SourceSetMaxIngestRate
 schema_name (	R
 schemaName
 source_name (	R

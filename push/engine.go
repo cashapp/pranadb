@@ -764,7 +764,7 @@ type loadClientSetRateHandler struct {
 }
 
 func (l *loadClientSetRateHandler) HandleMessage(clusterMsg remoting.ClusterMessage) (remoting.ClusterMessage, error) {
-	setRate, ok := clusterMsg.(*clustermsgs.ConsumerSetRate)
+	setRate, ok := clusterMsg.(*clustermsgs.SourceSetMaxIngestRate)
 	if !ok {
 		panic("not a ConsumerSetRate")
 	}
@@ -779,7 +779,7 @@ func (l *loadClientSetRateHandler) HandleMessage(clusterMsg remoting.ClusterMess
 		// Internal error
 		return nil, errors.Errorf("can't find source %s.%s", setRate.SchemaName, setRate.SourceName)
 	}
-	source.SetMaxConsumerRate(int(setRate.Rate))
+	source.SetMaxIngestRate(int(setRate.Rate))
 	return nil, nil
 }
 

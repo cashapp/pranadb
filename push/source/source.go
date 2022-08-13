@@ -2,8 +2,8 @@ package source
 
 import (
 	"github.com/squareup/pranadb/kafka/load"
-
 	"github.com/squareup/pranadb/push/util"
+	"go.uber.org/ratelimit"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,6 +33,7 @@ const (
 	numConsumersPerSourcePropName = "prana.source.numconsumers"
 	pollTimeoutPropName           = "prana.source.polltimeoutms"
 	maxPollMessagesPropName       = "prana.source.maxpollmessages"
+	maxRatePropName               = "prana.source.maxingestrate"
 )
 
 type RowProcessor interface {
@@ -53,6 +54,7 @@ type Source struct {
 	numConsumersPerSource   int
 	pollTimeoutMs           int
 	maxPollMessages         int
+	rateLimiter             atomic.Value
 	committedCount          int64
 	enableStats             bool
 	commitOffsets           common.AtomicBool
@@ -103,6 +105,10 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	maxPollMessages, err := common.GetOrDefaultIntProperty(maxPollMessagesPropName, sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
 	if err != nil {
 		return nil, errors.WithStack(err)
+	}
+	maxIngestRate, err := common.GetOrDefaultIntProperty(maxRatePropName, sourceInfo.OriginInfo.Properties, -1)
+	if err != nil {
+		return nil, err
 	}
 
 	ti := sourceInfo.OriginInfo
@@ -160,15 +166,18 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		ingestExpressions:       ingestExpressions,
 		cfg:                     cfg,
 	}
+	var rl ratelimit.Limiter
+	if maxIngestRate > 0 {
+		rl = ratelimit.New(maxIngestRate)
+		source.rateLimiter.Store(rl)
+	}
 	source.commitOffsets.Set(true)
 	return source, nil
 }
 
 func (s *Source) Start() error {
-
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
 	return s.start()
 }
 
@@ -367,6 +376,8 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 			}
 		}
 
+		s.maybeLimit()
+
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
 		if err != nil {
@@ -447,12 +458,28 @@ func (s *Source) SetCommitOffsets(enable bool) {
 	s.commitOffsets.Set(enable)
 }
 
-func (s *Source) SetMaxConsumerRate(rate int) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	for _, consumer := range s.msgConsumers {
-		provider := consumer.msgProvider
-		provider.SetMaxRate(rate)
+func (s *Source) SetMaxIngestRate(rate int) {
+	if rate == -1 {
+		s.setRateLimiter(nil)
+	} else {
+		s.setRateLimiter(ratelimit.New(rate))
 	}
+}
+
+func (s *Source) maybeLimit() {
+	if rl := s.getRateLimiter(); rl != nil {
+		rl.Take()
+	}
+}
+
+func (s *Source) getRateLimiter() ratelimit.Limiter {
+	v := s.rateLimiter.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(ratelimit.Limiter) //nolint:forcetypeassert
+}
+
+func (s *Source) setRateLimiter(limiter ratelimit.Limiter) {
+	s.rateLimiter.Store(limiter)
 }

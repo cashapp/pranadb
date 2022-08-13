@@ -158,6 +158,3 @@ func (cmp *ConfluentMessageProvider) Start() error {
 	cmp.consumer = consumer
 	return nil
 }
-
-func (cmp *ConfluentMessageProvider) SetMaxRate(rate int) {
-}
