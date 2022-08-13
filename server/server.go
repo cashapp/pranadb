@@ -47,6 +47,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	var ddlResetClient remoting.Broadcaster
 	var remotingServer remoting.Server
 	stopSignaller := &common.AtomicBool{}
+	var drag *dragon.Dragon
 	if config.TestServer {
 		clus = fake.NewFakeCluster(config.NodeID, config.NumShards)
 		fakeRemotingServer := remoting.NewFakeServer()
@@ -55,7 +56,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		ddlResetClient = remoting.NewFakeClient(fakeRemotingServer)
 	} else {
 		var err error
-		drag, err := dragon.NewDragon(config, stopSignaller)
+		drag, err = dragon.NewDragon(config, stopSignaller)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -82,6 +83,9 @@ func NewServer(config conf.Config) (*Server, error) {
 	}
 	pushEngine := push.NewPushEngine(clus, shardr, metaController, &config, pullEngine, protoRegistry, failureInjector)
 	clus.RegisterShardListenerFactory(pushEngine)
+	if drag != nil {
+		drag.SetForwardWriteHandler(pushEngine)
+	}
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageConsumerSetRate, pushEngine.GetLoadClientSetRateHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageForwardWriteRequest, pushEngine.GetForwardWriteHandler())
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
