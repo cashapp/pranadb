@@ -1016,13 +1016,13 @@ func (d *Dragon) checkConstantProperty(property string, expectedValue int) error
 	}
 	if v == nil {
 		log.Debugf("New cluster - no value for %s in stroage, persisting it", property)
-		v = common.AppendUint32ToBufferBE([]byte{}, uint32(expectedValue))
+		v = common.AppendUint32ToBufferLE([]byte{}, uint32(expectedValue))
 		err = d.SetConfigProperty(property, v)
 		if err != nil {
 			return err
 		}
 	} else {
-		value, _ := common.ReadUint32FromBufferBE(v, 0)
+		value, _ := common.ReadUint32FromBufferLE(v, 0)
 		log.Debugf("value for %s found in storage: %d", property, value)
 		if int(value) != expectedValue {
 			return errors.Errorf("%s in cluster cannot be changed after cluster creation. cluster value %d new value %d", property, expectedValue, value)
