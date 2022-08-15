@@ -5,16 +5,18 @@ package kafkatest
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common/commontest"
 	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common/commontest"
+
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
 	"github.com/stretchr/testify/require"
@@ -44,7 +46,7 @@ func TestKafkaIntegration(t *testing.T) {
 	cluster := startPranaCluster(t, dataDir)
 	defer stopPranaCluster(t, cluster)
 
-	cli := client.NewClient(cluster[0].GetAPIServer().GetListenAddress())
+	cli := client.NewClient(cluster[0].GetAPIServer().GetListenAddress(), tls.CertsConfig{})
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {

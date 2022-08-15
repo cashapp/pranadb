@@ -3,8 +3,10 @@ package loadrunner
 import (
 	"encoding/json"
 	"fmt"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/client"
+	"github.com/squareup/pranadb/conf/tls"
 )
 
 // ExecStatementCommandFactory is a CommandFactory instance that creates ExecuteStatementCommand instances
@@ -69,7 +71,7 @@ func (p *ExecStatementCommand) runStatementsWithCh(ch chan error, numIters int, 
 }
 
 func (p *ExecStatementCommand) runStatements(numIters int, pranaHostname string, schemaName string, statement string) error {
-	pranaClient := client.NewClient(pranaHostname)
+	pranaClient := client.NewClient(pranaHostname, tls.CertsConfig{})
 	if err := pranaClient.Start(); err != nil {
 		return err
 	}

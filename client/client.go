@@ -3,14 +3,18 @@ package client
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/command/parser"
 	"io"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/command/parser"
+	"github.com/squareup/pranadb/conf/tls"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/squareup/pranadb/errors"
 
@@ -38,13 +42,15 @@ type Client struct {
 	batchSize     int
 	currentSchema string
 	maxLineWidth  int
+	tlsConfig     tls.CertsConfig
 }
 
-func NewClient(serverAddress string) *Client {
+func NewClient(serverAddress string, tlsConfig tls.CertsConfig) *Client {
 	return &Client{
 		serverAddress: serverAddress,
 		batchSize:     10000,
 		maxLineWidth:  defaultMaxLineWidth,
+		tlsConfig:     tlsConfig,
 	}
 }
 
@@ -54,7 +60,13 @@ func (c *Client) Start() error {
 	if c.started {
 		return nil
 	}
-	conn, err := grpc.Dial(c.serverAddress, grpc.WithInsecure())
+	dialOpts, err := c.getDialOptions()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, c.serverAddress, dialOpts)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -363,6 +375,17 @@ func toColumnTypes(result *service.Columns) (names []string, types []common.Colu
 func (c *Client) RegisterProtobufs(ctx context.Context, in *service.RegisterProtobufsRequest, option ...grpc.CallOption) error {
 	_, err := c.client.RegisterProtobufs(ctx, in, option...)
 	return errors.WithStack(err)
+}
+
+func (c *Client) getDialOptions() (grpc.DialOption, error) {
+	if reflect.DeepEqual(c.tlsConfig, tls.CertsConfig{}) {
+		return grpc.WithInsecure(), nil
+	}
+	tlsConfig, err := tls.BuildClientTLSConfig(c.tlsConfig)
+	if err != nil {
+		return grpc.EmptyDialOption{}, errors.WithStack(err)
+	}
+	return grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)), nil
 }
 
 func checkErrorAndMaybeExit(err error) error {

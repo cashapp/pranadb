@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -15,6 +16,7 @@ var CLI struct {
 	Shell       commands.ShellCommand       `cmd:"" help:"Start a SQL shell for Prana"`
 	UploadProto commands.UploadProtoCommand `cmd:"" help:"Upload a protobuf file descriptor set that can be used by Prana to decode sources"`
 	Addr        string                      `help:"Address of PranaDB server to connect to." default:"127.0.0.1:6584"`
+	TLSConfig   tls.CertsConfig             `help:"TLS client configuration" embed:"" prefix:""`
 }
 
 func main() {
@@ -26,7 +28,7 @@ func main() {
 func run() error {
 	defer common.PanicHandler()
 	ctx := kong.Parse(&CLI)
-	cl := client.NewClient(CLI.Addr)
+	cl := client.NewClient(CLI.Addr, CLI.TLSConfig)
 	if err := cl.Start(); err != nil {
 		return errors.WithStack(err)
 	}

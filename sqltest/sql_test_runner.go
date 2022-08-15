@@ -5,10 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/command"
-	"github.com/squareup/pranadb/interruptor"
-	pranalog "github.com/squareup/pranadb/log"
-	"github.com/squareup/pranadb/push"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -20,6 +16,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/command"
+	"github.com/squareup/pranadb/conf/tls"
+	"github.com/squareup/pranadb/interruptor"
+	pranalog "github.com/squareup/pranadb/log"
+	"github.com/squareup/pranadb/push"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/squareup/pranadb/client"
@@ -1256,7 +1258,7 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
-	cli := client.NewClient(apiServerAddress)
+	cli := client.NewClient(apiServerAddress, tls.CertsConfig{})
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
 	require.NoError(err)

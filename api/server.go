@@ -4,12 +4,16 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/alecthomas/participle/v2"
-	"github.com/squareup/pranadb/pull/exec"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/alecthomas/participle/v2"
+	"github.com/squareup/pranadb/conf/tls"
+	"github.com/squareup/pranadb/pull/exec"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/squareup/pranadb/meta"
 
@@ -37,6 +41,7 @@ type Server struct {
 	errorSequence  int64
 	protoRegistry  *protolib.ProtoRegistry
 	metaController *meta.Controller
+	tlsConfig      tls.ServerTLSConfig
 }
 
 func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
@@ -45,6 +50,7 @@ func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobu
 		ce:             ce,
 		protoRegistry:  protobufs,
 		serverAddress:  cfg.APIServerListenAddresses[cfg.NodeID],
+		tlsConfig:      cfg.APITLSConfig,
 	}
 }
 
@@ -58,12 +64,30 @@ func (s *Server) Start() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	s.gsrv = grpc.NewServer()
+	opts, err := s.getTLSOpts()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	s.gsrv = grpc.NewServer(opts...)
 	reflection.Register(s.gsrv)
 	service.RegisterPranaDBServiceServer(s.gsrv, s)
 	s.started = true
 	go s.startServer(list)
 	return nil
+}
+
+func (s *Server) getTLSOpts() ([]grpc.ServerOption, error) {
+	if reflect.DeepEqual(s.tlsConfig, tls.ServerTLSConfig{}) {
+		return []grpc.ServerOption{}, nil
+	}
+	tlsConfig, err := tls.BuildServerTLSConfig(s.tlsConfig)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	opts := []grpc.ServerOption{
+		grpc.Creds(credentials.NewTLS(tlsConfig)),
+	}
+	return opts, nil
 }
 
 func (s *Server) startServer(list net.Listener) {
