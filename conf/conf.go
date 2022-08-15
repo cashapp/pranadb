@@ -2,6 +2,9 @@ package conf
 
 import (
 	"fmt"
+	"reflect"
+
+	"github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/errors"
 )
 
@@ -38,6 +41,7 @@ type Config struct {
 	LocksCompactionOverhead          int
 	EnableAPIServer                  bool
 	APIServerListenAddresses         []string
+	APITLSConfig                     tls.TLSConfig `help:"API TLS configuration" embed:"" prefix:"api-tls-"`
 	EnableSourceStats                bool
 	ProtobufDescriptorDir            string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
 	EnableLifecycleEndpoint          bool
@@ -206,6 +210,11 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	}
 	if c.MaxForwardWriteBatchSize < 1 {
 		return errors.NewInvalidConfigurationError("MaxForwardWriteBatchSize must be > 0")
+	}
+	if !reflect.DeepEqual(c.APITLSConfig, tls.TLSConfig{}) {
+		if err := c.APITLSConfig.ValidateTLSFiles(); err != nil {
+			return errors.NewInvalidConfigurationError(fmt.Sprintf("TLS configuration error: %s", err.Error()))
+		}
 	}
 	return nil
 }

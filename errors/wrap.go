@@ -33,6 +33,16 @@ func Errorf(format string, args ...interface{}) error {
 	return newStackErr(nil, fmt.Sprintf(format, args...))
 }
 
+// Wrapf returns an error annotating err with a stack trace
+// at the point Wrapf is called, and the format specifier.
+// If err is nil, Wrapf returns nil.
+func Wrapf(err error, format string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+	return newStackErr(err, fmt.Sprintf(format, args...))
+}
+
 // Wrap returns an error annotating err with a stack trace
 // at the point Wrap is called, and the supplied message.
 // If err is nil, Wrap returns nil.
