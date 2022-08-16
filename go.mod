@@ -44,6 +44,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.15.0
+	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/text v0.3.7
 	golang.org/x/tools v0.1.0

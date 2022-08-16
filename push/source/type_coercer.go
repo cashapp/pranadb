@@ -145,7 +145,7 @@ func CoerceTimestamp(val interface{}) (common.Timestamp, error) {
 	case time.Time:
 		return common.NewTimestampFromGoTime(v), nil
 	case string:
-		return common.NewTimestampFromString(v), nil
+		return common.NewTimestampFromString(v)
 	case float64:
 		return CoerceTimestamp(uint64(v))
 	case uint64:

@@ -66,7 +66,7 @@ func (c *ShellCommand) Run(cl *client.Client) error {
 }
 
 func (c *ShellCommand) sendStatement(statement string, cli *client.Client) error {
-	ch, err := cli.ExecuteStatement(statement, nil)
+	ch, err := cli.ExecuteStatement(statement, nil, nil)
 	if err != nil {
 		return errors.WithStack(err)
 	}

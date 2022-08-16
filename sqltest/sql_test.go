@@ -10,7 +10,12 @@ import (
 
 func TestSQLFakeCluster(t *testing.T) {
 	log.Debug("Running TestSQLFakeCluster")
-	testSQL(t, true, 1, 0)
+	testSQL(t, true, 1, 0, false)
+}
+
+func TestSQLFakeClusterUsingHTTPAPI(t *testing.T) {
+	log.Debug("Running TestSQLFakeClusterUsingHTTPAPI")
+	testSQL(t, true, 1, 0, true)
 }
 
 func TestSQLClusteredThreeNodes(t *testing.T) {
@@ -18,5 +23,5 @@ func TestSQLClusteredThreeNodes(t *testing.T) {
 		t.Skip("-short: skipped")
 	}
 	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3)
+	testSQL(t, false, 3, 3, false)
 }

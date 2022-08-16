@@ -16,7 +16,7 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		return errors.NewInvalidConfigurationError("NodeID must be >= 0")
 	}
 	if c.NodeID >= len(c.APIServerListenAddresses) {
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("Node id is %d but there are only %d APIServerListenAddresses", c.NodeID, len(c.APIServerListenAddresses)))
+		return errors.NewInvalidConfigurationError(fmt.Sprintf("Node id is %d but there are only %d GRPCAPIServerListenAddresses", c.NodeID, len(c.APIServerListenAddresses)))
 	}
 	return nil
 }

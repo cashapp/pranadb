@@ -94,7 +94,8 @@ func AppendRow(t *testing.T, rows *common.Rows, colTypes []common.ColumnType, co
 				require.NoError(t, err)
 				rows.AppendDecimalToColumn(i, *dec)
 			case common.TypeTimestamp:
-				ts := common.NewTimestampFromString(colVal.(string))
+				ts, err := common.NewTimestampFromString(colVal.(string))
+				require.NoError(t, err)
 				rows.AppendTimestampToColumn(i, ts)
 			default:
 				panic(colType.Type)

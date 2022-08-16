@@ -26,12 +26,20 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-enable-api-server                 = true
-api-server-listen-addresses       = [
+enable-grpc-api-server            = true
+grpc-api-server-listen-addresses  = [
   "addr7",
   "addr8",
   "addr9"
 ]
+enable-http-api-server            = true
+http-api-server-listen-addresses  = [
+  "addr7-1",
+  "addr8-1",
+  "addr9-1"
+]
+http-api-server-tls-key-path      = "http-key-path"
+http-api-server-tls-cert-path     = "http-cert-path"
 log-format                        = "json"
 log-level                         = "info"
 log-file                          = "-"
