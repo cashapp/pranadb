@@ -7,7 +7,6 @@ import (
 
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -30,7 +29,7 @@ func (cmd *UploadProtoCommand) Run(cl *client.Client) error {
 		fmt.Printf("\t%s\n", f.GetName())
 	}
 	fmt.Println()
-	if err := cl.RegisterProtobufs(context.Background(), &service.RegisterProtobufsRequest{Descriptors: fd}); err != nil {
+	if err := cl.RegisterProtobufs(context.Background(), fd); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil

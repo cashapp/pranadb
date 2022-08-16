@@ -1,10 +1,8 @@
-// Package api contains the over-the-wire gRPC server for PranaDB.
 package api
 
 import (
 	"context"
 	"fmt"
-	"github.com/alecthomas/participle/v2"
 	"github.com/squareup/pranadb/pull/exec"
 	"net"
 	"strings"
@@ -44,7 +42,7 @@ func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobu
 		metaController: metaController,
 		ce:             ce,
 		protoRegistry:  protobufs,
-		serverAddress:  cfg.APIServerListenAddresses[cfg.NodeID],
+		serverAddress:  cfg.GRPCAPIServerListenAddresses[cfg.NodeID],
 	}
 }
 
@@ -153,37 +151,10 @@ func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
 func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
 	stream service.PranaDBService_ExecuteStatementServer) error {
 	if err != nil {
-		var perr errors.PranaError
-		if errors.As(err, &perr) {
-			return perr
-		}
-		var participleErr participle.Error
-		if errors.As(err, &participleErr) {
-			return errors.NewInvalidStatementError(participleErr.Error())
-		}
-		return common.LogInternalError(err)
+		return MaybeConvertError(err)
 	}
 
-	// First send column definitions.
-	columns := &service.Columns{}
-	names := executor.ColNames()
-	for i, typ := range executor.ColTypes() {
-		name := names[i]
-		column := &service.Column{
-			Name: name,
-			Type: service.ColumnType(typ.Type),
-		}
-		if typ.Type == common.TypeDecimal {
-			column.DecimalParams = &service.DecimalParams{
-				DecimalPrecision: uint32(typ.DecPrecision),
-				DecimalScale:     uint32(typ.DecScale),
-			}
-		}
-		columns.Columns = append(columns.Columns, column)
-	}
-	if err := stream.Send(&service.ExecuteStatementResponse{Result: &service.ExecuteStatementResponse_Columns{Columns: columns}}); err != nil {
-		return errors.WithStack(err)
-	}
+	sentColHeaders := false
 
 	// Then start sending pages until complete.
 	numCols := len(executor.ColTypes())
@@ -193,6 +164,32 @@ func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, e
 		if err != nil {
 			return errors.WithStack(err)
 		}
+
+		if !sentColHeaders {
+			// First send column definitions - we do this AFTER sending get rows as we don't want to send back col headers
+			// if an error in getRows occurs
+			columns := &service.Columns{}
+			names := executor.ColNames()
+			for i, typ := range executor.ColTypes() {
+				name := names[i]
+				column := &service.Column{
+					Name: name,
+					Type: service.ColumnType(typ.Type),
+				}
+				if typ.Type == common.TypeDecimal {
+					column.DecimalParams = &service.DecimalParams{
+						DecimalPrecision: uint32(typ.DecPrecision),
+						DecimalScale:     uint32(typ.DecScale),
+					}
+				}
+				columns.Columns = append(columns.Columns, column)
+			}
+			if err := stream.Send(&service.ExecuteStatementResponse{Result: &service.ExecuteStatementResponse_Columns{Columns: columns}}); err != nil {
+				return errors.WithStack(err)
+			}
+			sentColHeaders = true
+		}
+
 		prows := make([]*service.Row, rows.RowCount())
 		for i := 0; i < rows.RowCount(); i++ {
 			row := rows.GetRow(i)

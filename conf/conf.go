@@ -36,8 +36,11 @@ type Config struct {
 	SequenceCompactionOverhead       int
 	LocksSnapshotEntries             int
 	LocksCompactionOverhead          int
-	EnableAPIServer                  bool
-	APIServerListenAddresses         []string
+	EnableGRPCAPIServer              bool      `name:"enable-grpc-api-server"`
+	EnableHTTPAPIServer              bool      `name:"enable-http-api-server"`
+	GRPCAPIServerListenAddresses     []string  `name:"grpc-api-server-listen-addresses"`
+	HTTPAPIServerListenAddresses     []string  `name:"http-api-server-listen-addresses"`
+	HTTPAPIServerTLSConfig           TLSConfig `embed:"" prefix:"http-api-server-tls-"`
 	EnableSourceStats                bool
 	ProtobufDescriptorDir            string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
 	EnableLifecycleEndpoint          bool
@@ -123,9 +126,20 @@ func (c *Config) Validate() error { //nolint:gocyclo
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
 	}
-	if c.EnableAPIServer {
-		if len(c.APIServerListenAddresses) == 0 {
-			return errors.NewInvalidConfigurationError("APIServerListenAddresses must be specified")
+	if c.EnableGRPCAPIServer {
+		if len(c.GRPCAPIServerListenAddresses) == 0 {
+			return errors.NewInvalidConfigurationError("GRPCAPIServerListenAddresses must be specified")
+		}
+	}
+	if c.EnableHTTPAPIServer {
+		if len(c.HTTPAPIServerListenAddresses) == 0 {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerListenAddresses must be specified")
+		}
+		if c.HTTPAPIServerTLSConfig.CertPath == "" {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server")
+		}
+		if c.HTTPAPIServerTLSConfig.KeyPath == "" {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.KeyPath must be specified for HTTP API server")
 		}
 	}
 	if !c.TestServer {
@@ -144,8 +158,11 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if len(c.NotifListenAddresses) != len(c.RaftAddresses) {
 			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of NotifListenerAddresses")
 		}
-		if c.EnableAPIServer && len(c.APIServerListenAddresses) != len(c.RaftAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of APIServerListenAddresses")
+		if c.EnableGRPCAPIServer && len(c.GRPCAPIServerListenAddresses) != len(c.RaftAddresses) {
+			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of GRPCAPIServerListenAddresses")
+		}
+		if c.EnableHTTPAPIServer && len(c.HTTPAPIServerListenAddresses) != len(c.RaftAddresses) {
+			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of HTTPAPIServerListenAddresses")
 		}
 		if c.DataSnapshotEntries < 10 {
 			return errors.NewInvalidConfigurationError("DataSnapshotEntries must be >= 10")

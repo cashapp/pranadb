@@ -130,8 +130,10 @@ func TestKeyEncodeTimestamp(t *testing.T) {
 		"2022-02-03 13:35:57",
 	}
 	for i := 0; i < len(vals)-1; i++ {
-		ts1 := NewTimestampFromString(vals[i])
-		ts2 := NewTimestampFromString(vals[i+1])
+		ts1, err := NewTimestampFromString(vals[i])
+		require.NoError(t, err)
+		ts2, err := NewTimestampFromString(vals[i+1])
+		require.NoError(t, err)
 		b1, err := KeyEncodeTimestamp(nil, ts1)
 		require.NoError(t, err)
 		b2, err := KeyEncodeTimestamp(nil, ts2)

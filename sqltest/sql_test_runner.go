@@ -26,7 +26,6 @@ import (
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/service"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	log "github.com/sirupsen/logrus"
@@ -66,6 +65,7 @@ type sqlTestsuite struct {
 	fakeCluster       bool
 	numNodes          int
 	replicationFactor int
+	useHTTPAPI        bool
 	fakeKafka         *kafka.FakeKafka
 	pranaCluster      []*server.Server
 	suite             suite.Suite
@@ -93,7 +93,7 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 	w.suite.SetT(t)
 }
 
-func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int) {
+func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool) {
 	t.Helper()
 
 	go func() {
@@ -115,7 +115,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 	defer lock.Unlock()
 
 	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]encoderFactory)}
-	ts.setup(fakeCluster, numNodes, replicationFactor)
+	ts.setup(fakeCluster, numNodes, replicationFactor, useHTTPAPI)
 	defer ts.teardown()
 
 	suite.Run(t, ts)
@@ -162,11 +162,20 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.NumShards = 10
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
-		cnf.EnableAPIServer = true
-		cnf.EnableSourceStats = true
-		cnf.APIServerListenAddresses = []string{
-			"127.0.0.1:63401",
+		if w.useHTTPAPI {
+			cnf.EnableHTTPAPIServer = true
+			cnf.HTTPAPIServerTLSConfig.CertPath = "testdata/tls_keys/server.crt"
+			cnf.HTTPAPIServerTLSConfig.KeyPath = "testdata/tls_keys/server.key"
+			cnf.HTTPAPIServerListenAddresses = []string{
+				"127.0.0.1:63401",
+			}
+		} else {
+			cnf.EnableGRPCAPIServer = true
+			cnf.GRPCAPIServerListenAddresses = []string{
+				"127.0.0.1:63401",
+			}
 		}
+		cnf.EnableSourceStats = true
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 		s, err := server.NewServer(*cnf)
 		if err != nil {
@@ -194,8 +203,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.KafkaBrokers = brokerConfigs
 			cnf.NotifListenAddresses = notifAddresses
 			cnf.EnableSourceStats = true
-			cnf.EnableAPIServer = true
-			cnf.APIServerListenAddresses = apiServerListenAddresses
+			if w.useHTTPAPI {
+				cnf.EnableHTTPAPIServer = true
+				cnf.HTTPAPIServerTLSConfig.CertPath = "testdata/tls_keys/server.crt"
+				cnf.HTTPAPIServerTLSConfig.KeyPath = "testdata/tls_keys/server.key"
+				cnf.HTTPAPIServerListenAddresses = apiServerListenAddresses
+			} else {
+				cnf.EnableGRPCAPIServer = true
+				cnf.GRPCAPIServerListenAddresses = apiServerListenAddresses
+			}
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
@@ -218,10 +234,11 @@ func (w *sqlTestsuite) setupPranaCluster() {
 	w.startCluster()
 }
 
-func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int) {
+func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
 	w.replicationFactor = replicationFactor
+	w.useHTTPAPI = useHTTPAPI
 	protoRegistry, err := protolib.NewDirBackedRegistry(ProtoDescriptorDir)
 	require.NoError(w.t, err)
 	w.registerEncoders(protoRegistry)
@@ -636,7 +653,7 @@ var prefixCompareLines = []string{"Failed to execute statement: PDB5000 - Intern
 func (st *sqlTest) waitUntilRowsInTable(require *require.Assertions, tableName string, numRows int) {
 	lineExpected := fmt.Sprintf("%d rows returned", numRows)
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName), nil)
+		ch, err := st.cli.ExecuteStatement(fmt.Sprintf("select * from %s", tableName), nil, nil)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -766,7 +783,8 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 						require.NoError(err)
 						currDataSet.rows.AppendDecimalToColumn(i, *val)
 					case common.TypeTimestamp:
-						val := common.NewTimestampFromString(part)
+						val, err := common.NewTimestampFromString(part)
+						require.NoError(err)
 						currDataSet.rows.AppendTimestampToColumn(i, val)
 					default:
 						require.Fail(fmt.Sprintf("unexpected data type %d", colType.Type))
@@ -957,7 +975,7 @@ func (st *sqlTest) executeRegisterProtobufCommand(require *require.Assertions, c
 	fd := &descriptorpb.FileDescriptorSet{}
 	require.NoError(proto.UnmarshalText(string(text), fd))
 
-	err = st.cli.RegisterProtobufs(context.Background(), &service.RegisterProtobufsRequest{Descriptors: fd})
+	err = st.cli.RegisterProtobufs(context.Background(), fd)
 	require.NoError(err)
 }
 
@@ -1046,7 +1064,7 @@ func (st *sqlTest) executeAsyncResetDdl(require *require.Assertions, com string)
 	go func() {
 		// Execute the reset ddl command asynchronously after a short delay
 		time.Sleep(1 * time.Second)
-		resChan, err := st.cli.ExecuteStatement(fmt.Sprintf("reset ddl %s", schemaName), nil)
+		resChan, err := st.cli.ExecuteStatement(fmt.Sprintf("reset ddl %s", schemaName), nil, nil)
 		require.NoError(err)
 		for range resChan {
 		}
@@ -1059,82 +1077,17 @@ func (st *sqlTest) executePreparedStatement(require *require.Assertions, command
 	parts := split(command)
 	numArgs, err := strconv.Atoi(parts[0])
 	require.NoError(err)
+	sargTypes := make([]string, numArgs)
+	sargs := make([]string, numArgs)
 	pos := 1
-	psArgs := make([]*service.Arg, numArgs)
 	for i := 0; i < numArgs; i++ {
-		sArgType := strings.ToLower(parts[pos])
+		sargTypes[i] = parts[pos]
 		pos++
-		var psArg *service.Arg
-		switch sArgType {
-		case "tinyint":
-			val, err := strconv.ParseInt(parts[pos], 10, 64)
-			require.NoError(err)
-			psArg = &service.Arg{
-				Type:  service.ColumnType_COLUMN_TYPE_TINY_INT,
-				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
-			}
-		case "int":
-			val, err := strconv.ParseInt(parts[pos], 10, 64)
-			require.NoError(err)
-			psArg = &service.Arg{
-				Type:  service.ColumnType_COLUMN_TYPE_INT,
-				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
-			}
-		case "bigint":
-			val, err := strconv.ParseInt(parts[pos], 10, 64)
-			require.NoError(err)
-			psArg = &service.Arg{
-				Type:  service.ColumnType_COLUMN_TYPE_BIG_INT,
-				Value: &service.ArgValue{Value: &service.ArgValue_IntValue{IntValue: val}},
-			}
-		case "double":
-			val, err := strconv.ParseFloat(parts[pos], 64)
-			require.NoError(err)
-			psArg = &service.Arg{
-				Type:  service.ColumnType_COLUMN_TYPE_DOUBLE,
-				Value: &service.ArgValue{Value: &service.ArgValue_FloatValue{FloatValue: val}},
-			}
-		case "varchar":
-			psArg = &service.Arg{
-				Type:  service.ColumnType_COLUMN_TYPE_VARCHAR,
-				Value: &service.ArgValue{Value: &service.ArgValue_StringValue{StringValue: parts[pos]}},
-			}
-		default:
-			if strings.HasPrefix(sArgType, "decimal") {
-				var decParams *service.DecimalParams
-				if sArgType != "decimal" {
-					sParam := sArgType[8 : len(sArgType)-1]
-					argsParts := strings.Split(sParam, ",")
-					prec, err := strconv.ParseInt(argsParts[0], 10, 64)
-					require.NoError(err)
-					scale, err := strconv.ParseInt(argsParts[1], 10, 64)
-					require.NoError(err)
-					decParams = &service.DecimalParams{DecimalScale: uint32(scale), DecimalPrecision: uint32(prec)}
-				}
-				psArg = &service.Arg{
-					Type:          service.ColumnType_COLUMN_TYPE_DECIMAL,
-					Value:         &service.ArgValue{Value: &service.ArgValue_DecimalValue{DecimalValue: parts[pos]}},
-					DecimalParams: decParams,
-				}
-			} else if strings.HasPrefix(sArgType, "timestamp") {
-				var fsp uint32 = 6
-				if sArgType != "timestamp" {
-					f, err := strconv.ParseInt(sArgType[10:len(sArgType)-1], 10, 64)
-					require.NoError(err)
-					fsp = uint32(f)
-				}
-				psArg = &service.Arg{
-					Type:            service.ColumnType_COLUMN_TYPE_TIMESTAMP,
-					Value:           &service.ArgValue{Value: &service.ArgValue_TimestampValue{TimestampValue: parts[pos]}},
-					TimestampParams: &service.TimestampParams{FractionalSecondsPrecision: fsp},
-				}
-			}
-		}
+		sargs[i] = parts[pos]
 		pos++
-		psArgs[i] = psArg
 	}
 	start := time.Now()
-	resChan, err := st.cli.ExecuteStatement(parts[pos], psArgs)
+	resChan, err := st.cli.ExecuteStatement(parts[pos], sargTypes, sargs)
 	require.NoError(err)
 	for line := range resChan {
 		log.Infof("output:%s", line)
@@ -1229,7 +1182,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 }
 
 func (st *sqlTest) execStatement(require *require.Assertions, statement string) string {
-	resChan, err := st.cli.ExecuteStatement(statement, nil)
+	resChan, err := st.cli.ExecuteStatement(statement, nil, nil)
 	require.NoError(err)
 	sb := strings.Builder{}
 	for line := range resChan {
@@ -1256,7 +1209,13 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	prana := st.choosePrana()
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
-	cli := client.NewClient(apiServerAddress)
+	var cli *client.Client
+	if st.testSuite.useHTTPAPI {
+		cli = client.NewClientUsingHTTP(apiServerAddress, "testdata/tls_keys/server.crt")
+		cli.SetDisableCertVerification(true)
+	} else {
+		cli = client.NewClientUsingGRPC(apiServerAddress)
+	}
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
 	require.NoError(err)

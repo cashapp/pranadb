@@ -69,11 +69,11 @@ func (p *ExecStatementCommand) runStatementsWithCh(ch chan error, numIters int, 
 }
 
 func (p *ExecStatementCommand) runStatements(numIters int, pranaHostname string, schemaName string, statement string) error {
-	pranaClient := client.NewClient(pranaHostname)
+	pranaClient := client.NewClientUsingGRPC(pranaHostname)
 	if err := pranaClient.Start(); err != nil {
 		return err
 	}
-	resultCh, err := pranaClient.ExecuteStatement(fmt.Sprintf("use %s", schemaName), nil)
+	resultCh, err := pranaClient.ExecuteStatement(fmt.Sprintf("use %s", schemaName), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (p *ExecStatementCommand) runStatements(numIters int, pranaHostname string,
 		log.Println(line)
 	}
 	for i := 0; i < numIters; i++ {
-		ch, err := pranaClient.ExecuteStatement(statement, nil)
+		ch, err := pranaClient.ExecuteStatement(statement, nil, nil)
 		if err != nil {
 			return err
 		}

@@ -339,18 +339,15 @@ func (s *ShardOnDiskStateMachine) handleSetLeader(batch *pebble.Batch, bytes []b
 	s.leaderTerm = int64(term)
 
 	if thisNodeID := uint64(s.nodeID); newLeaderNodeID == thisNodeID {
-		if s.shardListener != nil {
-			panic("already has listener")
-		}
-		// This node has become leader and not already leader
-
 		// Please note that the concept of "leader" as set here is not strictly in step with the actual Raft leader
 		// When actual raft leadership changes there is a window before setLeader is called where the actual raft leader
 		// and what this group thinks is the raft leader are different. But that does not matter. What matters is that
 		// all replicas agree on who the "leader" is and that most of the time it's the same as the actual Raft leader
 		// (for performance reasons). The key thing is that processing only occurs on one replica of the cluster at any one
 		// time.
-		s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(s.shardID)
+		if s.shardListener == nil {
+			s.shardListener = s.dragon.shardListenerFactory.CreateShardListener(s.shardID)
+		}
 	} else if newLeaderNodeID != thisNodeID && prevLeaderNodeID == int64(thisNodeID) {
 		// We were leader but not any more
 		if s.shardListener != nil {

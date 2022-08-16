@@ -44,7 +44,7 @@ func TestKafkaIntegration(t *testing.T) {
 	cluster := startPranaCluster(t, dataDir)
 	defer stopPranaCluster(t, cluster)
 
-	cli := client.NewClient(cluster[0].GetAPIServer().GetListenAddress())
+	cli := client.NewClientUsingGRPC(cluster[0].GetGRPCServer().GetListenAddress())
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {
@@ -60,7 +60,7 @@ func TestKafkaIntegration(t *testing.T) {
 		"bootstrap.servers": "localhost:9092",
 	}
 
-	ch, err := cli.ExecuteStatement("use test", nil)
+	ch, err := cli.ExecuteStatement("use test", nil, nil)
 	require.NoError(t, err)
 	res := <-ch
 	require.Equal(t, "0 rows returned", res)
@@ -93,12 +93,12 @@ create source payments(
     properties = ()
 )
 `, paymentTopicName)
-	ch, err = cli.ExecuteStatement(createSourceSQL, nil)
+	ch, err = cli.ExecuteStatement(createSourceSQL, nil, nil)
 	require.NoError(t, err)
 	res = <-ch
 	require.Equal(t, "0 rows returned", res)
 
-	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil)
+	ch, err = cli.ExecuteStatement("select * from payments order by payment_id", nil, nil)
 	require.NoError(t, err)
 	<-ch
 	res = <-ch
@@ -156,8 +156,8 @@ func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
 		cnf.TestServer = false
 		cnf.KafkaBrokers = brokerConfigs
 		cnf.NotifListenAddresses = notifAddresses
-		cnf.EnableAPIServer = true
-		cnf.APIServerListenAddresses = apiServerListenAddresses
+		cnf.EnableGRPCAPIServer = true
+		cnf.GRPCAPIServerListenAddresses = apiServerListenAddresses
 
 		// We set snapshot settings to low values so we can trigger more snapshots and exercise the
 		// snapshotting - in real life these would be much higher
@@ -201,7 +201,7 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 
 func waitUntilRowsInPayments(t *testing.T, numRows int, cli *client.Client) {
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
-		ch, err := cli.ExecuteStatement("select * from payments order by payment_id", nil)
+		ch, err := cli.ExecuteStatement("select * from payments order by payment_id", nil, nil)
 		require.NoError(t, err)
 		lastLine := ""
 		for line := range ch {

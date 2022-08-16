@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/api"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/failinject"
@@ -22,10 +23,10 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/api"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protolib"
 
+	phttp "github.com/squareup/pranadb/api/http"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/dragon"
 	"github.com/squareup/pranadb/command"
@@ -94,7 +95,16 @@ func NewServer(config conf.Config) (*Server, error) {
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
-	apiServer := api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
+	var grpcServer *api.Server
+	if config.EnableGRPCAPIServer {
+		grpcServer = api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
+	}
+	var httpAPIServer *phttp.HTTPAPIServer
+	if config.EnableHTTPAPIServer {
+		listenAddress := config.HTTPAPIServerListenAddresses[config.NodeID]
+		httpAPIServer = phttp.NewHTTPAPIServer(listenAddress, "/pranadb", commandExecutor, metaController,
+			protoRegistry, &config.HTTPAPIServerTLSConfig)
+	}
 
 	services := []service{
 		lifeCycleMgr,
@@ -108,9 +118,14 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader,
 		pushEngine,
 		theMetrics,
-		apiServer,
-		failureInjector,
 	}
+	if grpcServer != nil {
+		services = append(services, grpcServer)
+	}
+	if httpAPIServer != nil {
+		services = append(services, httpAPIServer)
+	}
+	services = append(services, failureInjector)
 
 	server := Server{
 		conf:            config,
@@ -125,7 +140,7 @@ func NewServer(config conf.Config) (*Server, error) {
 		schemaLoader:    schemaLoader,
 		remotingServer:  remotingServer,
 		ddlClient:       ddlClient,
-		apiServer:       apiServer,
+		grpcServer:      grpcServer,
 		services:        services,
 		metrics:         theMetrics,
 		failureinjector: failureInjector,
@@ -147,7 +162,7 @@ type Server struct {
 	schemaLoader    *schema.Loader
 	remotingServer  remoting.Server
 	ddlClient       remoting.Broadcaster
-	apiServer       *api.Server
+	grpcServer      *api.Server
 	services        []service
 	started         bool
 	conf            conf.Config
@@ -261,8 +276,9 @@ func (s *Server) Stop() error {
 		}
 	}
 	for i := len(s.services) - 1; i >= 0; i-- {
-		log.Infof("prana node %d stopping service %s", s.nodeID, reflect.TypeOf(s.services[i]).String())
-		if err := s.services[i].Stop(); err != nil {
+		serv := s.services[i]
+		log.Infof("prana node %d stopping service %s", s.nodeID, reflect.TypeOf(serv).String())
+		if err := serv.Stop(); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -302,8 +318,8 @@ func (s *Server) GetRemotingServer() remoting.Server {
 	return s.remotingServer
 }
 
-func (s *Server) GetAPIServer() *api.Server {
-	return s.apiServer
+func (s *Server) GetGRPCServer() *api.Server {
+	return s.grpcServer
 }
 
 func (s *Server) GetConfig() conf.Config {

@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -124,6 +125,85 @@ func (t *ColumnType) String() string {
 	default:
 	}
 	return typeName
+}
+
+func StringToColumnType(scolType string) (ColumnType, error) {
+	var colType ColumnType
+	switch scolType {
+	case "tinyint":
+		colType = TinyIntColumnType
+	case "int":
+		colType = IntColumnType
+	case "bigint":
+		colType = BigIntColumnType
+	case "double":
+		colType = DoubleColumnType
+	case "varchar":
+		colType = VarcharColumnType
+	default:
+		if strings.HasPrefix(scolType, "decimal(") {
+			decType, err := parseDecimalType(scolType)
+			if err != nil {
+				return ColumnType{}, err
+			}
+			colType = decType
+		} else if strings.HasPrefix(scolType, "timestamp") {
+			tsType, err := parseTimestampType(scolType)
+			if err != nil {
+				return ColumnType{}, err
+			}
+			colType = tsType
+		} else {
+			return ColumnType{}, errors.Errorf("invalid argtype %s", scolType)
+		}
+	}
+	return colType, nil
+}
+
+func parseDecimalType(sargtype string) (ColumnType, error) {
+	if len(sargtype) > 8 {
+		rem := sargtype[8 : len(sargtype)-1]
+		if len(rem) >= 3 {
+			comIndex := strings.IndexRune(rem, ',')
+			if comIndex != -1 {
+				sPrec := rem[:comIndex]
+				sScale := rem[comIndex+1:]
+				prec, err := strconv.Atoi(sPrec)
+				if err != nil {
+					return ColumnType{}, errors.Errorf("invalid decimal precision, not a valid integer %s", sPrec)
+				}
+				if prec < 1 || prec > 65 {
+					return ColumnType{}, errors.Errorf("invalid decimal precision, must be > 1 and <= 65 %s", sargtype)
+				}
+				scale, err := strconv.Atoi(sScale)
+				if err != nil {
+					return ColumnType{}, errors.Errorf("invalid decimal scale, not a valid integer %s", sScale)
+				}
+				if scale < 0 || scale > 30 {
+					return ColumnType{}, errors.Errorf("invalid decimal scale, must be > 0 and <= 30 %s", sargtype)
+				}
+				return ColumnType{Type: TypeDecimal, DecPrecision: prec, DecScale: scale}, nil
+			}
+		}
+	}
+	return ColumnType{}, errors.Errorf("invalid decimal argument type: %s", sargtype)
+}
+
+func parseTimestampType(sargtype string) (ColumnType, error) {
+	if len(sargtype) > 11 {
+		rem := sargtype[10 : len(sargtype)-1]
+		if len(rem) > 0 {
+			fsp, err := strconv.Atoi(rem)
+			if err != nil {
+				return ColumnType{}, errors.Errorf("invalid timestamp fsp, not a valid integer %s", rem)
+			}
+			if fsp < 0 || fsp > 6 {
+				return ColumnType{}, errors.Errorf("invalid timestamp fsp, must be >= 0 and <= 6 :%s", sargtype)
+			}
+			return ColumnType{Type: TypeTimestamp, FSP: int8(fsp)}, nil
+		}
+	}
+	return ColumnType{}, errors.Errorf("invalid timestamp argument type: %s", sargtype)
 }
 
 type TableInfo struct {

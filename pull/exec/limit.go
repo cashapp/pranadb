@@ -2,7 +2,6 @@ package exec
 
 import (
 	"fmt"
-
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 )
