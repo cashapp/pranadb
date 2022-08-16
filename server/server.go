@@ -86,7 +86,7 @@ func NewServer(config conf.Config) (*Server, error) {
 	if drag != nil {
 		drag.SetForwardWriteHandler(pushEngine)
 	}
-	remotingServer.RegisterMessageHandler(remoting.ClusterMessageConsumerSetRate, pushEngine.GetLoadClientSetRateHandler())
+	remotingServer.RegisterMessageHandler(remoting.ClusterMessageSourceSetMaxRate, pushEngine.GetLoadClientSetRateHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageForwardWriteRequest, pushEngine.GetForwardWriteHandler())
 	commandExecutor := command.NewCommandExecutor(metaController, pushEngine, pullEngine, clus, ddlClient, ddlResetClient,
 		protoRegistry, failureInjector, &config)

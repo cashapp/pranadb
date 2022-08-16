@@ -80,7 +80,7 @@ create source test_source_2(
 0 rows returned
 
 -- now change rate;
-consumer rate test_source_2 1000000;
+source set max rate test_source_2 1000000;
 0 rows returned
 
 --wait for rows test_source_2 20;

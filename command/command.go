@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/squareup/pranadb/remoting"
@@ -109,28 +110,32 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		sequences, err := e.generateTableIDSequences(3)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		command, err := NewOriginatingCreateMVCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.MaterializedView)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		if err := e.executeCommandWithRetry(command); err != nil {
+		if err := e.executeCommandWithRetry(func() (DDLCommand, error) {
+			sequences, err := e.generateTableIDSequences(3)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			command, err := NewOriginatingCreateMVCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.MaterializedView)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return command, nil
+		}); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.Index != nil:
-		sequences, err := e.generateTableIDSequences(1)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		command, err := NewOriginatingCreateIndexCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Index)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		if err := e.executeCommandWithRetry(command); err != nil {
+		if err := e.executeCommandWithRetry(func() (DDLCommand, error) {
+			sequences, err := e.generateTableIDSequences(1)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			command, err := NewOriginatingCreateIndexCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Index)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return command, nil
+		}); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -184,8 +189,8 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
-	case ast.ConsumerRate != nil:
-		if err := e.execConsumerRate(execCtx, ast.ConsumerRate.SourceName, ast.ConsumerRate.Rate); err != nil {
+	case ast.SourceSetMaxRate != nil:
+		if err := e.execSetMaxSourceIngestRate(execCtx, ast.SourceSetMaxRate.SourceName, ast.SourceSetMaxRate.Rate); err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
@@ -208,13 +213,20 @@ func (e *Executor) GetPullEngine() *pull.Engine {
 	return e.pullEngine
 }
 
-func (e *Executor) executeCommandWithRetry(command DDLCommand) error {
+func (e *Executor) executeCommandWithRetry(commandFactory func() (DDLCommand, error)) error {
 	start := time.Now()
 	for {
-		err := e.ddlRunner.RunCommand(command)
+		command, err := commandFactory()
 		if err != nil {
+			return err
+		}
+		log.Debugf("executing command %s with potential retry", command.SQL())
+		err = e.ddlRunner.RunCommand(command)
+		if err != nil {
+			log.Errorf("failed to run command %s %v", command.SQL(), err)
 			var perr errors.PranaError
 			if errors.As(err, &perr) && perr.Code == errors.DdlRetry {
+				log.Debugf("It is a ddl retry - will retry it after a short delay %s", command.SQL())
 				// Some DDL commands like create MV or index can return DdlRetry if they fail because Raft
 				// leadership changed - in this case we retry rather than returning an error as this can be transient
 				// e.g. cluster is starting up or node is being rolled
@@ -362,8 +374,8 @@ func (e *Executor) execDescribe(execCtx *execctx.ExecutionContext, tableName str
 	return describeRows(tableInfo)
 }
 
-func (e *Executor) execConsumerRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
-	return e.ddlClient.Broadcast(&clustermsgs.ConsumerSetRate{
+func (e *Executor) execSetMaxSourceIngestRate(execCtx *execctx.ExecutionContext, sourceName string, rate int64) error {
+	return e.ddlClient.Broadcast(&clustermsgs.SourceSetMaxIngestRate{
 		SchemaName: execCtx.Schema.Name,
 		SourceName: sourceName,
 		Rate:       rate,
