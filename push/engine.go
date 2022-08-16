@@ -314,7 +314,7 @@ func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	if _, ok := p.schedulers[shardID]; ok {
 		panic(fmt.Sprintf("there is already a scheduler %d", shardID))
 	}
-	sh := sched.NewShardScheduler(shardID, p, p, p.cluster)
+	sh := sched.NewShardScheduler(shardID, p, p, p.cluster, p.cfg.MaxProcessBatchSize, p.cfg.MaxForwardWriteBatchSize)
 	p.schedulers[shardID] = sh
 	if p.started {
 		sh.Start()

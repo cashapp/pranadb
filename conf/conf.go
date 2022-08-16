@@ -16,6 +16,8 @@ const (
 	DefaultRaftHeartbeatRTT           = 30
 	DefaultRaftElectionRTT            = 300
 	DefaultAggregationCacheSizeRows   = 20000
+	DefaultMaxProcessBatchSize        = 2000
+	DefaultMaxForwardWriteBatchSize   = 500
 )
 
 type Config struct {
@@ -59,6 +61,8 @@ type Config struct {
 	DDProfilerEnvironmentName        string
 	DDProfilerVersionName            string
 	AggregationCacheSizeRows         int // The maximum number of rows for an aggregation to cache in memory
+	MaxProcessBatchSize              int
+	MaxForwardWriteBatchSize         int
 }
 
 func (c *Config) ApplyDefaults() {
@@ -91,6 +95,12 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.AggregationCacheSizeRows == 0 {
 		c.AggregationCacheSizeRows = DefaultAggregationCacheSizeRows
+	}
+	if c.MaxProcessBatchSize == 0 {
+		c.MaxProcessBatchSize = DefaultMaxProcessBatchSize
+	}
+	if c.MaxForwardWriteBatchSize == 0 {
+		c.MaxForwardWriteBatchSize = DefaultMaxForwardWriteBatchSize
 	}
 }
 
@@ -191,6 +201,12 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.RaftElectionRTT < 2*c.RaftHeartbeatRTT {
 		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 2 * RaftHeartbeatRTT")
 	}
+	if c.MaxProcessBatchSize < 1 {
+		return errors.NewInvalidConfigurationError("MaxProcessBatchSize must be > 0")
+	}
+	if c.MaxForwardWriteBatchSize < 1 {
+		return errors.NewInvalidConfigurationError("MaxForwardWriteBatchSize must be > 0")
+	}
 	return nil
 }
 
@@ -222,6 +238,8 @@ func NewDefaultConfig() *Config {
 		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:            DefaultRaftElectionRTT,
 		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
+		MaxProcessBatchSize:        DefaultMaxProcessBatchSize,
+		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
 	}
 }
 
@@ -231,6 +249,8 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		RaftHeartbeatRTT:         DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:          DefaultRaftElectionRTT,
 		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
+		MaxProcessBatchSize:      DefaultMaxProcessBatchSize,
+		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 		NodeID:                   0,
 		NumShards:                10,
 		TestServer:               true,

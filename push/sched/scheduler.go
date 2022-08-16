@@ -14,9 +14,6 @@ import (
 	"time"
 )
 
-const maxProcessBatchRows = 2000
-const maxForwardWriteBatchSize = 500
-
 var (
 	rowsProcessedVec = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "pranadb_rows_processed_total",
@@ -53,6 +50,8 @@ type ShardScheduler struct {
 	loopExitWaitGroup            sync.WaitGroup
 	queuedWriteRows              int
 	clust                        cluster.Cluster
+	maxProcessBatchSize          int
+	maxForwardWriteBatchSize     int
 	rowsProcessedCounter         metrics.Counter
 	shardLagHistogram            metrics.Observer
 	batchProcessingTimeHistogram metrics.Observer
@@ -79,7 +78,8 @@ type WriteBatchEntry struct {
 	completionChannels []chan error
 }
 
-func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailListener ShardFailListener, clust cluster.Cluster) *ShardScheduler {
+func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailListener ShardFailListener,
+	clust cluster.Cluster, maxProcessBatchSize int, maxForwardWriteBatchSize int) *ShardScheduler {
 	sShardID := fmt.Sprintf("shard-%04d", shardID)
 	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
 	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
@@ -95,6 +95,8 @@ func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailL
 		batchProcessingTimeHistogram: batchProcessingTimeHistogram,
 		batchSizeHistogram:           batchSizeHistogram,
 		clust:                        clust,
+		maxProcessBatchSize:          maxProcessBatchSize,
+		maxForwardWriteBatchSize:     maxForwardWriteBatchSize,
 	}
 	ss.loopExitWaitGroup.Add(1)
 	return ss
@@ -180,8 +182,8 @@ func (s *ShardScheduler) getNextBatch() ([]cluster.ForwardRow, *WriteBatchEntry,
 
 func (s *ShardScheduler) getRowsToProcess() []cluster.ForwardRow {
 	numRows := len(s.forwardRows)
-	if numRows > maxProcessBatchRows {
-		numRows = maxProcessBatchRows
+	if numRows > s.maxProcessBatchSize {
+		numRows = s.maxProcessBatchSize
 	}
 	rows := s.forwardRows[:numRows]
 	s.forwardRows = s.forwardRows[numRows:]
@@ -201,7 +203,7 @@ func (s *ShardScheduler) getForwardWriteBatch() *WriteBatchEntry {
 			combinedEntries = append(combinedEntries, batch.writeBatch[9:]...)
 			entries += int(numPuts)
 			completionChannels = append(completionChannels, batch.completionChannels[0])
-			if entries >= maxForwardWriteBatchSize {
+			if entries >= s.maxForwardWriteBatchSize {
 				break
 			}
 		}

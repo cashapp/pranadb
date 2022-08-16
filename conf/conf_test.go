@@ -232,6 +232,18 @@ func invalidRaftElectionRTTTooSmall() Config {
 	return cnf
 }
 
+func invalidMaxProcessorBatchSize() Config {
+	cnf := confAllFields
+	cnf.MaxProcessBatchSize = 0
+	return cnf
+}
+
+func invalidMaxForwardWriteBatchSize() Config {
+	cnf := confAllFields
+	cnf.MaxForwardWriteBatchSize = 0
+	return cnf
+}
+
 var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: NodeID must be >= 0", invalidNodeIDConf()},
 	{"PDB3000 - Invalid configuration: NumShards must be >= 1", invalidNumShardsConf()},
@@ -264,6 +276,8 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTZero()},
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTNegative()},
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
+	{"PDB3000 - Invalid configuration: MaxProcessBatchSize must be > 0", invalidMaxProcessorBatchSize()},
+	{"PDB3000 - Invalid configuration: MaxForwardWriteBatchSize must be > 0", invalidMaxForwardWriteBatchSize()},
 }
 
 func TestValidate(t *testing.T) {
@@ -305,4 +319,6 @@ var confAllFields = Config{
 	RaftRTTMs:                  100,
 	RaftHeartbeatRTT:           10,
 	RaftElectionRTT:            100,
+	MaxProcessBatchSize:        DefaultMaxForwardWriteBatchSize,
+	MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
 }
