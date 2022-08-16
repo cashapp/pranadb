@@ -1009,7 +1009,7 @@ func (d *Dragon) SetConfigProperty(property string, v []byte) error {
 }
 
 func (d *Dragon) checkConstantProperty(property string, expectedValue int) error {
-	log.Debug("Checking constant %s: %d", property, expectedValue)
+	log.Debugf("Checking constant %s: %d", property, expectedValue)
 	v, err := d.GetConfigProperty(property)
 	if err != nil {
 		return err
