@@ -24,7 +24,7 @@ require (
 	github.com/google/btree v1.0.0
 	github.com/google/uuid v1.3.0
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
+	github.com/hashicorp/golang-lru v0.5.4
 	github.com/lib/pq v1.10.4 // indirect
 	github.com/lni/dragonboat/v3 v3.3.5
 	github.com/myesui/uuid v1.0.0 // indirect

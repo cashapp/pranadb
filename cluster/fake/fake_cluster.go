@@ -19,13 +19,14 @@ package fake
 import (
 	"bytes"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/google/btree"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/table"
-	"strings"
-	"sync"
 
 	"github.com/squareup/pranadb/common"
 )

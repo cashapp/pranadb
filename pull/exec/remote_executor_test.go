@@ -2,10 +2,11 @@ package exec
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/interruptor"
-	"github.com/squareup/pranadb/remoting"
 	"sync"
 	"testing"
+
+	"github.com/squareup/pranadb/interruptor"
+	"github.com/squareup/pranadb/remoting"
 
 	"github.com/squareup/pranadb/meta"
 

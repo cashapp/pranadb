@@ -3,13 +3,13 @@ package integration
 import (
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/common"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -21,10 +21,11 @@ import (
 	"github.com/squareup/pranadb/cluster"
 )
 
-var dragonCluster []cluster.Cluster
+var dragonCluster []*dragon.Dragon
 
 const (
-	numShards = 10
+	numShards         = 10
+	replicationFactor = 3
 )
 
 var dataDir string
@@ -57,7 +58,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func getLocalNodeAndLocalShard() (cluster.Cluster, uint64) {
+func getLocalNodeAndLocalShard() (*dragon.Dragon, uint64) {
 	clust := dragonCluster[0]
 	shardID := clust.GetLocalShardIDs()[0]
 	return clust, shardID
@@ -270,6 +271,24 @@ func TestLocksRestart(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestSetAndGetConfigProperty(t *testing.T) {
+	node, _ := getLocalNodeAndLocalShard()
+
+	property := "someproperty"
+	propertyValue := 5
+
+	b := common.AppendUint32ToBufferBE([]byte{}, uint32(propertyValue))
+	err := node.SetConfigProperty(property, b)
+	require.NoError(t, err)
+
+	v, err := node.GetConfigProperty(property)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+
+	val, _ := common.ReadUint32FromBufferBE(v, 0)
+	require.Equal(t, int(val), propertyValue)
+}
+
 func stopDragonCluster() {
 	for _, dragon := range dragonCluster {
 		err := dragon.Stop()
@@ -279,7 +298,7 @@ func stopDragonCluster() {
 	}
 }
 
-func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
+func startDragonCluster(dataDir string) ([]*dragon.Dragon, error) {
 
 	nodeAddresses := []string{
 		"localhost:63101",
@@ -288,7 +307,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 	}
 
 	chans := make([]chan error, len(nodeAddresses))
-	clusterNodes := make([]cluster.Cluster, len(nodeAddresses))
+	clusterNodes := make([]*dragon.Dragon, len(nodeAddresses))
 	for i := 0; i < len(chans); i++ {
 		ch := make(chan error)
 		chans[i] = ch
@@ -298,7 +317,7 @@ func startDragonCluster(dataDir string) ([]cluster.Cluster, error) {
 		cnf.RaftAddresses = nodeAddresses
 		cnf.NumShards = numShards
 		cnf.DataDir = dataDir
-		cnf.ReplicationFactor = 3
+		cnf.ReplicationFactor = replicationFactor
 		cnf.TestServer = true
 		clus, err := dragon.NewDragon(*cnf, &common.AtomicBool{})
 		if err != nil {
