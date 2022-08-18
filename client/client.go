@@ -518,14 +518,13 @@ func (g *httpValueGetter) getValueAsString(colIndex int) (string, error) {
 	case common.TypeDouble:
 		um := value.(*stringValUnmarshaller) //nolint:forcetypeassert
 		sv := um.strVal
+		// We need to convert it to a float64 and back to a string as the string rep of the incoming float might be
+		// in exponent form e.g. "1.23456e+123" but we don't want to display it in the cli with an exponent
 		fv, err := strconv.ParseFloat(sv, 64)
 		if err != nil {
 			return "", err
 		}
-		// FIXME - this is a silly hack to preserve the current behaviour of sql tests which expect float values to
-		// formatted with 6 decimal places. We should change the tests to not expect that and then we can just use the
-		// raw string val
-		strVal = strconv.FormatFloat(fv, 'f', 6, 64)
+		strVal = strconv.FormatFloat(fv, 'f', -1, 64)
 	case common.TypeTimestamp:
 		um := value.(*stringValUnmarshaller) //nolint:forcetypeassert
 		sval := um.strVal
@@ -565,7 +564,7 @@ func (g *grpcValueGetter) getValueAsString(colIndex int) (string, error) {
 	case common.TypeDecimal:
 		strVal = value.GetStringValue()
 	case common.TypeDouble:
-		strVal = strconv.FormatFloat(value.GetFloatValue(), 'f', 6, 64)
+		strVal = strconv.FormatFloat(value.GetFloatValue(), 'f', -1, 64)
 	case common.TypeTimestamp:
 		unixTime := value.GetIntValue()
 		strVal = convertUnixMicrosToDateString(unixTime)
