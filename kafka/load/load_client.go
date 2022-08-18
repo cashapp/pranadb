@@ -7,7 +7,6 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/msggen"
-	"go.uber.org/ratelimit"
 	"math"
 	"math/rand"
 	"strings"
@@ -24,7 +23,6 @@ type LoadClientMessageProviderFactory struct {
 	partitionsStart        int
 	nextPartition          int
 	properties             map[string]string
-	maxRate                int
 	maxMessagesPerConsumer int64
 	uniqueIDsPerPartition  int64
 	messageGeneratorName   string
@@ -34,7 +32,6 @@ type LoadClientMessageProviderFactory struct {
 
 const (
 	produceTimeout                 = 100 * time.Millisecond
-	maxRatePropName                = "prana.loadclient.maxrateperconsumer"
 	partitionsPerConsumerPropName  = "prana.loadclient.partitionsperconsumer"
 	uniqueIDsPerPartitionPropName  = "prana.loadclient.uniqueidsperpartition"
 	maxMessagesPerConsumerPropName = "prana.loadclient.maxmessagesperconsumer"
@@ -51,10 +48,6 @@ func NewMessageProviderFactory(bufferSize int, numConsumersPerSource int, nodeID
 	}
 	partitionsPerNode := numConsumersPerSource * partitionsPerConsumer
 	partitionsStart := nodeID * partitionsPerNode
-	maxRate, err := common.GetOrDefaultIntProperty(maxRatePropName, properties, -1)
-	if err != nil {
-		return nil, err
-	}
 	uniqueIDsPerPartition, err := common.GetOrDefaultIntProperty(uniqueIDsPerPartitionPropName, properties, math.MaxInt64)
 	if err != nil {
 		return nil, err
@@ -74,7 +67,6 @@ func NewMessageProviderFactory(bufferSize int, numConsumersPerSource int, nodeID
 		partitionsStart:        partitionsStart,
 		nextPartition:          partitionsStart,
 		properties:             properties,
-		maxRate:                maxRate,
 		uniqueIDsPerPartition:  int64(uniqueIDsPerPartition),
 		maxMessagesPerConsumer: int64(maxMessagesPerConsumer),
 		messageGeneratorName:   msgGeneratorName,
@@ -104,10 +96,6 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 	for i, partitionID := range partitions {
 		offsets[i] = l.committedOffsets[partitionID] + 1
 	}
-	var rl ratelimit.Limiter
-	if l.maxRate > 0 {
-		rl = ratelimit.New(l.maxRate)
-	}
 	rnd := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	msgGen, err := l.getMessageGenerator(l.messageGeneratorName)
 	if err != nil {
@@ -119,7 +107,6 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 		partitions:            partitions,
 		numPartitions:         len(partitions),
 		offsets:               offsets,
-		rateLimiter:           rl,
 		uniqueIDsPerPartition: l.uniqueIDsPerPartition,
 		maxMessages:           l.maxMessagesPerConsumer,
 		rnd:                   rnd,
@@ -153,12 +140,10 @@ type LoadClientMessageProvider struct {
 	partitions            []int32
 	offsets               []int64
 	sequence              int64
-	rateLimiter           ratelimit.Limiter
 	uniqueIDsPerPartition int64
 	maxMessages           int64
 	msgGenerator          msggen.MessageGenerator
 	rnd                   *rand.Rand
-	limiterLock           sync.Mutex
 	msgLock               sync.Mutex
 	committedOffsets      map[int32]int64
 }
@@ -204,35 +189,12 @@ func (l *LoadClientMessageProvider) Close() error {
 func (l *LoadClientMessageProvider) SetRebalanceCallback(callback kafka.RebalanceCallback) {
 }
 
-func (l *LoadClientMessageProvider) SetMaxRate(rate int) {
-	l.limiterLock.Lock()
-	defer l.limiterLock.Unlock()
-	if rate == 0 {
-		return
-	} else if rate == -1 {
-		l.rateLimiter = nil
-	} else {
-		l.rateLimiter = ratelimit.New(rate)
-	}
-}
-
-func (l *LoadClientMessageProvider) getLimiter() ratelimit.Limiter {
-	// This lock should almost always be uncontended so perf should be ok
-	l.limiterLock.Lock()
-	defer l.limiterLock.Unlock()
-	return l.rateLimiter
-}
-
 func (l *LoadClientMessageProvider) genLoop() {
 	var msgCount int64
 	var msg *kafka.Message
 	for l.running.Get() && msgCount < l.maxMessages {
 		if msg == nil {
 			var err error
-			limiter := l.getLimiter()
-			if limiter != nil {
-				limiter.Take()
-			}
 			msg, err = l.genMessage()
 			if err != nil {
 				log.Errorf("failed to generate message %+v", err)

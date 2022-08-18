@@ -84,6 +84,8 @@ func createConfigWithAllFields() conf.Config {
 		RaftHeartbeatRTT:           30,
 		DisableFsync:               true,
 		AggregationCacheSizeRows:   1234,
+		MaxProcessBatchSize:        777,
+		MaxForwardWriteBatchSize:   888,
 
 		DDProfilerTypes:           "HEAP,CPU",
 		DDProfilerServiceName:     "my-service",
