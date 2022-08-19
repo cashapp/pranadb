@@ -2,9 +2,6 @@ package conf
 
 import (
 	"fmt"
-	"reflect"
-
-	"github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/errors"
 )
 
@@ -39,12 +36,12 @@ type Config struct {
 	SequenceCompactionOverhead   int
 	LocksSnapshotEntries         int
 	LocksCompactionOverhead      int
-	APITLSConfig                 tls.TLSConfig `help:"API TLS configuration" embed:"" prefix:"api-tls-"`
-	EnableGRPCAPIServer          bool          `name:"enable-grpc-api-server"`
-	EnableHTTPAPIServer          bool          `name:"enable-http-api-server"`
-	GRPCAPIServerListenAddresses []string      `name:"grpc-api-server-listen-addresses"`
-	HTTPAPIServerListenAddresses []string      `name:"http-api-server-listen-addresses"`
-	HTTPAPIServerTLSConfig       TLSConfig     `embed:"" prefix:"http-api-server-tls-"`
+	EnableGRPCAPIServer          bool      `name:"enable-grpc-api-server"`
+	EnableHTTPAPIServer          bool      `name:"enable-http-api-server"`
+	GRPCAPIServerListenAddresses []string  `name:"grpc-api-server-listen-addresses"`
+	GRPCAPIServerTLSConfig       TLSConfig `embed:"" prefix:"grpc-api-server-tls-"`
+	HTTPAPIServerListenAddresses []string  `name:"http-api-server-listen-addresses"`
+	HTTPAPIServerTLSConfig       TLSConfig `embed:"" prefix:"http-api-server-tls-"`
 	EnableSourceStats            bool
 	ProtobufDescriptorDir        string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
 	EnableLifecycleEndpoint      bool
@@ -70,6 +67,25 @@ type Config struct {
 	MaxProcessBatchSize          int
 	MaxForwardWriteBatchSize     int
 }
+
+type TLSConfig struct {
+	EnableTLS       bool   `help:"Set to true to enable TLS. TLS must be enabled when using the HTTP 2 API" default:"false"`
+	KeyPath         string `help:"Path to a PEM encoded file containing the server private key"`
+	CertPath        string `help:"Path to a PEM encoded file containing the server certificate"`
+	ClientCertsPath string `help:"Path to a PEM encoded file containing trusted client certificates and/or CA certificates. Only needed with TLS client authentication"`
+	ClientAuth      string `help:"Client certificate authentication mode. One of: no-client-cert, request-client-cert, require-any-client-cert, verify-client-cert-if-given, require-and-verify-client-cert"`
+}
+
+type ClientAuthMode string
+
+const (
+	ClientAuthModeUnspecified                = ""
+	ClientAuthModeNoClientCert               = "no-client-cert"
+	ClientAuthModeRequestClientCert          = "request-client-cert"
+	ClientAuthModeRequireAnyClientCert       = "require-any-client-cert"
+	ClientAuthModeVerifyClientCertIfGiven    = "verify-client-cert-if-given"
+	ClientAuthModeRequireAndVerifyClientCert = "require-and-verify-client-cert"
+)
 
 func (c *Config) ApplyDefaults() {
 	if c.DataSnapshotEntries == 0 {
@@ -108,6 +124,9 @@ func (c *Config) ApplyDefaults() {
 	if c.MaxForwardWriteBatchSize == 0 {
 		c.MaxForwardWriteBatchSize = DefaultMaxForwardWriteBatchSize
 	}
+	if c.EnableHTTPAPIServer {
+		c.HTTPAPIServerTLSConfig.EnableTLS = true
+	}
 }
 
 func (c *Config) Validate() error { //nolint:gocyclo
@@ -129,20 +148,37 @@ func (c *Config) Validate() error { //nolint:gocyclo
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
 	}
-	if c.EnableGRPCAPIServer {
-		if len(c.GRPCAPIServerListenAddresses) == 0 {
-			return errors.NewInvalidConfigurationError("GRPCAPIServerListenAddresses must be specified")
-		}
-	}
 	if c.EnableHTTPAPIServer {
 		if len(c.HTTPAPIServerListenAddresses) == 0 {
 			return errors.NewInvalidConfigurationError("HTTPAPIServerListenAddresses must be specified")
+		}
+		if !c.HTTPAPIServerTLSConfig.EnableTLS {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.EnableTLS must be true if the HTTP API server is enabled")
 		}
 		if c.HTTPAPIServerTLSConfig.CertPath == "" {
 			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server")
 		}
 		if c.HTTPAPIServerTLSConfig.KeyPath == "" {
 			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.KeyPath must be specified for HTTP API server")
+		}
+		if c.HTTPAPIServerTLSConfig.ClientAuth != "" && c.HTTPAPIServerTLSConfig.ClientCertsPath == "" {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled")
+		}
+	}
+	if c.EnableGRPCAPIServer {
+		if len(c.GRPCAPIServerListenAddresses) == 0 {
+			return errors.NewInvalidConfigurationError("GRPCAPIServerListenAddresses must be specified")
+		}
+		if c.GRPCAPIServerTLSConfig.EnableTLS {
+			if c.GRPCAPIServerTLSConfig.CertPath == "" {
+				return errors.NewInvalidConfigurationError("GRPCAPIServerTLSConfig.CertPath must be specified for GRPC API server")
+			}
+			if c.GRPCAPIServerTLSConfig.KeyPath == "" {
+				return errors.NewInvalidConfigurationError("GRPCAPIServerTLSConfig.KeyPath must be specified for GRPC API server")
+			}
+			if c.GRPCAPIServerTLSConfig.ClientAuth != "" && c.GRPCAPIServerTLSConfig.ClientCertsPath == "" {
+				return errors.NewInvalidConfigurationError("GRPCAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled")
+			}
 		}
 	}
 	if !c.TestServer {
@@ -227,11 +263,7 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.MaxForwardWriteBatchSize < 1 {
 		return errors.NewInvalidConfigurationError("MaxForwardWriteBatchSize must be > 0")
 	}
-	if !reflect.DeepEqual(c.APITLSConfig, tls.TLSConfig{}) {
-		if err := c.APITLSConfig.ValidateTLSFiles(); err != nil {
-			return errors.NewInvalidConfigurationError(fmt.Sprintf("TLS configuration error: %s", err.Error()))
-		}
-	}
+
 	return nil
 }
 

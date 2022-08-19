@@ -36,7 +36,7 @@ type HTTPAPIServer struct {
 	closeWg         sync.WaitGroup
 	executor        sqlExecutor
 	metaController  *meta.Controller
-	tlsConf         *conf.TLSConfig
+	tlsConf         conf.TLSConfig
 	protoRegistry   *protolib.ProtoRegistry
 }
 
@@ -54,7 +54,7 @@ type sqlExecutor interface {
 const rowBatchSize = 1000
 
 func NewHTTPAPIServer(listenAddress string, apiPath string, executor sqlExecutor, metaController *meta.Controller,
-	protoRegistry *protolib.ProtoRegistry, tlsConf *conf.TLSConfig) *HTTPAPIServer {
+	protoRegistry *protolib.ProtoRegistry, tlsConf conf.TLSConfig) *HTTPAPIServer {
 	return &HTTPAPIServer{
 		listenAddress:   listenAddress,
 		apiPath:         apiPath,
@@ -67,11 +67,15 @@ func NewHTTPAPIServer(listenAddress string, apiPath string, executor sqlExecutor
 }
 
 func (s *HTTPAPIServer) Start() error {
+	tlsConf, err := api.CreateServerTLSConfig(s.tlsConf)
+	if err != nil {
+		return err
+	}
 	s.httpServer = &http.Server{
 		Handler:     s,
 		IdleTimeout: 0,
+		TLSConfig:   tlsConf,
 	}
-	var err error
 	s.listener, err = net.Listen("tcp", s.listenAddress)
 	if err != nil {
 		return err
@@ -79,7 +83,7 @@ func (s *HTTPAPIServer) Start() error {
 	s.closeWg = sync.WaitGroup{}
 	s.closeWg.Add(1)
 	go func() {
-		err = s.httpServer.ServeTLS(s.listener, s.tlsConf.CertPath, s.tlsConf.KeyPath)
+		err = s.httpServer.ServeTLS(s.listener, "", "")
 		if err != http.ErrServerClosed {
 			log.Errorf("Failed to start the HTTP API server: %v", err)
 		}

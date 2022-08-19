@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/squareup/pranadb/command"
-	pranadbtls "github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/interruptor"
 	pranalog "github.com/squareup/pranadb/log"
 	"github.com/squareup/pranadb/push"
@@ -68,6 +67,7 @@ type sqlTestsuite struct {
 	numNodes          int
 	replicationFactor int
 	useHTTPAPI        bool
+	tlsKeysInfo       *TLSKeysInfo
 	fakeKafka         *kafka.FakeKafka
 	pranaCluster      []*server.Server
 	suite             suite.Suite
@@ -95,7 +95,14 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 	w.suite.SetT(t)
 }
 
-func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool) {
+type TLSKeysInfo struct {
+	ServerCertPath string
+	ServerKeyPath  string
+	ClientCertPath string
+	ClientKeyPath  string
+}
+
+func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, tlsKeysInfo *TLSKeysInfo) {
 	t.Helper()
 
 	go func() {
@@ -117,7 +124,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 	defer lock.Unlock()
 
 	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]encoderFactory)}
-	ts.setup(fakeCluster, numNodes, replicationFactor, useHTTPAPI)
+	ts.setup(fakeCluster, numNodes, replicationFactor, useHTTPAPI, tlsKeysInfo)
 	defer ts.teardown()
 
 	suite.Run(t, ts)
@@ -166,13 +173,21 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.KafkaBrokers = brokerConfigs
 		if w.useHTTPAPI {
 			cnf.EnableHTTPAPIServer = true
-			cnf.HTTPAPIServerTLSConfig.CertPath = "testdata/tls_keys/server.crt"
-			cnf.HTTPAPIServerTLSConfig.KeyPath = "testdata/tls_keys/server.key"
+			cnf.HTTPAPIServerTLSConfig.EnableTLS = true
+			cnf.HTTPAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
+			cnf.HTTPAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
+			cnf.HTTPAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
+			cnf.HTTPAPIServerTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
 			cnf.HTTPAPIServerListenAddresses = []string{
 				"127.0.0.1:63401",
 			}
 		} else {
 			cnf.EnableGRPCAPIServer = true
+			cnf.GRPCAPIServerTLSConfig.EnableTLS = true
+			cnf.GRPCAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
+			cnf.GRPCAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
+			cnf.GRPCAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
+			cnf.GRPCAPIServerTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
 			cnf.GRPCAPIServerListenAddresses = []string{
 				"127.0.0.1:63401",
 			}
@@ -207,11 +222,19 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.EnableSourceStats = true
 			if w.useHTTPAPI {
 				cnf.EnableHTTPAPIServer = true
-				cnf.HTTPAPIServerTLSConfig.CertPath = "testdata/tls_keys/server.crt"
-				cnf.HTTPAPIServerTLSConfig.KeyPath = "testdata/tls_keys/server.key"
+				cnf.HTTPAPIServerTLSConfig.EnableTLS = true
+				cnf.HTTPAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
+				cnf.HTTPAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
+				cnf.HTTPAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
+				cnf.HTTPAPIServerTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
 				cnf.HTTPAPIServerListenAddresses = apiServerListenAddresses
 			} else {
 				cnf.EnableGRPCAPIServer = true
+				cnf.GRPCAPIServerTLSConfig.EnableTLS = true
+				cnf.GRPCAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
+				cnf.GRPCAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
+				cnf.GRPCAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
+				cnf.GRPCAPIServerTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
 				cnf.GRPCAPIServerListenAddresses = apiServerListenAddresses
 			}
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
@@ -235,11 +258,12 @@ func (w *sqlTestsuite) setupPranaCluster() {
 	w.startCluster()
 }
 
-func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool) {
+func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, tlsKeysInfo *TLSKeysInfo) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
 	w.replicationFactor = replicationFactor
 	w.useHTTPAPI = useHTTPAPI
+	w.tlsKeysInfo = tlsKeysInfo
 	protoRegistry, err := protolib.NewDirBackedRegistry(ProtoDescriptorDir)
 	require.NoError(w.t, err)
 	w.registerEncoders(protoRegistry)
@@ -1211,11 +1235,16 @@ func (st *sqlTest) createCli(require *require.Assertions) *client.Client {
 	id := prana.GetCluster().GetNodeID()
 	apiServerAddress := fmt.Sprintf("127.0.0.1:%d", apiServerListenAddressBase+id)
 	var cli *client.Client
+	tlsConf := client.TLSConfig{
+		EnableTLS:        true,
+		TrustedCertsPath: st.testSuite.tlsKeysInfo.ServerCertPath,
+		CertPath:         st.testSuite.tlsKeysInfo.ClientCertPath,
+		KeyPath:          st.testSuite.tlsKeysInfo.ClientKeyPath,
+	}
 	if st.testSuite.useHTTPAPI {
-		cli = client.NewClientUsingHTTP(apiServerAddress, "testdata/tls_keys/server.crt")
-		cli.SetDisableCertVerification(true)
+		cli = client.NewClientUsingHTTP(apiServerAddress, tlsConf)
 	} else {
-		cli = client.NewClientUsingGRPC(apiServerAddress, pranadbtls.TLSConfig{})
+		cli = client.NewClientUsingGRPC(apiServerAddress, tlsConf)
 	}
 	cli.SetPageSize(clientPageSize)
 	err := cli.Start()
