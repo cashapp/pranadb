@@ -82,6 +82,8 @@ type Cluster interface {
 	RegisterStartFill(expectedLeaders map[uint64]uint64, interruptor *interruptor.Interruptor) error
 
 	RegisterEndFill()
+
+	TableDropped(tableID uint64)
 }
 
 type ToDeleteBatch struct {

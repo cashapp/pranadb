@@ -201,7 +201,6 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 			cnf.EnableFailureInjector = true
 			cnf.ScreenDragonLogSpam = true
-			cnf.DisableShardPlacementSanityCheck = true
 			cnf.RaftRTTMs = 25
 			cnf.DisableFsync = true // for performance
 			s, err := server.NewServer(*cnf)

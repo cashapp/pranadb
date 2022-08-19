@@ -167,6 +167,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) TableDropped(tableID uint64) {
+	panic("implement me")
+}
+
 func (t *testCluster) GetLeadersMap() (map[uint64]uint64, error) {
 	panic("implement me")
 }

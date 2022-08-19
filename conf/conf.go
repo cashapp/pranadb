@@ -53,7 +53,6 @@ type Config struct {
 	EnableMetrics                    bool
 	EnableFailureInjector            bool
 	ScreenDragonLogSpam              bool
-	DisableShardPlacementSanityCheck bool
 	RaftRTTMs                        int
 	RaftElectionRTT                  int
 	RaftHeartbeatRTT                 int

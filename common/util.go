@@ -137,7 +137,7 @@ func DumpDataKey(bytes []byte) string {
 	tableID, _ := ReadUint64FromBufferBE(bytes, 8)
 	//The rest depends on the table
 	remaining := bytes[16:]
-	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v", shardID, tableID, remaining)
+	return fmt.Sprintf("sid:%05d|tid:%05d|k:%v|raw:%v", shardID, tableID, remaining, bytes)
 }
 
 const atFalse = 0
