@@ -17,7 +17,7 @@ import (
 )
 
 var numLeadersVec = promauto.NewGaugeVec(prometheus.GaugeOpts{
-	Name: "number_of_raft_leaders",
+	Name: "pranadb_number_of_raft_leaders",
 	Help: "counter for number of raft leaders on the node, segmented by node_id",
 }, []string{"node_id"})
 
