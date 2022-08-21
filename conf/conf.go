@@ -24,51 +24,51 @@ const (
 )
 
 type Config struct {
-	NodeID                           int
-	ClusterID                        uint64 // All nodes in a Prana cluster must share the same ClusterID
-	RaftAddresses                    []string
-	NotifListenAddresses             []string
-	NumShards                        int
-	ReplicationFactor                int
-	DataDir                          string
-	TestServer                       bool
-	KafkaBrokers                     BrokerConfigs
-	DataSnapshotEntries              int
-	DataCompactionOverhead           int
-	SequenceSnapshotEntries          int
-	SequenceCompactionOverhead       int
-	LocksSnapshotEntries             int
-	LocksCompactionOverhead          int
-	APITLSConfig                     tls.TLSConfig `help:"API TLS configuration" embed:"" prefix:"api-tls-"`
-	EnableGRPCAPIServer              bool          `name:"enable-grpc-api-server"`
-	EnableHTTPAPIServer              bool          `name:"enable-http-api-server"`
-	GRPCAPIServerListenAddresses     []string      `name:"grpc-api-server-listen-addresses"`
-	HTTPAPIServerListenAddresses     []string      `name:"http-api-server-listen-addresses"`
-	HTTPAPIServerTLSConfig           TLSConfig     `embed:"" prefix:"http-api-server-tls-"`
-	EnableSourceStats                bool
-	ProtobufDescriptorDir            string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
-	EnableLifecycleEndpoint          bool
-	LifeCycleListenAddress           string
-	StartupEndpointPath              string
-	ReadyEndpointPath                string
-	LiveEndpointPath                 string
-	MetricsBind                      string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
-	EnableMetrics                    bool
-	EnableFailureInjector            bool
-	ScreenDragonLogSpam              bool
-	RaftRTTMs                        int
-	RaftElectionRTT                  int
-	RaftHeartbeatRTT                 int
-	DisableFsync                     bool
-	DDProfilerTypes                  string
-	DDProfilerHostEnvVarName         string
-	DDProfilerPort                   int
-	DDProfilerServiceName            string
-	DDProfilerEnvironmentName        string
-	DDProfilerVersionName            string
-	AggregationCacheSizeRows         int // The maximum number of rows for an aggregation to cache in memory
-	MaxProcessBatchSize              int
-	MaxForwardWriteBatchSize         int
+	NodeID                       int
+	ClusterID                    uint64 // All nodes in a Prana cluster must share the same ClusterID
+	RaftAddresses                []string
+	NotifListenAddresses         []string
+	NumShards                    int
+	ReplicationFactor            int
+	DataDir                      string
+	TestServer                   bool
+	KafkaBrokers                 BrokerConfigs
+	DataSnapshotEntries          int
+	DataCompactionOverhead       int
+	SequenceSnapshotEntries      int
+	SequenceCompactionOverhead   int
+	LocksSnapshotEntries         int
+	LocksCompactionOverhead      int
+	APITLSConfig                 tls.TLSConfig `help:"API TLS configuration" embed:"" prefix:"api-tls-"`
+	EnableGRPCAPIServer          bool          `name:"enable-grpc-api-server"`
+	EnableHTTPAPIServer          bool          `name:"enable-http-api-server"`
+	GRPCAPIServerListenAddresses []string      `name:"grpc-api-server-listen-addresses"`
+	HTTPAPIServerListenAddresses []string      `name:"http-api-server-listen-addresses"`
+	HTTPAPIServerTLSConfig       TLSConfig     `embed:"" prefix:"http-api-server-tls-"`
+	EnableSourceStats            bool
+	ProtobufDescriptorDir        string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
+	EnableLifecycleEndpoint      bool
+	LifeCycleListenAddress       string
+	StartupEndpointPath          string
+	ReadyEndpointPath            string
+	LiveEndpointPath             string
+	MetricsBind                  string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
+	EnableMetrics                bool
+	EnableFailureInjector        bool
+	ScreenDragonLogSpam          bool
+	RaftRTTMs                    int
+	RaftElectionRTT              int
+	RaftHeartbeatRTT             int
+	DisableFsync                 bool
+	DDProfilerTypes              string
+	DDProfilerHostEnvVarName     string
+	DDProfilerPort               int
+	DDProfilerServiceName        string
+	DDProfilerEnvironmentName    string
+	DDProfilerVersionName        string
+	AggregationCacheSizeRows     int // The maximum number of rows for an aggregation to cache in memory
+	MaxProcessBatchSize          int
+	MaxForwardWriteBatchSize     int
 }
 
 func (c *Config) ApplyDefaults() {
