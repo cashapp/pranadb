@@ -166,6 +166,7 @@ func TestUnblockInProgressRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	numRequests := 10
+	serverListener.wg.Add(numRequests)
 	var handlers []*testRespHandler
 	for i := 0; i < numRequests; i++ {
 		handler := newRespHandler()
@@ -173,6 +174,9 @@ func TestUnblockInProgressRequests(t *testing.T) {
 		err := conn.SendRequestAsync(&clustermsgs.RemotingTestMessage{SomeField: "badgers"}, handler)
 		require.NoError(t, err)
 	}
+
+	// We wait for all request to arrive on the server
+	serverListener.wg.Wait()
 
 	server.closeNetConns()
 
@@ -261,7 +265,8 @@ func (e *returnErrListener) HandleMessage(clusterMessage ClusterMessage) (Cluste
 }
 
 type delayingClusterMessageHandler struct {
-	m sync.Mutex
+	m  sync.Mutex
+	wg sync.WaitGroup
 }
 
 func (d *delayingClusterMessageHandler) lock() {
@@ -273,6 +278,7 @@ func (d *delayingClusterMessageHandler) unlock() {
 }
 
 func (d *delayingClusterMessageHandler) HandleMessage(notification ClusterMessage) (ClusterMessage, error) {
+	d.wg.Done()
 	d.m.Lock()
 	defer d.m.Unlock()
 	return &clustermsgs.RemotingTestMessage{SomeField: "foo"}, nil
