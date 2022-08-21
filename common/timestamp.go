@@ -13,14 +13,14 @@ import (
 type Timestamp = types.Time
 
 // NewTimestampFromString parses a Timestamp from a string in MySQL datetime format.
-func NewTimestampFromString(str string) Timestamp {
+func NewTimestampFromString(str string) (Timestamp, error) {
 	ts, err := types.ParseTimestamp(&stmtctx.StatementContext{
 		TimeZone: time.UTC,
 	}, str)
 	if err != nil {
-		panic(err)
+		return Timestamp{}, err
 	}
-	return ts
+	return ts, nil
 }
 
 func NewTimestampFromGoTime(t time.Time) Timestamp {

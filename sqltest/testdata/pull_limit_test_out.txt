@@ -234,14 +234,8 @@ select col1 from test_source_1 order by col1 limit 100;
 
 -- over limit;
 select col2 from test_source_1 limit 999999999;
-+----------------------+
-| col2                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Limit count cannot be larger than 50000
 select col1 from test_source_1 order by col1 limit 999999999;
-+----------------------+
-| col1                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Limit count cannot be larger than 50000
 
 -- explicit zero offset;
@@ -276,14 +270,8 @@ select col1 from test_source_1 order by col1 limit 1 offset 0;
 
 -- nonzero offset;
 select col2 from test_source_1 limit 1 offset 10;
-+----------------------+
-| col2                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Offset must be zero
 select col1 from test_source_1 order by col1 limit 1 offset 10;
-+----------------------+
-| col1                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Offset must be zero
 
 --test with mv;
@@ -553,14 +541,8 @@ select col1 from test_mv_1 order by col1 limit 100;
 
 -- over limit;
 select col2 from test_mv_1 limit 999999999;
-+----------------------+
-| col2                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Limit count cannot be larger than 50000
 select col1 from test_mv_1 order by col1 limit 999999999;
-+----------------------+
-| col1                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Limit count cannot be larger than 50000
 
 -- explicit zero offset;
@@ -595,14 +577,8 @@ select col1 from test_mv_1 order by col1 limit 1 offset 0;
 
 -- nonzero offset;
 select col2 from test_mv_1 limit 1 offset 10;
-+----------------------+
-| col2                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Offset must be zero
 select col1 from test_mv_1 order by col1 limit 1 offset 10;
-+----------------------+
-| col1                 |
-+----------------------+
 Failed to execute statement: PDB1000 - Offset must be zero
 
 drop materialized view test_mv_1;

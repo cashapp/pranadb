@@ -48,10 +48,17 @@ func invalidBrokerClientTypeConf() Config {
 	return cnf
 }
 
-func invalidAPIServerListenAddress() Config {
+func invalidGRPCAPIServerListenAddress() Config {
 	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerListenAddresses = nil
+	cnf.EnableGRPCAPIServer = true
+	cnf.GRPCAPIServerListenAddresses = nil
+	return cnf
+}
+
+func invalidHTTPAPIServerListenAddress() Config {
+	cnf := confAllFields
+	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerListenAddresses = nil
 	return cnf
 }
 
@@ -73,10 +80,31 @@ func raftAndNotifListenerAddressedDifferentLengthConfig() Config {
 	return cnf
 }
 
-func raftAndAPIServerListenerAddressedDifferentLengthConfig() Config {
+func raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig() Config {
 	cnf := confAllFields
-	cnf.EnableAPIServer = true
-	cnf.APIServerListenAddresses = append(cnf.APIServerListenAddresses, "someotheraddresss")
+	cnf.EnableGRPCAPIServer = true
+	cnf.GRPCAPIServerListenAddresses = append(cnf.GRPCAPIServerListenAddresses, "someotheraddresss")
+	return cnf
+}
+
+func raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig() Config {
+	cnf := confAllFields
+	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerListenAddresses = append(cnf.HTTPAPIServerListenAddresses, "someotheraddresss")
+	return cnf
+}
+
+func httpAPIServerTLSKeyPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerTLSConfig.KeyPath = ""
+	return cnf
+}
+
+func httpAPIServerTLSCertPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerTLSConfig.CertPath = ""
 	return cnf
 }
 
@@ -250,12 +278,14 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: DataDir must be specified", invalidDatadirConf()},
 	{"PDB3000 - Invalid configuration: KafkaBrokers must be specified", missingKafkaBrokersConf()},
 	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
-	{"PDB3000 - Invalid configuration: APIServerListenAddresses must be specified", invalidAPIServerListenAddress()},
+	{"PDB3000 - Invalid configuration: GRPCAPIServerListenAddresses must be specified", invalidGRPCAPIServerListenAddress()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerListenAddresses must be specified", invalidHTTPAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of NotifListenerAddresses", raftAndNotifListenerAddressedDifferentLengthConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of APIServerListenAddresses", raftAndAPIServerListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of GRPCAPIServerListenAddresses", raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of HTTPAPIServerListenAddresses", raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig()},
 	{"PDB3000 - Invalid configuration: DataSnapshotEntries must be >= 10", invalidDataSnapshotEntries()},
 	{"PDB3000 - Invalid configuration: DataCompactionOverhead must be >= 5", invalidDataCompactionOverhead()},
 	{"PDB3000 - Invalid configuration: SequenceSnapshotEntries must be >= 10", invalidSequenceSnapshotEntries()},
@@ -278,6 +308,8 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
 	{"PDB3000 - Invalid configuration: MaxProcessBatchSize must be > 0", invalidMaxProcessorBatchSize()},
 	{"PDB3000 - Invalid configuration: MaxForwardWriteBatchSize must be > 0", invalidMaxForwardWriteBatchSize()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.KeyPath must be specified for HTTP API server", httpAPIServerTLSKeyPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server", httpAPIServerTLSCertPathNotSpecifiedConfig()},
 }
 
 func TestValidate(t *testing.T) {
@@ -308,17 +340,23 @@ var confAllFields = Config{
 			},
 		},
 	},
-	DataSnapshotEntries:        1001,
-	DataCompactionOverhead:     501,
-	SequenceSnapshotEntries:    2001,
-	SequenceCompactionOverhead: 1001,
-	LocksSnapshotEntries:       101,
-	LocksCompactionOverhead:    51,
-	EnableAPIServer:            true,
-	APIServerListenAddresses:   []string{"addr7", "addr8", "addr9"},
-	RaftRTTMs:                  100,
-	RaftHeartbeatRTT:           10,
-	RaftElectionRTT:            100,
-	MaxProcessBatchSize:        DefaultMaxForwardWriteBatchSize,
-	MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
+	DataSnapshotEntries:          1001,
+	DataCompactionOverhead:       501,
+	SequenceSnapshotEntries:      2001,
+	SequenceCompactionOverhead:   1001,
+	LocksSnapshotEntries:         101,
+	LocksCompactionOverhead:      51,
+	EnableGRPCAPIServer:          true,
+	GRPCAPIServerListenAddresses: []string{"addr7", "addr8", "addr9"},
+	EnableHTTPAPIServer:          true,
+	HTTPAPIServerListenAddresses: []string{"addr10", "addr11", "addr12"},
+	HTTPAPIServerTLSConfig: TLSConfig{
+		KeyPath:  "http_key_path",
+		CertPath: "http_cert_path",
+	},
+	RaftRTTMs:                100,
+	RaftHeartbeatRTT:         10,
+	RaftElectionRTT:          100,
+	MaxProcessBatchSize:      DefaultMaxForwardWriteBatchSize,
+	MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 }

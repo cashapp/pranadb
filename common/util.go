@@ -1,6 +1,8 @@
 package common
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"reflect"
@@ -184,4 +186,14 @@ func GetOrDefaultIntProperty(propName string, props map[string]string, def int) 
 		res = def
 	}
 	return res, nil
+}
+
+func CSVQuote(fields ...string) string {
+	var buff bytes.Buffer
+	writer := csv.NewWriter(&buff)
+	if err := writer.Write(fields); err != nil {
+		panic(err)
+	}
+	writer.Flush()
+	return buff.String()
 }

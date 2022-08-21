@@ -21,9 +21,9 @@ import (
 
 func TestSessionTimeout(t *testing.T) {
 	cfg := conf.NewTestConfig(1)
-	cfg.EnableAPIServer = true
+	cfg.EnableGRPCAPIServer = true
 	serverAddress := "localhost:6584"
-	cfg.APIServerListenAddresses = []string{serverAddress}
+	cfg.GRPCAPIServerListenAddresses = []string{serverAddress}
 	s, err := server.NewServer(*cfg)
 	require.NoError(t, err)
 	err = s.Start()
@@ -33,18 +33,19 @@ func TestSessionTimeout(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	cli := NewClient(serverAddress, pranadbtls.TLSConfig{})
+	cli := NewClientUsingGRPC(serverAddress, pranadbtls.TLSConfig{})
+
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {
 		err = cli.Stop()
 		require.NoError(t, err)
 	}()
-	ch, err := cli.ExecuteStatement("use sys", nil)
+	ch, err := cli.ExecuteStatement("use sys", nil, nil)
 	require.NoError(t, err)
 	for range ch {
 	}
-	ch, err = cli.ExecuteStatement("select * from sys.tables", nil)
+	ch, err = cli.ExecuteStatement("select * from sys.tables", nil, nil)
 	require.NoError(t, err)
 	for range ch {
 	}
@@ -52,9 +53,9 @@ func TestSessionTimeout(t *testing.T) {
 
 func TestMutualTLS(t *testing.T) {
 	cfg := conf.NewTestConfig(1)
-	cfg.EnableAPIServer = true
+	cfg.EnableGRPCAPIServer = true
 	serverAddress := "localhost:6584"
-	cfg.APIServerListenAddresses = []string{serverAddress}
+	cfg.GRPCAPIServerListenAddresses = []string{serverAddress}
 	caCert, err := getCACert()
 	require.NoError(t, err)
 	tlsConfig, err := getTLSCert(caCert, "Company, INC.")
@@ -71,14 +72,14 @@ func TestMutualTLS(t *testing.T) {
 
 	clientTLSConfig, err := getTLSCert(caCert, "Client, INC.")
 	require.NoError(t, err)
-	cli := NewClient(serverAddress, clientTLSConfig)
+	cli := NewClientUsingGRPC(serverAddress, clientTLSConfig)
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {
 		err = cli.Stop()
 		require.NoError(t, err)
 	}()
-	ch, err := cli.ExecuteStatement("select * from sys.tables", nil)
+	ch, err := cli.ExecuteStatement("select * from sys.tables", nil, nil)
 	require.NoError(t, err)
 	for range ch {
 	}

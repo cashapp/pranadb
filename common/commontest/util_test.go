@@ -83,9 +83,10 @@ func TestRoundTimestampToFSP(t *testing.T) {
 
 func testRoundTimestampToFSP(t *testing.T, fsp int8, microAfter int) {
 	t.Helper()
-	ts := common.NewTimestampFromString("2020-01-01 01:00:00.123456")
+	ts, err := common.NewTimestampFromString("2020-01-01 01:00:00.123456")
+	require.NoError(t, err)
 	require.Equal(t, 123456, ts.Microsecond())
-	err := common.RoundTimestampToFSP(&ts, fsp)
+	err = common.RoundTimestampToFSP(&ts, fsp)
 	require.NoError(t, err)
 	require.Equal(t, microAfter, ts.Microsecond())
 }

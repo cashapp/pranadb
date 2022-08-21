@@ -203,7 +203,8 @@ func testEncodeDecodeUint32(t *testing.T, val uint32) {
 }
 
 func TestEncodeDecodeTimestampFromString(t *testing.T) {
-	ts := common.NewTimestampFromString("2021-08-01 12:34:56.789")
+	ts, err := common.NewTimestampFromString("2021-08-01 12:34:56.789")
+	require.NoError(t, err)
 	buf, err := common.AppendTimestampToBuffer(nil, ts)
 	require.NoError(t, err)
 	valRead, _, err := common.ReadTimestampFromBuffer(buf, 0, ts.Fsp())
@@ -213,7 +214,8 @@ func TestEncodeDecodeTimestampFromString(t *testing.T) {
 
 	// And check the other way
 	s := ts.String()
-	ts2 := common.NewTimestampFromString(s)
+	ts2, err := common.NewTimestampFromString(s)
+	require.NoError(t, err)
 	assert.Equal(t, ts, ts2)
 }
 
@@ -221,7 +223,8 @@ func TestEncodeDecodeTimestampToString(t *testing.T) {
 	now := time.Now()
 	ts1 := common.NewTimestampFromGoTime(now)
 	s := ts1.String()
-	ts2 := common.NewTimestampFromString(s)
+	ts2, err := common.NewTimestampFromString(s)
+	require.NoError(t, err)
 	require.Equal(t, ts1, ts2)
 }
 
