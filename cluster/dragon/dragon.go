@@ -67,7 +67,7 @@ func NewDragon(cnf conf.Config, stopSignaller *common.AtomicBool) (*Dragon, erro
 	}
 	dragon := &Dragon{
 		cnf:           cnf,
-		shardSMs:      make(map[uint64]struct{}),
+		shardSMs:      make(map[uint64]*ShardOnDiskStateMachine),
 		stopSignaller: stopSignaller,
 	}
 	dragon.procMgr = newProcManager(dragon, cnf.NotifListenAddresses)
@@ -89,7 +89,7 @@ type Dragon struct {
 	shardListenerFactory         cluster.ShardListenerFactory
 	remoteQueryExecutionCallback cluster.RemoteQueryExecutionCallback
 	shardSMsLock                 sync.Mutex
-	shardSMs                     map[uint64]struct{}
+	shardSMs                     map[uint64]*ShardOnDiskStateMachine
 	requestClient                *remoting.Client
 	saveSnapshotCount            int64
 	restoreSnapshotCount         int64
@@ -700,8 +700,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 	}
 
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
-		sm := newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
-		return sm
+		return newShardODStateMachine(d, shardID, d.cnf.NodeID, nodeIDs)
 	}
 
 	if err := d.nh.StartOnDiskCluster(initialMembers, false, createSMFunc, rc); err != nil {
@@ -1015,7 +1014,7 @@ func (d *Dragon) checkConstantProperty(property string, expectedValue int) error
 		return err
 	}
 	if v == nil {
-		log.Debugf("New cluster - no value for %s in stroage, persisting it", property)
+		log.Debugf("New cluster - no value for %s in storage, persisting it", property)
 		v = common.AppendUint32ToBufferLE([]byte{}, uint32(expectedValue))
 		err = d.SetConfigProperty(property, v)
 		if err != nil {
@@ -1031,22 +1030,16 @@ func (d *Dragon) checkConstantProperty(property string, expectedValue int) error
 	return nil
 }
 
-func (d *Dragon) registerShardSM(shardID uint64) {
-	if d.cnf.DisableShardPlacementSanityCheck {
-		return
-	}
+func (d *Dragon) registerShardSM(shardID uint64, sm *ShardOnDiskStateMachine) {
 	d.shardSMsLock.Lock()
 	defer d.shardSMsLock.Unlock()
 	if _, ok := d.shardSMs[shardID]; ok {
 		panic(fmt.Sprintf("Shard SM for shard %d already registered on node %d", shardID, d.cnf.NodeID))
 	}
-	d.shardSMs[shardID] = struct{}{}
+	d.shardSMs[shardID] = sm
 }
 
 func (d *Dragon) unregisterShardSM(shardID uint64) {
-	if d.cnf.DisableShardPlacementSanityCheck {
-		return
-	}
 	d.shardSMsLock.Lock()
 	defer d.shardSMsLock.Unlock()
 	delete(d.shardSMs, shardID)
@@ -1301,4 +1294,12 @@ func (d *Dragon) RegisterEndFill() {
 
 func (d *Dragon) SetForwardWriteHandler(forwardWriteHandler cluster.ForwardWriteHandler) {
 	d.forwardWriteHandler = forwardWriteHandler
+}
+
+func (d *Dragon) TableDropped(tableID uint64) {
+	d.shardSMsLock.Lock()
+	defer d.shardSMsLock.Unlock()
+	for _, sm := range d.shardSMs {
+		sm.tableDropped(tableID)
+	}
 }

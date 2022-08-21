@@ -3,6 +3,7 @@ package dragon
 import (
 	"fmt"
 	"github.com/cockroachdb/pebble"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/lni/dragonboat/v3/statemachine"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
@@ -23,6 +24,7 @@ const (
 	shardStateMachineCommandForwardWrite byte   = 2
 	shardStateMachineCommandSetLeader    byte   = 3
 	shardStateMachineResponseOK          uint64 = 1
+	droppedTableCacheMaxSize                    = 100
 )
 
 func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int) *ShardOnDiskStateMachine {
@@ -48,12 +50,13 @@ type ShardOnDiskStateMachine struct {
 	lastIndex        uint64
 	leaderNodeID     int64
 	leaderTerm       int64
+	droppedTables    *simplelru.LRU
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.dragon.registerShardSM(s.shardID)
+	s.dragon.registerShardSM(s.shardID, s)
 	if err := s.loadDedupCache(); err != nil {
 		return 0, err
 	}
@@ -68,6 +71,12 @@ func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
 	}
 	s.leaderNodeID = leaderNodeID
 	s.leaderTerm = term
+	// We maintain a small cache of dropped table ids with a bounded upper size
+	dt, err := simplelru.NewLRU(droppedTableCacheMaxSize, nil)
+	if err != nil {
+		return 0, err
+	}
+	s.droppedTables = dt
 	return lastRaftIndex, nil
 }
 
@@ -220,9 +229,11 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 
 		} else {
 			key = kvPair.Key
-			s.checkKey(key)
+			if !s.checkKey(key) {
+				log.Debugf("not writing data key %v as table is dropped", key)
+				continue
+			}
 		}
-
 		if err := batch.Set(key, kvPair.Value, nil); err != nil {
 			return errors.WithStack(err)
 		}
@@ -305,15 +316,26 @@ func (s *ShardOnDiskStateMachine) checkDedup(key []byte, batch *pebble.Batch) (i
 	return false, nil
 }
 
-func (s *ShardOnDiskStateMachine) checkKey(key []byte) {
+func (s *ShardOnDiskStateMachine) checkKey(key []byte) bool {
 	if s.dragon.cnf.TestServer {
-		return
+		return true
 	}
 	// Sanity check
 	sid, _ := common.ReadUint64FromBufferBE(key, 0)
 	if s.shardID != sid {
 		panic(fmt.Sprintf("invalid key in sm write, expected %d actual %d", s.shardID, sid))
 	}
+	tableID, _ := common.ReadUint64FromBufferBE(key, 8)
+	_, ok := s.droppedTables.Get(tableID)
+	if ok {
+		// Table has been dropped we ignore the write - this is important as perform drop data locally so we could
+		// otherwise read replicated writes on a slow follower after a table has been dropped leaving orphaned rows
+		// in the database.
+		// It does mean each state machine replica can diverge slightly but it does not matter because the divergence
+		// is only with dropped table data and we will never look at dropped table data again in Raft.
+		return false
+	}
+	return true
 }
 
 func (s *ShardOnDiskStateMachine) handleSetLeader(batch *pebble.Batch, bytes []byte) error {
@@ -496,4 +518,10 @@ func (s *ShardOnDiskStateMachine) loadDedupCache() error {
 		s.dedupSequences[string(oid)] = sequence
 	}
 	return nil
+}
+
+func (s *ShardOnDiskStateMachine) tableDropped(tableID uint64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.droppedTables.Add(tableID, struct{}{})
 }

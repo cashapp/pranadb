@@ -209,7 +209,7 @@ func (s *Source) Drop() error {
 	if err := s.cluster.DeleteAllDataInRangeForAllShardsLocally(startPrefix, endPrefix); err != nil {
 		return errors.WithStack(err)
 	}
-
+	s.cluster.TableDropped(s.sourceInfo.ID)
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)

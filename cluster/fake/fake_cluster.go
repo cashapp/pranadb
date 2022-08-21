@@ -455,3 +455,6 @@ func (f *FakeCluster) RegisterStartFill(expectedLeaders map[uint64]uint64, inter
 
 func (f *FakeCluster) RegisterEndFill() {
 }
+
+func (f *FakeCluster) TableDropped(tableID uint64) {
+}

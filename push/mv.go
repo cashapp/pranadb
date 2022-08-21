@@ -73,6 +73,7 @@ func (m *MaterializedView) Drop() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	m.cluster.TableDropped(m.Info.ID)
 	return m.deleteTableData(m.Info.ID)
 }
 
