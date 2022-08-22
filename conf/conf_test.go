@@ -68,7 +68,7 @@ func invalidReplicationFactorConfig() Config {
 	return cnf
 }
 
-func invalidRaftAddressesConfig() Config {
+func invalidRaftListenAddressesConfig() Config {
 	cnf := confAllFields
 	cnf.RaftListenAddresses = cnf.RaftListenAddresses[1:]
 	return cnf
@@ -310,7 +310,7 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: HTTPAPIServerListenAddresses must be specified", invalidHTTPAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftListenAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be >= ReplicationFactor", invalidRaftListenAddressesConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of RemotingListenAddresses", raftAndRemotingListenAddressedDifferentLengthConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of GRPCAPIServerListenAddresses", raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of HTTPAPIServerListenAddresses", raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig()},

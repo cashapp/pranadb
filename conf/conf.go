@@ -198,10 +198,10 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of RemotingListenAddresses")
 		}
 		if c.GRPCAPIServerEnabled && len(c.GRPCAPIServerListenAddresses) != len(c.RaftListenAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of GRPCAPIServerListenAddresses")
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of GRPCAPIServerListenAddresses")
 		}
 		if c.HTTPAPIServerEnabled && len(c.HTTPAPIServerListenAddresses) != len(c.RaftListenAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of HTTPAPIServerListenAddresses")
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of HTTPAPIServerListenAddresses")
 		}
 		if c.DataSnapshotEntries < 10 {
 			return errors.NewInvalidConfigurationError("DataSnapshotEntries must be >= 10")
