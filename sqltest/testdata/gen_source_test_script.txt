@@ -46,7 +46,7 @@ create source test_source_2(
     ),
     properties = (
         "prana.loadclient.maxmessagesperconsumer" = "10",
-        "prana.loadclient.maxrateperconsumer" = "1"
+        "prana.source.maxingestrate" = "1"
     )
 );
 

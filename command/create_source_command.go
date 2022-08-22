@@ -2,20 +2,19 @@ package command
 
 import (
 	"fmt"
+	"github.com/alecthomas/repr"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/interruptor"
-	"strings"
-	"sync"
-
-	"github.com/alecthomas/repr"
 	"github.com/squareup/pranadb/command/parser"
 	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/push/source"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"strings"
+	"sync"
 )
 
 type CreateSourceCommand struct {

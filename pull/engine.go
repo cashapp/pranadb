@@ -1,6 +1,7 @@
 package pull
 
 import (
+	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/sharder"
@@ -121,7 +122,9 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 	newExecution := false
 	if !ok {
 		schema := p.metaController.GetOrCreateSchema(queryInfo.SchemaName)
-		execCtx = execctx.NewExecutionContext(queryInfo.ExecutionID, schema)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		execCtx = execctx.NewExecutionContext(ctx, queryInfo.ExecutionID, schema)
 		newExecution = true
 		execCtx.QueryInfo = queryInfo
 		ast, _, err := execCtx.Planner().Parse(queryInfo.Query)
@@ -270,11 +273,13 @@ func (p *Engine) clearExecCtxsForNode(nodeID int) {
 
 // ExecuteQuery - Lightweight query interface - used internally for loading a moderate amount of rows
 func (p *Engine) ExecuteQuery(schemaName string, query string) (rows *common.Rows, err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	schema, ok := p.metaController.GetSchema(schemaName)
 	if !ok {
 		return nil, errors.Errorf("no such schema %s", schemaName)
 	}
-	execCtx := execctx.NewExecutionContext("", schema)
+	execCtx := execctx.NewExecutionContext(ctx, "", schema)
 	executor, err := p.BuildPullQuery(execCtx, query, nil, nil)
 	if err != nil {
 		return nil, errors.WithStack(err)

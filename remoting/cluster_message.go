@@ -224,6 +224,7 @@ func writeMessage(msgType messageType, msg []byte, conn net.Conn) error {
 }
 
 func readMessage(handler messageHandler, conn net.Conn, closeAction func()) {
+	defer common.PanicHandler()
 	var msgBuf []byte
 	readBuff := make([]byte, readBuffSize)
 	msgLen := -1

@@ -382,6 +382,7 @@ func (s *ShardOnDiskStateMachine) handleSetLeader(batch *pebble.Batch, bytes []b
 }
 
 func (s *ShardOnDiskStateMachine) Lookup(i interface{}) (interface{}, error) {
+	defer common.PanicHandler()
 	buff, ok := i.([]byte)
 	if !ok {
 		panic("expected []byte")

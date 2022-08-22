@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -510,8 +511,8 @@ func (t *testSQLExecutor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext,
 	return t.pe, nil
 }
 
-func (t *testSQLExecutor) CreateExecutionContext(schema *common.Schema) *execctx.ExecutionContext {
-	return execctx.NewExecutionContext("testcontext", schema)
+func (t *testSQLExecutor) CreateExecutionContext(ctx context.Context, schema *common.Schema) *execctx.ExecutionContext {
+	return execctx.NewExecutionContext(ctx, "testcontext", schema)
 }
 
 func (t *testSQLExecutor) GetState() (sql string, argTypes []common.ColumnType, args []interface{}, schema string, rows *common.Rows) {
