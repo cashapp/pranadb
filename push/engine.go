@@ -505,6 +505,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 		return err
 	}
 
+	// If we get this far we can commit any local changes and deletes from the receiver table
 	if err := p.cluster.WriteBatch(batch.writeBatch, true); err != nil {
 		return errors.WithStack(err)
 	}

@@ -494,7 +494,10 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) er
 	buff = append(buff, shardStateMachineCommandForwardWrite)
 	buff = batch.Serialize(buff)
 	if localOnly {
-		retVal, _, err := d.sendPropose(batch.ShardID, buff, localOnly)
+		// For a local-only WriteForwardBatch we must not send the processor as this can cause deadlock if
+		// the forward batch is being written from processing of another batch on the same processor
+		// It is ok to send remotely, but as a propose - which bypasses the processor
+		retVal, _, err := d.sendPropose(batch.ShardID, buff, false)
 		if err != nil {
 			return errors.WithStack(err)
 		}
