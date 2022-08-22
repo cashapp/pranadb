@@ -11,23 +11,32 @@ import (
 	"testing"
 )
 
-func TestSQLFakeCluster(t *testing.T) {
-	log.Debug("Running TestSQLFakeCluster")
-	testSQL(t, true, 1, 0, false, tlsKeysInfo)
-}
-
-func TestSQLFakeClusterUsingHTTPAPI(t *testing.T) {
-	log.Debug("Running TestSQLFakeClusterUsingHTTPAPI")
-	testSQL(t, true, 1, 0, true, tlsKeysInfo)
-}
-
-func TestSQLClusteredThreeNodes(t *testing.T) {
+func TestSQLClusteredFiveNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipped")
 	}
-	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3, false, tlsKeysInfo)
+
+	log.Info("Running TestSQLClusteredFiveNodes")
+	testSQL(t, false, 5, 3, false, tlsKeysInfo)
 }
+
+//func TestSQLFakeCluster(t *testing.T) {
+//	log.Debug("Running TestSQLFakeCluster")
+//	testSQL(t, true, 1, 0, false, tlsKeysInfo)
+//}
+//
+//func TestSQLFakeClusterUsingHTTPAPI(t *testing.T) {
+//	log.Debug("Running TestSQLFakeClusterUsingHTTPAPI")
+//	testSQL(t, true, 1, 0, true, tlsKeysInfo)
+//}
+//
+//func TestSQLClusteredThreeNodes(t *testing.T) {
+//	if testing.Short() {
+//		t.Skip("-short: skipped")
+//	}
+//	log.Info("Running TestSQLClusteredThreeNodes")
+//	testSQL(t, false, 3, 3, false, tlsKeysInfo)
+//}
 
 var tlsKeysInfo *TLSKeysInfo
 
