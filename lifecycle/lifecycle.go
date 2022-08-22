@@ -33,7 +33,7 @@ func (e *Endpoints) SetActive(active bool) {
 }
 
 func (e *Endpoints) Start() error {
-	if !e.conf.EnableLifecycleEndpoint {
+	if !e.conf.LifecycleEndpointEnabled {
 		return nil
 	}
 
@@ -59,7 +59,7 @@ func (e *Endpoints) Start() error {
 }
 
 func (e *Endpoints) Stop() error {
-	if !e.conf.EnableLifecycleEndpoint {
+	if !e.conf.LifecycleEndpointEnabled {
 		return nil
 	}
 	return e.server.Close()

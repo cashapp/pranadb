@@ -62,7 +62,7 @@ func init() {
 }
 
 func NewDragon(cnf conf.Config, stopSignaller *common.AtomicBool) (*Dragon, error) {
-	if len(cnf.RaftAddresses) < 3 {
+	if len(cnf.RaftListenAddresses) < 3 {
 		return nil, errors.Error("minimum cluster size is 3 nodes")
 	}
 	dragon := &Dragon{
@@ -70,7 +70,7 @@ func NewDragon(cnf conf.Config, stopSignaller *common.AtomicBool) (*Dragon, erro
 		shardSMs:      make(map[uint64]*ShardOnDiskStateMachine),
 		stopSignaller: stopSignaller,
 	}
-	dragon.procMgr = newProcManager(dragon, cnf.NotifListenAddresses)
+	dragon.procMgr = newProcManager(dragon, cnf.RemotingListenAddresses)
 	return dragon, nil
 }
 
@@ -332,7 +332,7 @@ func (d *Dragon) start0() error {
 
 	d.generateNodesAndShards(d.cnf.NumShards, d.cnf.ReplicationFactor)
 
-	nodeAddress := d.cnf.RaftAddresses[d.cnf.NodeID]
+	nodeAddress := d.cnf.RaftListenAddresses[d.cnf.NodeID]
 
 	dragonBoatDir := filepath.Join(datadir, "dragon")
 
@@ -342,7 +342,7 @@ func (d *Dragon) start0() error {
 		NodeHostDir:       dragonBoatDir,
 		RTTMillisecond:    uint64(d.cnf.RaftRTTMs),
 		RaftAddress:       nodeAddress,
-		EnableMetrics:     d.cnf.EnableMetrics,
+		EnableMetrics:     d.cnf.MetricsEnabled,
 		Expert:            config.GetDefaultExpertConfig(),
 		RaftEventListener: d.procMgr,
 	}
@@ -515,7 +515,7 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) er
 						ShardId:     int64(batch.ShardID),
 						RequestBody: buff,
 					}
-					address := d.cnf.NotifListenAddresses[leaderNodeID]
+					address := d.cnf.RemotingListenAddresses[leaderNodeID]
 					_, err = d.requestClient.SendRPC(request, address)
 				}
 				if err == nil {
@@ -696,7 +696,7 @@ func (d *Dragon) joinShardGroup(shardID uint64, nodeIDs []int, ch chan error) {
 
 	initialMembers := make(map[uint64]string)
 	for _, nodeID := range nodeIDs {
-		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftListenAddresses[nodeID]
 	}
 
 	createSMFunc := func(_ uint64, _ uint64) statemachine.IOnDiskStateMachine {
@@ -728,7 +728,7 @@ func (d *Dragon) joinSequenceGroup() error {
 	initialMembers := make(map[uint64]string)
 	thisNode := false
 	for _, nodeID := range nodeIDs {
-		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftListenAddresses[nodeID]
 		if nodeID == d.cnf.NodeID {
 			thisNode = true
 		}
@@ -760,7 +760,7 @@ func (d *Dragon) joinLockGroup() error {
 	initialMembers := make(map[uint64]string)
 	thisNode := false
 	for _, nodeID := range nodeIDs {
-		initialMembers[uint64(nodeID+1)] = d.cnf.RaftAddresses[nodeID]
+		initialMembers[uint64(nodeID+1)] = d.cnf.RaftListenAddresses[nodeID]
 		if nodeID == d.cnf.NodeID {
 			thisNode = true
 		}
@@ -777,7 +777,7 @@ func (d *Dragon) joinLockGroup() error {
 // For now, the number of shards and nodes in the cluster is static so we can just calculate this on startup
 // on each node
 func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
-	numNodes := len(d.cnf.RaftAddresses)
+	numNodes := len(d.cnf.RaftListenAddresses)
 	allNodes := make([]int, numNodes)
 	for i := 0; i < numNodes; i++ {
 		allNodes[i] = i
@@ -795,7 +795,7 @@ func (d *Dragon) generateNodesAndShards(numShards int, replicationFactor int) {
 }
 
 func (d *Dragon) generateReplicas(shardID uint64, replicationFactor int, dataShard bool) {
-	numNodes := len(d.cnf.RaftAddresses)
+	numNodes := len(d.cnf.RaftListenAddresses)
 	nids := make([]int, replicationFactor)
 	for j := 0; j < replicationFactor; j++ {
 		nids[j] = (int(shardID + uint64(j))) % numNodes
@@ -1061,7 +1061,7 @@ func (d *Dragon) sendPropose(shardID uint64, request []byte, localOnly bool) (ui
 				return 0, nil, errors.Errorf("no local leader for shard %d (localOnly=true)", shardID)
 			}
 			// Send remotely
-			address := d.cnf.NotifListenAddresses[leaderNodeID]
+			address := d.cnf.RemotingListenAddresses[leaderNodeID]
 			clusterRequest := &clustermsgs.ClusterProposeRequest{
 				ShardId:     int64(shardID),
 				RequestBody: request,
@@ -1093,7 +1093,7 @@ func (d *Dragon) executeRead(shardID uint64, request []byte) ([]byte, error) {
 				return d.executeSyncReadWithRetry(shardID, request)
 			}
 			// Send remotely
-			address := d.cnf.NotifListenAddresses[leaderNodeID]
+			address := d.cnf.RemotingListenAddresses[leaderNodeID]
 			clusterRequest := &clustermsgs.ClusterReadRequest{
 				ShardId:     int64(shardID),
 				RequestBody: request,

@@ -172,8 +172,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		cnf.TestServer = true
 		cnf.KafkaBrokers = brokerConfigs
 		if w.useHTTPAPI {
-			cnf.EnableHTTPAPIServer = true
-			cnf.HTTPAPIServerTLSConfig.EnableTLS = true
+			cnf.HTTPAPIServerEnabled = true
+			cnf.HTTPAPIServerTLSConfig.Enabled = true
 			cnf.HTTPAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
 			cnf.HTTPAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
 			cnf.HTTPAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
@@ -182,8 +182,8 @@ func (w *sqlTestsuite) setupPranaCluster() {
 				"127.0.0.1:63401",
 			}
 		} else {
-			cnf.EnableGRPCAPIServer = true
-			cnf.GRPCAPIServerTLSConfig.EnableTLS = true
+			cnf.GRPCAPIServerEnabled = true
+			cnf.GRPCAPIServerTLSConfig.Enabled = true
 			cnf.GRPCAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
 			cnf.GRPCAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
 			cnf.GRPCAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
@@ -192,7 +192,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 				"127.0.0.1:63401",
 			}
 		}
-		cnf.EnableSourceStats = true
+		cnf.SourceStatsEnabled = true
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
 		s, err := server.NewServer(*cnf)
 		if err != nil {
@@ -200,37 +200,37 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		}
 		w.pranaCluster[0] = s
 	} else {
-		var raftAddresses []string
-		var notifAddresses []string
+		var raftListenAddresses []string
+		var remotingListenAddresses []string
 		var apiServerListenAddresses []string
 		for i := 0; i < w.numNodes; i++ {
-			raftAddresses = append(raftAddresses, fmt.Sprintf("127.0.0.1:%d", i+63201))
-			notifAddresses = append(notifAddresses, fmt.Sprintf("127.0.0.1:%d", i+63301))
+			raftListenAddresses = append(raftListenAddresses, fmt.Sprintf("127.0.0.1:%d", i+63201))
+			remotingListenAddresses = append(remotingListenAddresses, fmt.Sprintf("127.0.0.1:%d", i+63301))
 			apiServerListenAddresses = append(apiServerListenAddresses, fmt.Sprintf("127.0.0.1:%d", i+63401))
 		}
 		for i := 0; i < w.numNodes; i++ {
 			cnf := conf.NewDefaultConfig()
 			cnf.NodeID = i
 			cnf.ClusterID = TestClusterID
-			cnf.RaftAddresses = raftAddresses
+			cnf.RaftListenAddresses = raftListenAddresses
 			cnf.NumShards = 30
 			cnf.ReplicationFactor = w.replicationFactor
 			cnf.DataDir = w.dataDir
 			cnf.TestServer = false
 			cnf.KafkaBrokers = brokerConfigs
-			cnf.NotifListenAddresses = notifAddresses
-			cnf.EnableSourceStats = true
+			cnf.RemotingListenAddresses = remotingListenAddresses
+			cnf.SourceStatsEnabled = true
 			if w.useHTTPAPI {
-				cnf.EnableHTTPAPIServer = true
-				cnf.HTTPAPIServerTLSConfig.EnableTLS = true
+				cnf.HTTPAPIServerEnabled = true
+				cnf.HTTPAPIServerTLSConfig.Enabled = true
 				cnf.HTTPAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
 				cnf.HTTPAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
 				cnf.HTTPAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
 				cnf.HTTPAPIServerTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
 				cnf.HTTPAPIServerListenAddresses = apiServerListenAddresses
 			} else {
-				cnf.EnableGRPCAPIServer = true
-				cnf.GRPCAPIServerTLSConfig.EnableTLS = true
+				cnf.GRPCAPIServerEnabled = true
+				cnf.GRPCAPIServerTLSConfig.Enabled = true
 				cnf.GRPCAPIServerTLSConfig.CertPath = w.tlsKeysInfo.ServerCertPath
 				cnf.GRPCAPIServerTLSConfig.KeyPath = w.tlsKeysInfo.ServerKeyPath
 				cnf.GRPCAPIServerTLSConfig.ClientCertsPath = w.tlsKeysInfo.ClientCertPath
@@ -238,7 +238,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 				cnf.GRPCAPIServerListenAddresses = apiServerListenAddresses
 			}
 			cnf.ProtobufDescriptorDir = ProtoDescriptorDir
-			cnf.EnableFailureInjector = true
+			cnf.FailureInjectorEnabled = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.RaftRTTMs = 25
 			cnf.DisableFsync = true // for performance

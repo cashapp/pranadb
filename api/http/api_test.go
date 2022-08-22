@@ -362,9 +362,9 @@ func startServer(t *testing.T, ex *testSQLExecutor) *HTTPAPIServer {
 	cluster := fake.NewFakeCluster(0, 10)
 	metaController := meta.NewController(cluster)
 	tlsConf := conf.TLSConfig{
-		EnableTLS: true,
-		KeyPath:   serverKeyPath,
-		CertPath:  serverCertPath,
+		Enabled:  true,
+		KeyPath:  serverKeyPath,
+		CertPath: serverCertPath,
 	}
 	server := NewHTTPAPIServer("localhost:6888", "/pranadb", ex, metaController, nil, tlsConf)
 	err := server.Start()

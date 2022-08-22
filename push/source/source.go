@@ -157,7 +157,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		numConsumersPerSource:   numConsumers,
 		pollTimeoutMs:           pollTimeoutMs,
 		maxPollMessages:         maxPollMessages,
-		enableStats:             cfg.EnableSourceStats,
+		enableStats:             cfg.SourceStatsEnabled,
 		rowsIngestedCounter:     rowsIngestedCounter,
 		batchesIngestedCounter:  batchesIngestedCounter,
 		bytesIngestedCounter:    bytesIngestedCounter,
