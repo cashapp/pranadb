@@ -1,16 +1,15 @@
-package api
+package grpc
 
 import (
 	"context"
 	"fmt"
+	"github.com/squareup/pranadb/api"
 
 	"net"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/pull/exec"
 	"google.golang.org/grpc/credentials"
 
@@ -29,9 +28,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-var _ service.PranaDBServiceServer = &Server{}
+var _ service.PranaDBServiceServer = &GRPCAPIServer{}
 
-type Server struct {
+type GRPCAPIServer struct {
 	lock           sync.Mutex
 	started        bool
 	ce             *command.Executor
@@ -40,20 +39,20 @@ type Server struct {
 	errorSequence  int64
 	protoRegistry  *protolib.ProtoRegistry
 	metaController *meta.Controller
-	tlsConfig      tls.TLSConfig
+	tlsConfig      conf.TLSConfig
 }
 
-func NewAPIServer(metaController *meta.Controller, ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *Server {
-	return &Server{
+func NewGRPCAPIServer(metaController *meta.Controller, ce *command.Executor, protobufs *protolib.ProtoRegistry, cfg conf.Config) *GRPCAPIServer {
+	return &GRPCAPIServer{
 		metaController: metaController,
 		ce:             ce,
 		protoRegistry:  protobufs,
 		serverAddress:  cfg.GRPCAPIServerListenAddresses[cfg.NodeID],
-		tlsConfig:      cfg.APITLSConfig,
+		tlsConfig:      cfg.GRPCAPIServerTLSConfig,
 	}
 }
 
-func (s *Server) Start() error {
+func (s *GRPCAPIServer) Start() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.started {
@@ -63,11 +62,15 @@ func (s *Server) Start() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	opts, err := s.getTLSOpts()
+	opt, err := s.getTLSOpt()
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	s.gsrv = grpc.NewServer(opts...)
+	if opt != nil {
+		s.gsrv = grpc.NewServer(opt)
+	} else {
+		s.gsrv = grpc.NewServer()
+	}
 	reflection.Register(s.gsrv)
 	service.RegisterPranaDBServiceServer(s.gsrv, s)
 	s.started = true
@@ -75,21 +78,18 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) getTLSOpts() ([]grpc.ServerOption, error) {
-	if reflect.DeepEqual(s.tlsConfig, tls.TLSConfig{}) {
-		return []grpc.ServerOption{}, nil
-	}
-	tlsConfig, err := tls.BuildTLSConfig(s.tlsConfig)
+func (s *GRPCAPIServer) getTLSOpt() (grpc.ServerOption, error) {
+	tlsConf, err := api.CreateServerTLSConfig(s.tlsConfig)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
-	opts := []grpc.ServerOption{
-		grpc.Creds(credentials.NewTLS(tlsConfig)),
+	if tlsConf == nil {
+		return nil, nil
 	}
-	return opts, nil
+	return grpc.Creds(credentials.NewTLS(tlsConf)), nil
 }
 
-func (s *Server) startServer(list net.Listener) {
+func (s *GRPCAPIServer) startServer(list net.Listener) {
 	err := s.gsrv.Serve(list) //nolint:ifshort
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -99,7 +99,7 @@ func (s *Server) startServer(list net.Listener) {
 	}
 }
 
-func (s *Server) Stop() error {
+func (s *GRPCAPIServer) Stop() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if !s.started {
@@ -110,7 +110,7 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
+func (s *GRPCAPIServer) ExecuteStatement(in *service.ExecuteStatementRequest,
 	stream service.PranaDBService_ExecuteStatementServer) error {
 	defer common.PanicHandler()
 	var schema *common.Schema
@@ -173,10 +173,10 @@ func (s *Server) ExecuteStatement(in *service.ExecuteStatementRequest,
 	return s.doExecuteStatement(executor, int(in.BatchSize), err, stream)
 }
 
-func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
+func (s *GRPCAPIServer) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
 	stream service.PranaDBService_ExecuteStatementServer) error {
 	if err != nil {
-		return MaybeConvertError(err)
+		return api.MaybeConvertError(err)
 	}
 
 	sentColHeaders := false
@@ -268,10 +268,10 @@ func (s *Server) doExecuteStatement(executor exec.PullExecutor, batchSize int, e
 	return nil
 }
 
-func (s *Server) RegisterProtobufs(ctx context.Context, request *service.RegisterProtobufsRequest) (*emptypb.Empty, error) {
+func (s *GRPCAPIServer) RegisterProtobufs(ctx context.Context, request *service.RegisterProtobufsRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.protoRegistry.RegisterFiles(request.GetDescriptors())
 }
 
-func (s *Server) GetListenAddress() string {
+func (s *GRPCAPIServer) GetListenAddress() string {
 	return s.serverAddress
 }

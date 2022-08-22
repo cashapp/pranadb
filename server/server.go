@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/api"
+	"github.com/squareup/pranadb/api/grpc"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/failinject"
@@ -95,15 +95,15 @@ func NewServer(config conf.Config) (*Server, error) {
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageDDLCancel, commandExecutor.DDlCommandRunner().CancelHandler())
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
-	var grpcServer *api.Server
+	var grpcServer *grpc.GRPCAPIServer
 	if config.EnableGRPCAPIServer {
-		grpcServer = api.NewAPIServer(metaController, commandExecutor, protoRegistry, config)
+		grpcServer = grpc.NewGRPCAPIServer(metaController, commandExecutor, protoRegistry, config)
 	}
 	var httpAPIServer *phttp.HTTPAPIServer
 	if config.EnableHTTPAPIServer {
 		listenAddress := config.HTTPAPIServerListenAddresses[config.NodeID]
 		httpAPIServer = phttp.NewHTTPAPIServer(listenAddress, "/pranadb", commandExecutor, metaController,
-			protoRegistry, &config.HTTPAPIServerTLSConfig)
+			protoRegistry, config.HTTPAPIServerTLSConfig)
 	}
 
 	services := []service{
@@ -162,7 +162,7 @@ type Server struct {
 	schemaLoader    *schema.Loader
 	remotingServer  remoting.Server
 	ddlClient       remoting.Broadcaster
-	grpcServer      *api.Server
+	grpcServer      *grpc.GRPCAPIServer
 	services        []service
 	started         bool
 	conf            conf.Config
@@ -318,7 +318,7 @@ func (s *Server) GetRemotingServer() remoting.Server {
 	return s.remotingServer
 }
 
-func (s *Server) GetGRPCServer() *api.Server {
+func (s *Server) GetGRPCServer() *grpc.GRPCAPIServer {
 	return s.grpcServer
 }
 

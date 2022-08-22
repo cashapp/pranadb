@@ -10,6 +10,7 @@ import (
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/execctx"
+	"github.com/squareup/pranadb/internal/testcerts"
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/pull/exec"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +28,37 @@ import (
 )
 
 const testSchemaName = "test_schema"
+
+var (
+	serverKeyPath  string
+	serverCertPath string
+)
+
+func TestMain(m *testing.M) {
+	// Set up all the certs we need here. Creating certs is slow, we don't want to do it on each test
+
+	log.Info("creating certificates required for tests")
+
+	tmpDir, err := ioutil.TempDir("", "cli_test")
+	if err != nil {
+		log.Fatalf("failed to create tmp dir %v", err)
+	}
+
+	serverCertPath, serverKeyPath, err = testcerts.CreateCertKeyPairToTmpFile(tmpDir, nil, "acme badgers ltd.")
+	if err != nil {
+		log.Fatalf("failed to cert key pair %v", err)
+	}
+
+	defer func() {
+		defer func() {
+			err := os.RemoveAll(tmpDir)
+			if err != nil {
+				log.Fatalf("failed to remove test tmpdir %v", err)
+			}
+		}()
+	}()
+	m.Run()
+}
 
 func TestExecuteQuery(t *testing.T) {
 	ex, err := createTestSQLExec()
@@ -50,7 +83,6 @@ func TestExecuteQuery(t *testing.T) {
 	require.Equal(t, testSchemaName, schema)
 
 	verifyExpectedRows(t, rows, resp)
-
 }
 
 func closeRespBody(t *testing.T, resp *http.Response) {
@@ -329,9 +361,10 @@ func startServer(t *testing.T, ex *testSQLExecutor) *HTTPAPIServer {
 	t.Helper()
 	cluster := fake.NewFakeCluster(0, 10)
 	metaController := meta.NewController(cluster)
-	tlsConf := &conf.TLSConfig{
-		KeyPath:  "testdata/server.key",
-		CertPath: "testdata/server.crt",
+	tlsConf := conf.TLSConfig{
+		EnableTLS: true,
+		KeyPath:   serverKeyPath,
+		CertPath:  serverCertPath,
 	}
 	server := NewHTTPAPIServer("localhost:6888", "/pranadb", ex, metaController, nil, tlsConf)
 	err := server.Start()
@@ -342,7 +375,7 @@ func startServer(t *testing.T, ex *testSQLExecutor) *HTTPAPIServer {
 func createClient(t *testing.T, enableHTTP2 bool) *http.Client {
 	t.Helper()
 	// Create config for the test client
-	caCert, err := ioutil.ReadFile("testdata/server.crt")
+	caCert, err := ioutil.ReadFile(serverCertPath)
 	require.NoError(t, err)
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)

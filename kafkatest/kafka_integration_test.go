@@ -16,7 +16,6 @@ import (
 
 	"github.com/squareup/pranadb/client"
 	"github.com/squareup/pranadb/conf"
-	pranadbtls "github.com/squareup/pranadb/conf/tls"
 	"github.com/squareup/pranadb/msggen"
 	"github.com/squareup/pranadb/server"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestKafkaIntegration(t *testing.T) {
 	cluster := startPranaCluster(t, dataDir)
 	defer stopPranaCluster(t, cluster)
 
-	cli := client.NewClientUsingGRPC(cluster[0].GetGRPCServer().GetListenAddress(), pranadbtls.TLSConfig{})
+	cli := client.NewClientUsingGRPC(cluster[0].GetGRPCServer().GetListenAddress(), client.TLSConfig{})
 	err = cli.Start()
 	require.NoError(t, err)
 	defer func() {

@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
@@ -18,14 +17,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/squareup/pranadb/command/parser"
-	pranadbtls "github.com/squareup/pranadb/conf/tls"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/squareup/pranadb/errors"
@@ -47,22 +44,21 @@ const (
 // Client is a simple Client used for executing statements against PranaDB, it used by the CLI and elsewhere
 // It can use the PranaDB gRPC or HTTP API for talking to PranaDB
 type Client struct {
-	lock                    sync.Mutex
-	started                 bool
-	serverAddress           string
-	grpcConn                *grpc.ClientConn
-	grpcClient              service.PranaDBServiceClient
-	httpClient              *http.Client
-	batchSize               int
-	currentSchema           string
-	maxLineWidth            int
-	useHTTPAPI              bool
-	disableCertVerification bool
-	serverCertPath          string
-	tlsConfig               pranadbtls.TLSConfig
+	lock          sync.Mutex
+	started       bool
+	serverAddress string
+	grpcConn      *grpc.ClientConn
+	grpcClient    service.PranaDBServiceClient
+	httpClient    *http.Client
+	batchSize     int
+	currentSchema string
+	maxLineWidth  int
+	useHTTPAPI    bool
+	tlsConfig     TLSConfig
+	exitOnError   bool
 }
 
-func NewClientUsingGRPC(serverAddress string, tlsConfig pranadbtls.TLSConfig) *Client {
+func NewClientUsingGRPC(serverAddress string, tlsConfig TLSConfig) *Client {
 	return &Client{
 		serverAddress: serverAddress,
 		batchSize:     10000,
@@ -71,13 +67,13 @@ func NewClientUsingGRPC(serverAddress string, tlsConfig pranadbtls.TLSConfig) *C
 	}
 }
 
-func NewClientUsingHTTP(serverAddress string, serverCertPath string) *Client {
+func NewClientUsingHTTP(serverAddress string, tlsConfig TLSConfig) *Client {
 	return &Client{
-		serverAddress:  serverAddress,
-		batchSize:      10000,
-		maxLineWidth:   defaultMaxLineWidth,
-		useHTTPAPI:     true,
-		serverCertPath: serverCertPath,
+		serverAddress: serverAddress,
+		batchSize:     10000,
+		maxLineWidth:  defaultMaxLineWidth,
+		useHTTPAPI:    true,
+		tlsConfig:     tlsConfig,
 	}
 }
 
@@ -87,32 +83,25 @@ func (c *Client) Start() error {
 	if c.started {
 		return nil
 	}
+	tlsConf, err := createClientTLSConfig(c.tlsConfig)
+	if err != nil {
+		return err
+	}
 	if c.useHTTPAPI {
-		if c.serverCertPath == "" {
-			return errors.New("no server certificate has been provided")
-		}
-		caCert, err := ioutil.ReadFile(c.serverCertPath)
-		if err != nil {
-			return errors.Errorf("failed to open server cert file: %s %v", c.serverCertPath, err)
-		}
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-		tlsConfig := &tls.Config{
-			RootCAs:            caCertPool,
-			InsecureSkipVerify: c.disableCertVerification, //nolint:gosec
-		}
 		c.httpClient = &http.Client{}
 		c.httpClient.Transport = &http2.Transport{
-			TLSClientConfig: tlsConfig,
+			TLSClientConfig: tlsConf,
 		}
 	} else {
-		dialOpts, err := c.getDialOptions()
-		if err != nil {
-			return errors.WithStack(err)
+		var dialOpt grpc.DialOption
+		if tlsConf == nil {
+			dialOpt = grpc.WithInsecure()
+		} else {
+			dialOpt = grpc.WithTransportCredentials(credentials.NewTLS(tlsConf))
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		conn, err := grpc.DialContext(ctx, c.serverAddress, dialOpts)
+		conn, err := grpc.DialContext(ctx, c.serverAddress, dialOpt)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -137,16 +126,14 @@ func (c *Client) Stop() error {
 	return c.grpcConn.Close()
 }
 
-func (c *Client) SetDisableCertVerification(disable bool) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.disableCertVerification = disable
-}
-
 func (c *Client) SetPageSize(pageSize int) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.batchSize = pageSize
+}
+
+func (c *Client) SetExitOnError(exitOnError bool) {
+	c.exitOnError = exitOnError
 }
 
 // ExecuteStatement executes a Prana statement. Lines of output will be received on the channel that is returned.
@@ -416,7 +403,7 @@ func (c *Client) executeWithGRPClient(statement string, argTypes []string, args 
 		Args:      psArgs,
 	})
 	if err != nil {
-		return 0, checkErrorAndMaybeExit(err)
+		return 0, c.checkErrorAndMaybeExit(err)
 	}
 
 	// Receive column metadata and page data until the result of the query is fully returned.
@@ -436,7 +423,7 @@ func (c *Client) executeWithGRPClient(statement string, argTypes []string, args 
 			}
 			break
 		} else if err != nil {
-			return 0, checkErrorAndMaybeExit(err)
+			return 0, c.checkErrorAndMaybeExit(err)
 		}
 		switch result := resp.Result.(type) {
 		case *service.ExecuteStatementResponse_Columns:
@@ -748,26 +735,18 @@ func (c *Client) RegisterProtobufs(ctx context.Context, descriptorSet *descripto
 	return errors.WithStack(err)
 }
 
-func (c *Client) getDialOptions() (grpc.DialOption, error) {
-	if reflect.DeepEqual(c.tlsConfig, pranadbtls.TLSConfig{}) {
-		return grpc.WithInsecure(), nil
-	}
-	tlsConfig, err := pranadbtls.BuildTLSConfig(c.tlsConfig)
-	if err != nil {
-		return grpc.EmptyDialOption{}, errors.WithStack(err)
-	}
-	return grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)), nil
-}
-
-func checkErrorAndMaybeExit(err error) error {
+func (c *Client) checkErrorAndMaybeExit(err error) error {
 	stripped := stripgRPCPrefix(err)
 	if strings.HasPrefix(stripped.Error(), "PDB") {
 		// It's a Prana error
 		return stripped
 	}
-	log.Errorf("Connection error. Will exit. %v", stripped)
-	os.Exit(1)
-	return nil
+	if c.exitOnError {
+		log.Errorf("Connection error. Will exit. %v", stripped)
+		os.Exit(1)
+		return nil
+	}
+	return err
 }
 
 func stripgRPCPrefix(err error) error {
@@ -791,4 +770,43 @@ func toArray(line string) ([]interface{}, error) {
 	var arr []interface{}
 	err := json.Unmarshal([]byte(line), &arr)
 	return arr, err
+}
+
+type TLSConfig struct {
+	EnableTLS                 bool   `help:"Set to true to enable TLS. TLS must be enabled when using the HTTP 2 API" default:"false"`
+	TrustedCertsPath          string `help:"Path to a PEM encoded file containing certificate(s) of trusted servers and/or CAs"`
+	KeyPath                   string `help:"Path to a PEM encoded file containing the client private key. Only needed with TLS client authentication"`
+	CertPath                  string `help:"Path to a PEM encoded file containing the client certificate. Only needed with TLS client authentication"`
+	DisableServerVerification bool   `help:"Set to true to disable server certificate verification. WARNING use only for testing, setting this can expose you to man-in-the-middle attacks"`
+}
+
+func createClientTLSConfig(config TLSConfig) (*tls.Config, error) {
+	if !config.EnableTLS {
+		return nil, nil
+	}
+	tlsConfig := &tls.Config{ // nolint: gosec
+		MinVersion: tls.VersionTLS12,
+	}
+	if config.TrustedCertsPath != "" {
+		rootCerts, err := ioutil.ReadFile(config.TrustedCertsPath)
+		if err != nil {
+			return nil, err
+		}
+		rootCertPool := x509.NewCertPool()
+		if ok := rootCertPool.AppendCertsFromPEM(rootCerts); !ok {
+			return nil, errors.Errorf("failed to append root certs PEM (invalid PEM block?)")
+		}
+		tlsConfig.RootCAs = rootCertPool
+	}
+	if config.CertPath != "" {
+		keyPair, err := common.CreateKeyPair(config.CertPath, config.KeyPath)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{keyPair}
+	}
+	if config.DisableServerVerification {
+		tlsConfig.InsecureSkipVerify = true
+	}
+	return tlsConfig, nil
 }

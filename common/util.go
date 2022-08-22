@@ -2,9 +2,11 @@ package common
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/csv"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -196,4 +198,20 @@ func CSVQuote(fields ...string) string {
 	}
 	writer.Flush()
 	return buff.String()
+}
+
+func CreateKeyPair(certPath string, keyPath string) (tls.Certificate, error) {
+	clientCert, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	clientKey, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPair, err := tls.X509KeyPair(clientCert, clientKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return keyPair, nil
 }

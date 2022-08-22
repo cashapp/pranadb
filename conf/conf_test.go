@@ -96,15 +96,43 @@ func raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig() Config {
 
 func httpAPIServerTLSKeyPathNotSpecifiedConfig() Config {
 	cnf := confAllFields
-	cnf.EnableHTTPAPIServer = true
 	cnf.HTTPAPIServerTLSConfig.KeyPath = ""
 	return cnf
 }
 
 func httpAPIServerTLSCertPathNotSpecifiedConfig() Config {
 	cnf := confAllFields
-	cnf.EnableHTTPAPIServer = true
 	cnf.HTTPAPIServerTLSConfig.CertPath = ""
+	return cnf
+}
+
+func httpAPIServerTLSNotEnabled() Config {
+	cnf := confAllFields
+	cnf.HTTPAPIServerTLSConfig.EnableTLS = false
+	return cnf
+}
+
+func httpAPIServerNoClientCerts() Config {
+	cnf := confAllFields
+	cnf.HTTPAPIServerTLSConfig.ClientCertsPath = ""
+	return cnf
+}
+
+func grpcAPIServerTLSKeyPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.GRPCAPIServerTLSConfig.KeyPath = ""
+	return cnf
+}
+
+func grpcAPIServerTLSCertPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.GRPCAPIServerTLSConfig.CertPath = ""
+	return cnf
+}
+
+func grpcAPIServerNoClientCerts() Config {
+	cnf := confAllFields
+	cnf.GRPCAPIServerTLSConfig.ClientCertsPath = ""
 	return cnf
 }
 
@@ -308,8 +336,15 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
 	{"PDB3000 - Invalid configuration: MaxProcessBatchSize must be > 0", invalidMaxProcessorBatchSize()},
 	{"PDB3000 - Invalid configuration: MaxForwardWriteBatchSize must be > 0", invalidMaxForwardWriteBatchSize()},
+
 	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.KeyPath must be specified for HTTP API server", httpAPIServerTLSKeyPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server", httpAPIServerTLSCertPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.EnableTLS must be true if the HTTP API server is enabled", httpAPIServerTLSNotEnabled()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled", httpAPIServerNoClientCerts()},
+
+	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.KeyPath must be specified for GRPC API server", grpcAPIServerTLSKeyPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.CertPath must be specified for GRPC API server", grpcAPIServerTLSCertPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled", grpcAPIServerNoClientCerts()},
 }
 
 func TestValidate(t *testing.T) {
@@ -348,11 +383,21 @@ var confAllFields = Config{
 	LocksCompactionOverhead:      51,
 	EnableGRPCAPIServer:          true,
 	GRPCAPIServerListenAddresses: []string{"addr7", "addr8", "addr9"},
+	GRPCAPIServerTLSConfig: TLSConfig{
+		EnableTLS:       true,
+		KeyPath:         "grpc_key_path",
+		CertPath:        "grpc_cert_path",
+		ClientCertsPath: "grpc_client_certs_path",
+		ClientAuth:      "grpc_client_auth",
+	},
 	EnableHTTPAPIServer:          true,
 	HTTPAPIServerListenAddresses: []string{"addr10", "addr11", "addr12"},
 	HTTPAPIServerTLSConfig: TLSConfig{
-		KeyPath:  "http_key_path",
-		CertPath: "http_cert_path",
+		EnableTLS:       true,
+		KeyPath:         "http_key_path",
+		CertPath:        "http_cert_path",
+		ClientCertsPath: "http_client_certs_path",
+		ClientAuth:      "http_client_auth",
 	},
 	RaftRTTMs:                100,
 	RaftHeartbeatRTT:         10,

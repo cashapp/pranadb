@@ -32,6 +32,12 @@ grpc-api-server-listen-addresses  = [
   "addr8",
   "addr9"
 ]
+grpc-api-server-tls-enable-tls    = true
+grpc-api-server-tls-key-path      = "grpc-key-path"
+grpc-api-server-tls-cert-path     = "grpc-cert-path"
+grpc-api-server-tls-client-certs-path = "grpc-client-certs-path"
+grpc-api-server-tls-client-auth = "require-and-verify-client-cert"
+
 enable-http-api-server            = true
 http-api-server-listen-addresses  = [
   "addr7-1",
@@ -40,6 +46,8 @@ http-api-server-listen-addresses  = [
 ]
 http-api-server-tls-key-path      = "http-key-path"
 http-api-server-tls-cert-path     = "http-cert-path"
+http-api-server-tls-client-certs-path = "http-client-certs-path"
+http-api-server-tls-client-auth = "require-and-verify-client-cert"
 log-format                        = "json"
 log-level                         = "info"
 log-file                          = "-"
