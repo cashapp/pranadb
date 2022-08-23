@@ -23,7 +23,7 @@ func MaybeConvertError(err error) errors.PranaError {
 }
 
 func CreateServerTLSConfig(config conf.TLSConfig) (*tls.Config, error) {
-	if !config.EnableTLS {
+	if !config.Enabled {
 		return nil, nil
 	}
 	tlsConfig := &tls.Config{ // nolint: gosec

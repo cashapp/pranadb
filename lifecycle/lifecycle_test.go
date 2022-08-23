@@ -35,7 +35,7 @@ func TestReadinessHandlerInactive(t *testing.T) {
 func testHandler(t *testing.T, active bool, path string) {
 	t.Helper()
 	cnf := conf.NewDefaultConfig()
-	cnf.EnableLifecycleEndpoint = true
+	cnf.LifecycleEndpointEnabled = true
 	cnf.LifeCycleListenAddress = "localhost:8913"
 	cnf.StartupEndpointPath = "/started"
 	cnf.LiveEndpointPath = "/liveness"

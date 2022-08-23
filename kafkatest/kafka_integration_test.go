@@ -150,14 +150,14 @@ func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
 		cnf := conf.NewDefaultConfig()
 		cnf.NodeID = i
 		cnf.ClusterID = 12345
-		cnf.RaftAddresses = raftAddresses
+		cnf.RaftListenAddresses = raftAddresses
 		cnf.NumShards = 30
 		cnf.ReplicationFactor = 3
 		cnf.DataDir = dataDir
 		cnf.TestServer = false
 		cnf.KafkaBrokers = brokerConfigs
-		cnf.NotifListenAddresses = notifAddresses
-		cnf.EnableGRPCAPIServer = true
+		cnf.RemotingListenAddresses = notifAddresses
+		cnf.GRPCAPIServerEnabled = true
 		cnf.GRPCAPIServerListenAddresses = apiServerListenAddresses
 
 		s, err := server.NewServer(*cnf)

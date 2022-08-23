@@ -598,13 +598,13 @@ The following configuration parameters are commonly used:
   same `cluster-id`
   or different clusters can interfere with each other. Different clusters must have different values for `cluster-id`.
   It must be a positive integer.
-* `raft-addresses` - The nodes in the PranaDB cluster use Raft groups for various purposes such as replicating writes
+* `raft-listen-addresses` - The nodes in the PranaDB cluster use Raft groups for various purposes such as replicating writes
   for reliability. This parameter must contain a list of addresses (host:port) for each node in the PranaDB cluster. The
   address for node `i` must be at index
   `i` in the list. These addresses need to be accessible from each PranaDB node but don't need to be accessible from
   elsewhere.
-* `notif-listen-addresses` - Each PranaDB broadcasts notifications to other nodes for internal use. These addresses
-  define the addresses at which each node listens for notifications. This parameter must contain a list of addresses (
+* `remoting-listen-addresses` - Each PranaDB broadcasts cluster messages to other nodes for internal use. These addresses
+  define the addresses at which each node listens for messages. This parameter must contain a list of addresses (
   host:port) for each node in the PranaDB cluster. The address for node `i` must be at index
   `i` in the list. These addresses need to be accessible from each PranaDB node but don't need to be accessible from
   elsewhere.

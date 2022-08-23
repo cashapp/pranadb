@@ -3,13 +3,13 @@ cluster-id     = "6112451081796031488"
 /*
   These are the raft addresses
 */
-raft-addresses = [
+raft-listen-addresses = [
   "addr1",
   "addr2",
   "addr3"
 ]
 
-notif-listen-addresses = [
+remoting-listen-addresses = [
   "addr4",
   "addr5",
   "addr6"
@@ -26,19 +26,19 @@ sequence-snapshot-entries         = 2001
 sequence-compaction-overhead      = 1001
 locks-snapshot-entries            = 101
 locks-compaction-overhead         = 51
-enable-grpc-api-server            = true
+grpc-api-server-enabled           = true
 grpc-api-server-listen-addresses  = [
   "addr7",
   "addr8",
   "addr9"
 ]
-grpc-api-server-tls-enable-tls    = true
+grpc-api-server-tls-enabled       = true
 grpc-api-server-tls-key-path      = "grpc-key-path"
 grpc-api-server-tls-cert-path     = "grpc-cert-path"
 grpc-api-server-tls-client-certs-path = "grpc-client-certs-path"
 grpc-api-server-tls-client-auth = "require-and-verify-client-cert"
 
-enable-http-api-server            = true
+http-api-server-enabled           = true
 http-api-server-listen-addresses  = [
   "addr7-1",
   "addr8-1",

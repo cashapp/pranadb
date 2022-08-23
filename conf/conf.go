@@ -23,8 +23,8 @@ const (
 type Config struct {
 	NodeID                       int
 	ClusterID                    uint64 // All nodes in a Prana cluster must share the same ClusterID
-	RaftAddresses                []string
-	NotifListenAddresses         []string
+	RaftListenAddresses          []string
+	RemotingListenAddresses      []string
 	NumShards                    int
 	ReplicationFactor            int
 	DataDir                      string
@@ -36,22 +36,22 @@ type Config struct {
 	SequenceCompactionOverhead   int
 	LocksSnapshotEntries         int
 	LocksCompactionOverhead      int
-	EnableGRPCAPIServer          bool      `name:"enable-grpc-api-server"`
-	EnableHTTPAPIServer          bool      `name:"enable-http-api-server"`
+	GRPCAPIServerEnabled         bool      `name:"grpc-api-server-enabled"`
 	GRPCAPIServerListenAddresses []string  `name:"grpc-api-server-listen-addresses"`
 	GRPCAPIServerTLSConfig       TLSConfig `embed:"" prefix:"grpc-api-server-tls-"`
+	HTTPAPIServerEnabled         bool      `name:"http-api-server-enabled"`
 	HTTPAPIServerListenAddresses []string  `name:"http-api-server-listen-addresses"`
 	HTTPAPIServerTLSConfig       TLSConfig `embed:"" prefix:"http-api-server-tls-"`
-	EnableSourceStats            bool
+	SourceStatsEnabled           bool
 	ProtobufDescriptorDir        string `help:"Directory containing protobuf file descriptor sets that Prana should load to use for decoding Kafka messages. Filenames must end with .bin" type:"existingdir"`
-	EnableLifecycleEndpoint      bool
+	LifecycleEndpointEnabled     bool   `name:"lifecycle-endpoint-enabled"`
 	LifeCycleListenAddress       string
 	StartupEndpointPath          string
 	ReadyEndpointPath            string
 	LiveEndpointPath             string
 	MetricsBind                  string `help:"Bind address for Prometheus metrics." default:"localhost:9102" env:"METRICS_BIND"`
-	EnableMetrics                bool
-	EnableFailureInjector        bool
+	MetricsEnabled               bool
+	FailureInjectorEnabled       bool
 	ScreenDragonLogSpam          bool
 	RaftRTTMs                    int
 	RaftElectionRTT              int
@@ -69,7 +69,7 @@ type Config struct {
 }
 
 type TLSConfig struct {
-	EnableTLS       bool   `help:"Set to true to enable TLS. TLS must be enabled when using the HTTP 2 API" default:"false"`
+	Enabled         bool   `help:"Set to true to enable TLS. TLS must be enabled when using the HTTP 2 API" default:"false"`
 	KeyPath         string `help:"Path to a PEM encoded file containing the server private key"`
 	CertPath        string `help:"Path to a PEM encoded file containing the server certificate"`
 	ClientCertsPath string `help:"Path to a PEM encoded file containing trusted client certificates and/or CA certificates. Only needed with TLS client authentication"`
@@ -124,8 +124,8 @@ func (c *Config) ApplyDefaults() {
 	if c.MaxForwardWriteBatchSize == 0 {
 		c.MaxForwardWriteBatchSize = DefaultMaxForwardWriteBatchSize
 	}
-	if c.EnableHTTPAPIServer {
-		c.HTTPAPIServerTLSConfig.EnableTLS = true
+	if c.HTTPAPIServerEnabled {
+		c.HTTPAPIServerTLSConfig.Enabled = true
 	}
 }
 
@@ -148,12 +148,12 @@ func (c *Config) Validate() error { //nolint:gocyclo
 				bName, BrokerClientFake, BrokerClientDefault))
 		}
 	}
-	if c.EnableHTTPAPIServer {
+	if c.HTTPAPIServerEnabled {
 		if len(c.HTTPAPIServerListenAddresses) == 0 {
 			return errors.NewInvalidConfigurationError("HTTPAPIServerListenAddresses must be specified")
 		}
-		if !c.HTTPAPIServerTLSConfig.EnableTLS {
-			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.EnableTLS must be true if the HTTP API server is enabled")
+		if !c.HTTPAPIServerTLSConfig.Enabled {
+			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.Enabled must be true if the HTTP API server is enabled")
 		}
 		if c.HTTPAPIServerTLSConfig.CertPath == "" {
 			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server")
@@ -165,11 +165,11 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("HTTPAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled")
 		}
 	}
-	if c.EnableGRPCAPIServer {
+	if c.GRPCAPIServerEnabled {
 		if len(c.GRPCAPIServerListenAddresses) == 0 {
 			return errors.NewInvalidConfigurationError("GRPCAPIServerListenAddresses must be specified")
 		}
-		if c.GRPCAPIServerTLSConfig.EnableTLS {
+		if c.GRPCAPIServerTLSConfig.Enabled {
 			if c.GRPCAPIServerTLSConfig.CertPath == "" {
 				return errors.NewInvalidConfigurationError("GRPCAPIServerTLSConfig.CertPath must be specified for GRPC API server")
 			}
@@ -182,8 +182,8 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		}
 	}
 	if !c.TestServer {
-		if c.NodeID >= len(c.RaftAddresses) {
-			return errors.NewInvalidConfigurationError("NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)")
+		if c.NodeID >= len(c.RaftListenAddresses) {
+			return errors.NewInvalidConfigurationError("NodeID must be in the range 0 (inclusive) to len(RaftListenAddresses) (exclusive)")
 		}
 		if c.DataDir == "" {
 			return errors.NewInvalidConfigurationError("DataDir must be specified")
@@ -191,17 +191,17 @@ func (c *Config) Validate() error { //nolint:gocyclo
 		if c.ReplicationFactor < 3 {
 			return errors.NewInvalidConfigurationError("ReplicationFactor must be >= 3")
 		}
-		if len(c.RaftAddresses) < c.ReplicationFactor {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be >= ReplicationFactor")
+		if len(c.RaftListenAddresses) < c.ReplicationFactor {
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be >= ReplicationFactor")
 		}
-		if len(c.NotifListenAddresses) != len(c.RaftAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of NotifListenerAddresses")
+		if len(c.RemotingListenAddresses) != len(c.RaftListenAddresses) {
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of RemotingListenAddresses")
 		}
-		if c.EnableGRPCAPIServer && len(c.GRPCAPIServerListenAddresses) != len(c.RaftAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of GRPCAPIServerListenAddresses")
+		if c.GRPCAPIServerEnabled && len(c.GRPCAPIServerListenAddresses) != len(c.RaftListenAddresses) {
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of GRPCAPIServerListenAddresses")
 		}
-		if c.EnableHTTPAPIServer && len(c.HTTPAPIServerListenAddresses) != len(c.RaftAddresses) {
-			return errors.NewInvalidConfigurationError("Number of RaftAddresses must be same as number of HTTPAPIServerListenAddresses")
+		if c.HTTPAPIServerEnabled && len(c.HTTPAPIServerListenAddresses) != len(c.RaftListenAddresses) {
+			return errors.NewInvalidConfigurationError("Number of RaftListenAddresses must be same as number of HTTPAPIServerListenAddresses")
 		}
 		if c.DataSnapshotEntries < 10 {
 			return errors.NewInvalidConfigurationError("DataSnapshotEntries must be >= 10")
@@ -231,7 +231,7 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("LocksSnapshotEntries must be >= LocksCompactionOverhead")
 		}
 	}
-	if c.EnableLifecycleEndpoint {
+	if c.LifecycleEndpointEnabled {
 		if c.LifeCycleListenAddress == "" {
 			return errors.NewInvalidConfigurationError("LifeCycleListenAddress must be specified")
 		}

@@ -62,9 +62,9 @@ func NewServer(config conf.Config) (*Server, error) {
 			return nil, errors.WithStack(err)
 		}
 		clus = drag
-		remotingServer = remoting.NewServer(config.NotifListenAddresses[config.NodeID])
-		ddlClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
-		ddlResetClient = remoting.NewBroadcastWrapper(config.NotifListenAddresses...)
+		remotingServer = remoting.NewServer(config.RemotingListenAddresses[config.NodeID])
+		ddlClient = remoting.NewBroadcastWrapper(config.RemotingListenAddresses...)
+		ddlResetClient = remoting.NewBroadcastWrapper(config.RemotingListenAddresses...)
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageLeaderInfos, drag.GetLeaderInfosHandler())
@@ -75,9 +75,9 @@ func NewServer(config conf.Config) (*Server, error) {
 	clus.SetRemoteQueryExecutionCallback(pullEngine)
 	protoRegistry := protolib.NewProtoRegistry(metaController, clus, pullEngine, config.ProtobufDescriptorDir)
 	protoRegistry.SetNotifier(ddlClient)
-	theMetrics := metrics.NewServer(config, !config.EnableMetrics)
+	theMetrics := metrics.NewServer(config, !config.MetricsEnabled)
 	var failureInjector failinject.Injector
-	if config.EnableFailureInjector {
+	if config.FailureInjectorEnabled {
 		failureInjector = failinject.NewInjector()
 	} else {
 		failureInjector = failinject.NewDummyInjector()
@@ -96,11 +96,11 @@ func NewServer(config conf.Config) (*Server, error) {
 	remotingServer.RegisterMessageHandler(remoting.ClusterMessageReloadProtobuf, protoRegistry)
 	schemaLoader := schema.NewLoader(metaController, pushEngine, pullEngine)
 	var grpcServer *grpc.GRPCAPIServer
-	if config.EnableGRPCAPIServer {
+	if config.GRPCAPIServerEnabled {
 		grpcServer = grpc.NewGRPCAPIServer(metaController, commandExecutor, protoRegistry, config)
 	}
 	var httpAPIServer *phttp.HTTPAPIServer
-	if config.EnableHTTPAPIServer {
+	if config.HTTPAPIServerEnabled {
 		listenAddress := config.HTTPAPIServerListenAddresses[config.NodeID]
 		httpAPIServer = phttp.NewHTTPAPIServer(listenAddress, "/pranadb", commandExecutor, metaController,
 			protoRegistry, config.HTTPAPIServerTLSConfig)

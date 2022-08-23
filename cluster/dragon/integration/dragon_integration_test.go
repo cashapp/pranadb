@@ -314,7 +314,7 @@ func startDragonCluster(dataDir string) ([]*dragon.Dragon, error) {
 		cnf := conf.NewDefaultConfig()
 		cnf.NodeID = i
 		cnf.ClusterID = 123
-		cnf.RaftAddresses = nodeAddresses
+		cnf.RaftListenAddresses = nodeAddresses
 		cnf.NumShards = numShards
 		cnf.DataDir = dataDir
 		cnf.ReplicationFactor = replicationFactor

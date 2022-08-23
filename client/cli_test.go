@@ -105,9 +105,9 @@ func testWithTLSNoClientAuth(t *testing.T, httpAPI bool) {
 		TrustedCertsPath: caSignedServerCertPath,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS: true,
-		KeyPath:   caSignedServerKeyPath,
-		CertPath:  caSignedServerCertPath,
+		Enabled:  true,
+		KeyPath:  caSignedServerKeyPath,
+		CertPath: caSignedServerCertPath,
 	}
 	err := testClientTransport(t, httpAPI, clientTLSConfig, serverTLSConfig)
 	require.NoError(t, err)
@@ -128,9 +128,9 @@ func testWithTLSNoClientAuthNoServerTrust(t *testing.T, httpAPI bool) {
 		DisableServerVerification: true,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS: true,
-		KeyPath:   caSignedServerKeyPath,
-		CertPath:  caSignedServerCertPath,
+		Enabled:  true,
+		KeyPath:  caSignedServerKeyPath,
+		CertPath: caSignedServerCertPath,
 	}
 	err := testClientTransport(t, httpAPI, clientTLSConfig, serverTLSConfig)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func testWithTLSClientAuthSingleCA(t *testing.T, httpAPI bool) {
 		CertPath:         caSignedClientCertPath,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         caSignedServerKeyPath,
 		CertPath:        caSignedServerCertPath,
 		ClientCertsPath: caCertPath,
@@ -182,7 +182,7 @@ func testWithTLSClientAuthSelfSignedCerts(t *testing.T, httpAPI bool) {
 		CertPath:         selfSignedClientCertPath,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         selfSignedServerKeyPath,
 		CertPath:        selfSignedServerCertPath,
 		ClientCertsPath: selfSignedClientCertPath,
@@ -208,7 +208,7 @@ func testWithTLSClientAuthFailNoClientCertProvided(t *testing.T, httpAPI bool) {
 		TrustedCertsPath: selfSignedClientCertPath,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         selfSignedServerKeyPath,
 		CertPath:        selfSignedServerCertPath,
 		ClientCertsPath: selfSignedClientCertPath,
@@ -236,7 +236,7 @@ func testWithTLSClientAuthFailUntrustedClientCertProvided(t *testing.T, httpAPI 
 		KeyPath:          selfSignedClientKeyPath2,
 	}
 	serverTLSConfig := conf.TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         selfSignedServerKeyPath,
 		CertPath:        selfSignedServerCertPath,
 		ClientCertsPath: selfSignedClientCertPath,
@@ -251,13 +251,13 @@ func testClientTransport(t *testing.T, httpAPI bool, clientTLSConfig TLSConfig, 
 	cfg := conf.NewTestConfig(1)
 	serverAddress := "localhost:6584"
 	if httpAPI {
-		cfg.EnableHTTPAPIServer = true
-		cfg.EnableGRPCAPIServer = false
+		cfg.HTTPAPIServerEnabled = true
+		cfg.GRPCAPIServerEnabled = false
 		cfg.HTTPAPIServerListenAddresses = []string{serverAddress}
 		cfg.HTTPAPIServerTLSConfig = serverTLSConfig
 	} else {
-		cfg.EnableGRPCAPIServer = true
-		cfg.EnableHTTPAPIServer = false
+		cfg.GRPCAPIServerEnabled = true
+		cfg.HTTPAPIServerEnabled = false
 		cfg.GRPCAPIServerListenAddresses = []string{serverAddress}
 		cfg.GRPCAPIServerTLSConfig = serverTLSConfig
 	}

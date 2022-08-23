@@ -50,14 +50,14 @@ func invalidBrokerClientTypeConf() Config {
 
 func invalidGRPCAPIServerListenAddress() Config {
 	cnf := confAllFields
-	cnf.EnableGRPCAPIServer = true
+	cnf.GRPCAPIServerEnabled = true
 	cnf.GRPCAPIServerListenAddresses = nil
 	return cnf
 }
 
 func invalidHTTPAPIServerListenAddress() Config {
 	cnf := confAllFields
-	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerEnabled = true
 	cnf.HTTPAPIServerListenAddresses = nil
 	return cnf
 }
@@ -68,28 +68,28 @@ func invalidReplicationFactorConfig() Config {
 	return cnf
 }
 
-func invalidRaftAddressesConfig() Config {
+func invalidRaftListenAddressesConfig() Config {
 	cnf := confAllFields
-	cnf.RaftAddresses = cnf.RaftAddresses[1:]
+	cnf.RaftListenAddresses = cnf.RaftListenAddresses[1:]
 	return cnf
 }
 
-func raftAndNotifListenerAddressedDifferentLengthConfig() Config {
+func raftAndRemotingListenAddressedDifferentLengthConfig() Config {
 	cnf := confAllFields
-	cnf.NotifListenAddresses = append(cnf.NotifListenAddresses, "someotheraddresss")
+	cnf.RemotingListenAddresses = append(cnf.RemotingListenAddresses, "someotheraddresss")
 	return cnf
 }
 
 func raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig() Config {
 	cnf := confAllFields
-	cnf.EnableGRPCAPIServer = true
+	cnf.GRPCAPIServerEnabled = true
 	cnf.GRPCAPIServerListenAddresses = append(cnf.GRPCAPIServerListenAddresses, "someotheraddresss")
 	return cnf
 }
 
 func raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig() Config {
 	cnf := confAllFields
-	cnf.EnableHTTPAPIServer = true
+	cnf.HTTPAPIServerEnabled = true
 	cnf.HTTPAPIServerListenAddresses = append(cnf.HTTPAPIServerListenAddresses, "someotheraddresss")
 	return cnf
 }
@@ -108,7 +108,7 @@ func httpAPIServerTLSCertPathNotSpecifiedConfig() Config {
 
 func httpAPIServerTLSNotEnabled() Config {
 	cnf := confAllFields
-	cnf.HTTPAPIServerTLSConfig.EnableTLS = false
+	cnf.HTTPAPIServerTLSConfig.Enabled = false
 	return cnf
 }
 
@@ -195,7 +195,7 @@ func locksCompactionGreaterThanDataSnapshotEntries() Config {
 
 func NodeIDOutOfRangeConf() Config {
 	cnf := confAllFields
-	cnf.NodeID = len(cnf.RaftAddresses)
+	cnf.NodeID = len(cnf.RaftListenAddresses)
 	return cnf
 }
 
@@ -208,7 +208,7 @@ const (
 
 func invalidLifecycleListenAddress() Config {
 	cnf := confAllFields
-	cnf.EnableLifecycleEndpoint = true
+	cnf.LifecycleEndpointEnabled = true
 	cnf.LifeCycleListenAddress = ""
 	cnf.StartupEndpointPath = startupEndpointPath
 	cnf.LiveEndpointPath = liveEndpointPath
@@ -218,7 +218,7 @@ func invalidLifecycleListenAddress() Config {
 
 func invalidStartupEndpointPath() Config {
 	cnf := confAllFields
-	cnf.EnableLifecycleEndpoint = true
+	cnf.LifecycleEndpointEnabled = true
 	cnf.LifeCycleListenAddress = lifeCycleListenAddress
 	cnf.StartupEndpointPath = ""
 	cnf.LiveEndpointPath = liveEndpointPath
@@ -228,7 +228,7 @@ func invalidStartupEndpointPath() Config {
 
 func invalidLiveEndpointPath() Config {
 	cnf := confAllFields
-	cnf.EnableLifecycleEndpoint = true
+	cnf.LifecycleEndpointEnabled = true
 	cnf.LifeCycleListenAddress = lifeCycleListenAddress
 	cnf.StartupEndpointPath = startupEndpointPath
 	cnf.LiveEndpointPath = ""
@@ -238,7 +238,7 @@ func invalidLiveEndpointPath() Config {
 
 func invalidReadyEndpointPath() Config {
 	cnf := confAllFields
-	cnf.EnableLifecycleEndpoint = true
+	cnf.LifecycleEndpointEnabled = true
 	cnf.LifeCycleListenAddress = lifeCycleListenAddress
 	cnf.StartupEndpointPath = startupEndpointPath
 	cnf.LiveEndpointPath = liveEndpointPath
@@ -308,12 +308,12 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
 	{"PDB3000 - Invalid configuration: GRPCAPIServerListenAddresses must be specified", invalidGRPCAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: HTTPAPIServerListenAddresses must be specified", invalidHTTPAPIServerListenAddress()},
-	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftAddresses) (exclusive)", NodeIDOutOfRangeConf()},
+	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftListenAddresses) (exclusive)", NodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be >= ReplicationFactor", invalidRaftAddressesConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of NotifListenerAddresses", raftAndNotifListenerAddressedDifferentLengthConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of GRPCAPIServerListenAddresses", raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig()},
-	{"PDB3000 - Invalid configuration: Number of RaftAddresses must be same as number of HTTPAPIServerListenAddresses", raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be >= ReplicationFactor", invalidRaftListenAddressesConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of RemotingListenAddresses", raftAndRemotingListenAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of GRPCAPIServerListenAddresses", raftAndGRPCAPIServerListenerAddressedDifferentLengthConfig()},
+	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of HTTPAPIServerListenAddresses", raftAndHTTPAPIServerListenerAddressedDifferentLengthConfig()},
 	{"PDB3000 - Invalid configuration: DataSnapshotEntries must be >= 10", invalidDataSnapshotEntries()},
 	{"PDB3000 - Invalid configuration: DataCompactionOverhead must be >= 5", invalidDataCompactionOverhead()},
 	{"PDB3000 - Invalid configuration: SequenceSnapshotEntries must be >= 10", invalidSequenceSnapshotEntries()},
@@ -339,7 +339,7 @@ var invalidConfigs = []configPair{
 
 	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.KeyPath must be specified for HTTP API server", httpAPIServerTLSKeyPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.CertPath must be specified for HTTP API server", httpAPIServerTLSCertPathNotSpecifiedConfig()},
-	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.EnableTLS must be true if the HTTP API server is enabled", httpAPIServerTLSNotEnabled()},
+	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.Enabled must be true if the HTTP API server is enabled", httpAPIServerTLSNotEnabled()},
 	{"PDB3000 - Invalid configuration: HTTPAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled", httpAPIServerNoClientCerts()},
 
 	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.KeyPath must be specified for GRPC API server", grpcAPIServerTLSKeyPathNotSpecifiedConfig()},
@@ -359,14 +359,14 @@ func TestValidate(t *testing.T) {
 }
 
 var confAllFields = Config{
-	NodeID:               0,
-	ClusterID:            12345,
-	RaftAddresses:        []string{"addr1", "addr2", "addr3"},
-	NotifListenAddresses: []string{"addr4", "addr5", "addr6"},
-	NumShards:            50,
-	ReplicationFactor:    3,
-	DataDir:              "foo/bar/baz",
-	TestServer:           false,
+	NodeID:                  0,
+	ClusterID:               12345,
+	RaftListenAddresses:     []string{"addr1", "addr2", "addr3"},
+	RemotingListenAddresses: []string{"addr4", "addr5", "addr6"},
+	NumShards:               50,
+	ReplicationFactor:       3,
+	DataDir:                 "foo/bar/baz",
+	TestServer:              false,
 	KafkaBrokers: BrokerConfigs{
 		"testbroker": BrokerConfig{
 			ClientType: BrokerClientFake,
@@ -381,19 +381,19 @@ var confAllFields = Config{
 	SequenceCompactionOverhead:   1001,
 	LocksSnapshotEntries:         101,
 	LocksCompactionOverhead:      51,
-	EnableGRPCAPIServer:          true,
+	GRPCAPIServerEnabled:         true,
 	GRPCAPIServerListenAddresses: []string{"addr7", "addr8", "addr9"},
 	GRPCAPIServerTLSConfig: TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         "grpc_key_path",
 		CertPath:        "grpc_cert_path",
 		ClientCertsPath: "grpc_client_certs_path",
 		ClientAuth:      "grpc_client_auth",
 	},
-	EnableHTTPAPIServer:          true,
+	HTTPAPIServerEnabled:         true,
 	HTTPAPIServerListenAddresses: []string{"addr10", "addr11", "addr12"},
 	HTTPAPIServerTLSConfig: TLSConfig{
-		EnableTLS:       true,
+		Enabled:         true,
 		KeyPath:         "http_key_path",
 		CertPath:        "http_cert_path",
 		ClientCertsPath: "http_client_certs_path",
