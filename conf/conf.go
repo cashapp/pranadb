@@ -2,6 +2,7 @@ package conf
 
 import (
 	"fmt"
+
 	"github.com/squareup/pranadb/errors"
 )
 
@@ -24,6 +25,7 @@ type Config struct {
 	NodeID                       int
 	ClusterID                    uint64 // All nodes in a Prana cluster must share the same ClusterID
 	RaftListenAddresses          []string
+	IntraClusterTLSConfig        TLSConfig `embed:"" prefix:"intra-cluster-tls-"`
 	RemotingListenAddresses      []string
 	NumShards                    int
 	ReplicationFactor            int
@@ -262,6 +264,17 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	}
 	if c.MaxForwardWriteBatchSize < 1 {
 		return errors.NewInvalidConfigurationError("MaxForwardWriteBatchSize must be > 0")
+	}
+	if c.IntraClusterTLSConfig.Enabled {
+		if c.IntraClusterTLSConfig.CertPath == "" {
+			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.CertPath must be specified if intra cluster TLS is enabled")
+		}
+		if c.IntraClusterTLSConfig.KeyPath == "" {
+			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.KeyPath must be specified if intra cluster TLS is enabled")
+		}
+		if c.IntraClusterTLSConfig.ClientCertsPath == "" {
+			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled")
+		}
 	}
 
 	return nil

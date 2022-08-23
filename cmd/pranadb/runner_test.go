@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/squareup/pranadb/conf"
 	"github.com/stretchr/testify/require"
@@ -109,5 +110,13 @@ func createConfigWithAllFields() conf.Config {
 		DDProfilerPort:            1324,
 		DDProfilerVersionName:     "2.3",
 		DDProfilerHostEnvVarName:  "FOO_IP",
+
+		IntraClusterTLSConfig: conf.TLSConfig{
+			Enabled:         true,
+			KeyPath:         "intra-cluster-key-path",
+			CertPath:        "intra-cluster-cert-path",
+			ClientCertsPath: "intra-cluster-client-certs-path",
+			ClientAuth:      "require-and-verify-client-cert",
+		},
 	}
 }

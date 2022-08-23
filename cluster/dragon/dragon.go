@@ -347,6 +347,12 @@ func (d *Dragon) start0() error {
 		RaftEventListener: d.procMgr,
 	}
 	nhc.Expert.LogDB.EnableFsync = !d.cnf.DisableFsync
+	if d.cnf.IntraClusterTLSConfig.Enabled {
+		nhc.MutualTLS = true
+		nhc.CAFile = d.cnf.IntraClusterTLSConfig.ClientCertsPath
+		nhc.CertFile = d.cnf.IntraClusterTLSConfig.CertPath
+		nhc.KeyFile = d.cnf.IntraClusterTLSConfig.KeyPath
+	}
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {

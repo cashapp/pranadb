@@ -4,21 +4,22 @@
 package sqltest
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/internal/testcerts"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/internal/testcerts"
 )
 
 func TestSQLFakeCluster(t *testing.T) {
 	log.Debug("Running TestSQLFakeCluster")
-	testSQL(t, true, 1, 0, false, tlsKeysInfo)
+	testSQL(t, true, 1, 0, false, false, tlsKeysInfo)
 }
 
 func TestSQLFakeClusterUsingHTTPAPI(t *testing.T) {
 	log.Debug("Running TestSQLFakeClusterUsingHTTPAPI")
-	testSQL(t, true, 1, 0, true, tlsKeysInfo)
+	testSQL(t, true, 1, 0, true, false, tlsKeysInfo)
 }
 
 func TestSQLClusteredThreeNodes(t *testing.T) {
@@ -26,7 +27,7 @@ func TestSQLClusteredThreeNodes(t *testing.T) {
 		t.Skip("-short: skipped")
 	}
 	log.Info("Running TestSQLClusteredThreeNodes")
-	testSQL(t, false, 3, 3, false, tlsKeysInfo)
+	testSQL(t, false, 3, 3, false, false, tlsKeysInfo)
 }
 
 var tlsKeysInfo *TLSKeysInfo
@@ -49,12 +50,18 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("failed to cert key pair %v", err)
 	}
+	intraClusterCertPath, intraClusterKeyPath, err := testcerts.CreateCertKeyPairToTmpFile(tmpDir, nil, "acme badgers ltd.")
+	if err != nil {
+		log.Fatalf("failed to create cert key pair %v", err)
+	}
 
 	tlsKeysInfo = &TLSKeysInfo{
-		ServerCertPath: serverCertPath,
-		ServerKeyPath:  serverKeyPath,
-		ClientCertPath: clientCertPath,
-		ClientKeyPath:  clientKeyPath,
+		ServerCertPath:       serverCertPath,
+		ServerKeyPath:        serverKeyPath,
+		ClientCertPath:       clientCertPath,
+		ClientKeyPath:        clientKeyPath,
+		IntraClusterCertPath: intraClusterCertPath,
+		IntraClusterKeyPath:  intraClusterKeyPath,
 	}
 
 	defer func() {

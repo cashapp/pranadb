@@ -82,3 +82,9 @@ dd-profiler-environment-name      = "playing"
 dd-profiler-port                  = 1324
 dd-profiler-version-name          = "2.3"
 dd-profiler-host-env-var-name     = "FOO_IP"
+
+intra-cluster-tls-enabled       = true
+intra-cluster-tls-key-path      = "intra-cluster-key-path"
+intra-cluster-tls-cert-path     = "intra-cluster-cert-path"
+intra-cluster-tls-client-certs-path = "intra-cluster-client-certs-path"
+intra-cluster-tls-client-auth = "require-and-verify-client-cert"
