@@ -2,14 +2,12 @@ package exec
 
 import (
 	"fmt"
+	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/meta"
 	"strings"
 	"sync/atomic"
-
-	"github.com/squareup/pranadb/errors"
-
-	"github.com/squareup/pranadb/cluster"
-	"github.com/squareup/pranadb/common"
 )
 
 type RemoteExecutor struct {

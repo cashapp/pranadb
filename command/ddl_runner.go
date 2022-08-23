@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"sync"
@@ -238,7 +239,7 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 	return err
 }
 
-func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
+func (d *DDLCommandRunner) RunCommand(ctx context.Context, command DDLCommand) error {
 	log.Debugf("Attempting to run DDL command %d", command.CommandType())
 	lockName := getLockName(command.SchemaName())
 	if err := d.getLock(lockName); err != nil {
@@ -256,6 +257,7 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		TableSequences:    command.TableSequences(),
 		ExtraData:         command.GetExtraData(),
 	}
+	d.cancelIfContextCancelled(ctx, commandKey, command.SchemaName())
 	err := d.RunWithLock(commandKey, command, ddlInfo)
 	// We release the lock even if we got an error
 	if _, err2 := d.ce.cluster.ReleaseLock(getLockName(command.SchemaName())); err2 != nil {
@@ -265,6 +267,19 @@ func (d *DDLCommandRunner) RunCommand(command DDLCommand) error {
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+func (d *DDLCommandRunner) cancelIfContextCancelled(ctx context.Context, commandKey string, schemaName string) {
+	go func() {
+		<-ctx.Done()
+		// If command is still in the map then this context is being cancelled - we need to cancel
+		_, ok := d.commands.Load(commandKey)
+		if ok {
+			if err := d.Cancel(schemaName); err != nil {
+				log.Errorf("failed to cancel ddl %v", err)
+			}
+		}
+	}()
 }
 
 func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, ddlInfo *clustermsgs.DDLStatementInfo) error {

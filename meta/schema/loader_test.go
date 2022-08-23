@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"context"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/remoting"
@@ -134,7 +135,7 @@ func TestLoader(t *testing.T) {
 			for _, ddl := range test.ddl {
 				numTables := 0
 				schema := metaController.GetOrCreateSchema(ddl.schema)
-				session := executor.CreateExecutionContext(schema)
+				session := executor.CreateExecutionContext(context.Background(), schema)
 				for _, query := range ddl.queries {
 					_, err := executor.ExecuteSQLStatement(session, query, nil, nil)
 					numTables++

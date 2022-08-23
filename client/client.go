@@ -39,6 +39,7 @@ const (
 	minColWidth          = 5
 	maxLineWidthPropName = "max_line_width"
 	maxLineWidth         = 10000
+	queryBatchSize       = 10000
 )
 
 // Client is a simple Client used for executing statements against PranaDB, it used by the CLI and elsewhere
@@ -61,7 +62,7 @@ type Client struct {
 func NewClientUsingGRPC(serverAddress string, tlsConfig TLSConfig) *Client {
 	return &Client{
 		serverAddress: serverAddress,
-		batchSize:     10000,
+		batchSize:     queryBatchSize,
 		maxLineWidth:  defaultMaxLineWidth,
 		tlsConfig:     tlsConfig,
 	}
@@ -70,7 +71,7 @@ func NewClientUsingGRPC(serverAddress string, tlsConfig TLSConfig) *Client {
 func NewClientUsingHTTP(serverAddress string, tlsConfig TLSConfig) *Client {
 	return &Client{
 		serverAddress: serverAddress,
-		batchSize:     10000,
+		batchSize:     queryBatchSize,
 		maxLineWidth:  defaultMaxLineWidth,
 		useHTTPAPI:    true,
 		tlsConfig:     tlsConfig,

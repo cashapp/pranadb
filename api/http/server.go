@@ -48,7 +48,7 @@ type RowWriter interface {
 type sqlExecutor interface {
 	ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql string, argTypes []common.ColumnType,
 		args []interface{}) (exec.PullExecutor, error)
-	CreateExecutionContext(schema *common.Schema) *execctx.ExecutionContext
+	CreateExecutionContext(ctx context.Context, schema *common.Schema) *execctx.ExecutionContext
 }
 
 const rowBatchSize = 1000
@@ -103,6 +103,8 @@ func (s *HTTPAPIServer) Stop() error {
 }
 
 func (s *HTTPAPIServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) { //nolint:gocyclo
+	defer common.PanicHandler()
+
 	if request.ProtoMajor != 2 {
 		http.Error(writer, "the pranadb HTTP API supports HTTP2 only", http.StatusHTTPVersionNotSupported)
 		return
@@ -159,44 +161,47 @@ func (s *HTTPAPIServer) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	if schemaName != "" {
 		schema = s.metaController.GetOrCreateSchema(strings.ToLower(schemaName))
 	}
-	execCtx := s.executor.CreateExecutionContext(schema)
+	execCtx := s.executor.CreateExecutionContext(request.Context(), schema)
 	defer func() {
 		s.metaController.DeleteSchemaIfEmpty(schema)
 	}()
-
-	rowWriter := &jsonLinesRowWriter{}
-
 	pe, err := s.executor.ExecuteSQLStatement(execCtx, statement, argTypes, args)
 	if err != nil {
 		maybeConvertAndSendError(err, writer)
 		return
 	}
+	err = s.executeStatement(pe, writer, includeHeader)
+	if err != nil {
+		maybeConvertAndSendError(err, writer)
+	}
+}
+
+func (s *HTTPAPIServer) executeStatement(pe exec.PullExecutor, writer http.ResponseWriter, includeHeader bool) error {
+	rowWriter := &jsonLinesRowWriter{}
 	rowWriter.WriteContentType(writer)
 	for {
 		rows, err := pe.GetRows(rowBatchSize)
 		if err != nil {
-			maybeConvertAndSendError(err, writer)
-			return
+			return err
 		}
 		if includeHeader {
 			// Write the column header
 			// We write column names, then column types
 			if err := writeColumnHeaders(rowWriter, writer, pe.ColNames(), pe.ColTypes()); err != nil {
-				maybeConvertAndSendError(err, writer)
-				return
+				return err
 			}
 		}
 		for i := 0; i < rows.RowCount(); i++ {
 			row := rows.GetRow(i)
 			if err := rowWriter.WriteRow(&row, writer); err != nil {
-				maybeConvertAndSendError(err, writer)
-				return
+				return err
 			}
 		}
 		if rows.RowCount() < rowBatchSize {
 			break
 		}
 	}
+	return nil
 }
 
 func writeColumnHeaders(writer RowWriter, rw http.ResponseWriter, colNames []string, colTypes []common.ColumnType) error {

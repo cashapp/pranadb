@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/conf"
@@ -104,13 +105,13 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, err
 		}
 		command := NewOriginatingCreateSourceCommand(e, execCtx.Schema.Name, sql, sequences, ast.Create.Source, consumerGroupID)
-		err = e.ddlRunner.RunCommand(command)
+		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.MaterializedView != nil:
-		if err := e.executeCommandWithRetry(func() (DDLCommand, error) {
+		if err := e.executeCommandWithRetry(execCtx.Ctx, func() (DDLCommand, error) {
 			sequences, err := e.generateTableIDSequences(3)
 			if err != nil {
 				return nil, errors.WithStack(err)
@@ -125,7 +126,7 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		}
 		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.Index != nil:
-		if err := e.executeCommandWithRetry(func() (DDLCommand, error) {
+		if err := e.executeCommandWithRetry(execCtx.Ctx, func() (DDLCommand, error) {
 			sequences, err := e.generateTableIDSequences(1)
 			if err != nil {
 				return nil, errors.WithStack(err)
@@ -141,21 +142,21 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Source:
 		command := NewOriginatingDropSourceCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
-		err = e.ddlRunner.RunCommand(command)
+		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.MaterializedView:
 		command := NewOriginatingDropMVCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
-		err = e.ddlRunner.RunCommand(command)
+		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.Index:
 		command := NewOriginatingDropIndexCommand(e, execCtx.Schema.Name, sql, ast.Drop.TableName, ast.Drop.Name)
-		err = e.ddlRunner.RunCommand(command)
+		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -198,10 +199,10 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 	return nil, errors.Errorf("invalid statement %s", sql)
 }
 
-func (e *Executor) CreateExecutionContext(schema *common.Schema) *execctx.ExecutionContext {
+func (e *Executor) CreateExecutionContext(ctx context.Context, schema *common.Schema) *execctx.ExecutionContext {
 	seq := atomic.AddInt64(&e.execCtxIDSequence, 1)
 	ctxID := fmt.Sprintf("%d-%d", e.cluster.GetNodeID(), seq)
-	return execctx.NewExecutionContext(ctxID, schema)
+	return execctx.NewExecutionContext(ctx, ctxID, schema)
 }
 
 // GetPushEngine is only used in testing
@@ -213,7 +214,7 @@ func (e *Executor) GetPullEngine() *pull.Engine {
 	return e.pullEngine
 }
 
-func (e *Executor) executeCommandWithRetry(commandFactory func() (DDLCommand, error)) error {
+func (e *Executor) executeCommandWithRetry(ctx context.Context, commandFactory func() (DDLCommand, error)) error {
 	start := time.Now()
 	for {
 		command, err := commandFactory()
@@ -221,7 +222,7 @@ func (e *Executor) executeCommandWithRetry(commandFactory func() (DDLCommand, er
 			return err
 		}
 		log.Debugf("executing command %s with potential retry", command.SQL())
-		err = e.ddlRunner.RunCommand(command)
+		err = e.ddlRunner.RunCommand(ctx, command)
 		if err != nil {
 			log.Errorf("failed to run command %s %v", command.SQL(), err)
 			var perr errors.PranaError

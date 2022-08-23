@@ -117,7 +117,7 @@ func (s *GRPCAPIServer) ExecuteStatement(in *service.ExecuteStatementRequest,
 	if in.Schema != "" {
 		schema = s.metaController.GetOrCreateSchema(strings.ToLower(in.Schema))
 	}
-	execCtx := s.ce.CreateExecutionContext(schema)
+	execCtx := s.ce.CreateExecutionContext(stream.Context(), schema)
 	defer func() {
 		s.metaController.DeleteSchemaIfEmpty(schema)
 	}()
@@ -170,14 +170,18 @@ func (s *GRPCAPIServer) ExecuteStatement(in *service.ExecuteStatementRequest,
 		return errors.New("named statements currently not supported")
 	}
 	executor, err := s.ce.ExecuteSQLStatement(execCtx, sqlStmt.Sql, argTypes, args)
-	return s.doExecuteStatement(executor, int(in.BatchSize), err, stream)
-}
-
-func (s *GRPCAPIServer) doExecuteStatement(executor exec.PullExecutor, batchSize int, err error,
-	stream service.PranaDBService_ExecuteStatementServer) error {
 	if err != nil {
 		return api.MaybeConvertError(err)
 	}
+	err = s.doExecuteStatement(executor, int(in.BatchSize), stream)
+	if err != nil {
+		return api.MaybeConvertError(err)
+	}
+	return nil
+}
+
+func (s *GRPCAPIServer) doExecuteStatement(executor exec.PullExecutor, batchSize int,
+	stream service.PranaDBService_ExecuteStatementServer) error {
 
 	sentColHeaders := false
 

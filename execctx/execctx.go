@@ -1,6 +1,7 @@
 package execctx
 
 import (
+	"context"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/parplan"
@@ -12,13 +13,15 @@ type ExecutionContext struct {
 	planner      *parplan.Planner
 	QueryInfo    *cluster.QueryExecutionInfo
 	CurrentQuery interface{} // typed as interface{} to avoid circular dependency with pull
+	Ctx          context.Context
 }
 
-func NewExecutionContext(id string, schema *common.Schema) *ExecutionContext {
+func NewExecutionContext(ctx context.Context, id string, schema *common.Schema) *ExecutionContext {
 	return &ExecutionContext{
 		ID:        id,
 		QueryInfo: new(cluster.QueryExecutionInfo),
 		Schema:    schema,
+		Ctx:       ctx,
 	}
 }
 
