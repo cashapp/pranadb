@@ -55,7 +55,7 @@ publish-payments:
 	go run cmd/msggen/main.go --generator-name payments --topic-name payments --partitions 25 --delay ${delay} --num-messages ${num_messages} --index-start ${index_start} --kafka-properties "bootstrap.servers"="localhost:9092"
 
 connect:
-	go run ./cmd/prana/ shell --addr=localhost:8443 --ca-cert local-deployment/certs/client/ca.crt --key local-deployment/certs/client/client.key --cert local-deployment/certs/client/client.crt
+	go run ./cmd/prana/ shell --addr=localhost:6584
 
 status:
 	docker-compose -f local-deployment/docker-compose.yaml ps -a
