@@ -49,7 +49,6 @@ services:
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
       - ${PWD}/prana-data
-      - ${PWD}/local-deployment/certs/server:/etc/tls:ro
   pranadb1:
     image: pranadb:latest
     hostname: pranadb-1
@@ -68,7 +67,6 @@ services:
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
       - ${PWD}/prana-data
-      - ${PWD}/local-deployment/certs/server:/etc/tls:ro
   pranadb2:
     image: pranadb:latest
     hostname: pranadb-2
@@ -87,18 +85,15 @@ services:
     volumes:
       - ${PWD}/local-deployment/conf:/etc/pranadb-config:ro
       - ${PWD}/prana-data
-      - ${PWD}/local-deployment/certs/server:/etc/tls:ro
   nginx:
     image: nginx:latest
     hostname: pranadb-api
     container_name: nginx
     volumes:
       - ${PWD}/local-deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ${PWD}/local-deployment/certs/client:/etc/tls/client:ro
-      - ${PWD}/local-deployment/certs/server:/etc/tls/server:ro
     depends_on:
       - pranadb0
       - pranadb1
       - pranadb2
     ports:
-      - "8443:8443"
+      - "6584:6584"
