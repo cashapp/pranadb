@@ -2,9 +2,10 @@ package conf
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/squareup/pranadb/errors"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 type configPair struct {
@@ -133,6 +134,24 @@ func grpcAPIServerTLSCertPathNotSpecifiedConfig() Config {
 func grpcAPIServerNoClientCerts() Config {
 	cnf := confAllFields
 	cnf.GRPCAPIServerTLSConfig.ClientCertsPath = ""
+	return cnf
+}
+
+func intraClusterTLSCertPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.IntraClusterTLSConfig.CertPath = ""
+	return cnf
+}
+
+func intraClusterTLSKeyPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.IntraClusterTLSConfig.KeyPath = ""
+	return cnf
+}
+
+func intraClusterTLSCAPathNotSpecifiedConfig() Config {
+	cnf := confAllFields
+	cnf.IntraClusterTLSConfig.ClientCertsPath = ""
 	return cnf
 }
 
@@ -345,6 +364,10 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.KeyPath must be specified for GRPC API server", grpcAPIServerTLSKeyPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.CertPath must be specified for GRPC API server", grpcAPIServerTLSCertPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: GRPCAPIServerTLSConfig.ClientCertsPath must be provided if client auth is enabled", grpcAPIServerNoClientCerts()},
+
+	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.KeyPath must be specified if intra cluster TLS is enabled", intraClusterTLSKeyPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.CertPath must be specified if intra cluster TLS is enabled", intraClusterTLSCertPathNotSpecifiedConfig()},
+	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled", intraClusterTLSCAPathNotSpecifiedConfig()},
 }
 
 func TestValidate(t *testing.T) {
@@ -404,4 +427,11 @@ var confAllFields = Config{
 	RaftElectionRTT:          100,
 	MaxProcessBatchSize:      DefaultMaxForwardWriteBatchSize,
 	MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
+	IntraClusterTLSConfig: TLSConfig{
+		Enabled:         true,
+		KeyPath:         "intra_cluster_key_path",
+		CertPath:        "intra_cluster_cert_path",
+		ClientCertsPath: "intra_cluster_client_certs_path",
+		ClientAuth:      "intra_cluster_client_auth",
+	},
 }

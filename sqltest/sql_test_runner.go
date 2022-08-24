@@ -63,19 +63,20 @@ const (
 )
 
 type sqlTestsuite struct {
-	fakeCluster       bool
-	numNodes          int
-	replicationFactor int
-	useHTTPAPI        bool
-	tlsKeysInfo       *TLSKeysInfo
-	fakeKafka         *kafka.FakeKafka
-	pranaCluster      []*server.Server
-	suite             suite.Suite
-	tests             map[string]*sqlTest
-	t                 *testing.T
-	dataDir           string
-	lock              sync.Mutex
-	encoders          map[string]encoderFactory
+	fakeCluster            bool
+	numNodes               int
+	replicationFactor      int
+	useHTTPAPI             bool
+	intraClusterTLSEnabled bool
+	tlsKeysInfo            *TLSKeysInfo
+	fakeKafka              *kafka.FakeKafka
+	pranaCluster           []*server.Server
+	suite                  suite.Suite
+	tests                  map[string]*sqlTest
+	t                      *testing.T
+	dataDir                string
+	lock                   sync.Mutex
+	encoders               map[string]encoderFactory
 }
 
 type encoderFactory func(options string) (kafka.MessageEncoder, error)
@@ -96,13 +97,15 @@ func (w *sqlTestsuite) SetT(t *testing.T) {
 }
 
 type TLSKeysInfo struct {
-	ServerCertPath string
-	ServerKeyPath  string
-	ClientCertPath string
-	ClientKeyPath  string
+	ServerCertPath       string
+	ServerKeyPath        string
+	ClientCertPath       string
+	ClientKeyPath        string
+	IntraClusterCertPath string
+	IntraClusterKeyPath  string
 }
 
-func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, tlsKeysInfo *TLSKeysInfo) {
+func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, intraClusterTLSEnabled bool, tlsKeysInfo *TLSKeysInfo) {
 	t.Helper()
 
 	go func() {
@@ -124,7 +127,7 @@ func testSQL(t *testing.T, fakeCluster bool, numNodes int, replicationFactor int
 	defer lock.Unlock()
 
 	ts := &sqlTestsuite{tests: make(map[string]*sqlTest), t: t, encoders: make(map[string]encoderFactory)}
-	ts.setup(fakeCluster, numNodes, replicationFactor, useHTTPAPI, tlsKeysInfo)
+	ts.setup(fakeCluster, numNodes, replicationFactor, useHTTPAPI, intraClusterTLSEnabled, tlsKeysInfo)
 	defer ts.teardown()
 
 	suite.Run(t, ts)
@@ -194,6 +197,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 		}
 		cnf.SourceStatsEnabled = true
 		cnf.ProtobufDescriptorDir = ProtoDescriptorDir
+
+		if w.intraClusterTLSEnabled {
+			cnf.IntraClusterTLSConfig.Enabled = true
+			cnf.IntraClusterTLSConfig.CertPath = w.tlsKeysInfo.IntraClusterCertPath
+			cnf.IntraClusterTLSConfig.KeyPath = w.tlsKeysInfo.IntraClusterKeyPath
+			cnf.IntraClusterTLSConfig.ClientCertsPath = w.tlsKeysInfo.IntraClusterCertPath
+			cnf.IntraClusterTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
+		}
+
 		s, err := server.NewServer(*cnf)
 		if err != nil {
 			log.Fatal(err)
@@ -242,6 +254,15 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.ScreenDragonLogSpam = true
 			cnf.RaftRTTMs = 25
 			cnf.DisableFsync = true // for performance
+
+			if w.intraClusterTLSEnabled {
+				cnf.IntraClusterTLSConfig.Enabled = true
+				cnf.IntraClusterTLSConfig.CertPath = w.tlsKeysInfo.IntraClusterCertPath
+				cnf.IntraClusterTLSConfig.KeyPath = w.tlsKeysInfo.IntraClusterKeyPath
+				cnf.IntraClusterTLSConfig.ClientCertsPath = w.tlsKeysInfo.IntraClusterCertPath
+				cnf.IntraClusterTLSConfig.ClientAuth = conf.ClientAuthModeRequireAndVerifyClientCert
+			}
+
 			s, err := server.NewServer(*cnf)
 			if err != nil {
 				log.Fatal(err)
@@ -258,11 +279,12 @@ func (w *sqlTestsuite) setupPranaCluster() {
 	w.startCluster()
 }
 
-func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, tlsKeysInfo *TLSKeysInfo) {
+func (w *sqlTestsuite) setup(fakeCluster bool, numNodes int, replicationFactor int, useHTTPAPI bool, intraClusterTLSEnabled bool, tlsKeysInfo *TLSKeysInfo) {
 	w.fakeCluster = fakeCluster
 	w.numNodes = numNodes
 	w.replicationFactor = replicationFactor
 	w.useHTTPAPI = useHTTPAPI
+	w.intraClusterTLSEnabled = intraClusterTLSEnabled
 	w.tlsKeysInfo = tlsKeysInfo
 	protoRegistry, err := protolib.NewDirBackedRegistry(ProtoDescriptorDir)
 	require.NoError(w.t, err)
