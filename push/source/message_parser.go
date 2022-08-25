@@ -111,7 +111,7 @@ func NewMessageParser(sourceInfo *common.SourceInfo, registry protolib.Resolver)
 	return mp, nil
 }
 
-func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, error) {
+func (m *MessageParser) ParseMessages(messages []*kafka.Message, lastUpdateTime int64) (*common.Rows, error) {
 	rows := m.rowsFactory.NewRows(len(messages))
 	for _, msg := range messages {
 		if err := m.decodeMessage(msg); err != nil {
@@ -119,6 +119,10 @@ func (m *MessageParser) ParseMessages(messages []*kafka.Message) (*common.Rows, 
 		}
 		if err := m.evalColumns(rows); err != nil {
 			return nil, errors.WithStack(err)
+		}
+		if lastUpdateTime != -1 {
+			// The row has a hidden last update time column at the end
+			rows.AppendInt64ToColumn(len(m.rowsFactory.ColumnTypes)-1, lastUpdateTime)
 		}
 	}
 	return rows, nil

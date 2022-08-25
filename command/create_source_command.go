@@ -13,8 +13,10 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/push/source"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type CreateSourceCommand struct {
@@ -185,7 +187,7 @@ func (c *CreateSourceCommand) onPhase0() error {
 			return err
 		}
 	}
-	src, err := c.e.pushEngine.CreateSource(c.sourceInfo, initTable)
+	src, err := c.e.pushEngine.CreateSource(c.sourceInfo)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -265,7 +267,6 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 				return nil, errors.WithStack(err)
 			}
 			colTypes = append(colTypes, colType)
-
 		case len(option.PrimaryKey) > 0:
 			for _, pk := range option.PrimaryKey {
 				index, ok := colIndex[strings.ToLower(pk)]
@@ -287,6 +288,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		brokerName, topicName                      string
 		initialiseFrom                             string
 		transient                                  bool
+		sRetentionTime                             string
 	)
 	for _, opt := range ast.OriginInformation {
 		switch {
@@ -324,6 +326,8 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 			topicName = opt.TopicName
 		case opt.InitialState != "":
 			initialiseFrom = opt.InitialState
+		case opt.RetentionTime != "":
+			sRetentionTime = opt.RetentionTime
 		}
 		if opt.Transient != nil && *opt.Transient {
 			transient = true
@@ -357,6 +361,17 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	if initialiseFrom != "" && transient {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Cannot specify InitialState for a Transient source")
 	}
+	var retentionTime time.Duration
+	if sRetentionTime != "" {
+		var err error
+		retentionTime, err = parseRetentionTime(sRetentionTime)
+		if err != nil {
+			return nil, err
+		}
+		if retentionTime == 0 {
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, "RetentionTime must be > 0")
+		}
+	}
 
 	pkMap := make(map[int]struct{}, len(pkCols))
 	for _, pkCol := range pkCols {
@@ -379,9 +394,56 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		ConsumerGroupID: c.consumerGroupID,
 		Transient:       transient,
 	}
-	tableInfo := common.NewTableInfo(c.tableSequences[0], c.schemaName, ast.Name, pkCols, colNames, colTypes)
+	var colsVisible []bool
+	var lastUpdateIndexID uint64
+	if retentionTime == 0 {
+		lastUpdateIndexID = 0
+	} else {
+		lastUpdateIndexID = c.tableSequences[1]
+		// We include an extra column in the table which stores the last update time
+		id, err := uuid.NewRandom()
+		if err != nil {
+			return nil, err
+		}
+		colName := fmt.Sprintf("lu_%s", id.String())
+		colNames = append(colNames, colName)
+		colTypes = append(colTypes, common.BigIntColumnType)
+		colsVisible = make([]bool, len(colTypes))
+		for i := 0; i < len(colTypes); i++ {
+			if i == len(colTypes)-1 {
+				colsVisible[i] = false
+			} else {
+				colsVisible[i] = true
+			}
+		}
+	}
+	tableInfo := common.NewTableInfo(c.tableSequences[0], c.schemaName, ast.Name, pkCols, colNames, colTypes,
+		retentionTime, lastUpdateIndexID)
+	tableInfo.ColsVisible = colsVisible
 	return &common.SourceInfo{
 		TableInfo:  tableInfo,
 		OriginInfo: originInfo,
 	}, nil
+}
+
+func parseRetentionTime(retentionTime string) (time.Duration, error) {
+	sr := strings.Trim(retentionTime, " \t")
+	var dur time.Duration
+	l := len(sr)
+	if l > 1 {
+		if sr[l-1] == 'd' {
+			numDays, err := strconv.Atoi(sr[:l-1])
+			if err == nil {
+				dur = time.Duration(numDays) * time.Hour * 24
+			}
+		} else if !strings.HasSuffix(sr, "ms") && !strings.HasSuffix(sr, "us") && !strings.HasSuffix(sr, "µs") &&
+			!strings.HasSuffix(sr, "ns") {
+			dur, _ = time.ParseDuration(sr)
+		}
+	}
+	if dur <= 0 {
+		return 0, errors.NewPranaErrorf(errors.InvalidStatement, "Invalid RetentionTime %s. Must be an integer > 0 "+
+			"followed by a unit. Valid units are \"d\", \"s\", \"m\", \"h\"", retentionTime)
+	}
+	return dur, nil
 }

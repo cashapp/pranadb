@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/errors"
@@ -207,26 +208,31 @@ func parseTimestampType(sargtype string) (ColumnType, error) {
 }
 
 type TableInfo struct {
-	ID             uint64
-	SchemaName     string
-	Name           string
-	PrimaryKeyCols []int
-	ColumnNames    []string
-	ColumnTypes    []ColumnType
-	IndexInfos     map[string]*IndexInfo
-	ColsVisible    []bool
-	Internal       bool
-	pKColsSet      map[int]struct{}
+	ID                uint64
+	SchemaName        string
+	Name              string
+	PrimaryKeyCols    []int
+	ColumnNames       []string
+	ColumnTypes       []ColumnType
+	IndexInfos        map[string]*IndexInfo
+	ColsVisible       []bool
+	Internal          bool
+	RetentionDuration time.Duration
+	LastUpdateIndexID uint64
+	pKColsSet         map[int]struct{}
 }
 
-func NewTableInfo(id uint64, schemaName string, name string, pkCols []int, colNames []string, colTypes []ColumnType) *TableInfo {
+func NewTableInfo(id uint64, schemaName string, name string, pkCols []int, colNames []string, colTypes []ColumnType,
+	retentionDuration time.Duration, lastUpdateIndexID uint64) *TableInfo {
 	ti := &TableInfo{
-		ID:             id,
-		SchemaName:     schemaName,
-		Name:           name,
-		PrimaryKeyCols: pkCols,
-		ColumnNames:    colNames,
-		ColumnTypes:    colTypes,
+		ID:                id,
+		SchemaName:        schemaName,
+		Name:              name,
+		PrimaryKeyCols:    pkCols,
+		ColumnNames:       colNames,
+		ColumnTypes:       colTypes,
+		RetentionDuration: retentionDuration,
+		LastUpdateIndexID: lastUpdateIndexID,
 	}
 	ti.CalcPKColsSet()
 	return ti

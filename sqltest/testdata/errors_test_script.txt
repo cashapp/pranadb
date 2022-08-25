@@ -1072,4 +1072,228 @@ create materialized view test_mv_2 with (initialstate = "test_mv_1") as select *
 drop materialized view test_mv_1;
 drop source test_source_2;
 drop source test_source_1;
+
+-- errors in creating source with table retention;
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10ms",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000ms",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1us",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000us",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1µs",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000µs",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1ns",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000000ns",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1d",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1h",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1m",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1s",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
 --delete topic testtopic;

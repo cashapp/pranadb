@@ -36,6 +36,8 @@ type Cluster interface {
 	// endKeyPrefix is exclusive
 	LocalScan(startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
 
+	LocalIterator(startKeyPrefix []byte, endKeyPrefix []byte) KVIterator
+
 	CreateSnapshot() (Snapshot, error)
 
 	LocalScanWithSnapshot(snapshot Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]KVPair, error)
@@ -253,6 +255,12 @@ type ShardCallback interface {
 type KVPair struct {
 	Key   []byte
 	Value []byte
+}
+
+type KVIterator interface {
+	HasNext() bool
+	Next() KVPair
+	Close() error
 }
 
 type ShardListenerFactory interface {

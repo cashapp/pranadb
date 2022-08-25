@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lni/dragonboat/v3/logger"
 	"github.com/squareup/pranadb/cluster/dragon/logadaptor"
 	"github.com/squareup/pranadb/interruptor"
@@ -30,8 +31,6 @@ import (
 	"github.com/lni/dragonboat/v3/statemachine"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
-
-	"github.com/twinj/uuid"
 )
 
 const (
@@ -143,7 +142,7 @@ func (d *Dragon) sendLockRequest(command string, prefix string) (bool, error) {
 	buff = common.AppendStringToBufferLE(buff, prefix)
 	// We generate a unique locker string - propose requests can be retried and the locks state machine must be
 	// idempotent - if same lock request is retried it must succeed if current locker already has the lock
-	locker := uuid.NewV4().String()
+	locker := uuid.New().String()
 	buff = common.AppendStringToBufferLE(buff, locker)
 
 	retVal, resBuff, err := d.sendPropose(locksClusterID, buff, false)
@@ -620,6 +619,38 @@ func (d *Dragon) scanWithIter(iter *pebble.Iterator, startKeyPrefix []byte, limi
 		return nil, errors.WithStack(err)
 	}
 	return pairs, nil
+}
+
+func (d *Dragon) LocalIterator(startKeyPrefix []byte, endKeyPrefix []byte) cluster.KVIterator {
+	if startKeyPrefix == nil {
+		panic("startKeyPrefix cannot be nil")
+	}
+	iterOptions := &pebble.IterOptions{LowerBound: startKeyPrefix, UpperBound: endKeyPrefix}
+	iter := d.pebble.NewIter(iterOptions)
+	iter.SeekGE(startKeyPrefix)
+	return &kvIterator{iter: iter}
+}
+
+type kvIterator struct {
+	iter *pebble.Iterator
+}
+
+func (k *kvIterator) HasNext() bool {
+	return k.iter.Valid()
+}
+
+func (k *kvIterator) Next() cluster.KVPair {
+	key := common.CopyByteSlice(k.iter.Key())
+	val := common.CopyByteSlice(k.iter.Value())
+	k.iter.Next()
+	return cluster.KVPair{
+		Key:   key,
+		Value: val,
+	}
+}
+
+func (k *kvIterator) Close() error {
+	return k.iter.Close()
 }
 
 func (d *Dragon) DeleteAllDataInRangeForShardLocally(shardID uint64, startPrefix []byte, endPrefix []byte) error {

@@ -38,7 +38,7 @@ var TableDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	})}
+	}, 0, 0)}
 
 var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 	common.IndexTableID,
@@ -52,7 +52,7 @@ var IndexDefTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 		common.VarcharColumnType,
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	})}
+	}, 0, 0)}
 
 // ProtobufTableInfo is a static definition of the table schema for the table schema table.
 var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
@@ -64,7 +64,7 @@ var ProtobufTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 	[]common.ColumnType{
 		common.VarcharColumnType,
 		common.VarcharColumnType,
-	})}
+	}, 0, 0)}
 
 // DummyTableInfo - Dummy is a simple table that we execute a query against at startup to ensure all shards are available
 var DummyTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
@@ -75,7 +75,7 @@ var DummyTableInfo = &common.MetaTableInfo{TableInfo: common.NewTableInfo(
 	[]string{"x"},
 	[]common.ColumnType{
 		common.BigIntColumnType,
-	})}
+	}, 0, 0)}
 
 type Controller struct {
 	lock     sync.RWMutex
@@ -293,6 +293,7 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	log.Debugf("source %s has id %d", sourceInfo.Name, sourceInfo.ID)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}

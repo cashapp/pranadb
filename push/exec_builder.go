@@ -128,6 +128,8 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			pkCols,
 			nil,
 			nil,
+			0,
+			0,
 		)
 		aggTableInfo.Internal = true
 		aggInfo := &common.InternalTableInfo{

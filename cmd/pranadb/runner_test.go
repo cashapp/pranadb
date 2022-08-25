@@ -105,6 +105,7 @@ func createConfigWithAllFields() conf.Config {
 		AggregationCacheSizeRows: 1234,
 		MaxProcessBatchSize:      777,
 		MaxForwardWriteBatchSize: 888,
+		MaxTableReaperBatchSize:  999,
 
 		DDProfilerTypes:           "HEAP,CPU",
 		DDProfilerServiceName:     "my-service",

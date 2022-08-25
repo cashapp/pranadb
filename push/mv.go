@@ -43,6 +43,8 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		dag.KeyCols(),
 		dag.ColNames(),
 		dag.ColTypes(),
+		0,
+		0,
 	)
 	tableInfo.ColsVisible = dag.ColsVisible()
 	mvInfo := common.MaterializedViewInfo{
@@ -51,7 +53,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false)
+	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false, 0)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -93,7 +95,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 				if err != nil {
 					return errors.WithStack(err)
 				}
-				source.RemoveConsumingExecutor(m.Info.Name)
+				source.RemoveConsumingMV(m.Info.Name)
 			}
 		case *common.MaterializedViewInfo:
 			if disconnect {
@@ -141,16 +143,16 @@ func (m *MaterializedView) deleteTableData(tableID uint64) error {
 	return m.cluster.DeleteAllDataInRangeForAllShardsLocally(startPrefix, endPrefix)
 }
 
-func (m *MaterializedView) addConsumingExecutor(mvName string, executor exec.PushExecutor) {
-	m.tableExecutor.AddConsumingNode(mvName, executor)
+func (m *MaterializedView) addConsumingExecutor(consumerName string, executor exec.PushExecutor) {
+	m.tableExecutor.AddConsumingNode(consumerName, executor)
 }
 
-func (m *MaterializedView) removeConsumingExecutor(mvName string) {
-	m.tableExecutor.RemoveConsumingNode(mvName)
+func (m *MaterializedView) removeConsumingExecutor(consumerName string) {
+	m.tableExecutor.RemoveConsumingNode(consumerName)
 }
 
-func (m *MaterializedView) GetConsumingMVs() []string {
-	return m.tableExecutor.GetConsumingMvNames()
+func (m *MaterializedView) GetConsumingMVOrIndexNames() []string {
+	return m.tableExecutor.GetConsumerNames()
 }
 
 func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool, registerRemote bool) error {
@@ -174,7 +176,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 				if err != nil {
 					return errors.WithStack(err)
 				}
-				source.AddConsumingExecutor(m.Info.Name, executor)
+				source.AddConsumingMV(m.Info.Name, executor)
 			case *common.MaterializedViewInfo:
 				mv, err := m.pe.GetMaterializedView(tbl.ID)
 				if err != nil {

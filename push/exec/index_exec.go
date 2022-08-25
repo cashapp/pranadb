@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"bytes"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
@@ -35,19 +36,37 @@ func (t *IndexExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 	for i := 0; i < numEntries; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
+		var err error
+		var prevKey []byte
+		if prevRow != nil {
+			prevKey, _, err = table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, prevRow)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+		}
+		var currKey []byte
+		var currValue []byte
 		if currentRow != nil {
-			keyBuff, valueBuff, err := table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, currentRow)
+			currKey, currValue, err = table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, currentRow)
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			ctx.WriteBatch.AddPut(keyBuff, valueBuff)
-		} else {
-			// It's a delete
-			keyBuff, _, err := table.EncodeIndexKeyValue(t.TableInfo, t.IndexInfo, ctx.WriteBatch.ShardID, prevRow)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			ctx.WriteBatch.AddDelete(keyBuff)
+		}
+		if bytes.Compare(prevKey, currKey) == 0 {
+			// If the key hasn't changed so do nothing, this is important in the case of a last update index as two updates
+			// can occur in same ms so key doesn't change, if we don't do nothing then we add a put and a delete for the
+			// same key. But deletes always get processed in the state machine after puts for a batch which will result
+			// in the index entry getting deleted
+			continue
+		}
+
+		if prevRow != nil {
+			// Delete any old entry
+			ctx.WriteBatch.AddDelete(prevKey)
+		}
+		if currentRow != nil {
+			// Put any new entry
+			ctx.WriteBatch.AddPut(currKey, currValue)
 		}
 	}
 	return nil
