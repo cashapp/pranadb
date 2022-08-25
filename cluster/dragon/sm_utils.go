@@ -60,7 +60,7 @@ func saveSnapshotDataToWriter(peb *pebble.DB, snapshot *pebble.Snapshot, prefix 
 		if lv > math.MaxUint32 {
 			panic("value too long")
 		}
-		if err := tbl.Add(sstable.InternalKey{UserKey: k, Trailer: sstable.InternalKeyKindSet}, v); err != nil {
+		if err := tbl.Add(sstable.InternalKey{UserKey: k, Trailer: makeTrailer(0, sstable.InternalKeyKindSet)}, v); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -194,4 +194,8 @@ func (w *snapshotWriteCloseSyncer) Sync() error {
 		w.needsFlush = false
 	}
 	return syncPebble(w.peb)
+}
+
+func makeTrailer(seqNum uint64, kind sstable.InternalKeyKind) uint64 {
+	return (seqNum << 8) | uint64(kind)
 }

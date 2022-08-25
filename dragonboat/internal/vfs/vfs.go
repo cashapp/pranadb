@@ -15,6 +15,7 @@
 package vfs
 
 import (
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,6 +43,24 @@ type File = gvfs.File
 // PebbleFS is a wrapper struct that implements the pebble/vfs.FS interface.
 type PebbleFS struct {
 	fs IFS
+}
+
+func (p *PebbleFS) GetDiskUsage(path string) (pvfs.DiskUsage, error) {
+	var stat unix.Statfs_t
+	wd, err := os.Getwd()
+	if err != nil {
+		return pvfs.DiskUsage{}, err
+	}
+	unix.Statfs(wd, &stat)
+	blockSize := uint64(stat.Bsize)
+	avail := stat.Bavail * blockSize
+	total := stat.Blocks * blockSize
+	used := total - avail
+	return pvfs.DiskUsage{
+		AvailBytes: avail,
+		TotalBytes: total,
+		UsedBytes:  used,
+	}, nil
 }
 
 var _ pvfs.FS = (*PebbleFS)(nil)
