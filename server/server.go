@@ -2,6 +2,12 @@ package server
 
 import (
 	"fmt"
+	"net/http" //nolint:stylecheck
+	"os"
+	"reflect"
+	"runtime"
+	"strings"
+
 	"github.com/squareup/pranadb/api/grpc"
 	"github.com/squareup/pranadb/cluster/fake"
 	"github.com/squareup/pranadb/common"
@@ -10,11 +16,6 @@ import (
 	"github.com/squareup/pranadb/metrics"
 	"github.com/squareup/pranadb/remoting"
 	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
-	"net/http" //nolint:stylecheck
-	"os"
-	"reflect"
-	"runtime"
-	"strings"
 
 	// Disabled lint warning on the following as we're only listening on localhost so shouldn't be an issue?
 	//nolint:gosec
@@ -62,9 +63,15 @@ func NewServer(config conf.Config) (*Server, error) {
 			return nil, errors.WithStack(err)
 		}
 		clus = drag
-		remotingServer = remoting.NewServer(config.RemotingListenAddresses[config.NodeID])
-		ddlClient = remoting.NewBroadcastWrapper(config.RemotingListenAddresses...)
-		ddlResetClient = remoting.NewBroadcastWrapper(config.RemotingListenAddresses...)
+		remotingServer = remoting.NewServer(config.RemotingListenAddresses[config.NodeID], config.IntraClusterTLSConfig)
+		ddlClient, err = remoting.NewBroadcastWrapper(config.IntraClusterTLSConfig, config.RemotingListenAddresses...)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		ddlResetClient, err = remoting.NewBroadcastWrapper(config.IntraClusterTLSConfig, config.RemotingListenAddresses...)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterProposeRequest, drag.GetRemoteProposeHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageClusterReadRequest, drag.GetRemoteReadHandler())
 		remotingServer.RegisterMessageHandler(remoting.ClusterMessageLeaderInfos, drag.GetLeaderInfosHandler())

@@ -1,12 +1,15 @@
 package remoting
 
 import (
+	"crypto/tls"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/common"
-	"github.com/squareup/pranadb/errors"
 	"net"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
 )
 
 const (
@@ -23,14 +26,16 @@ type Server interface {
 	RegisterMessageHandler(messageType ClusterMessageType, listener ClusterMessageHandler)
 }
 
-func NewServer(listenAddress string) Server {
-	return newServer(listenAddress)
+func NewServer(listenAddress string, tlsConf conf.TLSConfig) Server {
+	server := newServer(listenAddress, tlsConf)
+	return server
 }
 
-func newServer(listenAddress string) *server {
+func newServer(listenAddress string, tlsConf conf.TLSConfig) *server {
 	return &server{
 		listenAddress: listenAddress,
 		acceptLoopCh:  make(chan struct{}, 1),
+		tlsConf:       tlsConf,
 	}
 }
 
@@ -43,6 +48,7 @@ type server struct {
 	connections       sync.Map
 	messageHandlers   sync.Map
 	responsesDisabled common.AtomicBool
+	tlsConf           conf.TLSConfig
 }
 
 func (s *server) Start() error {
@@ -51,7 +57,7 @@ func (s *server) Start() error {
 	if s.started {
 		return nil
 	}
-	list, err := net.Listen("tcp", s.listenAddress)
+	list, err := s.createNetworkListener()
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -60,6 +66,25 @@ func (s *server) Start() error {
 	go s.acceptLoop()
 	log.Infof("started remoting server on %s", s.listenAddress)
 	return nil
+}
+
+func (s *server) createNetworkListener() (net.Listener, error) {
+	var list net.Listener
+	var err error
+	var tlsConfig *tls.Config
+	if s.tlsConf.Enabled {
+		tlsConfig, err = common.CreateServerTLSConfig(s.tlsConf)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		list, err = tls.Listen("tcp", s.listenAddress, tlsConfig)
+	} else {
+		list, err = net.Listen("tcp", s.listenAddress)
+	}
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return list, nil
 }
 
 func (s *server) acceptLoop() {

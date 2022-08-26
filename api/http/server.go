@@ -4,6 +4,16 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
+	"math"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/api"
@@ -16,15 +26,6 @@ import (
 	"github.com/squareup/pranadb/protolib"
 	"github.com/squareup/pranadb/pull/exec"
 	"google.golang.org/protobuf/types/descriptorpb"
-	"io"
-	"math"
-	"net"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type HTTPAPIServer struct {
@@ -67,7 +68,7 @@ func NewHTTPAPIServer(listenAddress string, apiPath string, executor sqlExecutor
 }
 
 func (s *HTTPAPIServer) Start() error {
-	tlsConf, err := api.CreateServerTLSConfig(s.tlsConf)
+	tlsConf, err := common.CreateServerTLSConfig(s.tlsConf)
 	if err != nil {
 		return err
 	}

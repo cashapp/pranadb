@@ -1,15 +1,26 @@
 package remoting
 
 import (
+	"sync"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
-	"sync"
 )
 
 type Client struct {
 	connections sync.Map
 	lock        sync.Mutex
+	TLSConf     conf.TLSConfig
+}
+
+// NewClient creates an instance of a remoting client.
+func NewClient(tlsConf conf.TLSConfig) (*Client, error) {
+	if !tlsConf.Enabled {
+		return &Client{}, nil
+	}
+	return &Client{TLSConf: tlsConf}, nil
 }
 
 var ErrInsufficientServers = errors.New("insufficient servers available")
@@ -182,7 +193,11 @@ func (c *Client) maybeCreateAndCacheConnection(serverAddress string, oldConn *cl
 			return cc, nil
 		}
 	}
-	cc, err := createConnection(serverAddress)
+	tlsConf, err := getClientTLSConfig(c.TLSConf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	cc, err := createConnection(serverAddress, tlsConf)
 	if err != nil {
 		return nil, err
 	}
