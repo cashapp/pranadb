@@ -2,15 +2,17 @@ package remoting
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestRPC(t *testing.T) {
-	server := startServerWithListener(t, &echoListener{})
+	server := startServerWithListener(t, &echoListener{}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	client := &Client{}
@@ -44,7 +46,7 @@ func TestRPCPranaError(t *testing.T) {
 
 func testRPCError(t *testing.T, respErr error, checkFunc func(*testing.T, errors.PranaError)) {
 	t.Helper()
-	server := startServerWithListener(t, &returnErrListener{err: respErr})
+	server := startServerWithListener(t, &returnErrListener{err: respErr}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	client := &Client{}
@@ -62,7 +64,7 @@ func testRPCError(t *testing.T, respErr error, checkFunc func(*testing.T, errors
 }
 
 func TestRPCConnectionError(t *testing.T) {
-	server := startServerWithListener(t, &echoListener{})
+	server := startServerWithListener(t, &echoListener{}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	client := &Client{}
@@ -92,7 +94,7 @@ func TestRPCConnectionError(t *testing.T) {
 }
 
 func TestRPCServerNotAvailable(t *testing.T) {
-	server := startServerWithListener(t, &echoListener{})
+	server := startServerWithListener(t, &echoListener{}, conf.TLSConfig{})
 
 	client := &Client{}
 
@@ -124,7 +126,7 @@ func TestBroadcast(t *testing.T) {
 		serverAddresses = append(serverAddresses, address)
 		listener := &echoListener{}
 		listeners = append(listeners, listener)
-		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address))
+		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address, conf.TLSConfig{}))
 	}
 	defer stopServers(t, servers...)
 
@@ -149,7 +151,7 @@ func TestBroadcastErrorAllServers(t *testing.T) {
 	for i := 0; i < numServers; i++ {
 		address := fmt.Sprintf("localhost:%d", 7888+i)
 		serverAddresses = append(serverAddresses, address)
-		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address))
+		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address, conf.TLSConfig{}))
 	}
 	defer stopServers(t, servers...)
 
@@ -218,7 +220,7 @@ func testBroadcastErrorOneServer(t *testing.T, respErr error, errDelay time.Dura
 		} else {
 			listener = &echoListener{delay: nonErrDelay}
 		}
-		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address))
+		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address, conf.TLSConfig{}))
 	}
 	defer stopServers(t, servers...)
 
@@ -262,7 +264,7 @@ func TestBroadcastNotEnoughServers(t *testing.T) {
 	}
 
 	// Just one server
-	server := startServerWithListenerAndAddresss(t, &echoListener{}, serverAddresses[0])
+	server := startServerWithListenerAndAddresss(t, &echoListener{}, serverAddresses[0], conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	client := &Client{}
@@ -285,7 +287,7 @@ func TestBroadcastJustEnoughServers(t *testing.T) {
 
 	// Just one server
 	listener := &echoListener{}
-	server := startServerWithListenerAndAddresss(t, listener, serverAddresses[0])
+	server := startServerWithListenerAndAddresss(t, listener, serverAddresses[0], conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	client := &Client{}
@@ -308,7 +310,7 @@ func TestBroadcastConnectionError(t *testing.T) {
 		serverAddresses = append(serverAddresses, address)
 		listener := &echoListener{}
 		listeners = append(listeners, listener)
-		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address))
+		servers = append(servers, startServerWithListenerAndAddresss(t, listener, address, conf.TLSConfig{}))
 	}
 	defer stopServers(t, servers...)
 

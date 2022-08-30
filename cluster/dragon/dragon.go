@@ -371,9 +371,16 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 		return nil
 	}
 
-	d.requestClient = &remoting.Client{}
+	requestClient, err := remoting.NewClient(d.cnf.IntraClusterTLSConfig)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	d.requestClient = requestClient
 
-	d.procMgr.Start()
+	err = d.procMgr.Start()
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
 	if err := d.start0(); err != nil {
 		return err
@@ -381,7 +388,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 	log.Debugf("Joining groups on node %d", d.cnf.NodeID)
 
-	err := d.joinSequenceGroup()
+	err = d.joinSequenceGroup()
 	if err != nil {
 		return errors.WithStack(err)
 	}

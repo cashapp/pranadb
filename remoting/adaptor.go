@@ -1,5 +1,10 @@
 package remoting
 
+import (
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
+)
+
 // Adapt the current Prana expectations to the new remoting
 
 type Broadcaster interface {
@@ -15,11 +20,15 @@ type BroadcastWrapper struct {
 	client          *Client
 }
 
-func NewBroadcastWrapper(serverAddresses ...string) *BroadcastWrapper {
+func NewBroadcastWrapper(tlsConfig conf.TLSConfig, serverAddresses ...string) (*BroadcastWrapper, error) {
+	requestClient, err := NewClient(tlsConfig)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 	return &BroadcastWrapper{
 		serverAddresses: serverAddresses,
-		client:          &Client{},
-	}
+		client:          requestClient,
+	}, nil
 }
 
 func (b *BroadcastWrapper) Broadcast(request ClusterMessage) error {

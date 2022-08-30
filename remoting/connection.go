@@ -1,12 +1,19 @@
 package remoting
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/squareup/pranadb/errors"
+	"io/ioutil"
 	"net"
 	"sync"
 	"sync/atomic"
+
+	"github.com/squareup/pranadb/common"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
 )
 
 type clientConnection struct {
@@ -25,8 +32,8 @@ type responseHandler interface {
 
 var ErrConnectionClosed = errors.New("connection closed")
 
-func createConnection(serverAddress string) (*clientConnection, error) {
-	netConn, err := createNetConnection(serverAddress)
+func createConnection(serverAddress string, tlsConfig *tls.Config) (*clientConnection, error) {
+	netConn, err := createNetConnection(serverAddress, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -131,20 +138,54 @@ func (c *clientConnection) handleMessage(msgType messageType, msg []byte) error 
 	return nil
 }
 
-func createNetConnection(serverAddress string) (net.Conn, error) {
+func createNetConnection(serverAddress string, tlsConfig *tls.Config) (net.Conn, error) {
 	addr, err := net.ResolveTCPAddr("tcp", serverAddress)
 	if err != nil {
 		return nil, err
 	}
-	nc, err := net.DialTCP("tcp", nil, addr)
+	var nc net.Conn
+	if tlsConfig != nil {
+		nc, err = tls.Dial("tcp", serverAddress, tlsConfig)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	} else {
+		tcpnc, err := net.DialTCP("tcp", nil, addr)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if err = tcpnc.SetNoDelay(true); err != nil {
+			return nil, err
+		}
+		if err = tcpnc.SetKeepAlive(true); err != nil {
+			return nil, err
+		}
+		nc = tcpnc
+	}
+	return nc, nil
+}
+
+// getClientTLSConfig builds client tls config for remoting intra-cluster mTLS.
+func getClientTLSConfig(config conf.TLSConfig) (*tls.Config, error) {
+	if !config.Enabled {
+		return nil, nil
+	}
+	tlsConfig := &tls.Config{ // nolint: gosec
+		MinVersion: tls.VersionTLS12,
+	}
+	keyPair, err := common.CreateKeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
 		return nil, err
 	}
-	if err = nc.SetNoDelay(true); err != nil {
+	tlsConfig.Certificates = []tls.Certificate{keyPair}
+	clientCerts, err := ioutil.ReadFile(config.ClientCertsPath)
+	if err != nil {
 		return nil, err
 	}
-	if err = nc.SetKeepAlive(true); err != nil {
-		return nil, err
+	trustedCertPool := x509.NewCertPool()
+	if ok := trustedCertPool.AppendCertsFromPEM(clientCerts); !ok {
+		return nil, errors.Errorf("failed to append trusted certs PEM (invalid PEM block?)")
 	}
-	return nc, nil
+	tlsConfig.RootCAs = trustedCertPool
+	return tlsConfig, nil
 }

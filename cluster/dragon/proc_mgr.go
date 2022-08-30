@@ -2,6 +2,10 @@ package dragon
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/lni/dragonboat/v3/raftio"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -11,9 +15,6 @@ import (
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
 	"github.com/squareup/pranadb/remoting"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 var numLeadersVec = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -163,15 +164,20 @@ func (p *procManager) handleLeaderInfosMessage(msg *clustermsgs.LeaderInfosMessa
 	}
 }
 
-func (p *procManager) Start() {
+func (p *procManager) Start() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.broadcastClient = &remoting.Client{}
+	broadcastClient, err := remoting.NewClient(p.dragon.cnf.IntraClusterTLSConfig)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	p.broadcastClient = broadcastClient
 	p.setLeaderChannel = make(chan raftio.LeaderInfo, p.dragon.cnf.NumShards)
 	p.closeWG.Add(1)
 	go p.setLeaderLoop()
 	p.started = true
 	p.scheduleBroadcast()
+	return nil
 }
 
 func (p *procManager) Stop() {

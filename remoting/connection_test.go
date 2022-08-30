@@ -2,23 +2,30 @@ package remoting
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/errors"
-	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
-	"github.com/stretchr/testify/require"
+	"io/ioutil"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/internal/testcerts"
+
+	"github.com/squareup/pranadb/conf"
+	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/stretchr/testify/require"
 )
 
 const defaultServerAddress = "localhost:7888"
 
 func TestSendRequest(t *testing.T) {
 	list := &echoListener{}
-	server := startServerWithListener(t, list)
+	server := startServerWithListener(t, list, conf.TLSConfig{})
 	defer stopServers(t, server)
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	msg := &clustermsgs.RemotingTestMessage{SomeField: "badgers"}
@@ -37,10 +44,10 @@ func TestSendRequest(t *testing.T) {
 
 func TestSendConcurrentRequests(t *testing.T) {
 	list := &echoListener{}
-	server := startServerWithListener(t, list)
+	server := startServerWithListener(t, list, conf.TLSConfig{})
 	defer stopServers(t, server)
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	numRequests := 100
@@ -61,6 +68,54 @@ func TestSendConcurrentRequests(t *testing.T) {
 		require.Equal(t, fmt.Sprintf("badgers-%d", i), resp.SomeField)
 	}
 	require.Equal(t, numRequests, list.getCalledCount())
+
+	conn.Close()
+}
+
+func TestSendRequestTLS(t *testing.T) {
+	log.Info("creating certificates required for tests")
+
+	tmpDir, err := ioutil.TempDir("", "cli_test")
+	if err != nil {
+		log.Fatalf("failed to create tmp dir %v", err)
+	}
+	defer func() {
+		err := os.RemoveAll(tmpDir)
+		if err != nil {
+			log.Fatalf("failed to remove temp dir: %v", err)
+		}
+	}()
+	serverCertPath, serverKeyPath, err := testcerts.CreateCertKeyPairToTmpFile(tmpDir, nil, "acme badgers ltd.")
+	if err != nil {
+		log.Errorf("failed to cert key pair %v", err)
+	}
+	tlsConf := conf.TLSConfig{
+		Enabled:         true,
+		KeyPath:         serverKeyPath,
+		CertPath:        serverCertPath,
+		ClientCertsPath: serverCertPath,
+		ClientAuth:      "require-and-verify-client-cert",
+	}
+
+	list := &echoListener{}
+	server := startServerWithListener(t, list, tlsConf)
+	defer stopServers(t, server)
+
+	clientTLSConfig, err := getClientTLSConfig(tlsConf)
+	require.NoError(t, err)
+	conn, err := createConnection(defaultServerAddress, clientTLSConfig)
+	require.NoError(t, err)
+
+	msg := &clustermsgs.RemotingTestMessage{SomeField: "badgers"}
+	rh := newRespHandler()
+	err = conn.SendRequestAsync(msg, rh)
+	require.NoError(t, err)
+	r, err := rh.waitForResponse()
+	require.NoError(t, err)
+	resp, ok := r.(*clustermsgs.RemotingTestMessage)
+	require.True(t, ok)
+	require.Equal(t, "badgers", resp.SomeField)
+	require.Equal(t, 1, list.getCalledCount())
 
 	conn.Close()
 }
@@ -91,10 +146,10 @@ func TestResponsePranaError(t *testing.T) {
 
 func testResponseError(t *testing.T, respErr error, checkFunc func(*testing.T, errors.PranaError)) {
 	t.Helper()
-	server := startServerWithListener(t, &returnErrListener{err: respErr})
+	server := startServerWithListener(t, &returnErrListener{err: respErr}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	msg := &clustermsgs.RemotingTestMessage{SomeField: "badgers"}
@@ -113,16 +168,16 @@ func testResponseError(t *testing.T, respErr error, checkFunc func(*testing.T, e
 }
 
 func TestConnectFailedNoServer(t *testing.T) {
-	conn, err := createConnection("localhost:7888")
+	conn, err := createConnection("localhost:7888", nil)
 	require.Error(t, err)
 	require.Nil(t, conn)
 }
 
 func TestCloseConnectionFromServer(t *testing.T) {
-	server := startServerWithListener(t, &echoListener{})
+	server := startServerWithListener(t, &echoListener{}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	err = server.Stop()
@@ -141,10 +196,10 @@ func TestCloseConnectionFromServer(t *testing.T) {
 }
 
 func TestUseOfClosedConnection(t *testing.T) {
-	server := startServerWithListener(t, &echoListener{})
+	server := startServerWithListener(t, &echoListener{}, conf.TLSConfig{})
 	defer stopServers(t, server)
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	conn.Close()
@@ -157,12 +212,12 @@ func TestUseOfClosedConnection(t *testing.T) {
 
 func TestUnblockInProgressRequests(t *testing.T) {
 	serverListener := &delayingClusterMessageHandler{}
-	server := startServerWithListener(t, serverListener)
+	server := startServerWithListener(t, serverListener, conf.TLSConfig{})
 	defer stopServers(t, server)
 
 	serverListener.lock()
 
-	conn, err := createConnection(defaultServerAddress)
+	conn, err := createConnection(defaultServerAddress, nil)
 	require.NoError(t, err)
 
 	numRequests := 10
@@ -190,14 +245,14 @@ func TestUnblockInProgressRequests(t *testing.T) {
 	conn.Close()
 }
 
-func startServerWithListener(t *testing.T, listener ClusterMessageHandler) *server {
+func startServerWithListener(t *testing.T, listener ClusterMessageHandler, tlsConf conf.TLSConfig) *server {
 	t.Helper()
-	return startServerWithListenerAndAddresss(t, listener, defaultServerAddress)
+	return startServerWithListenerAndAddresss(t, listener, defaultServerAddress, tlsConf)
 }
 
-func startServerWithListenerAndAddresss(t *testing.T, listener ClusterMessageHandler, address string) *server {
+func startServerWithListenerAndAddresss(t *testing.T, listener ClusterMessageHandler, address string, tlsConf conf.TLSConfig) *server {
 	t.Helper()
-	server := newServer(address)
+	server := newServer(address, tlsConf)
 	err := server.Start()
 	require.NoError(t, err)
 	server.RegisterMessageHandler(ClusterMessageRemotingTestMessage, listener)

@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+
 	"github.com/squareup/pranadb/api"
 
 	"net"
@@ -79,7 +80,7 @@ func (s *GRPCAPIServer) Start() error {
 }
 
 func (s *GRPCAPIServer) getTLSOpt() (grpc.ServerOption, error) {
-	tlsConf, err := api.CreateServerTLSConfig(s.tlsConfig)
+	tlsConf, err := common.CreateServerTLSConfig(s.tlsConfig)
 	if err != nil {
 		return nil, err
 	}
