@@ -480,25 +480,16 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 			return errors.WithStack(err)
 		}
 	}
-	// Now send any  forward batches - e.g. from aggregations
-	// We screen out any batch destined for this shard id - we execute that locally - if we tried to send it
-	// to the processor then it would deadlock as we are running on that processor
-	var localBatch *cluster.WriteBatch
-	for shardID, b := range ctx.RemoteBatches {
-		if shardID == batch.writeBatch.ShardID {
-			localBatch = b
-			delete(ctx.RemoteBatches, shardID)
+	if len(ctx.RemoteBatches) > 0 {
+		rb := make([]uint64, len(ctx.RemoteBatches))
+		i := 0
+		for sid := range ctx.RemoteBatches {
+			rb[i] = sid
+			i++
 		}
-	}
-
-	if localBatch != nil {
-		if err := p.cluster.WriteForwardBatch(localBatch, true); err != nil {
-			return err
+		if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster, true); err != nil {
+			return errors.WithStack(err)
 		}
-	}
-	// And send the remote ones - these will go through the processors
-	if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster); err != nil {
-		return errors.WithStack(err)
 	}
 	// Maybe inject an error after we have forwarded remote batches but before we have committed local batch
 	if err := p.failInject.GetFailpoint("process_batch_before_local_commit").CheckFail(); err != nil {
@@ -509,7 +500,6 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	if err := p.cluster.WriteBatch(batch.writeBatch, true); err != nil {
 		return errors.WithStack(err)
 	}
-
 	return nil
 }
 

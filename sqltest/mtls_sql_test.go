@@ -14,5 +14,5 @@ func TestSQLClusteredThreeNodesTLS(t *testing.T) {
 		t.Skip("-short: skipped")
 	}
 	log.Info("Running TestSQLClusteredThreeNodesTLS")
-	testSQL(t, false, 3, 3, true, true, tlsKeysInfo)
+	testSQL(t, false, 3, 3, false, true, tlsKeysInfo)
 }

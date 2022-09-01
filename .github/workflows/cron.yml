@@ -8,7 +8,7 @@ on:
 jobs:
   integration:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, linux ]
     steps:
       - name: Cache
         uses: actions/cache@v2
