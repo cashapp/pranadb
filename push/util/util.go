@@ -64,7 +64,7 @@ func EncodePrevAndCurrentRow(prevValueBuff []byte, currValueBuff []byte) []byte 
 	return buff
 }
 
-func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster) error {
+func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust cluster.Cluster, direct bool) error {
 	lb := len(forwardBatches)
 	chs := make([]chan error, 0, lb)
 	for _, b := range forwardBatches {
@@ -72,7 +72,7 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		chs = append(chs, ch)
 		theBatch := b
 		go func() {
-			if err := clust.WriteForwardBatch(theBatch, false); err != nil {
+			if err := clust.WriteForwardBatch(theBatch, direct); err != nil {
 				ch <- err
 				return
 			}
