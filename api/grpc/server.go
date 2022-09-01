@@ -114,6 +114,9 @@ func (s *GRPCAPIServer) Stop() error {
 func (s *GRPCAPIServer) ExecuteStatement(in *service.ExecuteStatementRequest,
 	stream service.PranaDBService_ExecuteStatementServer) error {
 	defer common.PanicHandler()
+	if in.BatchSize <= 0 {
+		return errors.New("cannot use zero batch size")
+	}
 	var schema *common.Schema
 	if in.Schema != "" {
 		schema = s.metaController.GetOrCreateSchema(strings.ToLower(in.Schema))
