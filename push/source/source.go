@@ -414,8 +414,8 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 		rowsIngested++
 	}
 
-	if err := util.SendForwardBatches(forwardBatches, s.cluster); err != nil {
-		log.Errorf("failed to send ingest forward batches %+v", err)
+	if err := util.SendForwardBatches(forwardBatches, s.cluster, false); err != nil {
+		log.Errorf("failed to ingest forward batches %+v", err)
 		return err
 	}
 

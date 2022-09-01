@@ -141,10 +141,10 @@ func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 	defer s.lock.Unlock()
 
 	if s.failed {
-		panic("cannot add rows scheduler is failed")
+		return
 	}
 	if s.stopped {
-		panic("cannot add rows scheduler is stopped")
+		return
 	}
 
 	// Sanity check
@@ -292,7 +292,7 @@ func (s *ShardScheduler) runLoop() {
 						return
 					}
 					processTime := common.NanoTime() - start
-					log.Tracef("processed batch of %d rows in %d ms", lr, processTime/1000000)
+					log.Tracef("processed batch of %d rows in %d ms for shard %d", lr, processTime/1000000, s.shardID)
 					s.batchProcessingTimeHistogram.Observe(float64(processTime / 1000000))
 					s.rowsProcessedCounter.Add(float64(lr))
 					s.batchSizeHistogram.Observe(float64(lr))

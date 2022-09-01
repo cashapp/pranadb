@@ -499,17 +499,18 @@ func (d *Dragon) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	return nil
 }
 
-func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
+func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, direct bool) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandForwardWrite)
 	buff = batch.Serialize(buff)
-	if localOnly {
-		// For a local-only WriteForwardBatch we must not send the processor as this can cause deadlock if
-		// the forward batch is being written from processing of another batch on the same processor
-		// It is ok to send remotely, but as a propose - which bypasses the processor
+	if direct {
+		// For a direct WriteForwardBatch we must not queue the forward batch via the processor as this can cause deadlock if
+		// the forward batch is being written from processing of another batch on the same processor or if there are
+		// more than one processors trying to forward to each other.
+		// A direct forwward write is typically done for forwarding to aggregates after processing.
 		retVal, _, err := d.sendPropose(batch.ShardID, buff, false)
 		if err != nil {
 			return errors.WithStack(err)
@@ -519,6 +520,7 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) er
 				batch.ShardID)
 		}
 	} else {
+		// For a non direct write forward batch we queued them on the processor
 		start := time.Now()
 		for {
 			leaderNodeID, ok := d.procMgr.getLeaderNode(batch.ShardID)

@@ -23,8 +23,7 @@ type Cluster interface {
 	// WriteBatch writes a batch reliably to storage
 	WriteBatch(batch *WriteBatch, localOnly bool) error
 
-	// WriteForwardBatch writes a batch reliably for forwarding to another shard
-	WriteForwardBatch(batch *WriteBatch, localOnly bool) error
+	WriteForwardBatch(batch *WriteBatch, direct bool) error
 
 	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
 	WriteBatchLocally(batch *WriteBatch) error
