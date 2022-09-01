@@ -3,7 +3,9 @@ package kafkatest
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,8 +20,9 @@ import (
 const (
 	redpandVersion = "v22.1.3"
 
-	kafkaAPIPort  = "9092"
-	zookeeperPort = "2181"
+	kafkaAPIPort    = "9092"
+	kafkaAPITLSPort = "9093"
+	zookeeperPort   = "2181"
 )
 
 type KafkaProvider string
@@ -27,6 +30,8 @@ type KafkaProvider string
 const (
 	KafkaProviderRedPanda KafkaProvider = "redpanda"
 	KafkaProviderKafka    KafkaProvider = "kafka"
+	truststoreFileName                  = "truststore.pem"
+	keystoreFileName                    = "keystore.pem"
 )
 
 // KafkaContainer is a reference to the docker kafka running Kafka (or RedPanda).
@@ -53,9 +58,19 @@ func (c *KafkaContainer) Stop() {
 
 // KafkaOpts configures options for starting the test Kafka API.
 type KafkaOpts struct {
-	Topic         string        // Create topic
-	NumPartitions int           // Number of partitions to create for topic
-	Provider      KafkaProvider // The Kafka provider, RedPanda or Kafka. If not set, RedPanda is used.
+	Topic         string         // Create topic
+	NumPartitions int            // Number of partitions to create for topic
+	Provider      KafkaProvider  // The Kafka provider, RedPanda or Kafka. If not set, RedPanda is used.
+	KafkaTLSConf  kafkaTLSConfig // Kafka TLS configuration
+}
+
+// kafkaTLSConfig tls config for Kafka
+type kafkaTLSConfig struct {
+	enabled        bool
+	dir            string
+	trustStoreFile string
+	keyStoreFile   string
+	clientAuth     string
 }
 
 // RequireKafka starts a Kafka-compatible API in a docker container, serving on port 9092,
@@ -68,7 +83,7 @@ func RequireKafka(t *testing.T, opts KafkaOpts) *KafkaContainer {
 	t.Helper()
 	switch opts.Provider {
 	case "", KafkaProviderRedPanda:
-		return requireRedPanda(t, opts.Topic, opts.NumPartitions)
+		return requireRedPanda(t, opts.Topic, opts.NumPartitions, opts.KafkaTLSConf)
 	case KafkaProviderKafka:
 		return requireKafka(t, opts.Topic, opts.NumPartitions)
 	default:
@@ -83,14 +98,14 @@ func NewKafkaProviderFlag() *KafkaProvider {
 	return (*KafkaProvider)(flag.String("kafka-provider", string(KafkaProviderRedPanda), "The Kafka API provider: redpanda or kafka"))
 }
 
-func requireRedPanda(t *testing.T, topicName string, numPartitions int) *KafkaContainer {
+func requireRedPanda(t *testing.T, topicName string, numPartitions int, tlsConf kafkaTLSConfig) *KafkaContainer {
 	t.Helper()
 
 	var container *dockertest.Resource
 	if err := checkKafkaHealth(kafkaAPIPort); err == nil {
 		log.Warn("Kafka already running on kafkaAPIPort " + kafkaAPIPort)
 	} else {
-		container = runRedPanda(t)
+		container = runRedPanda(t, tlsConf)
 	}
 
 	conn, err := kafka.Dial("tcp", ":"+kafkaAPIPort)
@@ -105,7 +120,7 @@ func requireRedPanda(t *testing.T, topicName string, numPartitions int) *KafkaCo
 	}
 }
 
-func runRedPanda(t *testing.T) *dockertest.Resource {
+func runRedPanda(t *testing.T, tlsConf kafkaTLSConfig) *dockertest.Resource {
 	t.Helper()
 
 	pool, err := dockertest.NewPool("")
@@ -114,6 +129,13 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 
 	log.Info("Starting RedPanda on :" + kafkaAPIPort)
 	log.Info("Run `docker logs -f redpanda` for logs")
+	var mounts []string
+	if tlsConf.enabled {
+		dir, err := os.Getwd()
+		require.NoError(t, err)
+		tlsMount := fmt.Sprintf("%s:/etc/tls", filepath.Join(dir, "redpanda-config"))
+		mounts = append(mounts, tlsMount)
+	}
 	container, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Name:       "redpanda",
 		Repository: "docker.vectorized.io/vectorized/redpanda",
@@ -128,10 +150,12 @@ func runRedPanda(t *testing.T) *dockertest.Resource {
 			"--node-id 0",
 			"--check=false",
 		},
-		ExposedPorts: []string{kafkaAPIPort},
+		ExposedPorts: []string{kafkaAPIPort, kafkaAPITLSPort},
 		PortBindings: map[dc.Port][]dc.PortBinding{
-			kafkaAPIPort: {{HostPort: kafkaAPIPort}},
+			kafkaAPIPort:    {{HostPort: kafkaAPIPort}},
+			kafkaAPITLSPort: {{HostPort: kafkaAPITLSPort}},
 		},
+		Mounts: mounts,
 	})
 	require.NoError(t, err)
 

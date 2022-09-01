@@ -1,0 +1,26 @@
+redpanda:
+  kafka_api:
+    - name: default
+      address: 0.0.0.0
+      port: 9092
+    - name: tls
+      address: 0.0.0.0
+      port: 9093
+
+  advertised_kafka_api:
+    - name: default
+      address: 0.0.0.0
+      port: 9092
+    - name: tls
+      address: 0.0.0.0
+      port: 9093
+
+  kafka_api_tls:
+    - name: default
+      enabled: false
+    - name: tls
+      enabled: true
+      require_client_auth: true
+      cert_file: /etc/tls/keystore.pem
+      key_file: /etc/tls/keystore.pem
+      truststore_file: /etc/tls/truststore.pem

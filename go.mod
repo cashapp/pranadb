@@ -53,4 +53,5 @@ require (
 	gopkg.in/DataDog/dd-trace-go.v1 v1.40.1
 	gopkg.in/stretchr/testify.v1 v1.2.2 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
+	software.sslmate.com/src/go-pkcs12 v0.2.0
 )

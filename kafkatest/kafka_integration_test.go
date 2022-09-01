@@ -1,15 +1,16 @@
-//go:build integration
-// +build integration
-
 package kafkatest
 
 import (
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/internal/testcerts"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/common/commontest"
@@ -32,7 +33,30 @@ func TestKafkaIntegration(t *testing.T) {
 		NumPartitions: numPartitions,
 		Provider:      *kafkaProvider,
 	})
+	testKafkaIntegration(t)
+}
 
+func TestKafkaIntegrationTLS(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "cli_test")
+	require.NoError(t, err)
+	defer func() {
+		os.RemoveAll(tmpDir)
+	}()
+
+	kafkaTLSConf := createTLSCerts(t, tmpDir)
+	kafkaContainer := RequireKafka(t, KafkaOpts{
+		Topic:         paymentTopicName,
+		NumPartitions: numPartitions,
+		Provider:      *kafkaProvider,
+		KafkaTLSConf:  kafkaTLSConf,
+	})
+	defer func() {
+		kafkaContainer.Stop()
+	}()
+	testKafkaIntegration(t, kafkaTLSConf)
+}
+
+func testKafkaIntegration(t *testing.T, kafkaTLSConf kafkaTLSConfig) {
 	dataDir, err := ioutil.TempDir("", "kafka-int-test")
 	require.NoError(t, err)
 	defer func() {
@@ -42,7 +66,7 @@ func TestKafkaIntegration(t *testing.T) {
 		}
 	}()
 
-	cluster := startPranaCluster(t, dataDir)
+	cluster := startPranaCluster(t, dataDir, kafkaTLSConf)
 	defer stopPranaCluster(t, cluster)
 
 	cli := client.NewClientUsingGRPC(cluster[0].GetGRPCServer().GetListenAddress(), client.TLSConfig{})
@@ -119,16 +143,22 @@ create source payments(
 	waitUntilRowsInPayments(t, 2*int(numPayments), cli)
 }
 
-func startPranaCluster(t *testing.T, dataDir string) []*server.Server {
+func startPranaCluster(t *testing.T, dataDir string, kafkaTLSConf kafkaTLSConfig) []*server.Server {
 	t.Helper()
 	numNodes := 3
 	pranaCluster := make([]*server.Server, numNodes)
+	brokerProperties := make(map[string]string)
+	if kafkaTLSConf.enabled {
+		brokerProperties["security.protocol"] = "SSL"
+		brokerProperties["ssl.truststore.location"] = filepath.Join(kafkaTLSConf.dir, kafkaTLSConf.trustStoreFile)
+		brokerProperties["ssl.keystore.location"] = filepath.Join(kafkaTLSConf.dir, kafkaTLSConf.keyStoreFile)
+	} else {
+		brokerProperties["bootstrap.servers"] = "localhost:9092"
+	}
 	brokerConfigs := map[string]conf.BrokerConfig{
 		"testbroker": {
 			ClientType: conf.BrokerClientDefault,
-			Properties: map[string]string{
-				"bootstrap.servers": "localhost:9092",
-			},
+			Properties: brokerProperties,
 		},
 	}
 	raftAddresses := []string{
@@ -205,4 +235,35 @@ func waitUntilRowsInPayments(t *testing.T, numRows int, cli *client.Client) {
 	}, 10*time.Second, 100*time.Millisecond)
 	require.NoError(t, err)
 	require.True(t, ok)
+}
+
+func createTLSCerts(t *testing.T, tmpDir string) kafkaTLSConfig {
+	t.Helper()
+
+	caCert, err := testcerts.CreateTestCACert("acme CA")
+	require.NoError(t, err)
+	cert, key, err := testcerts.CreateCertKeyPair(caCert, "acme badgers ltd.")
+	require.NoError(t, err)
+	tlsFilesPerm := fs.FileMode(0644)
+	truststoreFile := filepath.Join(tmpDir, truststoreFileName)
+	keystoreFile := filepath.Join(tmpDir, keystoreFileName)
+	err = ioutil.WriteFile(truststoreFile, caCert.Pem.Bytes(), tlsFilesPerm)
+	require.NoError(t, err)
+	err = ioutil.WriteFile(keystoreFile, cert, tlsFilesPerm)
+	require.NoError(t, err)
+	f, err := os.OpenFile(keystoreFile, os.O_APPEND|os.O_WRONLY, tlsFilesPerm)
+	require.NoError(t, err)
+	defer func() {
+		f.Close()
+	}()
+	_, err = f.Write(key)
+	require.NoError(t, err)
+
+	return kafkaTLSConfig{
+		enabled:        true,
+		dir:            tmpDir,
+		trustStoreFile: truststoreFile,
+		keyStoreFile:   keystoreFile,
+		clientAuth:     "required",
+	}
 }
