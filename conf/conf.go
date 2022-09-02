@@ -2,6 +2,7 @@ package conf
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/squareup/pranadb/errors"
 )
@@ -16,6 +17,7 @@ const (
 	DefaultRaftRTTMs                  = 50
 	DefaultRaftHeartbeatRTT           = 30
 	DefaultRaftElectionRTT            = 300
+	DefaultRaftCallTimeout            = 15 * time.Second
 	DefaultAggregationCacheSizeRows   = 20000
 	DefaultMaxProcessBatchSize        = 2000
 	DefaultMaxForwardWriteBatchSize   = 500
@@ -58,6 +60,7 @@ type Config struct {
 	RaftRTTMs                    int
 	RaftElectionRTT              int
 	RaftHeartbeatRTT             int
+	RaftCallTimeout              time.Duration
 	DisableFsync                 bool
 	DDProfilerTypes              string
 	DDProfilerHostEnvVarName     string
@@ -128,6 +131,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.HTTPAPIServerEnabled {
 		c.HTTPAPIServerTLSConfig.Enabled = true
+	}
+	if c.RaftCallTimeout == 0 {
+		c.RaftCallTimeout = DefaultRaftCallTimeout
 	}
 }
 
@@ -259,6 +265,9 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.RaftElectionRTT < 2*c.RaftHeartbeatRTT {
 		return errors.NewInvalidConfigurationError("RaftElectionRTT must be > 2 * RaftHeartbeatRTT")
 	}
+	if c.RaftCallTimeout < 1*time.Second {
+		return errors.NewInvalidConfigurationError("RaftCallTimeout must be >= 1 second")
+	}
 	if c.MaxProcessBatchSize < 1 {
 		return errors.NewInvalidConfigurationError("MaxProcessBatchSize must be > 0")
 	}
@@ -276,7 +285,6 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled")
 		}
 	}
-
 	return nil
 }
 
@@ -307,6 +315,7 @@ func NewDefaultConfig() *Config {
 		RaftRTTMs:                  DefaultRaftRTTMs,
 		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:            DefaultRaftElectionRTT,
+		RaftCallTimeout:            DefaultRaftCallTimeout,
 		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:        DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
@@ -318,6 +327,7 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		RaftRTTMs:                DefaultRaftRTTMs,
 		RaftHeartbeatRTT:         DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:          DefaultRaftElectionRTT,
+		RaftCallTimeout:          DefaultRaftCallTimeout,
 		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:      DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -99,6 +100,7 @@ func createConfigWithAllFields() conf.Config {
 		RaftRTTMs:                100,
 		RaftElectionRTT:          300,
 		RaftHeartbeatRTT:         30,
+		RaftCallTimeout:          17 * time.Second,
 		DisableFsync:             true,
 		AggregationCacheSizeRows: 1234,
 		MaxProcessBatchSize:      777,

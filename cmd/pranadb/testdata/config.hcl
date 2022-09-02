@@ -71,6 +71,7 @@ kafka-brokers = {
 raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
+raft-call-timeout                 = "17s"
 disable-fsync                     = true
 aggregation-cache-size-rows       = 1234
 max-process-batch-size            = 777
