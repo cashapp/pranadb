@@ -3,6 +3,7 @@ package conf
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/squareup/pranadb/errors"
 	"github.com/stretchr/testify/require"
@@ -307,6 +308,24 @@ func invalidRaftElectionRTTTooSmall() Config {
 	return cnf
 }
 
+func invalidRaftCallTimeout() Config {
+	cnf := confAllFields
+	cnf.RaftCallTimeout = 500 * time.Millisecond
+	return cnf
+}
+
+func invalidRaftCallTimeoutZero() Config {
+	cnf := confAllFields
+	cnf.RaftCallTimeout = 0
+	return cnf
+}
+
+func invalidRaftCallTimeoutNegative() Config {
+	cnf := confAllFields
+	cnf.RaftCallTimeout = -10 * time.Second
+	return cnf
+}
+
 func invalidMaxProcessorBatchSize() Config {
 	cnf := confAllFields
 	cnf.MaxProcessBatchSize = 0
@@ -353,6 +372,11 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTZero()},
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 0", invalidRaftElectionRTTNegative()},
 	{"PDB3000 - Invalid configuration: RaftElectionRTT must be > 2 * RaftHeartbeatRTT", invalidRaftElectionRTTTooSmall()},
+
+	{"PDB3000 - Invalid configuration: RaftCallTimeout must be >= 1 second", invalidRaftCallTimeout()},
+	{"PDB3000 - Invalid configuration: RaftCallTimeout must be >= 1 second", invalidRaftCallTimeoutZero()},
+	{"PDB3000 - Invalid configuration: RaftCallTimeout must be >= 1 second", invalidRaftCallTimeoutNegative()},
+
 	{"PDB3000 - Invalid configuration: MaxProcessBatchSize must be > 0", invalidMaxProcessorBatchSize()},
 	{"PDB3000 - Invalid configuration: MaxForwardWriteBatchSize must be > 0", invalidMaxForwardWriteBatchSize()},
 
@@ -425,6 +449,7 @@ var confAllFields = Config{
 	RaftRTTMs:                100,
 	RaftHeartbeatRTT:         10,
 	RaftElectionRTT:          100,
+	RaftCallTimeout:          DefaultRaftCallTimeout,
 	MaxProcessBatchSize:      DefaultMaxForwardWriteBatchSize,
 	MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 	IntraClusterTLSConfig: TLSConfig{

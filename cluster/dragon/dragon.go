@@ -40,8 +40,6 @@ const (
 
 	locksClusterID uint64 = 2
 
-	callTimeout = 10 * time.Second
-
 	toDeleteShardID uint64 = 4
 
 	nodeHostStartTimeout = 10 * time.Second
@@ -416,7 +414,7 @@ func (d *Dragon) Start() error { // nolint:gocyclo
 
 func (d *Dragon) executeSyncReadWithRetry(shardID uint64, request []byte) ([]byte, error) {
 	res, err := d.executeRaftOpWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), d.cnf.RaftCallTimeout)
 		defer cancel()
 		res, err := d.nh.SyncRead(ctx, shardID, request)
 		return res, errors.WithStack(err)
@@ -859,7 +857,7 @@ func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interfac
 		if err == dragonboat.ErrTimeout {
 			// For Raft timeouts we backoff longer before retrying
 			errTimeoutCount++
-			delay = callTimeout
+			delay = d.cnf.RaftCallTimeout
 			if errTimeoutCount > 5 {
 				log.Warnf("errTimeout retry count is %d", errTimeoutCount)
 			}
@@ -874,7 +872,7 @@ func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interfac
 
 func (d *Dragon) proposeWithRetry(session *client.Session, cmd []byte) (statemachine.Result, error) {
 	r, err := d.executeRaftOpWithRetry(func() (interface{}, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), d.cnf.RaftCallTimeout)
 		defer cancel()
 		res, err := d.nh.SyncPropose(ctx, session, cmd)
 		return res, errors.WithStack(err)
