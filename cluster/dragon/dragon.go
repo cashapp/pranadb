@@ -517,7 +517,7 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, direct bool) error
 				batch.ShardID)
 		}
 	} else {
-		// For a non direct write forward batch we queued them on the processor
+		// For a non direct write forward batch we queue them on the processor
 		start := time.Now()
 		for {
 			leaderNodeID, ok := d.procMgr.getLeaderNode(batch.ShardID)
@@ -873,7 +873,8 @@ func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interfac
 		if !errors.Is(err, dragonboat.ErrClusterNotReady) && !errors.Is(err, dragonboat.ErrTimeout) &&
 			!errors.Is(err, dragonboat.ErrClusterNotFound) && !errors.Is(err, dragonboat.ErrClusterClosed) &&
 			!errors.Is(err, dragonboat.ErrClusterNotInitialized) && !errors.Is(err, dragonboat.ErrClusterNotBootstrapped) &&
-			!errors.Is(err, dragonboat.ErrInvalidDeadline) {
+			!errors.Is(err, dragonboat.ErrSystemBusy) && !errors.Is(err, dragonboat.ErrInvalidDeadline) &&
+			!errors.Is(err, dragonboat.ErrClosed) {
 			return nil, errors.WithStack(err)
 		}
 		if time.Now().Sub(start) >= operationTimeout {
@@ -881,12 +882,13 @@ func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interfac
 			log.Errorf("error in making dragonboat calls %+v", err)
 			return nil, err
 		}
+		log.Debugf("Received retryable error in raft operation %v, will retry", err)
 		if d.stopSignaller.Get() {
 			return nil, errors.New("server is closing")
 		}
 		var delay time.Duration
-		if err == dragonboat.ErrTimeout {
-			// For Raft timeouts we backoff longer before retrying
+		if err == dragonboat.ErrTimeout || err == dragonboat.ErrSystemBusy {
+			// For Raft timeouts or system busy we backoff longer before retrying
 			errTimeoutCount++
 			delay = d.cnf.RaftCallTimeout
 			if errTimeoutCount > 5 {

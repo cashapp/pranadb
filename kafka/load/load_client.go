@@ -101,6 +101,7 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 	if err != nil {
 		return nil, err
 	}
+	msgGen.Init()
 	return &LoadClientMessageProvider{
 		factory:               l,
 		msgs:                  msgs,
@@ -119,6 +120,8 @@ func (l *LoadClientMessageProviderFactory) getMessageGenerator(name string) (msg
 	switch name {
 	case "simple":
 		return &simpleGenerator{uniqueIDsPerPartition: l.uniqueIDsPerPartition}, nil
+	case "payments":
+		return &paymentsGenerator{uniqueIDsPerPartition: l.uniqueIDsPerPartition}, nil
 	default:
 		return nil, errors.Errorf("unknown message generator name %s", name)
 	}
@@ -151,6 +154,11 @@ type LoadClientMessageProvider struct {
 func (l *LoadClientMessageProvider) GetMessage(pollTimeout time.Duration) (*kafka.Message, error) {
 	select {
 	case msg := <-l.msgs:
+		if msg == nil {
+			// Messages channel was closed - probably max number of configured messages was exceeded
+			// In this case we don't want to busy loop, so we introduce a delay
+			time.Sleep(pollTimeout)
+		}
 		return msg, nil
 	case <-time.After(pollTimeout):
 		return nil, nil

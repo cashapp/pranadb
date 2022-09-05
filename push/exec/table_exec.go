@@ -1,20 +1,33 @@
 package exec
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
+	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/table"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const lockAndLoadMaxRows = 10
-const fillMaxBatchSize = 500
+const (
+	fillMaxBatchSize   = 500
+	lockAndLoadMaxRows = 1000
+)
+
+var (
+	rowsFilledVec = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pranadb_rows_filled_total",
+		Help: "counter for number of rows filled, segmented by source name",
+	}, []string{"table_name"})
+)
 
 // TableExecutor updates the changes into the associated table - used to persist state
 // of a materialized view or source
@@ -31,9 +44,11 @@ type TableExecutor struct {
 	delayer            interruptor.InterruptManager
 	transient          bool
 	retentionDuration  time.Duration
+	rowsFilledCounter  prometheus.Counter
 }
 
 func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool, retentionDuration time.Duration) *TableExecutor {
+	rowsFilledCounter := rowsFilledVec.WithLabelValues(tableInfo.Name)
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -48,6 +63,7 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transi
 		delayer:           interruptor.GetInterruptManager(),
 		transient:         transient,
 		retentionDuration: retentionDuration,
+		rowsFilledCounter: rowsFilledCounter,
 	}
 }
 
@@ -240,10 +256,9 @@ func (t *TableExecutor) captureChanges(fillTableID uint64, rowsBatch RowsBatch, 
 	return t.store.WriteBatchLocally(wb)
 }
 
-func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint64, shardIDs []uint64) (*cluster.ToDeleteBatch, error) {
-	log.Debugf("Adding fill table to to_delete new_table_id %d fill_table_id %d", newTableID, fillTableID)
+func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint64, schedulers map[uint64]*sched.ShardScheduler) (*cluster.ToDeleteBatch, error) {
 	var prefixes [][]byte
-	for _, shardID := range shardIDs {
+	for shardID := range schedulers {
 		prefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 16)
 		prefixes = append(prefixes, prefix)
 	}
@@ -259,9 +274,9 @@ func (t *TableExecutor) addFillTableToDelete(newTableID uint64, fillTableID uint
 // are in sync then the operation completes
 //nolint:gocyclo
 func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID uint64,
-	shardIDs []uint64, failInject failinject.Injector, interruptor *interruptor.Interruptor) error {
+	schedulers map[uint64]*sched.ShardScheduler, failInject failinject.Injector, interruptor *interruptor.Interruptor) error {
 
-	log.Debug("Starting table executor fill")
+	log.Debugf("table fill started for %d", newTableID)
 
 	fillTableID, err := t.store.GenerateClusterSequence("table")
 	if err != nil {
@@ -269,7 +284,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	}
 	fillTableID += common.UserTableIDBase
 
-	toDeleteBatch, err := t.addFillTableToDelete(newTableID, fillTableID, shardIDs)
+	toDeleteBatch, err := t.addFillTableToDelete(newTableID, fillTableID, schedulers)
 	if err != nil {
 		return err
 	}
@@ -282,7 +297,6 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	if err := t.waitForNoUncommittedBatches(); err != nil {
 		return err
 	}
-	log.Trace("Locked table executor lock and waited for no uncommitted batches")
 
 	// Set filling to true, this will result in all incoming rows for the duration of the fill also being written to a
 	// special table to capture them, we will need these once we have built the MV from the snapshot
@@ -292,7 +306,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 	receiverSequences := sync.Map{}
 
 	// start the fill - this takes a snapshot and fills from there
-	ch, err := t.startReplayFromSnapshot(pe, shardIDs, interruptor, &receiverSequences, fillTableID)
+	ch, err := t.startReplayFromSnapshot(pe, schedulers, interruptor, &receiverSequences, fillTableID)
 	if err != nil {
 		t.lock.Unlock()
 		return errors.WithStack(err)
@@ -310,7 +324,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 		return errors.WithStack(err)
 	}
 
-	log.Trace("Snapshot processed - Now replaying any rows received in mean-time")
+	log.Debug("Snapshot processed - Now replaying any rows received in mean-time")
 
 	// Now we need to replay the rows that were added from when we started the snapshot to now
 	// we do this in batches
@@ -358,7 +372,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 		// the executor for too long
 		lockAndLoad = rowsToFill < lockAndLoadMaxRows
 
-		log.Tracef("There are %d rows to replay", rowsToFill)
+		log.Debugf("There are %d rows to replay", rowsToFill)
 
 		if !lockAndLoad {
 			// Too many rows to lock while we fill, so we do this outside the lock and will go around the loop
@@ -368,7 +382,7 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 
 		// Now we replay those records to that sequence value
 		if rowsToFill != 0 {
-			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID, &receiverSequences); err != nil {
+			if err := t.replayChanges(startSeqs, endSequences, pe, fillTableID, &receiverSequences, schedulers); err != nil {
 				if lockAndLoad {
 					t.lock.Unlock()
 				}
@@ -379,8 +393,6 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 		for k, v := range endSequences {
 			startSeqs[k] = v
 		}
-
-		log.Trace("Replayed batch of rows")
 	}
 	t.filling = false
 
@@ -391,12 +403,10 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 
 	t.lock.Unlock()
 
-	log.Trace("Replaying is complete")
-
 	// Delete the fill table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, fillTableID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, fillTableID+1)
-	for _, shardID := range shardIDs {
+	for shardID := range schedulers {
 		if err := t.store.DeleteAllDataInRangeForShardLocally(shardID, tableStartPrefix, tableEndPrefix); err != nil {
 			return errors.WithStack(err)
 		}
@@ -411,73 +421,81 @@ func (t *TableExecutor) FillTo(pe PushExecutor, consumerName string, newTableID 
 		return err
 	}
 
-	log.Trace("Table executor fill complete")
+	log.Debug("Table executor fill complete")
 
 	return nil
 }
 
-func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, shardIDs []uint64,
+func (t *TableExecutor) startReplayFromSnapshot(pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
 	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) (chan error, error) {
-	log.Trace("Starting replay from snapshot")
+
+	log.Debug("starting snapshot replay")
 	snapshot, err := t.store.CreateSnapshot()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	ch := make(chan error, 1)
 	go func() {
-		err := t.performReplayFromSnapshot(snapshot, pe, shardIDs, interruptor, receiverSeqs, fillTableID)
+		err := t.performReplayFromSnapshot(snapshot, pe, schedulers, interruptor, receiverSeqs, fillTableID)
 		snapshot.Close()
 		ch <- err
-		log.Trace("Replay from snapshot complete")
 	}()
 
 	return ch, nil
 }
 
-func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, shardIDs []uint64,
+func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe PushExecutor, schedulers map[uint64]*sched.ShardScheduler,
 	interruptor *interruptor.Interruptor, receiverSeqs *sync.Map, fillTableID uint64) error {
-	numRows := 0
-	chans := make([]chan error, 0, len(shardIDs))
+	chans := make([]chan error, 0, len(schedulers))
 
-	for _, shardID := range shardIDs {
-		ch := make(chan error, 1)
-		chans = append(chans, ch)
-		// We don't execute on the shard schedulers - we can't as this would require schedulers to be running which would
-		// mean remote batches could be handled and end up blocking on the source table executor mutex which would mean a batch waiting
-		// behind it wouldn't get processed.
-		// We run this with schedulers running - this is ok, as the MV dag is isolated at this point so there could be no
-		// concurrent execution from schedulers
+	for shardID, scheduler := range schedulers {
 		theShardID := shardID
+		theScheduler := scheduler
+		startPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID, shardID, 16)
+		endPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID+1, shardID, 16)
+		ch := make(chan error)
+		// We execute the snapshot fill in parallel for each shard
+		// And on each shard in batches of fillMaxBatchSize, executed on the processor
+		// Doing them in batches allows the processor to handle process batches and forward writes so the fill
+		// doesn't starve them out
 		go func() {
-			startPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID, theShardID, 16)
-			endPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID+1, theShardID, 16)
-			for {
-				if t.delayer.MaybeInterrupt("fill_snapshot", interruptor) {
-					ch <- errors.NewPranaErrorf(errors.DdlCancelled, "Loading initial state cancelled")
-					return
+			complete := &common.AtomicBool{}
+			for !complete.Get() {
+				action := func() error {
+					if t.delayer.MaybeInterrupt("fill_snapshot", interruptor) {
+						return errors.NewPranaErrorf(errors.DdlCancelled, "Loading initial state cancelled")
+					}
+					kvp, err := t.store.LocalScanWithSnapshot(snapshot, startPrefix, endPrefix, fillMaxBatchSize)
+					if err != nil {
+						return err
+					}
+					if len(kvp) != 0 {
+						if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
+							return err
+						}
+					}
+					if len(kvp) < fillMaxBatchSize {
+						// We're done for this shard
+						complete.Set(true)
+						return nil
+					}
+					startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
+					return nil
 				}
-				kvp, err := t.store.LocalScanWithSnapshot(snapshot, startPrefix, endPrefix, fillMaxBatchSize)
+				ach, err := theScheduler.AddAction(action)
 				if err != nil {
 					ch <- err
 					return
 				}
-				if len(kvp) == 0 {
-					ch <- nil
-					return
-				}
-				if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
+				err = <-ach
+				if err != nil {
 					ch <- err
 					return
 				}
-				if len(kvp) < fillMaxBatchSize {
-					// We're done for this shard
-					ch <- nil
-					return
-				}
-				startPrefix = common.IncrementBytesBigEndian(kvp[len(kvp)-1].Key)
-				numRows += len(kvp)
 			}
+			ch <- nil
 		}()
+		chans = append(chans, ch)
 	}
 	var err error
 	for _, ch := range chans {
@@ -497,6 +515,91 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 		}
 	}
 	return errors.WithStack(err)
+}
+
+// replay rows that were received while we were loading from the snapshot
+func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,
+	fillTableID uint64, receiverSeqs *sync.Map, schedulers map[uint64]*sched.ShardScheduler) error {
+
+	chans := make([]chan error, 0)
+	for shardID, endSeq := range endSeqs {
+
+		startSeq, ok := startSeqs[shardID]
+		if !ok {
+			panic("no start sequence")
+		}
+
+		theShardID := shardID
+		theStartSeq := startSeq
+		theEndSeq := endSeq
+		if theEndSeq <= theStartSeq {
+			panic("end seq <= start seq")
+		}
+		sched, ok := schedulers[shardID]
+		if !ok {
+			panic("cannot find scheduler")
+		}
+
+		ch := make(chan error, 1)
+		chans = append(chans, ch)
+
+		// We do the replay in parallel for each shard, and we execute the fill for each shard on the processor for the
+		// shard, repeating this if the amount of rows exceeds the batch size.
+		// We execute on the processor so ingestion doesn't starve out the fill process
+		go func() {
+			var nextSeq atomic.Value
+			nextSeq.Store(theStartSeq)
+			action := func() error {
+				lastSeq, err := t.scanAndSendFromFillTable(fillTableID, theShardID, nextSeq.Load().(int64), theEndSeq, pe, receiverSeqs)
+				if err != nil {
+					return err
+				}
+				nextSeq.Store(lastSeq + 1)
+				return nil
+			}
+			for nextSeq.Load().(int64) != theEndSeq {
+				actCh, err := sched.AddAction(action)
+				if err != nil {
+					ch <- err
+					return
+				}
+				err = <-actCh
+				if err != nil {
+					ch <- err
+					return
+				}
+			}
+			ch <- nil
+		}()
+	}
+	for _, ch := range chans {
+		err, ok := <-ch
+		if !ok {
+			return errors.Error("channel was closed")
+		}
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+func (t *TableExecutor) scanAndSendFromFillTable(fillTableID uint64, shardID uint64, startSeq int64, endSeq int64,
+	pe PushExecutor, receiverSeqs *sync.Map) (int64, error) {
+	startPrefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 24)
+	startPrefix = common.KeyEncodeInt64(startPrefix, startSeq)
+	endPrefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 24)
+	endPrefix = common.KeyEncodeInt64(endPrefix, endSeq)
+	kvp, err := t.store.LocalScan(startPrefix, endPrefix, fillMaxBatchSize)
+	if err != nil {
+		return 0, err
+	}
+	err = t.sendFillBatchFromPairs(pe, shardID, kvp, receiverSeqs, fillTableID)
+	if err != nil {
+		return 0, err
+	}
+	lastSeq, _ := common.KeyDecodeInt64(kvp[len(kvp)-1].Key, 16)
+	return lastSeq, nil
 }
 
 func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair,
@@ -532,72 +635,17 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 	receiverSeqs.Store(shardID, receiverSeq)
 	batch := NewRowsBatch(rows, entries)
 
-	// We disable duplicate detection for the fill
 	ctx := NewExecutionContext(wb, int64(fillTableID))
 	if err := pe.HandleRows(batch, ctx); err != nil {
 		return errors.WithStack(err)
 	}
-	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store, false); err != nil {
+	if err := util.SendForwardBatches(ctx.RemoteBatches, t.store, true); err != nil {
 		return err
 	}
-	return t.store.WriteBatch(wb, true)
-}
-
-func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[uint64]int64, pe PushExecutor,
-	fillTableID uint64, receiverSeqs *sync.Map) error {
-
-	chans := make([]chan error, 0)
-	for shardID, endSeq := range endSeqs {
-
-		ch := make(chan error, 1)
-		chans = append(chans, ch)
-
-		startSeq, ok := startSeqs[shardID]
-		if !ok {
-			panic("no start sequence")
-		}
-
-		theShardID := shardID
-		theEndSeq := endSeq
-		go func() {
-			startPrefix := table.EncodeTableKeyPrefix(fillTableID, theShardID, 24)
-			startPrefix = common.KeyEncodeInt64(startPrefix, startSeq)
-			endPrefix := table.EncodeTableKeyPrefix(fillTableID, theShardID, 24)
-			endPrefix = common.KeyEncodeInt64(endPrefix, theEndSeq)
-
-			numRows := theEndSeq - startSeq
-
-			if numRows == 0 {
-				panic("num rows zero")
-			}
-
-			kvp, err := t.store.LocalScan(startPrefix, endPrefix, 1000000) // TODO don't hardcode here
-			if err != nil {
-				ch <- err
-				return
-			}
-			if len(kvp) != int(numRows) {
-				ch <- errors.Errorf("node %d shard id %d expected %d rows got %d start seq %d end seq %d startPrefix %s endPrefix %s",
-					t.store.GetNodeID(), theShardID,
-					numRows, len(kvp), startSeq, theEndSeq, common.DumpDataKey(startPrefix), common.DumpDataKey(endPrefix))
-				return
-			}
-			if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
-				ch <- err
-				return
-			}
-			ch <- nil
-		}()
+	if err := t.store.WriteBatch(wb, true); err != nil {
+		return err
 	}
-	for _, ch := range chans {
-		err, ok := <-ch
-		if !ok {
-			return errors.Error("channel was closed")
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
+	t.rowsFilledCounter.Add(float64(batch.Len()))
 	return nil
 }
 

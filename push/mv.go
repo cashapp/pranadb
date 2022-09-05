@@ -8,6 +8,7 @@ import (
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push/exec"
+	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/sharder"
 	"reflect"
 )
@@ -212,6 +213,16 @@ func (m *MaterializedView) Fill(shardIDs []uint64, interruptor *interruptor.Inte
 	}
 
 	log.Debugf("materialized view fill for shards %v", shardIDs)
+
+	schedulers := make(map[uint64]*sched.ShardScheduler)
+	for _, shardID := range shardIDs {
+		sched := m.pe.getScheduler(shardID)
+		if sched == nil {
+			return errors.NewPranaErrorf(errors.DdlRetry, "not all shards have leaders")
+		}
+		schedulers[shardID] = sched
+	}
+
 	var chans []chan error
 	for i, tableExec := range tes {
 		ts := tss[i]
@@ -221,7 +232,7 @@ func (m *MaterializedView) Fill(shardIDs []uint64, interruptor *interruptor.Inte
 			// Execute in parallel
 			te := tableExec
 			go func() {
-				err := te.FillTo(ts, m.Info.Name, m.Info.ID, shardIDs, m.pe.failInject, interruptor)
+				err := te.FillTo(ts, m.Info.Name, m.Info.ID, schedulers, m.pe.failInject, interruptor)
 				ch <- err
 			}()
 		} else {

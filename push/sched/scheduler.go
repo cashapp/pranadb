@@ -33,15 +33,18 @@ var (
 	}, []string{"shard_id"})
 )
 
+const maxActionRun = 10
+
 type ShardScheduler struct {
 	shardID                      uint64
-	actions                      chan struct{}
+	processChannel               chan struct{}
 	started                      bool
 	failed                       bool
 	lock                         common.SpinLock
 	processorRunning             bool
 	forwardRows                  []cluster.ForwardRow
 	forwardWrites                []WriteBatchEntry
+	actions                      []actionEntry
 	batchHandler                 RowsBatchHandler
 	ShardFailListener            ShardFailListener
 	lastQueuedReceiverSeq        uint64
@@ -56,6 +59,7 @@ type ShardScheduler struct {
 	shardLagHistogram            metrics.Observer
 	batchProcessingTimeHistogram metrics.Observer
 	batchSizeHistogram           metrics.Observer
+	actionRun                    int
 }
 
 type RowsBatchHandler interface {
@@ -78,6 +82,11 @@ type WriteBatchEntry struct {
 	completionChannels []chan error
 }
 
+type actionEntry struct {
+	action            func() error
+	completionChannel chan error
+}
+
 func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailListener ShardFailListener,
 	clust cluster.Cluster, maxProcessBatchSize int, maxForwardWriteBatchSize int) *ShardScheduler {
 	sShardID := fmt.Sprintf("shard-%04d", shardID)
@@ -87,7 +96,7 @@ func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailL
 	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
 	ss := &ShardScheduler{
 		shardID:                      shardID,
-		actions:                      make(chan struct{}, 1),
+		processChannel:               make(chan struct{}, 1),
 		batchHandler:                 batchHandler,
 		ShardFailListener:            shardFailListener,
 		rowsProcessedCounter:         rowsProcessedCounter,
@@ -100,6 +109,30 @@ func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailL
 	}
 	ss.loopExitWaitGroup.Add(1)
 	return ss
+}
+
+// AddAction adds an action, defined by a function to be run on the processor. Actions will have priority over
+// process batches and forward writes
+func (s *ShardScheduler) AddAction(action func() error) (chan error, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.failed {
+		return nil, errors.New("cannot add action, scheduler is failed")
+	}
+	if s.stopped {
+		return nil, errors.NewPranaErrorf(errors.Unavailable, "cannot add action, scheduler has stopped")
+	}
+
+	completionChannel := make(chan error)
+
+	s.actions = append(s.actions, actionEntry{
+		action:            action,
+		completionChannel: completionChannel,
+	})
+
+	s.maybeStartRunning()
+	return completionChannel, nil
 }
 
 func (s *ShardScheduler) AddForwardBatch(writeBatch []byte) error {
@@ -158,7 +191,7 @@ func (s *ShardScheduler) AddRows(rows []cluster.ForwardRow) {
 	s.maybeStartRunning()
 }
 
-func (s *ShardScheduler) getNextBatch() ([]cluster.ForwardRow, *WriteBatchEntry, bool) {
+func (s *ShardScheduler) getNextBatch() ([]cluster.ForwardRow, *WriteBatchEntry, *actionEntry, bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -166,18 +199,35 @@ func (s *ShardScheduler) getNextBatch() ([]cluster.ForwardRow, *WriteBatchEntry,
 
 	var rowsToProcess []cluster.ForwardRow
 	var forwardWriteBatch *WriteBatchEntry
+	var action *actionEntry
 
-	if numToProcess >= s.queuedWriteRows {
+	if len(s.actions) > 0 && (s.actionRun < maxActionRun || (len(s.forwardRows) == 0 && len(s.forwardWrites) == 0)) {
+		// We prioritise actions over process batches and forward writes - actions are used in MV/index fill and
+		// we want to make sure that fill completes when the system is under high ingestion load.
+		// However we don't want to completely starve out processing and forward writes when there are a lot of actions
+		// so we allow a max run of actions of maxActionRun before allowing a processing batch or forward write
+		// to be scheduled
+		action = s.getAction()
+		s.actionRun++
+	} else if numToProcess >= s.queuedWriteRows {
 		rowsToProcess = s.getRowsToProcess()
+		s.actionRun = 0
 	} else if s.queuedWriteRows > numToProcess {
+		s.actionRun = 0
 		forwardWriteBatch = s.getForwardWriteBatch()
 	}
 
-	more := len(s.forwardRows) > 0 || s.queuedWriteRows > 0
+	more := len(s.forwardRows) > 0 || s.queuedWriteRows > 0 || len(s.actions) > 0
 	if !more {
 		s.processorRunning = false
 	}
-	return rowsToProcess, forwardWriteBatch, more
+	return rowsToProcess, forwardWriteBatch, action, more
+}
+
+func (s *ShardScheduler) getAction() *actionEntry {
+	entry := s.actions[0]
+	s.actions = s.actions[1:]
+	return &entry
 }
 
 func (s *ShardScheduler) getRowsToProcess() []cluster.ForwardRow {
@@ -232,7 +282,7 @@ func getNumPuts(batch []byte) uint32 {
 
 func (s *ShardScheduler) maybeStartRunning() {
 	if s.started && !s.processorRunning {
-		s.actions <- struct{}{}
+		s.processChannel <- struct{}{}
 		s.processorRunning = true
 	}
 }
@@ -241,7 +291,7 @@ func (s *ShardScheduler) runLoop() {
 	defer s.loopExitWaitGroup.Done()
 	first := true
 	for {
-		_, ok := <-s.actions
+		_, ok := <-s.processChannel
 		if !ok {
 			break
 		}
@@ -256,7 +306,7 @@ func (s *ShardScheduler) runLoop() {
 			first = false
 		} else {
 
-			rowsToProcess, writeBatch, m := s.getNextBatch()
+			rowsToProcess, writeBatch, action, m := s.getNextBatch()
 			more = m
 
 			lr := len(rowsToProcess)
@@ -266,7 +316,10 @@ func (s *ShardScheduler) runLoop() {
 				panic("got writes and rows to process")
 			}
 
-			if lr > 0 {
+			if action != nil {
+				err := action.action()
+				action.completionChannel <- err
+			} else if lr > 0 {
 
 				// The first time we always trigger a process even if there are no rows in the scheduler in order
 				// to process any rows in the receiver table at startup
@@ -316,7 +369,7 @@ func (s *ShardScheduler) runLoop() {
 		s.lock.Lock()
 		lag := s.getLagNoLock(common.NanoTime())
 		if !s.stopped && more {
-			s.actions <- struct{}{}
+			s.processChannel <- struct{}{}
 		}
 		s.lock.Unlock()
 		s.shardLagHistogram.Observe(float64(lag.Milliseconds()))
@@ -343,7 +396,7 @@ func (s *ShardScheduler) Start() {
 	}
 	// We trigger an action on start - there may have been rows queued before we started or pending rows from a previous
 	// run that need to be processed
-	s.actions <- struct{}{}
+	s.processChannel <- struct{}{}
 	s.processorRunning = true
 	s.started = true
 	go s.runLoop()
@@ -356,7 +409,7 @@ func (s *ShardScheduler) Stop() {
 		s.lock.Unlock()
 		return
 	}
-	close(s.actions)
+	close(s.processChannel)
 	s.started = false
 	s.stopped = true
 	s.processorRunning = false

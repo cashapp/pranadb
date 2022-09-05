@@ -996,6 +996,14 @@ func (p *pendingProposal) propose(session *client.Session,
 	return pp.propose(session, cmd, key, timeoutTick)
 }
 
+func (p *pendingProposal) numPendingProposals() uint64 {
+	var num uint64
+	for _, shard := range p.shards {
+		num += shard.proposals.pendingSize()
+	}
+	return num
+}
+
 func (p *pendingProposal) close() {
 	for _, pp := range p.shards {
 		pp.close()

@@ -210,6 +210,7 @@ func (c *CreateMVCommand) onPhase2() error {
 	if err := c.e.pushEngine.RegisterMV(c.mv); err != nil {
 		return errors.WithStack(err)
 	}
+
 	if err := c.e.metaController.RegisterMaterializedView(c.mv.Info, c.mv.InternalTables); err != nil {
 		return err
 	}

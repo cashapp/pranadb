@@ -101,6 +101,12 @@ func (q *entryQueue) get(paused bool) []pb.Entry {
 	return t[:sz]
 }
 
+func (q *entryQueue) pendingSize() uint64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.idx
+}
+
 type readIndexQueue struct {
 	size        uint64
 	left        []*RequestState
