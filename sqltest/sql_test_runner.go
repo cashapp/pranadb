@@ -45,7 +45,7 @@ import (
 )
 
 const (
-	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix           = "errors" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefixes = ""
 	TestClusterID        = 12345678
 	ProtoDescriptorDir   = "../protos"
@@ -741,6 +741,7 @@ type dataset struct {
 	rows       *common.Rows
 }
 
+//nolint:gocyclo
 func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsName string) (*dataset, kafka.MessageEncoder) {
 	dataFile, closeFunc := openFile("./testdata/" + st.testDataFile)
 	defer closeFunc()
@@ -788,6 +789,11 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 			if lp >= 4 {
 				colTypes, err = parseColumnTypes(parts[3])
 				require.NoError(err)
+			}
+			if sourceInfo.RetentionDuration != 0 {
+				// If there's a retention time on the source there will be an extra hidden column at the end for
+				// last update time - we don't use this when loading
+				colTypes = colTypes[:len(colTypes)-1]
 			}
 			rf := common.NewRowsFactory(colTypes)
 			rows := rf.NewRows(100)

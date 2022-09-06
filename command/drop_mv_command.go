@@ -68,7 +68,7 @@ func (d *DropMVCommand) Before() error {
 	}
 	d.mv = mv
 
-	consuming := d.mv.GetConsumingMVs()
+	consuming := d.mv.GetConsumingMVOrIndexNames()
 	if len(consuming) != 0 {
 		return errors.NewMaterializedViewHasChildrenError(mv.Info.SchemaName, mv.Info.Name, consuming)
 	}

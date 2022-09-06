@@ -6,6 +6,7 @@ import (
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/clustermsgs"
+	"github.com/squareup/pranadb/push/reaper"
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
@@ -38,6 +39,7 @@ type Engine struct {
 	schedulers         map[uint64]*sched.ShardScheduler
 	sources            map[uint64]*source.Source
 	materializedViews  map[uint64]*MaterializedView
+	reapers            map[uint64]*reaper.Reaper
 	remoteConsumers    sync.Map
 	cluster            cluster.Cluster
 	sharder            *sharder.Sharder
@@ -91,6 +93,12 @@ func (p *Engine) Start() error {
 	for _, sched := range p.schedulers {
 		sched.Start()
 	}
+	localShards := p.cluster.GetLocalShardIDs()
+	for _, shardID := range localShards {
+		reaper := reaper.NewReaper(p.cluster, p.cfg.MaxTableReaperBatchSize, shardID)
+		p.reapers[shardID] = reaper
+		reaper.Start()
+	}
 	p.started = true
 	return nil
 }
@@ -143,6 +151,9 @@ func (p *Engine) Stop() error {
 			return errors.WithStack(err)
 		}
 	}
+	for _, reaper := range p.reapers {
+		reaper.Stop()
+	}
 	for _, sh := range p.schedulers {
 		sh.Stop()
 	}
@@ -177,6 +188,10 @@ func (p *Engine) RemoveSource(sourceInfo *common.SourceInfo) (*source.Source, er
 	}
 	if src.IsRunning() {
 		return nil, errors.Error("source is running")
+	}
+
+	for _, reaper := range p.reapers {
+		reaper.RemoveTable(sourceInfo.TableInfo)
 	}
 
 	delete(p.sources, sourceInfo.ID)
@@ -594,7 +609,7 @@ func (p *Engine) VerifyNoSourcesOrMVs() error {
 	return nil
 }
 
-func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.TableInfo) (*source.Source, error) {
+func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, error) {
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -623,6 +638,8 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 			sourceInfo.PrimaryKeyCols,
 			sourceInfo.ColumnNames,
 			sourceInfo.ColumnTypes,
+			0,
+			0,
 		)
 		tmpSourceInfo := &common.SourceInfo{
 			TableInfo:  tabInfo,
@@ -658,7 +675,22 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		}
 	}
 
-	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient)
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient, sourceInfo.RetentionDuration)
+
+	var lastUpdateIndexName string
+	if sourceInfo.RetentionDuration != 0 {
+		// We include the id in the name to make it unique and deterministic
+		lastUpdateIndexName = fmt.Sprintf("%s_last_updated_%d", sourceInfo.Name, sourceInfo.LastUpdateIndexID)
+		indexInfo := &common.IndexInfo{
+			SchemaName: sourceInfo.SchemaName,
+			ID:         sourceInfo.LastUpdateIndexID,
+			TableName:  sourceInfo.Name,
+			Name:       lastUpdateIndexName,
+			IndexCols:  []int{len(sourceInfo.ColumnTypes) - 1},
+		}
+		indexExecutor := exec.NewIndexExecutor(sourceInfo.TableInfo, indexInfo, p.cluster)
+		tableExecutor.AddConsumingNode(lastUpdateIndexName, indexExecutor)
+	}
 
 	src, err := source.NewSource(
 		sourceInfo,
@@ -669,6 +701,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
+		lastUpdateIndexName,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -683,6 +716,11 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo, initTable *common.T
 	}
 	p.remoteConsumers.Store(sourceInfo.TableInfo.ID, rc)
 	p.sources[sourceInfo.TableInfo.ID] = src
+	if sourceInfo.RetentionDuration != 0 {
+		for _, rpr := range p.reapers {
+			rpr.AddTable(sourceInfo.TableInfo)
+		}
+	}
 
 	return src, nil
 }
@@ -737,6 +775,7 @@ func (p *Engine) clearState() {
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
+	p.reapers = make(map[uint64]*reaper.Reaper)
 }
 
 func (p *Engine) IsEmpty() bool {

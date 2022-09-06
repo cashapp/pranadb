@@ -169,6 +169,47 @@ func testLocalScan(t *testing.T, limit int, expected int) {
 	}
 }
 
+func TestLocalIterator(t *testing.T) {
+	t.Helper()
+	node, localShard := getLocalNodeAndLocalShard()
+
+	var kvPairs []cluster.KVPair
+	for i := 0; i < 10; i++ {
+		for j := 0; j < 10; j++ {
+			k := []byte(fmt.Sprintf("foo-%02d/bar-%02d", i, j))
+			v := []byte(fmt.Sprintf("somevalue%02d", j))
+			kvPairs = append(kvPairs, cluster.KVPair{Key: k, Value: v})
+		}
+	}
+	rand.Shuffle(len(kvPairs), func(i, j int) {
+		kvPairs[i], kvPairs[j] = kvPairs[j], kvPairs[i]
+	})
+
+	wb := cluster.NewWriteBatch(localShard)
+	for _, kvPair := range kvPairs {
+		wb.AddPut(kvPair.Key, kvPair.Value)
+	}
+
+	err := node.WriteBatch(wb, false)
+	require.NoError(t, err)
+
+	keyStart := []byte("foo-06")
+	keyEnd := []byte("foo-07")
+
+	iter := node.LocalIterator(keyStart, keyEnd)
+	i := 0
+	for iter.HasNext() {
+		kvPair := iter.Next()
+		expectedK := fmt.Sprintf("foo-06/bar-%02d", i)
+		expectedV := fmt.Sprintf("somevalue%02d", i)
+		require.Equal(t, expectedK, string(kvPair.Key))
+		require.Equal(t, expectedV, string(kvPair.Value))
+		i++
+	}
+	err = iter.Close()
+	require.NoError(t, err)
+}
+
 func TestGenerateClusterSequence(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, err := dragonCluster[i%len(dragonCluster)].GenerateClusterSequence("sequence1")

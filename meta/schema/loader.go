@@ -58,7 +58,7 @@ func (l *Loader) Start() error { //nolint:gocyclo
 			if err := l.meta.RegisterSource(info); err != nil {
 				return errors.WithStack(err)
 			}
-			src, err := l.pushEngine.CreateSource(info, nil)
+			src, err := l.pushEngine.CreateSource(info)
 			if err != nil {
 				return errors.WithStack(err)
 			}

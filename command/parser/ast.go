@@ -126,6 +126,7 @@ type SourceOriginInformation struct {
 	IngestFilter   string                        `|"IngestFilter" "=" @String`
 	InitialState   string                        `|"InitialState" "=" @String`
 	Transient      *Boolean                      `|"Transient" "=" @Ident`
+	RetentionTime  string                        `|"RetentionTime" "=" @String`
 	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
 	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }

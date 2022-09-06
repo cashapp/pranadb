@@ -30,9 +30,10 @@ type TableExecutor struct {
 	uncommittedBatches sync.Map
 	delayer            interruptor.InterruptManager
 	transient          bool
+	retentionDuration  time.Duration
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool, retentionDuration time.Duration) *TableExecutor {
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
 			colNames:    tableInfo.ColumnNames,
@@ -41,11 +42,12 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transi
 			colsVisible: tableInfo.ColsVisible,
 			rowsFactory: common.NewRowsFactory(tableInfo.ColumnTypes),
 		},
-		TableInfo:      tableInfo,
-		store:          store,
-		consumingNodes: make(map[string]PushExecutor),
-		delayer:        interruptor.GetInterruptManager(),
-		transient:      transient,
+		TableInfo:         tableInfo,
+		store:             store,
+		consumingNodes:    make(map[string]PushExecutor),
+		delayer:           interruptor.GetInterruptManager(),
+		transient:         transient,
+		retentionDuration: retentionDuration,
 	}
 }
 
@@ -132,7 +134,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 				return errors.WithStack(err)
 			}
 			if hasDownStream {
-				// We do a linearizabe get as there is the possibility that the previous write for the same key has not
+				// We do a linearizable get as there is the possibility that the previous write for the same key has not
 				// yet been applied to the state machine of the replica where the processor is running. Raft only
 				// requires replication to a quorum for write to complete and that quorum might not contain the processor
 				// replica
@@ -599,7 +601,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 	return nil
 }
 
-func (t *TableExecutor) GetConsumingMvNames() []string {
+func (t *TableExecutor) GetConsumerNames() []string {
 	var mvNames []string
 	for mvName := range t.consumingNodes {
 		mvNames = append(mvNames, mvName)

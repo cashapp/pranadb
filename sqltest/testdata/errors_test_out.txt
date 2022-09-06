@@ -1230,4 +1230,241 @@ drop source test_source_2;
 0 rows returned
 drop source test_source_1;
 0 rows returned
+
+-- errors in creating source with table retention;
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1000. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10ms",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 10ms. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000ms",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1000ms. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1us",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1us. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000us",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000us. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1µs",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1µs. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000µs",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000µs. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1ns",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1ns. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1000000000ns",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000000ns. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1d",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime -1d. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1h",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime -1h. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1m",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime -1m. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1s",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime -1s. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
 --delete topic testtopic;

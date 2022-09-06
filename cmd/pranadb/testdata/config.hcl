@@ -76,6 +76,7 @@ disable-fsync                     = true
 aggregation-cache-size-rows       = 1234
 max-process-batch-size            = 777
 max-forward-write-batch-size      = 888
+max-table-reaper-batch-size       = 999
 
 dd-profiler-types                 = "HEAP,CPU"
 dd-profiler-service-name          = "my-service"

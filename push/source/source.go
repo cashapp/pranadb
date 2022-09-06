@@ -67,6 +67,7 @@ type Source struct {
 	cfg                     *conf.Config
 	restartTimer            *time.Timer
 	stopped                 bool // represents a hard stop - not a stop then a restart after delay
+	lastUpdateIndexName     string
 }
 
 var (
@@ -93,7 +94,8 @@ var (
 )
 
 func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ingestExpressions []*common.Expression, sharder *sharder.Sharder,
-	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver) (*Source, error) {
+	cluster cluster.Cluster, cfg *conf.Config, queryExec common.SimpleQueryExec, registry protolib.Resolver,
+	lastUpdateIndexName string) (*Source, error) {
 	numConsumers, err := common.GetOrDefaultIntProperty(numConsumersPerSourcePropName, sourceInfo.OriginInfo.Properties, defaultNumConsumersPerSource)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -165,6 +167,7 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		ingestRowSizeHistogram:  ingestRowSizeHistogram,
 		ingestExpressions:       ingestExpressions,
 		cfg:                     cfg,
+		lastUpdateIndexName:     lastUpdateIndexName,
 	}
 	var rl ratelimit.Limiter
 	if maxIngestRate > 0 {
@@ -210,26 +213,45 @@ func (s *Source) Drop() error {
 		return errors.WithStack(err)
 	}
 	s.cluster.TableDropped(s.sourceInfo.ID)
+	if s.sourceInfo.RetentionDuration != 0 {
+		// Delete any last update index data
+		indexStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.LastUpdateIndexID)
+		indexEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.LastUpdateIndexID+1)
+		if err := s.cluster.DeleteAllDataInRangeForAllShardsLocally(indexStartPrefix, indexEndPrefix); err != nil {
+			return err
+		}
+	}
 	// Delete the table data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.ID+1)
 	return s.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
 }
 
-func (s *Source) AddConsumingExecutor(mvName string, executor exec.PushExecutor) {
+func (s *Source) AddConsumingMV(mvName string, executor exec.PushExecutor) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.tableExecutor.AddConsumingNode(mvName, executor)
 }
 
-func (s *Source) RemoveConsumingExecutor(mvName string) {
+func (s *Source) RemoveConsumingMV(mvName string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.tableExecutor.RemoveConsumingNode(mvName)
 }
 
-func (s *Source) GetConsumingMVs() []string {
-	return s.tableExecutor.GetConsumingMvNames()
+func (s *Source) GetConsumingMVOrIndexNames() []string {
+	consumerNames := s.tableExecutor.GetConsumerNames()
+	if s.lastUpdateIndexName != "" {
+		// Screen out the internal last update index name
+		for i, name := range consumerNames {
+			if name == s.lastUpdateIndexName {
+				filtered := append([]string{}, consumerNames[:i]...)
+				filtered = append(filtered, consumerNames[i+1:]...)
+				return filtered
+			}
+		}
+	}
+	return consumerNames
 }
 
 func (s *Source) ingestError(err error, clientError bool) {
@@ -331,7 +353,15 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 	start := time.Now()
 
-	rows, err := mp.ParseMessages(messages)
+	var lastUpdateTime int64
+	if s.sourceInfo.RetentionDuration != 0 {
+		lastUpdateTime = start.UnixMilli()
+		log.Debugf("source ingest update time is %d", lastUpdateTime)
+	} else {
+		lastUpdateTime = -1
+	}
+
+	rows, err := mp.ParseMessages(messages, lastUpdateTime)
 	if err != nil {
 		return errors.WithStack(err)
 	}

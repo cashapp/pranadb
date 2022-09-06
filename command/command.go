@@ -96,7 +96,8 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		dag, err := e.pullEngine.BuildPullQuery(execCtx, sql, argTypes, args)
 		return dag, errors.WithStack(err)
 	case ast.Create != nil && ast.Create.Source != nil:
-		sequences, err := e.generateTableIDSequences(1)
+		// We need two sequence numbers if the source has a retention period as we create an index for that
+		sequences, err := e.generateTableIDSequences(2)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

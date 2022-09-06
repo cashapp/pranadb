@@ -1,0 +1,259 @@
+use test;
+0 rows returned
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "2s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 1000                 | foo1                                                                   |
+| 2                    | 1000                 | foo1                                                                   |
+| 3                    | 1000                 | foo1                                                                   |
+| 4                    | 1000                 | foo2                                                                   |
+| 5                    | 1000                 | foo2                                                                   |
+| 6                    | 1000                 | foo2                                                                   |
+| 7                    | 1000                 | foo3                                                                   |
+| 8                    | 1000                 | foo3                                                                   |
+| 9                    | 1000                 | foo3                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+9 rows returned
+
+--pause 5000;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 1000                 | foo1                                                                   |
+| 2                    | 1000                 | foo1                                                                   |
+| 3                    | 1000                 | foo1                                                                   |
+| 4                    | 1000                 | foo2                                                                   |
+| 5                    | 1000                 | foo2                                                                   |
+| 6                    | 1000                 | foo2                                                                   |
+| 7                    | 1000                 | foo3                                                                   |
+| 8                    | 1000                 | foo3                                                                   |
+| 9                    | 1000                 | foo3                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+9 rows returned
+
+--pause 5000;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+--delete topic testtopic1;
+
+--create topic testtopic1;
+-- table retention is 2 days so rows won't be deleted;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "2d",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 1000                 | foo1                                                                   |
+| 2                    | 1000                 | foo1                                                                   |
+| 3                    | 1000                 | foo1                                                                   |
+| 4                    | 1000                 | foo2                                                                   |
+| 5                    | 1000                 | foo2                                                                   |
+| 6                    | 1000                 | foo2                                                                   |
+| 7                    | 1000                 | foo3                                                                   |
+| 8                    | 1000                 | foo3                                                                   |
+| 9                    | 1000                 | foo3                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+9 rows returned
+
+--pause 1000;
+
+select * from test_source_1 order by col0;
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | 1000                 | foo1                                                                   |
+| 2                    | 1000                 | foo1                                                                   |
+| 3                    | 1000                 | foo1                                                                   |
+| 4                    | 1000                 | foo2                                                                   |
+| 5                    | 1000                 | foo2                                                                   |
+| 6                    | 1000                 | foo2                                                                   |
+| 7                    | 1000                 | foo3                                                                   |
+| 8                    | 1000                 | foo3                                                                   |
+| 9                    | 1000                 | foo3                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+9 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic1;
+
+-- now try with different formats of retention time to make sure they can be parsed ok;
+
+--create topic testtopic2;
+
+create source test_source_a(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10d",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+create source test_source_b(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10h",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+create source test_source_c(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10m",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+create source test_source_d(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+create source test_source_e(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+0 rows returned
+
+drop source test_source_a;
+0 rows returned
+drop source test_source_b;
+0 rows returned
+drop source test_source_c;
+0 rows returned
+drop source test_source_d;
+0 rows returned
+drop source test_source_e;
+0 rows returned
+
+--delete topic testtopic2;

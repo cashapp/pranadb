@@ -1,0 +1,180 @@
+use test;
+
+--create topic testtopic1;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "2s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+--pause 5000;
+
+select * from test_source_1 order by col0;
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+--pause 5000;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+--delete topic testtopic1;
+
+--create topic testtopic1;
+-- table retention is 2 days so rows won't be deleted;
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "2d",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+--load data dataset_1;
+
+select * from test_source_1 order by col0;
+
+--pause 1000;
+
+select * from test_source_1 order by col0;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+-- now try with different formats of retention time to make sure they can be parsed ok;
+
+--create topic testtopic2;
+
+create source test_source_a(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10d",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_b(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10h",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_c(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10m",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_d(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_e(
+    col0 bigint,
+    col1 bigint,
+    col2 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "1s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+drop source test_source_a;
+drop source test_source_b;
+drop source test_source_c;
+drop source test_source_d;
+drop source test_source_e;
+
+--delete topic testtopic2;

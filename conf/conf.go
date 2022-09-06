@@ -21,6 +21,7 @@ const (
 	DefaultAggregationCacheSizeRows   = 20000
 	DefaultMaxProcessBatchSize        = 2000
 	DefaultMaxForwardWriteBatchSize   = 500
+	DefaultMaxTableReaperBatchSize    = 1000
 )
 
 type Config struct {
@@ -71,6 +72,7 @@ type Config struct {
 	AggregationCacheSizeRows     int // The maximum number of rows for an aggregation to cache in memory
 	MaxProcessBatchSize          int
 	MaxForwardWriteBatchSize     int
+	MaxTableReaperBatchSize      int
 }
 
 type TLSConfig struct {
@@ -134,6 +136,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.RaftCallTimeout == 0 {
 		c.RaftCallTimeout = DefaultRaftCallTimeout
+	}
+	if c.MaxTableReaperBatchSize == 0 {
+		c.MaxTableReaperBatchSize = DefaultMaxTableReaperBatchSize
 	}
 }
 
@@ -319,6 +324,7 @@ func NewDefaultConfig() *Config {
 		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:        DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
+		MaxTableReaperBatchSize:    DefaultMaxTableReaperBatchSize,
 	}
 }
 
@@ -331,6 +337,7 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:      DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
+		MaxTableReaperBatchSize:  DefaultMaxTableReaperBatchSize,
 		NodeID:                   0,
 		NumShards:                10,
 		TestServer:               true,

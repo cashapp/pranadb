@@ -335,6 +335,48 @@ func (f *FakeCluster) DeleteAllDataInRangeForAllShardsLocally(startPrefix []byte
 	return nil
 }
 
+func (f *FakeCluster) LocalIterator(startKeyPrefix []byte, endKeyPrefix []byte) cluster.KVIterator {
+	return &kvIterator{
+		f:     f,
+		start: startKeyPrefix,
+		end:   endKeyPrefix,
+	}
+}
+
+type kvIterator struct {
+	f     *FakeCluster
+	start []byte
+	end   []byte
+	next  cluster.KVPair
+}
+
+func (k *kvIterator) HasNext() bool {
+	k.f.mu.RLock()
+	defer k.f.mu.RUnlock()
+	k.next.Key = nil
+	k.next.Value = nil
+	resFunc := func(i btree.Item) bool {
+		wrapper := i.(*kvWrapper) // nolint: forcetypeassert
+		if k.end != nil && bytes.Compare(wrapper.key, k.end) >= 0 {
+			return false
+		}
+		k.next.Key = wrapper.key
+		k.next.Value = wrapper.value
+		return false
+	}
+	k.f.btree.AscendGreaterOrEqual(&kvWrapper{key: k.start}, resFunc)
+	return k.next.Key != nil
+}
+
+func (k *kvIterator) Next() cluster.KVPair {
+	k.start = common.IncrementBytesBigEndian(k.next.Key)
+	return k.next
+}
+
+func (k *kvIterator) Close() error {
+	return nil
+}
+
 func (f *FakeCluster) LocalScanWithSnapshot(sn cluster.Snapshot, startKeyPrefix []byte, endKeyPrefix []byte, limit int) ([]cluster.KVPair, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -412,7 +454,7 @@ func (f *FakeCluster) putInternal(item *kvWrapper) {
 func (f *FakeCluster) deleteInternal(item *kvWrapper) error {
 	prevItem := f.btree.Delete(item)
 	if prevItem == nil {
-		return errors.Error("didn't find item to delete")
+		return errors.Errorf("didn't find key to delete %v", item.key)
 	}
 	return nil
 }
