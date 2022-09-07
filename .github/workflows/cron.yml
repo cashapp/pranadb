@@ -37,9 +37,6 @@ jobs:
       - name: Kafka tests using Kafka and Confluent Kafka client
         run: go test -race -count=1 -timeout 20m -failfast -p 1 -tags confluent,integration ./kafkatest -- -kafka-provider=kafka
         if: ${{ always() }}
-      - name: Large cluster tests
-        run: go test -v -race -count=1 -timeout 45m -failfast -p 1 -tags confluent,largecluster ./sqltest
-        if: ${{ always() }}
   slack-on-fail:
     runs-on: [ self-hosted, linux ]
     needs: [ integration ]
