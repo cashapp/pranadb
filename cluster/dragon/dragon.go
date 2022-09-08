@@ -476,10 +476,7 @@ func (d *Dragon) WriteBatchLocally(batch *cluster.WriteBatch) error {
 	}); err != nil {
 		return err
 	}
-	if err := errors.WithStack(d.pebble.Apply(pebBatch, nosyncWriteOptions)); err != nil {
-		return err
-	}
-	return batch.AfterCommit()
+	return d.pebble.Apply(pebBatch, nosyncWriteOptions)
 }
 
 func (d *Dragon) ExecuteForwardBatch(shardID uint64, batch []byte) error {
@@ -496,18 +493,24 @@ func (d *Dragon) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	return nil
 }
 
-func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, direct bool) error {
+func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, direct bool, fill bool) error {
 	if batch.ShardID < cluster.DataShardIDBase {
 		panic(fmt.Sprintf("invalid shard cluster id %d", batch.ShardID))
 	}
 	var buff []byte
 	buff = append(buff, shardStateMachineCommandForwardWrite)
+	// The next byte marks whether the batch is from a fill or not
+	if fill {
+		buff = append(buff, byte(1))
+	} else {
+		buff = append(buff, byte(0))
+	}
 	buff = batch.Serialize(buff)
 	if direct {
 		// For a direct WriteForwardBatch we must not queue the forward batch via the processor as this can cause deadlock if
 		// the forward batch is being written from processing of another batch on the same processor or if there are
 		// more than one processors trying to forward to each other.
-		// A direct forwward write is typically done for forwarding to aggregates after processing.
+		// A direct forward write is typically done for forwarding to aggregates after processing.
 		retVal, _, err := d.sendPropose(batch.ShardID, buff, false)
 		if err != nil {
 			return errors.WithStack(err)
@@ -559,7 +562,7 @@ func (d *Dragon) WriteBatch(batch *cluster.WriteBatch, localOnly bool) error {
 	if retval != shardStateMachineResponseOK {
 		return errors.Errorf("unexpected return value from writing batch: %d to shard %d", retval, batch.ShardID)
 	}
-	return batch.AfterCommit()
+	return nil
 }
 
 func (d *Dragon) LocalGet(key []byte) ([]byte, error) {

@@ -24,17 +24,23 @@ create source test_source_1(
 
 select * from test_source_1 order by col0;
 
---pause 5000;
-
-select * from test_source_1 order by col0;
+select * from test_source_1 order by col0 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+0 rows returned
+;
 
 --load data dataset_1;
 
 select * from test_source_1 order by col0;
 
---pause 5000;
-
-select * from test_source_1 order by col0;
+select * from test_source_1 order by col0 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                 | col2                                                                   |
++----------------------------------------------------------------------------------------------------------------------+
+0 rows returned
+;
 
 drop source test_source_1;
 --delete topic testtopic1;

@@ -185,7 +185,7 @@ func (f *FakeCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	panic("implement me")
 }
 
-func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
+func (f *FakeCluster) WriteForwardBatch(batch *cluster.WriteBatch, direct bool, fill bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -255,10 +255,7 @@ func (f *FakeCluster) WriteBatchLocally(batch *cluster.WriteBatch) error {
 func (f *FakeCluster) WriteBatch(batch *cluster.WriteBatch, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.writeBatchInternal(batch, false, nil); err != nil {
-		return err
-	}
-	return batch.AfterCommit()
+	return f.writeBatchInternal(batch, false, nil)
 }
 
 func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool, forwardRows []cluster.ForwardRow) error {
