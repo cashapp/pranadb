@@ -1,6 +1,7 @@
 package source
 
 import (
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,7 +13,7 @@ import (
 type MessageConsumer struct {
 	msgProvider     kafka.MessageProvider
 	pollTimeout     time.Duration
-	maxMessages     int
+	maxMessages     int32
 	source          *Source
 	loopCh          chan struct{}
 	running         common.AtomicBool
@@ -30,7 +31,7 @@ func NewMessageConsumer(msgProvider kafka.MessageProvider, pollTimeout time.Dura
 	mc := &MessageConsumer{
 		msgProvider:     msgProvider,
 		pollTimeout:     pollTimeout,
-		maxMessages:     maxMessages,
+		maxMessages:     int32(maxMessages),
 		source:          source,
 		loopCh:          make(chan struct{}, 1),
 		messageParser:   messageParser,
@@ -66,6 +67,10 @@ func (m *MessageConsumer) Close() error {
 	return m.msgProvider.Close()
 }
 
+func (m *MessageConsumer) SetMaxPollMessages(maxMessages int) {
+	atomic.StoreInt32(&m.maxMessages, int32(maxMessages))
+}
+
 func (m *MessageConsumer) consumerError(err error, clientError bool) {
 	if err := m.msgProvider.Stop(); err != nil {
 		log.Errorf("failed to stop message provider %+v", err)
@@ -88,7 +93,8 @@ func (m *MessageConsumer) pollLoop() {
 		m.loopCh <- struct{}{}
 	}()
 	for m.running.Get() {
-		messages, offsetsToCommit, err := m.getBatch(m.pollTimeout, m.maxMessages)
+		maxMessages := atomic.LoadInt32(&m.maxMessages)
+		messages, offsetsToCommit, err := m.getBatch(m.pollTimeout, int(maxMessages))
 		if err != nil {
 			m.consumerError(err, true)
 			return
@@ -125,6 +131,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 
 	// The golang Kafka consumer API returns single messages, not batches, but it's more efficient for us to
 	// process in batches. So we attempt to return more than one message at a time.
+
 	for len(m.msgBatch) < maxRecords {
 		msg, err := m.msgProvider.GetMessage(time.Duration(remaining))
 		if err != nil {
@@ -136,7 +143,7 @@ func (m *MessageConsumer) getBatch(pollTimeout time.Duration, maxRecords int) ([
 		partID := msg.PartInfo.PartitionID
 		m.offsetsToCommit[partID] = msg.PartInfo.Offset + 1
 		m.msgBatch = append(m.msgBatch, msg)
-		remaining = int64(pollTimeout) - int64(common.NanoTime()-start)
+		remaining -= int64(common.NanoTime() - start)
 		if remaining <= 0 {
 			break
 		}

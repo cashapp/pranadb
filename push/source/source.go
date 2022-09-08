@@ -26,7 +26,7 @@ import (
 
 const (
 	defaultNumConsumersPerSource  = 2
-	defaultPollTimeoutMs          = 20
+	defaultPollTimeoutMs          = 50
 	defaultMaxPollMessages        = 1000
 	maxRetryDelay                 = time.Second * 30
 	initialRestartDelay           = time.Millisecond * 100
@@ -169,13 +169,21 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 		cfg:                     cfg,
 		lastUpdateIndexName:     lastUpdateIndexName,
 	}
+	var holder rlHolder
 	var rl ratelimit.Limiter
 	if maxIngestRate > 0 {
+		source.maxPollMessages = calculatePollMessagesFromRate(maxIngestRate, pollTimeoutMs, numConsumers)
+		log.Debugf("Setting maxPollMessages to %d", source.maxPollMessages)
 		rl = ratelimit.New(maxIngestRate)
-		source.rateLimiter.Store(rl)
+		holder.rl = rl
 	}
+	source.rateLimiter.Store(holder)
 	source.commitOffsets.Set(true)
 	return source, nil
+}
+
+type rlHolder struct {
+	rl ratelimit.Limiter
 }
 
 func (s *Source) Start() error {
@@ -374,6 +382,11 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 	forwardBatches := make(map[uint64]*cluster.WriteBatch)
 
+	// We get the rate limiter before the loop over the messages, because if it has a large batch and we change the
+	// rate during processing of the batch, then it will take a long time to return which can time out the consumer
+	// goroutine and also prevent the set max rate call from returning
+	rl := s.getRateLimiter()
+
 	totBatchSizeBytes := 0
 	rowsIngested := 0
 	for i := 0; i < rows.RowCount(); i++ {
@@ -406,7 +419,9 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 			}
 		}
 
-		s.maybeLimit()
+		if rl != nil {
+			rl.Take()
+		}
 
 		key := make([]byte, 0, 8)
 		key, err := common.EncodeKeyCols(&row, pkCols, colTypes, key)
@@ -455,7 +470,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	s.batchesIngestedCounter.Add(1)
 	s.bytesIngestedCounter.Add(float64(totBatchSizeBytes))
 
-	log.Tracef("ingested batch of %d", rowsIngested)
+	log.Debugf("source %s.%s ingested batch of %d", s.sourceInfo.SchemaName, s.sourceInfo.Name, rowsIngested)
 
 	return nil
 }
@@ -488,18 +503,41 @@ func (s *Source) SetCommitOffsets(enable bool) {
 	s.commitOffsets.Set(enable)
 }
 
-func (s *Source) SetMaxIngestRate(rate int) {
+func (s *Source) SetMaxIngestRate(rate int) error {
+	var msgsPerPoll int
+	if rate == -1 {
+		// Set max poll msgs back to the configured value or default
+		msgs, err := common.GetOrDefaultIntProperty(maxPollMessagesPropName, s.sourceInfo.OriginInfo.Properties, defaultMaxPollMessages)
+		if err != nil {
+			return err
+		}
+		msgsPerPoll = msgs
+	} else {
+		msgsPerPoll = calculatePollMessagesFromRate(rate, s.pollTimeoutMs, s.numConsumersPerSource)
+	}
+	log.Debug("calling consumers")
+	for _, consumer := range s.msgConsumers {
+		consumer.SetMaxPollMessages(msgsPerPoll)
+	}
+	log.Debug("called consumers")
+	// We set the rate limiter after setting the consumers as otherwise it can take a long time for source.ingestMessages
+	// to return if there is a large batch and we have set the new rate to a low value
 	if rate == -1 {
 		s.setRateLimiter(nil)
 	} else {
 		s.setRateLimiter(ratelimit.New(rate))
 	}
+	log.Debugf("set source %s.%s max ingest rate to %d and max poll messages to %d", s.sourceInfo.SchemaName,
+		s.sourceInfo.Name, rate, msgsPerPoll)
+	return nil
 }
 
-func (s *Source) maybeLimit() {
-	if rl := s.getRateLimiter(); rl != nil {
-		rl.Take()
+func calculatePollMessagesFromRate(rate int, pollTimeoutMs int, numConsumers int) int {
+	msgsPerPoll := (rate * pollTimeoutMs) / (1000 * numConsumers)
+	if msgsPerPoll == 0 {
+		msgsPerPoll = 1
 	}
+	return msgsPerPoll
 }
 
 func (s *Source) getRateLimiter() ratelimit.Limiter {
@@ -507,9 +545,11 @@ func (s *Source) getRateLimiter() ratelimit.Limiter {
 	if v == nil {
 		return nil
 	}
-	return v.(ratelimit.Limiter) //nolint:forcetypeassert
+	holder := v.(rlHolder) //nolint:forcetypeassert
+	return holder.rl
 }
 
 func (s *Source) setRateLimiter(limiter ratelimit.Limiter) {
-	s.rateLimiter.Store(limiter)
+	holder := rlHolder{rl: limiter}
+	s.rateLimiter.Store(holder)
 }

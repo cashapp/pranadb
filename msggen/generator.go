@@ -21,6 +21,7 @@ import (
 type MessageGenerator interface {
 	GenerateMessage(scope int32, index int64, rnd *rand.Rand) (*kafka.Message, error)
 	Name() string
+	Init()
 }
 
 type GenManager struct {

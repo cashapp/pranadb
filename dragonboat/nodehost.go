@@ -1461,6 +1461,17 @@ func (nh *NodeHost) propose(s *client.Session,
 	return req, err
 }
 
+func (nh *NodeHost) NumPendingProposals(clusterID uint64) (uint64, error) {
+	if atomic.LoadInt32(&nh.closed) != 0 {
+		return 0, ErrClosed
+	}
+	v, ok := nh.getCluster(clusterID)
+	if !ok {
+		return 0, ErrClusterNotFound
+	}
+	return v.numPendingProposals()
+}
+
 func (nh *NodeHost) readIndex(clusterID uint64,
 	timeout time.Duration) (*RequestState, *node, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {

@@ -410,6 +410,16 @@ func (n *node) propose(session *client.Session,
 	return n.pendingProposals.propose(session, cmd, timeout)
 }
 
+func (n *node) numPendingProposals() (uint64, error) {
+	if !n.initialized() {
+		return 0, ErrClusterNotReady
+	}
+	if n.isWitness() {
+		return 0, ErrInvalidOperation
+	}
+	return n.pendingProposals.numPendingProposals(), nil
+}
+
 func (n *node) read(timeout uint64) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrClusterNotReady

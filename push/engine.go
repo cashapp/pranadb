@@ -267,8 +267,18 @@ func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, shardIDs []
 
 	consumerName := fmt.Sprintf("%s.%s", te.TableInfo.Name, indexInfo.Name)
 	if fill {
+
+		schedulers := make(map[uint64]*sched.ShardScheduler)
+		for _, shardID := range shardIDs {
+			sched := p.schedulers[shardID]
+			if sched == nil {
+				return errors.NewPranaErrorf(errors.DdlRetry, "not all shards have leaders")
+			}
+			schedulers[shardID] = sched
+		}
+
 		// And fill it with the data from the table - this creates the index
-		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, shardIDs, p.failInject, interruptor); err != nil {
+		if err := te.FillTo(indexExec, consumerName, indexInfo.ID, schedulers, p.failInject, interruptor); err != nil {
 			return err
 		}
 	} else {
@@ -447,19 +457,10 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 
 		rcVal, ok := p.remoteConsumers.Load(entityID)
 		if !ok {
-			// Does the entity exist in storage?
-			rows, err := p.queryExec.ExecuteQuery("sys", fmt.Sprintf("select id from tables where id=%d", entityID))
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			if rows.RowCount() == 1 {
-				// The entity is in storage but not deployed - should not happen - we must throw an error to avoid losing
-				// data
-				return errors.Errorf("entity with id %d not registered", entityID)
-			}
 			// This could correspond to a source or mv which failed during fill and was never fully created
 			// but left rows in the receiver table. in this case we can just ignore them
-			log.Warnf("remote consumer %d not loaded", entityID)
+			// It can also occur if an MV is dropped while the system is ingesting
+			log.Debugf("remote consumer %d not loaded - batch will be dropped. this is usually because data is being processed for a dropped entity", entityID)
 			return nil
 		}
 		remoteConsumer := rcVal.(*RemoteConsumer) //nolint:forcetypeassert
@@ -798,19 +799,26 @@ func (l *loadClientSetRateHandler) HandleMessage(clusterMsg remoting.ClusterMess
 	if !ok {
 		panic("not a ConsumerSetRate")
 	}
-	l.p.lock.Lock()
-	defer l.p.lock.Unlock()
-	sourceInfo, ok := l.p.meta.GetSource(setRate.SchemaName, setRate.SourceName)
-	if !ok {
-		return nil, errors.NewPranaErrorf(errors.UnknownSource, "Unknown source %s.%s", setRate.SchemaName, setRate.SourceName)
+	source, err := l.p.getSourceFromName(setRate.SchemaName, setRate.SourceName)
+	if err != nil {
+		return nil, err
 	}
-	source, ok := l.p.sources[sourceInfo.ID]
+	return nil, source.SetMaxIngestRate(int(setRate.Rate))
+}
+
+func (p *Engine) getSourceFromName(schemaName string, sourceName string) (*source.Source, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	sourceInfo, ok := p.meta.GetSource(schemaName, sourceName)
+	if !ok {
+		return nil, errors.NewPranaErrorf(errors.UnknownSource, "Unknown source %s.%s", schemaName, sourceName)
+	}
+	source, ok := p.sources[sourceInfo.ID]
 	if !ok {
 		// Internal error
-		return nil, errors.Errorf("can't find source %s.%s", setRate.SchemaName, setRate.SourceName)
+		return nil, errors.Errorf("can't find source %s.%s", schemaName, sourceName)
 	}
-	source.SetMaxIngestRate(int(setRate.Rate))
-	return nil, nil
+	return source, nil
 }
 
 func (p *Engine) GetLoadClientSetRateHandler() remoting.ClusterMessageHandler {
