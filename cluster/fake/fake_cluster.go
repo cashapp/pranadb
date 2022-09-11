@@ -497,3 +497,7 @@ func (f *FakeCluster) RegisterEndFill() {
 
 func (f *FakeCluster) TableDropped(tableID uint64) {
 }
+
+func (f *FakeCluster) BatchWrittenLocally(shardID uint64, batchID []byte) (bool, error) {
+	return false, nil
+}

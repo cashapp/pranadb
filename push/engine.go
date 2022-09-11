@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
@@ -360,17 +361,19 @@ type RawRow struct {
 	Row              []byte
 }
 
-func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
+func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, getter sched.RowGetter, rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
 	rawRows := make(map[uint64][]RawRow)
+
+	ctx := exec.NewExecutionContext(writeBatch, getter, -1)
 
 	if first {
 		// For the first batch we actually load it directly from the receiver table - there may be pending data there
 		// That was undelivered from the last time the server was started - we need to deliver everything in there first
-		return p.loadReceivedRows(shardID)
+		return p.loadReceivedRows(ctx)
 	}
 
 	receiveBatch := &receiveBatch{
-		writeBatch: cluster.NewWriteBatch(shardID),
+		ctx: ctx,
 	}
 
 	nr := len(rowsBatch)
@@ -385,7 +388,7 @@ func (p *Engine) HandleBatch(shardID uint64, rowsBatch []cluster.ForwardRow, fir
 		})
 		rawRows[row.RemoteConsumerID] = consumerRows
 		// TODO we can delete range instead of deleting one by one
-		receiveBatch.writeBatch.AddDelete(row.KeyBytes)
+		receiveBatch.ctx.WriteBatch.AddDelete(row.KeyBytes)
 	}
 
 	receiveBatch.rawRows = rawRows
@@ -408,11 +411,12 @@ func (p *Engine) removeScheduler(shardID uint64) {
 }
 
 type receiveBatch struct {
-	writeBatch *cluster.WriteBatch
+	ctx *exec.ExecutionContext
 	rawRows    map[uint64][]RawRow
 }
 
-func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
+func (p *Engine) loadReceivedRows(ctx *exec.ExecutionContext) (int64, error) {
+	receivingShardID := ctx.WriteBatch.ShardID
 	keyStartPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID, receivingShardID, 16)
 	keyEndPrefix := table.EncodeTableKeyPrefix(common.ReceiverTableID+1, receivingShardID, 16)
 
@@ -427,7 +431,7 @@ func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
 	}
 
 	batch := &receiveBatch{
-		writeBatch: cluster.NewWriteBatch(receivingShardID),
+		ctx: ctx,
 		rawRows:    make(map[uint64][]RawRow),
 	}
 
@@ -441,7 +445,7 @@ func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
 			Row:              kvPair.Value,
 		})
 		batch.rawRows[remoteConsumerID] = rows
-		batch.writeBatch.AddDelete(kvPair.Key)
+		batch.ctx.WriteBatch.AddDelete(kvPair.Key)
 	}
 
 	if err := p.processReceiveBatch(batch); err != nil {
@@ -452,7 +456,8 @@ func (p *Engine) loadReceivedRows(receivingShardID uint64) (int64, error) {
 }
 
 func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
-	ctx := exec.NewExecutionContext(batch.writeBatch, -1)
+
+	ctx := batch.ctx
 	for entityID, rawRows := range batch.rawRows {
 
 		rcVal, ok := p.remoteConsumers.Load(entityID)
@@ -513,9 +518,18 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 	}
 
 	// If we get this far we can commit any local changes and deletes from the receiver table
-	if err := p.cluster.WriteBatch(batch.writeBatch, true); err != nil {
-		return errors.WithStack(err)
+	if ctx.WriteBatch.HasWrites() {
+		// Generate a batch id
+		uid, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
+		ctx.WriteBatch.SetBatchID(uid[:])
+		if err := p.cluster.WriteBatch(ctx.WriteBatch, true); err != nil {
+			return errors.WithStack(err)
+		}
 	}
+
 	return nil
 }
 

@@ -195,6 +195,9 @@ func (p *PullIndexReader) getRowsFromRange(limit int, currRange *rangeHolder) er
 			if err != nil {
 				return errors.WithStack(err)
 			}
+			if value == nil {
+				return errors.Errorf("cannot find pk: %v", keyBuff)
+			}
 			if err = common.DecodeRowWithIgnoredCols(value, p.tableInfo.ColumnTypes, p.includedTableCols, p.rows); err != nil {
 				return errors.WithStack(err)
 			}

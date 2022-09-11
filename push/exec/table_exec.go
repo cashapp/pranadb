@@ -40,7 +40,6 @@ type TableExecutor struct {
 	filling        bool
 	lastSequences  sync.Map
 	fillTableID    uint64
-	//uncommittedBatches sync.Map
 	delayer           interruptor.InterruptManager
 	transient         bool
 	retentionDuration time.Duration
@@ -124,11 +123,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 				return errors.WithStack(err)
 			}
 			if hasDownStream {
-				// We do a linearizable get as there is the possibility that the previous write for the same key has not
-				// yet been applied to the state machine of the replica where the processor is running. Raft only
-				// requires replication to a quorum for write to complete and that quorum might not contain the processor
-				// replica
-				v, err := t.store.LinearizableGet(ctx.WriteBatch.ShardID, keyBuff)
+				v, err := ctx.Getter.Get(keyBuff)
 				if err != nil {
 					return errors.WithStack(err)
 				}
@@ -444,7 +439,6 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 	chans := make([]chan error, 0, len(schedulers))
 
 	for shardID, scheduler := range schedulers {
-		theShardID := shardID
 		theScheduler := scheduler
 		startPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID, shardID, 16)
 		endPrefix := table.EncodeTableKeyPrefix(t.TableInfo.ID+1, shardID, 16)
@@ -465,8 +459,8 @@ func (t *TableExecutor) performReplayFromSnapshot(snapshot cluster.Snapshot, pe 
 						return err
 					}
 					if len(kvp) != 0 {
-						log.Debugf("shard %d replaying snapshot fill batch of of size %d", theShardID, len(kvp))
-						if err := t.sendFillBatchFromPairs(pe, theShardID, kvp, receiverSeqs, fillTableID); err != nil {
+						log.Debugf("shard %d replaying snapshot fill batch of of size %d", scheduler.ShardID(), len(kvp))
+						if err := t.sendFillBatchFromPairs(scheduler, pe, kvp, receiverSeqs, fillTableID); err != nil {
 							return err
 						}
 					}
@@ -547,7 +541,7 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 			nextSeq.Store(theStartSeq)
 			action := func() error {
 				log.Debugf("shard %d replaying captured fill batch of of size %d", theShardID, theEndSeq-nextSeq.Load().(int64))
-				lastSeq, err := t.scanAndSendFromFillTable(fillTableID, theShardID, nextSeq.Load().(int64), theEndSeq, pe, receiverSeqs)
+				lastSeq, err := t.scanAndSendFromFillTable(fillTableID, sched, nextSeq.Load().(int64), theEndSeq, pe, receiverSeqs)
 				if err != nil {
 					return err
 				}
@@ -582,8 +576,9 @@ func (t *TableExecutor) replayChanges(startSeqs map[uint64]int64, endSeqs map[ui
 	return nil
 }
 
-func (t *TableExecutor) scanAndSendFromFillTable(fillTableID uint64, shardID uint64, startSeq int64, endSeq int64,
+func (t *TableExecutor) scanAndSendFromFillTable(fillTableID uint64, scheduler *sched.ShardScheduler, startSeq int64, endSeq int64,
 	pe PushExecutor, receiverSeqs *sync.Map) (int64, error) {
+	shardID := scheduler.ShardID()
 	startPrefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 24)
 	startPrefix = common.KeyEncodeInt64(startPrefix, startSeq)
 	endPrefix := table.EncodeTableKeyPrefix(fillTableID, shardID, 24)
@@ -593,7 +588,7 @@ func (t *TableExecutor) scanAndSendFromFillTable(fillTableID uint64, shardID uin
 		return 0, err
 	}
 	log.Debugf("shard id %d sending fill batch from start %d to end %d length %d", shardID, startSeq, endSeq, len(kvp))
-	err = t.sendFillBatchFromPairs(pe, shardID, kvp, receiverSeqs, fillTableID)
+	err = t.sendFillBatchFromPairs(scheduler, pe, kvp, receiverSeqs, fillTableID)
 	if err != nil {
 		return 0, err
 	}
@@ -601,7 +596,7 @@ func (t *TableExecutor) scanAndSendFromFillTable(fillTableID uint64, shardID uin
 	return lastSeq, nil
 }
 
-func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, kvp []cluster.KVPair,
+func (t *TableExecutor) sendFillBatchFromPairs(scheduler *sched.ShardScheduler, pe PushExecutor, kvp []cluster.KVPair,
 	receiverSeqs *sync.Map, fillTableID uint64) error {
 	rows := t.RowsFactory().NewRows(len(kvp))
 	for _, kv := range kvp {
@@ -609,14 +604,14 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 			return errors.WithStack(err)
 		}
 	}
-	wb := cluster.NewWriteBatch(shardID) // Epoch doesn't matter here
+	wb := cluster.NewWriteBatch(scheduler.ShardID()) // Epoch doesn't matter here
 
 	// When we fill it's important that we have duplicate detection as forward writes caused in fills (e.g. for aggregations)
 	// can be retried in case of Raft timeout.
 	// However we don't have a natural receiver sequence in this case. So we generate one starting from 1 at the beginning of the fill
 	// We also will use the fill table id in the originator id when filling to distinguish the fill dup keys from normal dup keys
 	var receiverSeq uint64
-	lrs, ok := receiverSeqs.Load(shardID)
+	lrs, ok := receiverSeqs.Load(scheduler.ShardID())
 	if ok {
 		receiverSeq, ok = lrs.(uint64)
 		if !ok {
@@ -631,10 +626,10 @@ func (t *TableExecutor) sendFillBatchFromPairs(pe PushExecutor, shardID uint64, 
 		entries[i] = entry
 		receiverSeq++
 	}
-	receiverSeqs.Store(shardID, receiverSeq)
+	receiverSeqs.Store(scheduler.ShardID(), receiverSeq)
 	batch := NewRowsBatch(rows, entries)
 
-	ctx := NewExecutionContext(wb, int64(fillTableID))
+	ctx := NewExecutionContext(wb, scheduler, int64(fillTableID))
 	if err := pe.HandleRows(batch, ctx); err != nil {
 		return errors.WithStack(err)
 	}

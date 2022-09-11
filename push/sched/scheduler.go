@@ -74,10 +74,38 @@ type ShardScheduler struct {
 	processLock                  sync.Mutex
 	processingPaused             bool
 	fillRun                      int
+	lastBatchID []byte
+	lastBatchProcessed bool
+}
+
+type RowGetter interface {
+	Get(key []byte) ([]byte, error)
+}
+
+func (s *ShardScheduler) Get(key []byte) ([]byte, error) {
+	localGet := false
+	if s.lastBatchID != nil {
+		if s.lastBatchProcessed {
+			localGet = true
+		} else {
+			processed, err := s.clust.BatchWrittenLocally(s.shardID, s.lastBatchID)
+			if err != nil {
+				return nil, err
+			}
+			if processed {
+				s.lastBatchProcessed = true
+				localGet = true
+			}
+		}
+	}
+	if localGet {
+		return s.clust.LocalGet(key)
+	}
+	return s.clust.LinearizableGet(s.shardID, key)
 }
 
 type RowsBatchHandler interface {
-	HandleBatch(shardID uint64, rows []cluster.ForwardRow, first bool) (int64, error)
+	HandleBatch(writeBatch *cluster.WriteBatch, getter RowGetter, rows []cluster.ForwardRow, first bool) (int64, error)
 }
 
 // ShardFailListener is called when a shard fails - this is only caused for unretryable errors where we need to stop
@@ -336,18 +364,17 @@ func (s *ShardScheduler) getForwardWriteBatch() *WriteBatchEntry {
 		for _, batch := range s.forwardWrites {
 			nextBatchIndex++
 			numPuts := getNumPuts(batch.writeBatch)
-			combinedEntries = append(combinedEntries, batch.writeBatch[10:]...)
+			combinedEntries = append(combinedEntries, batch.writeBatch[3:]...)
 			entries += int(numPuts)
 			completionChannels = append(completionChannels, batch.completionChannels[0])
-			if entries >= s.maxForwardWriteBatchSize {
+			if entries >= s.maxForwardWriteBatchSize || nextBatchIndex == 255 {
 				break
 			}
 		}
-		bigBatch := make([]byte, 0, len(combinedEntries)+10)
+		bigBatch := make([]byte, 0, len(combinedEntries)+3)
 		bigBatch = append(bigBatch, s.forwardWrites[0].writeBatch[0]) // shardStateMachineCommandForwardWrite
 		bigBatch = append(bigBatch, s.forwardWrites[0].writeBatch[1]) // 0 - not a fill
-		bigBatch = common.AppendUint32ToBufferLE(bigBatch, uint32(entries))
-		bigBatch = common.AppendUint32ToBufferLE(bigBatch, 0)
+		bigBatch = append(bigBatch, byte(nextBatchIndex)) // number of batches in the write
 		bigBatch = append(bigBatch, combinedEntries...)
 		s.forwardWrites = s.forwardWrites[nextBatchIndex:]
 		s.queuedWriteRows -= entries
@@ -363,7 +390,7 @@ func (s *ShardScheduler) getForwardWriteBatch() *WriteBatchEntry {
 }
 
 func getNumPuts(batch []byte) uint32 {
-	numPuts, _ := common.ReadUint32FromBufferLE(batch, 2)
+	numPuts, _ := common.ReadUint32FromBufferLE(batch, 3)
 	return numPuts
 }
 
@@ -479,13 +506,18 @@ func (s *ShardScheduler) runLoop() {
 }
 
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool, fill bool) bool {
-	lastSequence, err := s.batchHandler.HandleBatch(s.shardID, rowsToProcess, first)
+	writeBatch := cluster.NewWriteBatch(s.shardID)
+	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, rowsToProcess, first)
 	if err != nil {
 		s.setFailed(err)
 		return false
 	}
 	if !fill && lastSequence != -1 { // -1 represents no rows returned
 		atomic.StoreUint64(&s.lastProcessedReceiverSeq, uint64(lastSequence))
+	}
+	if writeBatch.BatchID != nil {
+		s.lastBatchID = writeBatch.BatchID
+		s.lastBatchProcessed = false
 	}
 	return true
 }
