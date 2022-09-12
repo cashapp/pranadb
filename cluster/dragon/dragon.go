@@ -397,6 +397,7 @@ func (d *Dragon) createPebbleOpts() *pebble.Options {
 		if i > 0 {
 			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
 		}
+		l.Compression = pebble.NoCompression
 		l.EnsureDefaults()
 	}
 	opts.Levels[6].FilterPolicy = nil
