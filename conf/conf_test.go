@@ -213,9 +213,15 @@ func locksCompactionGreaterThanDataSnapshotEntries() Config {
 	return cnf
 }
 
-func NodeIDOutOfRangeConf() Config {
+func nodeIDOutOfRangeConf() Config {
 	cnf := confAllFields
 	cnf.NodeID = len(cnf.RaftListenAddresses)
+	return cnf
+}
+
+func invalidDataCacheSize() Config {
+	cnf := confAllFields
+	cnf.DataCacheSize = -1
 	return cnf
 }
 
@@ -346,7 +352,7 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: KafkaBroker testbroker, invalid ClientType, must be 1 or 2", invalidBrokerClientTypeConf()},
 	{"PDB3000 - Invalid configuration: GRPCAPIServerListenAddresses must be specified", invalidGRPCAPIServerListenAddress()},
 	{"PDB3000 - Invalid configuration: HTTPAPIServerListenAddresses must be specified", invalidHTTPAPIServerListenAddress()},
-	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftListenAddresses) (exclusive)", NodeIDOutOfRangeConf()},
+	{"PDB3000 - Invalid configuration: NodeID must be in the range 0 (inclusive) to len(RaftListenAddresses) (exclusive)", nodeIDOutOfRangeConf()},
 	{"PDB3000 - Invalid configuration: ReplicationFactor must be >= 3", invalidReplicationFactorConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be >= ReplicationFactor", invalidRaftListenAddressesConfig()},
 	{"PDB3000 - Invalid configuration: Number of RaftListenAddresses must be same as number of RemotingListenAddresses", raftAndRemotingListenAddressedDifferentLengthConfig()},
@@ -392,6 +398,8 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.KeyPath must be specified if intra cluster TLS is enabled", intraClusterTLSKeyPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.CertPath must be specified if intra cluster TLS is enabled", intraClusterTLSCertPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled", intraClusterTLSCAPathNotSpecifiedConfig()},
+
+	{"PDB3000 - Invalid configuration: DataCacheSize must be > 0", invalidDataCacheSize()},
 }
 
 func TestValidate(t *testing.T) {

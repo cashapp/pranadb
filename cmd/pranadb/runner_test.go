@@ -121,5 +121,7 @@ func createConfigWithAllFields() conf.Config {
 			ClientCertsPath: "intra-cluster-client-certs-path",
 			ClientAuth:      "require-and-verify-client-cert",
 		},
+
+		DataCacheSize: 12345,
 	}
 }
