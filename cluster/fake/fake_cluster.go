@@ -497,3 +497,7 @@ func (f *FakeCluster) RegisterEndFill() {
 
 func (f *FakeCluster) TableDropped(tableID uint64) {
 }
+
+func (f *FakeCluster) GetLastPersistedBatch(shardID uint64) ([]byte, error) {
+	return nil, nil
+}

@@ -7,6 +7,7 @@ import (
 // WriteBatch represents some Puts and deletes that will be written atomically by the underlying storage implementation
 type WriteBatch struct {
 	ShardID    uint64
+	BatchID    []byte
 	Puts       []byte
 	Deletes    []byte
 	NumPuts    int
@@ -44,11 +45,24 @@ func (wb *WriteBatch) HasPuts() bool {
 	return len(wb.Puts) > 0
 }
 
+func (wb *WriteBatch) SetBatchID(id []byte) {
+	if len(id) != 16 {
+		panic("id wrong length")
+	}
+	wb.BatchID = id
+}
+
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeletes))
 	buff = append(buff, wb.Puts...)
 	buff = append(buff, wb.Deletes...)
+	if wb.BatchID == nil {
+		buff = append(buff, 0)
+	} else {
+		buff = append(buff, 1)
+		buff = append(buff, wb.BatchID...)
+	}
 	return buff
 }
 

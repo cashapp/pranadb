@@ -20,6 +20,8 @@ const (
 type Cluster interface {
 	ExecuteForwardBatch(shardID uint64, batch []byte) error
 
+	GetLastPersistedBatch(shardID uint64) ([]byte, error)
+
 	// WriteBatch writes a batch reliably to storage
 	WriteBatch(batch *WriteBatch, localOnly bool) error
 

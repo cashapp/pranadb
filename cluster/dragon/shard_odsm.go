@@ -38,19 +38,20 @@ func newShardODStateMachine(d *Dragon, shardID uint64, nodeID int, nodeIDs []int
 }
 
 type ShardOnDiskStateMachine struct {
-	nodeID           int
-	shardID          uint64
-	dragon           *Dragon
-	nodeIDs          []int
-	shardListener    cluster.ShardListener
-	dedupSequences   map[string]uint64
-	receiverSequence uint64
-	forwardRows      []cluster.ForwardRow
-	lock             sync.Mutex
-	lastIndex        uint64
-	leaderNodeID     int64
-	leaderTerm       int64
-	droppedTables    *simplelru.LRU
+	nodeID             int
+	shardID            uint64
+	dragon             *Dragon
+	nodeIDs            []int
+	shardListener      cluster.ShardListener
+	dedupSequences     map[string]uint64
+	receiverSequence   uint64
+	forwardRows        []cluster.ForwardRow
+	lock               sync.Mutex
+	lastIndex          uint64
+	leaderNodeID       int64
+	leaderTerm         int64
+	droppedTables      *simplelru.LRU
+	lastPersistedBatch atomic.Value
 }
 
 func (s *ShardOnDiskStateMachine) Open(stopc <-chan struct{}) (uint64, error) {
@@ -133,6 +134,7 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 			s.lastIndex+1, entries[0].Index)
 		s.lastIndex = entries[len(entries)-1].Index
 	}
+	var lastBatch []byte
 	batch := s.dragon.pebble.NewBatch()
 	timestamp := common.NanoTime()
 	for i, entry := range entries {
@@ -145,12 +147,23 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 				s.forwardRows = make([]cluster.ForwardRow, 0, len(entries))
 			}
 			fill := cmdBytes[1] == 1
-			if err := s.handleWrite(batch, cmdBytes, true, fill, timestamp); err != nil {
-				return nil, err
+			// There can be multiple batches in a single forward write - the shard scheduler can combine them
+			numBatches := int(cmdBytes[2])
+			offset := 3
+			for j := 0; j < numBatches; j++ {
+				var err error
+				_, offset, err = s.handleWrite(batch, offset, cmdBytes, true, fill, timestamp)
+				if err != nil {
+					return nil, err
+				}
 			}
 		case shardStateMachineCommandWrite:
-			if err := s.handleWrite(batch, cmdBytes, false, false, timestamp); err != nil {
+			batchID, _, err := s.handleWrite(batch, 1, cmdBytes, false, false, timestamp)
+			if err != nil {
 				return nil, errors.WithStack(err)
+			}
+			if batchID != nil {
+				lastBatch = batchID
 			}
 		case shardStateMachineCommandSetLeader:
 			if err := s.handleSetLeader(batch, cmdBytes); err != nil {
@@ -178,6 +191,10 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 		return nil, errors.WithStack(err)
 	}
 
+	if lastBatch != nil {
+		s.lastPersistedBatch.Store(lastBatch)
+	}
+
 	// A forward write is a write which forwards a batch of rows from one shard to another
 	// In this case we want to trigger processing of those rows, if we're the processor
 	if s.shardListener != nil && len(s.forwardRows) > 0 {
@@ -187,14 +204,17 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	return entries, nil
 }
 
-func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, fill bool, timestamp uint64) error {
-	var offset int
-	if forward {
-		offset = 2
-	} else {
-		offset = 1
+func (s *ShardOnDiskStateMachine) GetLastPersistedBatch() []byte {
+	v := s.lastPersistedBatch.Load()
+	if v == nil {
+		return nil
 	}
-	puts, deletes := s.deserializeWriteBatch(bytes, offset, forward)
+	return v.([]byte) //nolint:forcetypeassert
+}
+
+func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, offset int, bytes []byte, forward bool, fill bool,
+	timestamp uint64) ([]byte, int, error) {
+	puts, deletes, batchID, offsetOut := s.deserializeWriteBatch(bytes, offset, forward)
 	hasDups := false
 	for _, kvPair := range puts {
 
@@ -205,7 +225,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 
 			ignore, err := s.checkDedup(dedupKey, batch)
 			if err != nil {
-				return err
+				return nil, 0, err
 			}
 			if ignore {
 				hasDups = true
@@ -243,7 +263,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 			}
 		}
 		if err := batch.Set(key, kvPair.Value, nil); err != nil {
-			return errors.WithStack(err)
+			return nil, 0, errors.WithStack(err)
 		}
 	}
 	if forward && len(deletes) != 0 {
@@ -252,18 +272,19 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 	for _, k := range deletes {
 		s.checkKey(k)
 		if err := batch.Delete(k, nil); err != nil {
-			return errors.WithStack(err)
+			return nil, 0, errors.WithStack(err)
 		}
 	}
 	if hasDups {
 		log.Warnf("Write batch in shard %d - contained duplicates - these were screened out", s.shardID)
 	}
-	return nil
+	return batchID, offsetOut, nil
 }
 
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
-func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (puts []cluster.KVPair, deletes [][]byte) {
+func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (puts []cluster.KVPair,
+	deletes [][]byte, batchID []byte, offsetOut int) {
 	var numPuts, numDeletes uint32
 	numPuts, offset = common.ReadUint32FromBufferLE(buff, offset)
 	numDeletes, offset = common.ReadUint32FromBufferLE(buff, offset)
@@ -302,7 +323,13 @@ func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int,
 		offset += kLen
 		deletes[i] = k
 	}
-	return puts, deletes
+	hasBatchID := buff[offset] == 1
+	offset++
+	if hasBatchID {
+		batchID = buff[offset : offset+16]
+		offset += 16
+	}
+	return puts, deletes, batchID, offset
 }
 
 func (s *ShardOnDiskStateMachine) checkDedup(key []byte, batch *pebble.Batch) (ignore bool, err error) {
