@@ -113,6 +113,16 @@ func (d *Dragon) GetNodeID() int {
 	return d.cnf.NodeID
 }
 
+func (d *Dragon) GetLastPersistedBatch(shardID uint64) ([]byte, error) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	sm, ok := d.shardSMs[shardID]
+	if !ok {
+		return nil, errors.Errorf("cannot find state machine for shard %d", shardID)
+	}
+	return sm.GetLastPersistedBatch(), nil
+}
+
 func (d *Dragon) GenerateClusterSequence(sequenceName string) (uint64, error) {
 	var buff []byte
 	buff = common.AppendStringToBufferLE(buff, sequenceName)
@@ -505,6 +515,8 @@ func (d *Dragon) WriteForwardBatch(batch *cluster.WriteBatch, direct bool, fill 
 	} else {
 		buff = append(buff, byte(0))
 	}
+	// The next byte is number of batches in the write
+	buff = append(buff, byte(1))
 	buff = batch.Serialize(buff)
 	if direct {
 		// For a direct WriteForwardBatch we must not queue the forward batch via the processor as this can cause deadlock if

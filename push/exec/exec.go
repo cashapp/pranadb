@@ -3,6 +3,7 @@ package exec
 import (
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
+	"github.com/squareup/pranadb/push/sched"
 )
 
 type PushExecutor interface {
@@ -21,10 +22,11 @@ type PushExecutor interface {
 	ColsVisible() []bool
 }
 
-func NewExecutionContext(writeBatch *cluster.WriteBatch, fillTableID int64) *ExecutionContext {
+func NewExecutionContext(writeBatch *cluster.WriteBatch, rowGetter sched.RowGetter, fillTableID int64) *ExecutionContext {
 	return &ExecutionContext{
 		WriteBatch:  writeBatch,
 		FillTableID: fillTableID,
+		Getter:      rowGetter,
 	}
 }
 
@@ -32,6 +34,7 @@ type ExecutionContext struct {
 	WriteBatch    *cluster.WriteBatch
 	RemoteBatches map[uint64]*cluster.WriteBatch
 	FillTableID   int64
+	Getter        sched.RowGetter
 }
 
 func (e *ExecutionContext) AddToForwardBatch(shardID uint64, key []byte, value []byte) {

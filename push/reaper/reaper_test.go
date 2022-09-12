@@ -435,12 +435,21 @@ func generateRows(t *testing.T, numRows int, startID int64, timeStart int64, tim
 		lastUpdate += timeInc
 	}
 	wb := cluster.NewWriteBatch(shardID)
-	execCtx := exec.NewExecutionContext(wb, -1)
+
+	execCtx := exec.NewExecutionContext(wb, &clusterGetter{store: store}, -1)
 	rb := exec.NewCurrentRowsBatch(rows)
 	err := te.HandleRows(rb, execCtx)
 	require.NoError(t, err)
 	err = store.WriteBatchLocally(wb)
 	require.NoError(t, err)
+}
+
+type clusterGetter struct {
+	store cluster.Cluster
+}
+
+func (c *clusterGetter) Get(key []byte) ([]byte, error) {
+	return c.store.LocalGet(key)
 }
 
 func setupTableExecutor(cluster cluster.Cluster, tabInfo *common.TableInfo, retentionDuration time.Duration, lastUpdatedIndexID uint64) *exec.TableExecutor {
