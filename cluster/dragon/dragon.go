@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/pebble/bloom"
 	"math"
 	"math/rand"
 	"os"
@@ -316,8 +317,7 @@ func (d *Dragon) start0() error {
 	}
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
-	pebbleOptions := &pebble.Options{}
-	pebbleOptions.Cache = pebble.NewCache(1024 * 1024 * 1024)
+	pebbleOptions := d.createPebbleOpts()
 	peb, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
 		return errors.WithStack(err)
@@ -369,6 +369,42 @@ func (d *Dragon) start0() error {
 	d.nh = nh
 	d.nodeHostStarted = true
 	return err
+}
+
+func (d *Dragon) createPebbleOpts() *pebble.Options {
+	opts := &pebble.Options{
+		Cache:                       pebble.NewCache(1024 * 1024 * 1024),
+		FormatMajorVersion:          pebble.FormatNewest,
+		L0CompactionThreshold:       2,
+		L0StopWritesThreshold:       1000,
+		LBaseMaxBytes:               64 << 20, // 64 MB
+		Levels:                      make([]pebble.LevelOptions, 7),
+		MaxConcurrentCompactions:    3,
+		MaxOpenFiles:                16384,
+		MemTableSize:                64 << 20,
+		MemTableStopWritesThreshold: 4,
+		Merger: &pebble.Merger{
+			Name: "cockroach_merge_operator",
+		},
+	}
+
+	for i := 0; i < len(opts.Levels); i++ {
+		l := &opts.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.FilterType = pebble.TableFilter
+		if i > 0 {
+			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
+		}
+		l.EnsureDefaults()
+	}
+	opts.Levels[6].FilterPolicy = nil
+	opts.FlushSplitBytes = opts.Levels[0].TargetFileSize
+
+	opts.EnsureDefaults()
+
+	return opts
 }
 
 func (d *Dragon) Start() error { // nolint:gocyclo
