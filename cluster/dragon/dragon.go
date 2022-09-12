@@ -317,6 +317,7 @@ func (d *Dragon) start0() error {
 
 	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
 	pebbleOptions := &pebble.Options{}
+	pebbleOptions.Cache = pebble.NewCache(1024 * 1024 * 1024)
 	peb, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
 		return errors.WithStack(err)
