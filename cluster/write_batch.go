@@ -6,12 +6,11 @@ import (
 
 // WriteBatch represents some Puts and deletes that will be written atomically by the underlying storage implementation
 type WriteBatch struct {
-	ShardID            uint64
-	Puts               []byte
-	Deletes            []byte
-	NumPuts            int
-	NumDeletes         int
-	committedCallbacks []CommittedCallback
+	ShardID    uint64
+	Puts       []byte
+	Deletes    []byte
+	NumPuts    int
+	NumDeletes int
 }
 
 func NewWriteBatch(shardID uint64) *WriteBatch {
@@ -51,21 +50,6 @@ func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = append(buff, wb.Puts...)
 	buff = append(buff, wb.Deletes...)
 	return buff
-}
-
-// AddCommittedCallback adds a callback which will be called when the batch is committed
-func (wb *WriteBatch) AddCommittedCallback(callback CommittedCallback) {
-	wb.committedCallbacks = append(wb.committedCallbacks, callback)
-}
-
-// AfterCommit This should be called after committing the batch - it causes any committed callbacks to be run
-func (wb *WriteBatch) AfterCommit() error {
-	for _, callback := range wb.committedCallbacks {
-		if err := callback(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (wb *WriteBatch) ForEachPut(kvReceiver KVReceiver) error {

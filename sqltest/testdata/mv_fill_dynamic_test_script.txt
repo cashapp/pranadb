@@ -38,13 +38,26 @@ create source test_source_1(
 --load data dataset_2 no wait;
 
 -- create an mv - it needs to fill from the initial data but still capture any data that gets loaded while it's being created;
-create materialized view test_mv_1 as select * from test_source_1;
-
--- we now wait until all the rows land in the mv;
---wait for rows test_mv_1 20;
+-- we use an aggregation to test the batch forwarding logic;
+create materialized view test_mv_1 as select col1, sum(col2), count(*) from test_source_1 group by col1;
 
 -- The MV should have the data;
-select * from test_mv_1 order by col0;
+
+select * from test_mv_1 order by col1 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col1 | sum(col2)                                                                              | count(*)             |
++----------------------------------------------------------------------------------------------------------------------+
+| 20   | 5000                                                                                   | 2                    |
+| 40   | 13000                                                                                  | 2                    |
+| 50   | 11000                                                                                  | 2                    |
+| 70   | 10000                                                                                  | 2                    |
+| 80   | 20000                                                                                  | 4                    |
+| 81   | 8000                                                                                   | 1                    |
+| 90   | 21000                                                                                  | 4                    |
+| 100  | 22000                                                                                  | 3                    |
++----------------------------------------------------------------------------------------------------------------------+
+8 rows returned
+;
 
 drop materialized view test_mv_1;
 drop source test_source_1;

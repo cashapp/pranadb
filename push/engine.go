@@ -503,7 +503,7 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 			rb[i] = sid
 			i++
 		}
-		if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster, true); err != nil {
+		if err := util.SendForwardBatches(ctx.RemoteBatches, p.cluster, true, false); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -545,7 +545,7 @@ func (p *Engine) WaitForSchedulers() error {
 	for _, sched := range p.schedulers {
 		ch := make(chan struct{}, 1)
 		chans = append(chans, ch)
-		sched.WaitForProcessingToComplete(ch)
+		sched.WaitForCurrentProcessingToComplete(ch)
 	}
 	for _, ch := range chans {
 		_, ok := <-ch

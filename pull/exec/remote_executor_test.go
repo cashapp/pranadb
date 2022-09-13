@@ -195,7 +195,7 @@ func (t *testCluster) ExecuteForwardBatch(shardID uint64, batch []byte) error {
 	panic("implement me")
 }
 
-func (t *testCluster) WriteForwardBatch(batch *cluster.WriteBatch, localOnly bool) error {
+func (t *testCluster) WriteForwardBatch(batch *cluster.WriteBatch, direct bool, fill bool) error {
 	panic("implement me")
 }
 

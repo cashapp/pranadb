@@ -23,7 +23,7 @@ type Cluster interface {
 	// WriteBatch writes a batch reliably to storage
 	WriteBatch(batch *WriteBatch, localOnly bool) error
 
-	WriteForwardBatch(batch *WriteBatch, direct bool) error
+	WriteForwardBatch(batch *WriteBatch, direct bool, fill bool) error
 
 	// WriteBatchLocally writes a batch directly using the KV store without going through Raft
 	WriteBatchLocally(batch *WriteBatch) error
@@ -273,6 +273,7 @@ type ForwardRow struct {
 	KeyBytes         []byte
 	RowBytes         []byte
 	WriteTime        uint64
+	Fill             bool
 }
 
 type ShardListener interface {

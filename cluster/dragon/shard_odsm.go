@@ -144,11 +144,12 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 				// Most likely the entries will be all forward writes
 				s.forwardRows = make([]cluster.ForwardRow, 0, len(entries))
 			}
-			if err := s.handleWrite(batch, cmdBytes, true, timestamp); err != nil {
+			fill := cmdBytes[1] == 1
+			if err := s.handleWrite(batch, cmdBytes, true, fill, timestamp); err != nil {
 				return nil, err
 			}
 		case shardStateMachineCommandWrite:
-			if err := s.handleWrite(batch, cmdBytes, false, timestamp); err != nil {
+			if err := s.handleWrite(batch, cmdBytes, false, false, timestamp); err != nil {
 				return nil, errors.WithStack(err)
 			}
 		case shardStateMachineCommandSetLeader:
@@ -186,8 +187,14 @@ func (s *ShardOnDiskStateMachine) Update(entries []statemachine.Entry) ([]statem
 	return entries, nil
 }
 
-func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, timestamp uint64) error {
-	puts, deletes := s.deserializeWriteBatch(bytes, 1, forward)
+func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte, forward bool, fill bool, timestamp uint64) error {
+	var offset int
+	if forward {
+		offset = 2
+	} else {
+		offset = 1
+	}
+	puts, deletes := s.deserializeWriteBatch(bytes, offset, forward)
 	hasDups := false
 	for _, kvPair := range puts {
 
@@ -224,6 +231,7 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, bytes []byte,
 					KeyBytes:         key,
 					RowBytes:         kvPair.Value,
 					WriteTime:        timestamp,
+					Fill:             fill,
 				})
 			}
 
