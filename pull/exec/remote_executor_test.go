@@ -167,6 +167,10 @@ type testCluster struct {
 	rowsByShardOrig map[uint64]*common.Rows
 }
 
+func (t *testCluster) GetLastPersistedBatch(shardID uint64) ([]byte, error) {
+	panic("implement me")
+}
+
 func (t *testCluster) LocalIterator(startKeyPrefix []byte, endKeyPrefix []byte) cluster.KVIterator {
 	panic("implement me")
 }

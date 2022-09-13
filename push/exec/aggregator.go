@@ -177,7 +177,7 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 	for i := 0; i < numRows; i++ {
 		prevRow := rowsBatch.PreviousRow(i)
 		currentRow := rowsBatch.CurrentRow(i)
-		if err := a.calcAggregations(prevRow, currentRow, readRows, holders, ctx.WriteBatch.ShardID, keyCache); err != nil {
+		if err := a.calcAggregations(prevRow, currentRow, readRows, holders, ctx, keyCache); err != nil {
 			return err
 		}
 	}
@@ -219,7 +219,9 @@ func (a *Aggregator) HandleRemoteRows(rowsBatch RowsBatch, ctx *ExecutionContext
 }
 
 func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, readRows *common.Rows,
-	aggStateHolders *stateHolders, shardID uint64, keyCache *simplelru.LRU) error {
+	aggStateHolders *stateHolders, ctx *ExecutionContext, keyCache *simplelru.LRU) error {
+
+	shardID := ctx.WriteBatch.ShardID
 
 	// Create the key
 	keyBytes, err := a.createKeyFromPrevOrCurrRow(prevRow, currRow, shardID, a.GetChildren()[0].ColTypes(), a.groupByCols, a.AggTableInfo.ID)
@@ -228,7 +230,7 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	}
 
 	// Lookup existing aggregate state
-	stateHolder, err := a.loadAggregateState(shardID, keyBytes, readRows, aggStateHolders, keyCache)
+	stateHolder, err := a.loadAggregateState(ctx, keyBytes, readRows, aggStateHolders, keyCache)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -247,7 +249,7 @@ func (a *Aggregator) calcAggregations(prevRow *common.Row, currRow *common.Row, 
 	return nil
 }
 
-func (a *Aggregator) loadAggregateState(shardID uint64, keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders,
+func (a *Aggregator) loadAggregateState(ctx *ExecutionContext, keyBytes []byte, readRows *common.Rows, aggStateHolders *stateHolders,
 	keyCache *simplelru.LRU) (*aggStateHolder, error) {
 	sKey := common.ByteSliceToStringZeroCopy(keyBytes)
 	stateHolder, ok := aggStateHolders.holdersMap[sKey] // maybe already cached for this batch
@@ -268,7 +270,7 @@ func (a *Aggregator) loadAggregateState(shardID uint64, keyBytes []byte, readRow
 			// We must use a linearizable get via raft here - even though we are on a replica there is no guarantee that
 			// the data has been applied to the state machine of all replicas when the previous write has completed
 			// successfully.
-			rowBytes, err := a.storage.LinearizableGet(shardID, keyBytes)
+			rowBytes, err := ctx.Getter.Get(keyBytes)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
