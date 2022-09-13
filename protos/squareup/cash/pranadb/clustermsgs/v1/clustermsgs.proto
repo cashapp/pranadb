@@ -16,7 +16,9 @@ message DDLStatementInfo {
 }
 
 message DDLCancelMessage {
-  string schema_name = 1;
+  int64 originating_node_id = 1;
+  string schema_name = 2;
+  int64 command_id = 3;
 }
 
 message ReloadProtobuf {

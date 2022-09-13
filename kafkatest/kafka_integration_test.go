@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package kafkatest
 
 import (
@@ -194,6 +191,7 @@ func stopPranaCluster(t *testing.T, cluster []*server.Server) {
 }
 
 func waitUntilRowsInPayments(t *testing.T, numRows int, cli *client.Client) {
+	t.Helper()
 	ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 		ch, err := cli.ExecuteStatement("select * from payments order by payment_id", nil, nil)
 		require.NoError(t, err)

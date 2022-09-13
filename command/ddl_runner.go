@@ -77,8 +77,9 @@ const (
 
 func NewDDLCommandRunner(ce *Executor) *DDLCommandRunner {
 	return &DDLCommandRunner{
-		ce:    ce,
-		idSeq: -1,
+		ce:                    ce,
+		idSeq:                 -1,
+		cancellationSequences: make(map[cancelledCommandsKey]int64),
 	}
 }
 
@@ -106,6 +107,16 @@ type DDLCommandRunner struct {
 	ce       *Executor
 	commands sync.Map
 	idSeq    int64
+
+	handleCancelLock sync.Mutex
+	// Cancel can be received on a node during or *before* the command has been received
+	// so we keep a map of the sequences for each schema and originating node before which commands should be cancelled
+	cancellationSequences map[cancelledCommandsKey]int64
+}
+
+type cancelledCommandsKey struct {
+	schemaName        string
+	originatingNodeID int64
 }
 
 func (d *DDLCommandRunner) generateCommandKey(origNodeID uint64, commandID uint64) string {
@@ -144,10 +155,12 @@ func (d *DDLCommandRunner) HandleCancelMessage(clusterMsg remoting.ClusterMessag
 	if !ok {
 		panic("not a cancel msg")
 	}
-	return d.cancelCommandsForSchema(cancelMsg.SchemaName)
+	return d.cancelCommandsForSchema(cancelMsg.SchemaName, cancelMsg.CommandId, cancelMsg.OriginatingNodeId)
 }
 
-func (d *DDLCommandRunner) cancelCommandsForSchema(schemaName string) error {
+// cancel commands for the schema up to and including the commandID
+func (d *DDLCommandRunner) cancelCommandsForSchema(schemaName string, commandID int64, originatingNodeID int64) error {
+	found := false
 	d.commands.Range(func(key, value interface{}) bool {
 		command, ok := value.(DDLCommand)
 		if !ok {
@@ -157,9 +170,21 @@ func (d *DDLCommandRunner) cancelCommandsForSchema(schemaName string) error {
 			d.commands.Delete(key)
 			command.Cancel()
 			command.Cleanup()
+			found = true
 		}
 		return true
 	})
+	if !found {
+		d.handleCancelLock.Lock()
+		defer d.handleCancelLock.Unlock()
+		// If we didn't find the command to delete it's possible that the cancel has arrived before the original command
+		// so we add it to a map so we know to ignore the command if it arrives later
+		key := cancelledCommandsKey{
+			schemaName:        schemaName,
+			originatingNodeID: originatingNodeID,
+		}
+		d.cancellationSequences[key] = commandID
+	}
 	return nil
 }
 
@@ -219,7 +244,9 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 			}
 			com = NewDDLCommand(d.ce, DDLCommandType(ddlInfo.CommandType), ddlInfo.GetSchemaName(), ddlInfo.GetSql(),
 				ddlInfo.GetTableSequences(), ddlInfo.GetExtraData())
-			d.commands.Store(skey, com)
+			if !d.storeIfNotCancelled(skey, ddlInfo.CommandId, ddlInfo.GetOriginatingNodeId(), com) {
+				return nil
+			}
 		}
 	} else if !ok {
 		// This can happen if ddlMsg comes in after commands are cancelled
@@ -232,11 +259,30 @@ func (d *DDLCommandRunner) HandleDdlMessage(ddlMsg remoting.ClusterMessage) erro
 		com.Cleanup()
 	}
 	log.Debugf("Running phase %d for DDL message %d %s returned err %v", phase, com.CommandType(), ddlInfo.Sql, err)
-	if phase == int32(com.NumPhases()-1) {
-		// Final phase so delete the command
+	if phase == int32(com.NumPhases()-1) || err != nil {
+		// Final phase or err so delete the command
 		d.commands.Delete(skey)
 	}
 	return err
+}
+
+func (d *DDLCommandRunner) storeIfNotCancelled(skey string, commandID int64, originatingNodeID int64, com DDLCommand) bool {
+	d.handleCancelLock.Lock()
+	defer d.handleCancelLock.Unlock()
+	// We first check if we have already received a cancel for commands up to this id - cancels can come in before the
+	// original command was fielded
+	key := cancelledCommandsKey{
+		schemaName:        com.SchemaName(),
+		originatingNodeID: originatingNodeID,
+	}
+	cid, ok := d.cancellationSequences[key]
+	if ok && cid >= commandID {
+		log.Debugf("ddl command arrived after cancellation, it will be ignored command id %d cid %d", commandID, cid)
+		return false
+	}
+
+	d.commands.Store(skey, com)
+	return true
 }
 
 func (d *DDLCommandRunner) RunCommand(ctx context.Context, command DDLCommand) error {
@@ -297,6 +343,7 @@ func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, dd
 		}
 		if err != nil {
 			log.Debugf("Error return from broadcasting phase %d for DDL command %d %s %v cancel will be broadcast", phase, command.CommandType(), ddlInfo.Sql, err)
+			d.commands.Delete(commandKey)
 			// Broadcast a cancel to clean up command state across the cluster
 			if err2 := d.broadcastCancel(command.SchemaName()); err2 != nil {
 				// Ignore
@@ -309,7 +356,11 @@ func (d *DDLCommandRunner) RunWithLock(commandKey string, command DDLCommand, dd
 }
 
 func (d *DDLCommandRunner) broadcastCancel(schemaName string) error {
-	return d.ce.ddlResetClient.Broadcast(&clustermsgs.DDLCancelMessage{SchemaName: schemaName})
+	return d.ce.ddlResetClient.Broadcast(&clustermsgs.DDLCancelMessage{
+		SchemaName:        schemaName,
+		CommandId:         atomic.LoadInt64(&d.idSeq),
+		OriginatingNodeId: int64(d.ce.config.NodeID),
+	})
 }
 
 func (d *DDLCommandRunner) broadcastDDL(phase int32, ddlInfo *clustermsgs.DDLStatementInfo) error {
@@ -340,8 +391,10 @@ func (d *DDLCommandRunner) getLock(lockName string) error {
 }
 
 func (d *DDLCommandRunner) empty() bool {
+	log.Debug("DDLCommand Runner state:")
 	count := 0
 	d.commands.Range(func(key, value interface{}) bool {
+		log.Debugf("DDLCommand runner has command: %s", value.(DDLCommand).SQL()) //nolint:forcetypeassert
 		count++
 		return true
 	})

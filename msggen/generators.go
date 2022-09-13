@@ -26,9 +26,7 @@ func (p *PaymentGenerator) GenerateMessage(_ int32, index int64, rnd *rand.Rand)
 
 	paymentTypes := []string{"btc", "p2p", "other"}
 	currencies := []string{"gbp", "usd", "eur", "aud"}
-	// timestamp needs to be in the future - otherwise, if it's in the past Kafka might start deleting log entries
-	// thinking they're past log retention time.
-	timestamp := time.Date(2100, time.Month(4), 12, 9, 0, 0, 0, time.UTC)
+	timestamp := time.Now()
 
 	m := make(map[string]interface{})
 	paymentID := fmt.Sprintf("payment%06d", index)

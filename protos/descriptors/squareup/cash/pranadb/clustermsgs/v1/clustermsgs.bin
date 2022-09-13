@@ -1,5 +1,5 @@
 
-ù
+Ì
 
 6squareup/cash/pranadb/clustermsgs/v1/clustermsgs.proto$squareup.cash.pranadb.clustermsgs.v1"ï
 DDLStatementInfo.
@@ -13,10 +13,13 @@ schemaName
 sql (	Rsql'
 table_sequences (RtableSequences
 
-extra_data (R	extraData"3
-DDLCancelMessage
-schema_name (	R
-schemaName"
+extra_data (R	extraData"Ç
+DDLCancelMessage.
+originating_node_id (RoriginatingNodeId
+schema_name (	R
+schemaName
+
+command_id (R	commandId"
 ReloadProtobuf"U
 ClusterProposeRequest
 shard_id (RshardId!
