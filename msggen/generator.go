@@ -1,17 +1,14 @@
 package msggen
 
 import (
-	"context"
-	"fmt"
 	"math/rand"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/squareup/pranadb/errors"
 
-	kafkaclient "github.com/segmentio/kafka-go"
+	kafkaclient "github.com/confluentinc/confluent-kafka-go/kafka"
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/kafka"
 	"github.com/squareup/pranadb/sharder"
@@ -64,25 +61,27 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	msgsSent := int64(0)
 	errChan := make(chan error)
 	doneChan := make(chan struct{})
-	producer := &kafkaclient.Writer{
-		Async: true,
-		Completion: func(messages []kafkaclient.Message, err error) {
-			sent := atomic.AddInt64(&msgsSent, int64(len(messages)))
-			if err != nil {
-				errChan <- err
-			}
-			if sent >= numMessages {
-				close(errChan)
-				log.Infof("%d/%d messages sent to topic %s", sent, numMessages, topicName)
-				close(doneChan)
-			}
-		},
+	deliveryChan := make(chan kafkaclient.Event, 10000)
+	cm, err := createConfigMap(kafkaProps)
+	if err != nil {
+		return errors.WithStack(err)
 	}
-	for k, v := range kafkaProps {
-		if err := setProperty(producer, k, v); err != nil {
-			return errors.WithStack(err)
+
+	producer, err := kafkaclient.NewProducer(cm)
+	go func() {
+		for e := range producer.Events() {
+			switch et := e.(type) {
+			case *kafkaclient.Message:
+				if et.TopicPartition.Error != nil {
+					errChan <- et.TopicPartition.Error
+					log.Errorf("failed message delivery: %v", et.TopicPartition)
+				} else {
+					sent := atomic.AddInt64(&msgsSent, int64(1))
+					log.Infof("%d/%d messages sent to topic %s", sent, numMessages, topicName)
+				}
+			}
 		}
-	}
+	}()
 	go func() {
 		for {
 			select {
@@ -112,16 +111,18 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 				Value: hdr.Value,
 			}
 		}
-		kmsg := kafkaclient.Message{
-			Partition: int(part),
-			Topic:     topicName,
+		kmsg := &kafkaclient.Message{
+			TopicPartition: kafkaclient.TopicPartition{
+				Partition: int32(part),
+				Topic:     &topicName,
+			},
 			Value:     msg.Value,
 			Key:       msg.Key,
-			Time:      msg.TimeStamp,
+			Timestamp: msg.TimeStamp,
 			Headers:   kheaders,
 		}
 
-		if e := producer.WriteMessages(context.Background(), kmsg); e != nil {
+		if e := producer.Produce(kmsg, deliveryChan); e != nil {
 			return errors.WithStack(e)
 		}
 
@@ -129,9 +130,9 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 			time.Sleep(delay)
 		}
 	}
-	if err := producer.Close(); err != nil {
-		return errors.WithStack(err)
-	}
+	producer.Close()
+	close(errChan)
+	close(doneChan)
 	failed := false
 	for err := range errChan {
 		log.Errorf("error producing messages: %+v", err)
@@ -143,12 +144,14 @@ func (gm *GenManager) ProduceMessages(genName string, topicName string, partitio
 	return nil
 }
 
-func setProperty(cfg *kafkaclient.Writer, k, v string) error {
-	switch k {
-	case "bootstrap.servers":
-		cfg.Addr = kafkaclient.TCP(strings.Split(v, ",")...)
-	default:
-		return errors.NewInvalidConfigurationError(fmt.Sprintf("unsupported segmentio/kafka-go client option: %s:%s", k, v))
+func createConfigMap(props map[string]string) (*kafkaclient.ConfigMap, error) {
+	cm := &kafkaclient.ConfigMap{
+		"acks": "all",
 	}
-	return nil
+	for k, v := range props {
+		if err := cm.SetKey(k, v); err != nil {
+			return &kafkaclient.ConfigMap{}, errors.WithStack(err)
+		}
+	}
+	return cm, nil
 }

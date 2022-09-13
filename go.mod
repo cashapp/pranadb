@@ -39,7 +39,7 @@ require (
 	github.com/segmentio/kafka-go v0.4.29
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/twinj/uuid v1.0.0
+	github.com/twinj/uuid v1.0.0 // indirect
 	github.com/twmb/murmur3 v1.1.6
 	go.uber.org/atomic v1.7.0
 	go.uber.org/ratelimit v0.2.0
