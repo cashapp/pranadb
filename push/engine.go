@@ -142,25 +142,38 @@ func (p *Engine) getSources() []*source.Source {
 }
 
 func (p *Engine) Stop() error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	if !p.started {
+	sources, ok := p.stop()
+	if !ok {
 		return nil
 	}
-	for _, src := range p.sources {
+	// We need to stop the sources outside the lock to avoid a deadlock with handleForwardWrite()
+	for _, src := range sources {
 		if err := src.Stop(); err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	for _, reaper := range p.reapers {
-		reaper.Stop()
+	return nil
+}
+
+func (p *Engine) stop() ([]*source.Source, bool) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if !p.started {
+		return nil, false
+	}
+	var sources []*source.Source
+	for _, src := range p.sources {
+		sources = append(sources, src)
+	}
+	for _, rpr := range p.reapers {
+		rpr.Stop()
 	}
 	for _, sh := range p.schedulers {
 		sh.Stop()
 	}
 	p.clearState() // Clear the internal state
 	p.started = false
-	return nil
+	return sources, true
 }
 
 func (p *Engine) IsStarted() bool {
