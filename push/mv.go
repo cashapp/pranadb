@@ -76,7 +76,6 @@ func (m *MaterializedView) Drop() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	m.cluster.TableDropped(m.Info.ID)
 	return m.deleteTableData(m.Info.ID)
 }
 
@@ -122,10 +121,6 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			err = m.deleteTableData(op.AggTableInfo.ID)
-			if err != nil {
-				return errors.WithStack(err)
-			}
 		}
 	}
 
@@ -139,6 +134,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 }
 
 func (m *MaterializedView) deleteTableData(tableID uint64) error {
+	m.cluster.TableDropped(tableID)
 	startPrefix := common.AppendUint64ToBufferBE(nil, tableID)
 	endPrefix := common.AppendUint64ToBufferBE(nil, tableID+1)
 	return m.cluster.DeleteAllDataInRangeForAllShardsLocally(startPrefix, endPrefix)

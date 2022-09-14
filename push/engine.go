@@ -303,8 +303,8 @@ func (p *Engine) RemoveIndex(indexInfo *common.IndexInfo) error {
 	if err := p.UnattachIndex(indexInfo); err != nil {
 		return err
 	}
-
-	// Delete the table dataf
+	p.cluster.TableDropped(indexInfo.ID)
+	// Delete the index data
 	tableStartPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID)
 	tableEndPrefix := common.AppendUint64ToBufferBE(nil, indexInfo.ID+1)
 	return p.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
@@ -537,6 +537,11 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 func (p *Engine) WaitForProcessingToComplete() error {
 
 	log.Debug("waiting for schedulers")
+	// We actually wait twice - after an MV is created, if the MV has an aggregation then after waiting once there
+	// may be forwarded rows yet to be processed. So this minimises the chance of all data not being processed.
+	if err := p.WaitForSchedulers(); err != nil {
+		return errors.WithStack(err)
+	}
 	if err := p.WaitForSchedulers(); err != nil {
 		return errors.WithStack(err)
 	}
