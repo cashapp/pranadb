@@ -214,13 +214,16 @@ func (s *Source) Drop() error {
 	}
 	// Delete the deduplication ids for the source
 	log.Printf("dropping source %s %d", s.sourceInfo.Name, s.sourceInfo.ID)
+	// TableDropped must be called before the actual delete of data. This ensures that any writes still waiting
+	// to be written to laggy replicas and come in *after* the data delete has completed don't get written, which
+	// would cause orphaned rows in the database
+	s.cluster.TableDropped(s.sourceInfo.ID)
 	startPrefix := common.AppendUint64ToBufferBE(nil, common.ForwardDedupTableID)
 	startPrefix = common.AppendUint64ToBufferBE(startPrefix, s.sourceInfo.ID)
 	endPrefix := common.IncrementBytesBigEndian(startPrefix)
 	if err := s.cluster.DeleteAllDataInRangeForAllShardsLocally(startPrefix, endPrefix); err != nil {
 		return errors.WithStack(err)
 	}
-	s.cluster.TableDropped(s.sourceInfo.ID)
 	if s.sourceInfo.RetentionDuration != 0 {
 		// Delete any last update index data
 		indexStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.LastUpdateIndexID)
