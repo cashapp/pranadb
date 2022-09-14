@@ -72,7 +72,7 @@ raft-rtt-ms                       = 100
 raft-heartbeat-rtt                = 30
 raft-election-rtt                 = 300
 raft-call-timeout                 = "17s"
-disable-fsync                     = true
+fsync-disabled                    = true
 aggregation-cache-size-rows       = 1234
 max-process-batch-size            = 777
 max-forward-write-batch-size      = 888
@@ -91,4 +91,5 @@ intra-cluster-tls-cert-path     = "intra-cluster-cert-path"
 intra-cluster-tls-client-certs-path = "intra-cluster-client-certs-path"
 intra-cluster-tls-client-auth = "require-and-verify-client-cert"
 
-data-cache-size                   = 12345
+global-cache-size                   = 12345
+data-compression-disabled         = true
