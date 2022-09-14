@@ -253,7 +253,7 @@ func (w *sqlTestsuite) setupPranaCluster() {
 			cnf.FailureInjectorEnabled = true
 			cnf.ScreenDragonLogSpam = true
 			cnf.RaftRTTMs = 25
-			cnf.DisableFsync = true // for performance
+			cnf.FsyncDisabled = true // for performance
 
 			if w.intraClusterTLSEnabled {
 				cnf.IntraClusterTLSConfig.Enabled = true

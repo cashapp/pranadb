@@ -22,7 +22,7 @@ const (
 	DefaultMaxProcessBatchSize        = 2000
 	DefaultMaxForwardWriteBatchSize   = 500
 	DefaultMaxTableReaperBatchSize    = 1000
-	DefaultDataCacheSize              = 1024 * 1024 * 1024
+	DefaultGlobalCacheSize            = 1024 * 1024 * 1024
 )
 
 type Config struct {
@@ -63,7 +63,7 @@ type Config struct {
 	RaftElectionRTT              int
 	RaftHeartbeatRTT             int
 	RaftCallTimeout              time.Duration
-	DisableFsync                 bool
+	FsyncDisabled                bool
 	DDProfilerTypes              string
 	DDProfilerHostEnvVarName     string
 	DDProfilerPort               int
@@ -74,7 +74,8 @@ type Config struct {
 	MaxProcessBatchSize          int
 	MaxForwardWriteBatchSize     int
 	MaxTableReaperBatchSize      int
-	DataCacheSize                int64
+	GlobalCacheSize              int64
+	DataCompressionDisabled      bool
 }
 
 type TLSConfig struct {
@@ -142,8 +143,8 @@ func (c *Config) ApplyDefaults() {
 	if c.MaxTableReaperBatchSize == 0 {
 		c.MaxTableReaperBatchSize = DefaultMaxTableReaperBatchSize
 	}
-	if c.DataCacheSize == 0 {
-		c.DataCacheSize = DefaultDataCacheSize
+	if c.GlobalCacheSize == 0 {
+		c.GlobalCacheSize = DefaultGlobalCacheSize
 	}
 }
 
@@ -295,8 +296,8 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled")
 		}
 	}
-	if c.DataCacheSize < 1 {
-		return errors.NewInvalidConfigurationError("DataCacheSize must be > 0")
+	if c.GlobalCacheSize < 1 {
+		return errors.NewInvalidConfigurationError("GlobalCacheSize must be > 0")
 	}
 	return nil
 }
@@ -333,7 +334,7 @@ func NewDefaultConfig() *Config {
 		MaxProcessBatchSize:        DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:    DefaultMaxTableReaperBatchSize,
-		DataCacheSize:              DefaultDataCacheSize,
+		GlobalCacheSize:            DefaultGlobalCacheSize,
 	}
 }
 
@@ -347,7 +348,7 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		MaxProcessBatchSize:      DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:  DefaultMaxTableReaperBatchSize,
-		DataCacheSize:            DefaultDataCacheSize,
+		GlobalCacheSize:          DefaultGlobalCacheSize,
 		NodeID:                   0,
 		NumShards:                10,
 		TestServer:               true,

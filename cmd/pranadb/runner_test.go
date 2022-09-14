@@ -101,7 +101,7 @@ func createConfigWithAllFields() conf.Config {
 		RaftElectionRTT:          300,
 		RaftHeartbeatRTT:         30,
 		RaftCallTimeout:          17 * time.Second,
-		DisableFsync:             true,
+		FsyncDisabled:            true,
 		AggregationCacheSizeRows: 1234,
 		MaxProcessBatchSize:      777,
 		MaxForwardWriteBatchSize: 888,
@@ -122,6 +122,7 @@ func createConfigWithAllFields() conf.Config {
 			ClientAuth:      "require-and-verify-client-cert",
 		},
 
-		DataCacheSize: 12345,
+		GlobalCacheSize:         12345,
+		DataCompressionDisabled: true,
 	}
 }

@@ -353,7 +353,7 @@ func (d *Dragon) start0() error {
 		Expert:            config.GetDefaultExpertConfig(),
 		RaftEventListener: d.procMgr,
 	}
-	nhc.Expert.LogDB.EnableFsync = !d.cnf.DisableFsync
+	nhc.Expert.LogDB.EnableFsync = !d.cnf.FsyncDisabled
 	if d.cnf.IntraClusterTLSConfig.Enabled {
 		nhc.MutualTLS = true
 		nhc.CAFile = d.cnf.IntraClusterTLSConfig.ClientCertsPath
@@ -377,7 +377,7 @@ func (d *Dragon) start0() error {
 
 func (d *Dragon) createPebbleOpts() *pebble.Options {
 	opts := &pebble.Options{
-		Cache:                       pebble.NewCache(d.cnf.DataCacheSize),
+		Cache:                       pebble.NewCache(d.cnf.GlobalCacheSize),
 		FormatMajorVersion:          pebble.FormatNewest,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
@@ -398,7 +398,11 @@ func (d *Dragon) createPebbleOpts() *pebble.Options {
 		if i > 0 {
 			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
 		}
-		l.Compression = pebble.NoCompression
+		if d.cnf.DataCompressionDisabled {
+			l.Compression = pebble.NoCompression
+		} else {
+			l.Compression = pebble.SnappyCompression
+		}
 		l.EnsureDefaults()
 	}
 	opts.Levels[6].FilterPolicy = nil

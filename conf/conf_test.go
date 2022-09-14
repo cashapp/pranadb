@@ -221,7 +221,7 @@ func nodeIDOutOfRangeConf() Config {
 
 func invalidDataCacheSize() Config {
 	cnf := confAllFields
-	cnf.DataCacheSize = -1
+	cnf.GlobalCacheSize = -1
 	return cnf
 }
 
@@ -399,7 +399,7 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.CertPath must be specified if intra cluster TLS is enabled", intraClusterTLSCertPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled", intraClusterTLSCAPathNotSpecifiedConfig()},
 
-	{"PDB3000 - Invalid configuration: DataCacheSize must be > 0", invalidDataCacheSize()},
+	{"PDB3000 - Invalid configuration: GlobalCacheSize must be > 0", invalidDataCacheSize()},
 }
 
 func TestValidate(t *testing.T) {

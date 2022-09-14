@@ -76,7 +76,7 @@ func (s *sequenceODStateMachine) Lookup(i interface{}) (interface{}, error) {
 }
 
 func (s *sequenceODStateMachine) Sync() error {
-	if s.dragon.cnf.DisableFsync {
+	if s.dragon.cnf.FsyncDisabled {
 		return syncPebble(s.dragon.pebble)
 	}
 	return nil
