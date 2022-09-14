@@ -3,6 +3,7 @@ package dragon
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/pebble/bloom"
 	"math"
 	"math/rand"
 	"os"
@@ -315,8 +316,7 @@ func (d *Dragon) start0() error {
 		return errors.WithStack(err)
 	}
 
-	// TODO used tuned config for Pebble - this can be copied from the Dragonboat Pebble config (see kv_pebble.go in Dragonboat)
-	pebbleOptions := &pebble.Options{}
+	pebbleOptions := d.createPebbleOpts()
 	peb, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
 		return errors.WithStack(err)
@@ -360,6 +360,11 @@ func (d *Dragon) start0() error {
 		nhc.CertFile = d.cnf.IntraClusterTLSConfig.CertPath
 		nhc.KeyFile = d.cnf.IntraClusterTLSConfig.KeyPath
 	}
+	// There appears to a bug in Dragonboat where if LogDB is busy, the proposals queue gets paused but never gets
+	// unpaused when LogDB is not busy any more. So we added a new config setting to enable the pause. This is ok
+	// for our usage as we limit the number of concurrent proposals anyway at our end - each shard shard processor
+	// will only have one outstanding proposal at any one time
+	nhc.Expert.IgnorePauseOnProposals = true
 
 	nh, err := dragonboat.NewNodeHost(nhc)
 	if err != nil {
@@ -368,6 +373,40 @@ func (d *Dragon) start0() error {
 	d.nh = nh
 	d.nodeHostStarted = true
 	return err
+}
+
+func (d *Dragon) createPebbleOpts() *pebble.Options {
+	opts := &pebble.Options{
+		Cache:                       pebble.NewCache(d.cnf.DataCacheSize),
+		FormatMajorVersion:          pebble.FormatNewest,
+		L0CompactionThreshold:       2,
+		L0StopWritesThreshold:       1000,
+		LBaseMaxBytes:               64 << 20, // 64 MB
+		Levels:                      make([]pebble.LevelOptions, 7),
+		MaxConcurrentCompactions:    3,
+		MaxOpenFiles:                16384,
+		MemTableSize:                64 << 20,
+		MemTableStopWritesThreshold: 4,
+	}
+
+	for i := 0; i < len(opts.Levels); i++ {
+		l := &opts.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.FilterType = pebble.TableFilter
+		if i > 0 {
+			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
+		}
+		l.Compression = pebble.NoCompression
+		l.EnsureDefaults()
+	}
+	opts.Levels[6].FilterPolicy = nil
+	opts.FlushSplitBytes = opts.Levels[0].TargetFileSize
+
+	opts.EnsureDefaults()
+
+	return opts
 }
 
 func (d *Dragon) Start() error { // nolint:gocyclo
@@ -914,7 +953,9 @@ func (d *Dragon) executeRaftOpWithRetry(f func() (interface{}, error)) (interfac
 		}
 		// Randomise the delay to prevent clashing concurrent retries
 		randDelay := float64(delay) + 0.5*float64(delay)*(rand.Float64()-0.5)
-		time.Sleep(time.Duration(randDelay))
+		rd := time.Duration(randDelay)
+		log.Debugf("raft retry - sleeping for %d ms", rd.Milliseconds())
+		time.Sleep(rd)
 	}
 }
 

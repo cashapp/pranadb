@@ -90,3 +90,5 @@ intra-cluster-tls-key-path      = "intra-cluster-key-path"
 intra-cluster-tls-cert-path     = "intra-cluster-cert-path"
 intra-cluster-tls-client-certs-path = "intra-cluster-client-certs-path"
 intra-cluster-tls-client-auth = "require-and-verify-client-cert"
+
+data-cache-size                   = 12345

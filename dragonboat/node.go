@@ -145,7 +145,12 @@ func newNode(peers map[uint64]string,
 	metrics *logDBMetrics,
 	sysEvents *sysEventListener) (*node, error) {
 	notifyCommit := nhConfig.NotifyCommit
-	proposals := newEntryQueue(incomingProposalsMaxLen, lazyFreeCycle)
+	var proposals *entryQueue
+	if nhConfig.Expert.IgnorePauseOnProposals {
+		proposals = newEntryQueueIgnoringPause(incomingProposalsMaxLen, lazyFreeCycle)
+	} else {
+		proposals = newEntryQueue(incomingProposalsMaxLen, lazyFreeCycle)
+	}
 	readIndexes := newReadIndexQueue(incomingReadIndexMaxLen)
 	configChangeC := make(chan configChangeRequest, 1)
 	snapshotC := make(chan rsm.SSRequest, 1)

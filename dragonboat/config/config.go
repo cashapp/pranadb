@@ -914,6 +914,10 @@ type ExpertConfig struct {
 	// TestGossipProbeInterval define the probe interval used by the gossip
 	// service in tests.
 	TestGossipProbeInterval time.Duration
+
+	// Added by Prana
+	// If true then continue to allow proposals when the logdb is busy
+	IgnorePauseOnProposals bool
 }
 
 // GossipConfig contains configurations for the gossip service. Gossip service

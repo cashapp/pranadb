@@ -22,25 +22,35 @@ import (
 )
 
 type entryQueue struct {
-	size          uint64
-	left          []pb.Entry
-	right         []pb.Entry
-	leftInWrite   bool
-	stopped       bool
-	paused        bool
-	idx           uint64
-	oldIdx        uint64
-	cycle         uint64
-	lazyFreeCycle uint64
-	mu            sync.Mutex
+	size                   uint64
+	left                   []pb.Entry
+	right                  []pb.Entry
+	leftInWrite            bool
+	stopped                bool
+	paused                 bool
+	idx                    uint64
+	oldIdx                 uint64
+	cycle                  uint64
+	lazyFreeCycle          uint64
+	mu                     sync.Mutex
+	ignorePauseOnProposals bool
+}
+
+func newEntryQueueIgnoringPause(size uint64, lazyFreeCycle uint64) *entryQueue {
+	return newQueue(true, size, lazyFreeCycle)
 }
 
 func newEntryQueue(size uint64, lazyFreeCycle uint64) *entryQueue {
+	return newQueue(false, size, lazyFreeCycle)
+}
+
+func newQueue(ignorePauseOnProposals bool, size uint64, lazyFreeCycle uint64) *entryQueue {
 	return &entryQueue{
-		size:          size,
-		lazyFreeCycle: lazyFreeCycle,
-		left:          make([]pb.Entry, size),
-		right:         make([]pb.Entry, size),
+		size:                   size,
+		lazyFreeCycle:          lazyFreeCycle,
+		left:                   make([]pb.Entry, size),
+		right:                  make([]pb.Entry, size),
+		ignorePauseOnProposals: ignorePauseOnProposals,
 	}
 }
 
@@ -60,7 +70,8 @@ func (q *entryQueue) targetQueue() []pb.Entry {
 func (q *entryQueue) add(ent pb.Entry) (bool, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.paused || q.idx >= q.size {
+	paused := !q.ignorePauseOnProposals && q.paused
+	if paused || q.idx >= q.size {
 		return false, q.stopped
 	}
 	if q.stopped {

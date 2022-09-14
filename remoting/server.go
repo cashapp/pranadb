@@ -220,7 +220,7 @@ func (c *connection) handleMessageAsync0(msg []byte) {
 	handler := c.s.lookupMessageHandler(request.requestMessage)
 	respMsg, respErr := handler.HandleMessage(request.requestMessage)
 	if respErr != nil {
-		log.Errorf("failed to handle cluster message %+v", respErr)
+		log.Debugf("failed to handle cluster message %+v", respErr)
 	}
 	if request.requiresResponse && !c.s.responsesDisabled.Get() {
 		if err := c.sendResponse(request, respMsg, respErr); err != nil {
