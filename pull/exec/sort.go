@@ -20,9 +20,11 @@ type PullSort struct {
 	rows              *common.Rows
 	descending        []bool
 	rowIndex          int
+	maxRows           int
 }
 
-func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, sortByExpressions []*common.Expression) *PullSort {
+func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, sortByExpressions []*common.Expression,
+	maxRows int) *PullSort {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:    colNames,
@@ -33,6 +35,7 @@ func NewPullSort(colNames []string, colTypes []common.ColumnType, desc []bool, s
 		pullExecutorBase:  base,
 		sortByExpressions: sortByExpressions,
 		descending:        desc,
+		maxRows:           maxRows,
 	}
 }
 
@@ -41,6 +44,7 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 		return nil, errors.Errorf("invalid limit %d", limit)
 	}
 
+	maxRows := getOrderByMaxRows(p.maxRows)
 	if p.rows == nil {
 		unsorted := p.rowsFactory.NewRows(queryBatchSize)
 		for {
@@ -53,9 +57,8 @@ func (p *PullSort) GetRows(limit int) (*common.Rows, error) { //nolint: gocyclo
 			if rc == 0 {
 				break
 			}
-			if unsorted.RowCount()+rc > orderByMaxRows {
-				// TODO needs test
-				return nil, errors.Errorf("query with order by cannot return more than %d rows", orderByMaxRows)
+			if unsorted.RowCount()+rc > maxRows {
+				return nil, errors.NewPranaErrorf(errors.TooManyRows, "Query with order by cannot return more than %d rows", orderByMaxRows)
 			}
 			unsorted.AppendAll(batch)
 			if rc < queryBatchSize {

@@ -852,6 +852,33 @@ select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 d
 +-----------------------------------------+
 12 rows returned
 
+-- test max order by rows;
+
+--set orderbymaxrows 2;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
+Failed to execute statement: PDB1016 - Query with order by cannot return more than 2 rows
+
+--set orderbymaxrows 50000;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
++-----------------------------------------+
+| col1        | col2        | col3        |
++-----------------------------------------+
+| 1000        | 1000        | 1000        |
+| 1000        | 1000        | -1000       |
+| 1000        | -1000       | 1000        |
+| 1000        | null        | -1000       |
+| -1000       | 1000        | null        |
+| -1000       | -1000       | 1000        |
+| -1000       | -1000       | -1000       |
+| -1000       | null        | 1000        |
+| null        | 1000        | 1000        |
+| null        | 1000        | -1000       |
+| null        | -1000       | 1000        |
+| null        | -1000       | -1000       |
++-----------------------------------------+
+12 rows returned
 
 drop source test_source_1;
 0 rows returned

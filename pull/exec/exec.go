@@ -2,14 +2,29 @@ package exec
 
 import (
 	"github.com/squareup/pranadb/common"
+	"sync/atomic"
 )
 
 type ExecutorType uint32
 
 const (
-	orderByMaxRows = 50000
 	queryBatchSize = 10000
 )
+
+var orderByMaxRows int32
+
+func getOrderByMaxRows(configuredMaxRows int) int {
+	mr := int(atomic.LoadInt32(&orderByMaxRows))
+	if mr != 0 {
+		return mr
+	}
+	return configuredMaxRows
+}
+
+// SetOrderByMaxRows allows value to be set from tests
+func SetOrderByMaxRows(maxRows int) {
+	atomic.StoreInt32(&orderByMaxRows, int32(maxRows))
+}
 
 type PullExecutor interface {
 	/*

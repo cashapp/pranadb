@@ -26,6 +26,7 @@ const (
 	DdlCancelled
 	Unavailable
 	DdlRetry
+	TooManyRows
 )
 
 // Ingest errors

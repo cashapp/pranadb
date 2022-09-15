@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/squareup/pranadb/pull/exec"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -546,6 +547,8 @@ func (st *sqlTest) runTestIteration(require *require.Assertions, commands []stri
 			st.executeDeactivateInterrupt(command)
 		} else if strings.HasPrefix(command, "--async reset ddl") {
 			st.executeAsyncResetDdl(require, command)
+		} else if strings.HasPrefix(command, "--set orderbymaxrows") {
+			st.executeSetOrderByMaxRows(require, command)
 		}
 		if strings.HasPrefix(command, "--") {
 			// Just a normal comment - ignore
@@ -1122,6 +1125,14 @@ func (st *sqlTest) executeAsyncResetDdl(require *require.Assertions, com string)
 		for range resChan {
 		}
 	}()
+}
+
+func (st *sqlTest) executeSetOrderByMaxRows(require *require.Assertions, com string) {
+	parts := strings.Split(com, " ")
+	sval := parts[2]
+	val, err := strconv.Atoi(sval)
+	require.NoError(err)
+	exec.SetOrderByMaxRows(val)
 }
 
 func (st *sqlTest) executePreparedStatement(require *require.Assertions, command string) {

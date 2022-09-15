@@ -510,6 +510,7 @@ func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first 
 	writeBatch := cluster.NewWriteBatch(s.shardID)
 	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, rowsToProcess, first)
 	if err != nil {
+		log.Errorf("failed to process batch batch: %+v", err)
 		s.setFailed(err)
 		return false
 	}
@@ -567,7 +568,7 @@ func (s *ShardScheduler) isStopped() bool {
 func (s *ShardScheduler) setFailed(err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	log.Tracef("scheduler %d set failed %v", s.shardID, err)
+	log.Errorf("scheduler %d has failed %+v", s.shardID, err)
 	if s.failed || s.stopped {
 		return
 	}

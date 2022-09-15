@@ -92,4 +92,5 @@ intra-cluster-tls-client-certs-path = "intra-cluster-client-certs-path"
 intra-cluster-tls-client-auth = "require-and-verify-client-cert"
 
 global-cache-size                   = 12345
-data-compression-disabled         = true
+data-compression-disabled           = true
+order-by-max-rows                   = 123456

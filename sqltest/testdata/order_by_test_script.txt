@@ -249,6 +249,15 @@ select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 a
 
 select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
 
+-- test max order by rows;
+
+--set orderbymaxrows 2;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
+
+--set orderbymaxrows 50000;
+
+select col1, col2, col3 from test_source_1 order by col1 desc, col2 desc, col3 desc;
 
 drop source test_source_1;
 --delete topic testtopic;

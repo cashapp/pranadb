@@ -180,6 +180,7 @@ func TestPullLimit_GetRows(t *testing.T) {
 				offset:           tt.fields.offset,
 				rows:             tt.fields.rows,
 				cursor:           tt.fields.cursor,
+				maxRows:          50000,
 			}
 			got, err := l.GetRows(tt.args.maxRowsToReturn)
 			if (err != nil) != tt.wantErr {

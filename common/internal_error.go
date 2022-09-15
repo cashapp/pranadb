@@ -18,6 +18,7 @@ func LogInternalError(err error) errors.PranaError {
 	// For internal errors we don't return internal error messages to the CLI as this would leak
 	// server implementation details. Instead, we generate a random UUID and add that to the message
 	// and log the internal error in the server logs with the UUID so it can be looked up
+	log.Errorf("error - creating internal error with ref %s", errRef)
 	perr := errors.NewInternalError(errRef)
 	log.Errorf("internal error occurred with reference %s\n%+v", errRef, err)
 	return perr

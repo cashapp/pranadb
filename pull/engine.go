@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/sharder"
 	"strings"
 	"sync"
@@ -26,14 +27,16 @@ type Engine struct {
 	nodeID            int
 	shrder            *sharder.Sharder
 	available         common.AtomicBool
+	cfg               *conf.Config
 }
 
-func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller, shrder *sharder.Sharder) *Engine {
+func NewPullEngine(cluster cluster.Cluster, metaController *meta.Controller, shrder *sharder.Sharder, cfg *conf.Config) *Engine {
 	engine := Engine{
 		cluster:        cluster,
 		metaController: metaController,
 		nodeID:         cluster.GetNodeID(),
 		shrder:         shrder,
+		cfg:            cfg,
 	}
 	engine.queryExecCtxCache.Store(new(sync.Map))
 	return &engine
@@ -102,7 +105,7 @@ func (p *Engine) BuildPullQuery(execCtx *execctx.ExecutionContext, query string,
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return p.buildPullDAGWithOutputNames(execCtx, logicalPlan, physicalPlan, false)
+	return p.buildPullDAGWithOutputNames(execCtx, logicalPlan, physicalPlan, false, p.cfg.OrderByMaxRows)
 }
 
 // ExecuteRemotePullQuery - executes a pull query received from another node
@@ -142,7 +145,7 @@ func (p *Engine) ExecuteRemotePullQuery(queryInfo *cluster.QueryExecutionInfo) (
 		if err != nil {
 			return nil, err
 		}
-		dag, err := p.buildPullDAG(execCtx, physicalPlan, true)
+		dag, err := p.buildPullDAG(execCtx, physicalPlan, true, p.cfg.OrderByMaxRows)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

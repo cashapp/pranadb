@@ -9,13 +9,14 @@ import (
 // PullLimit is an executor for LIMIT <offset>, <count> statement and its variations.
 type PullLimit struct {
 	pullExecutorBase
-	count  uint64
-	offset uint64
-	rows   *common.Rows
-	cursor int
+	count   uint64
+	offset  uint64
+	rows    *common.Rows
+	cursor  int
+	maxRows int
 }
 
-func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset uint64) *PullLimit {
+func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset uint64, maxRows int) *PullLimit {
 	rf := common.NewRowsFactory(colTypes)
 	base := pullExecutorBase{
 		colNames:    colNames,
@@ -26,6 +27,7 @@ func NewPullLimit(colNames []string, colTypes []common.ColumnType, count, offset
 		pullExecutorBase: base,
 		count:            count,
 		offset:           offset,
+		maxRows:          maxRows,
 	}
 }
 
@@ -39,9 +41,10 @@ func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 	}
 	// Because LIMIT is often used together with ORDER BY which is limited to orderByMaxRows rows,
 	// we impose the same max on LIMIT.
-	if l.count > orderByMaxRows {
+	maxRows := getOrderByMaxRows(l.maxRows)
+	if l.count > uint64(maxRows) {
 		return nil, errors.NewInvalidStatementError(
-			fmt.Sprintf("Limit count cannot be larger than %d", orderByMaxRows),
+			fmt.Sprintf("Limit count cannot be larger than %d", maxRows),
 		)
 	}
 	if l.count == 0 {
