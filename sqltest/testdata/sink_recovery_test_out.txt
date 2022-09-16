@@ -1,0 +1,117 @@
+use test;
+0 rows returned
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+0 rows returned
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0, v1, v2, v3, v4, v5, v6)
+);
+0 rows returned
+
+-- we create a sink with a high emitAfter, so it won't initially forwarded any messages, but they will be staged in
+-- storage;
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    emitafter = "10m",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    injectors = (meta("key").k0, v1, v2, v3, v4, v5, v6)
+) as select * from test_source_1;
+0 rows returned
+
+--load data dataset_1;
+
+--pause 2000;
+
+-- should be no data;
+select * from test_source_2;
++---------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3         | col4         | col5         | col6                       |
++---------------------------------------------------------------------------------------------------------------------+
+0 rows returned
+
+-- now we restart the cluster. On restart any unsent rows should be sent;
+
+--restart cluster;
+
+use test;
+0 rows returned
+
+--pause 2000;
+
+select * from test_source_2 order by col0;
++---------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3         | col4         | col5         | col6                       |
++---------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10   | 1000        | 1234.432100  | 12345678.99  | str1         | 2020-01-01 01:00:00.123450 |
+| 2                    | 20   | 2000        | 2234.432100  | 22345678.99  | str2         | 2020-01-02 01:00:01.123451 |
+| 3                    | 30   | 3000        | 3234.432100  | 32345678.99  | str3         | 2020-01-03 01:00:02.123452 |
+| 4                    | 40   | 4000        | 4234.432100  | 42345678.99  | str4         | 2020-01-04 01:00:03.123453 |
+| 5                    | 50   | 5000        | 5234.432100  | 52345678.99  | str5         | 2020-01-05 01:00:04.123454 |
+| 6                    | 60   | 6000        | 6234.432100  | 62345678.99  | str6         | 2020-01-06 01:00:05.123455 |
+| 7                    | 70   | 7000        | 7234.432100  | 72345678.99  | str7         | 2020-01-07 01:00:06.123456 |
+| 8                    | 80   | 8000        | 8234.432100  | 82345678.99  | str8         | 2020-01-08 01:00:07.123457 |
+| 9                    | 90   | 9000        | 9234.432100  | 92345678.99  | str9         | 2020-01-09 01:00:08.123458 |
+| 10                   | 100  | 10000       | 10234.432100 | 93345678.99  | str10        | 2020-01-10 01:00:09.123459 |
++---------------------------------------------------------------------------------------------------------------------+
+10 rows returned
+
+drop sink test_sink;
+0 rows returned
+
+drop source test_source_2;
+0 rows returned
+
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic1;
+
+--delete topic testtopic2;

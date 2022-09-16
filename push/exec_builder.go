@@ -14,7 +14,7 @@ import (
 )
 
 // Builds the push DAG but does not register anything in memory
-func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
+func (p *Engine) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
@@ -23,12 +23,12 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 		return nil, nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
-	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
+	dag, internalTables, err := p.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
 	// Update schemas to the form we need
-	err = m.updateSchemas(dag, schema)
+	err = updateSchemas(dag, schema)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -43,7 +43,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 }
 
 // nolint: gocyclo
-func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
+func (p *Engine) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
 	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	var executor exec.PushExecutor
@@ -136,7 +136,8 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, aggInfo)
-		agg, err := exec.NewAggregator(pkCols, aggFuncs, aggTableInfo, groupByCols, m.cluster, m.sharder)
+
+		agg, err := exec.NewAggregator(pkCols, aggFuncs, aggTableInfo, groupByCols, p.cluster, p.sharder)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
@@ -175,7 +176,7 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
+		childExecutor, it, err := p.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
@@ -192,9 +193,9 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 // on key cols, which the planner does not provide, also we need to propagate keys through
 // projections which don't include the key columns. These are needed when subsequently
 // identifying a row when it changes
-func (m *MaterializedView) updateSchemas(executor exec.PushExecutor, schema *common.Schema) error {
+func updateSchemas(executor exec.PushExecutor, schema *common.Schema) error {
 	for _, child := range executor.GetChildren() {
-		err := m.updateSchemas(child, schema)
+		err := updateSchemas(child, schema)
 		if err != nil {
 			return errors.WithStack(err)
 		}

@@ -27,6 +27,8 @@ const (
 	Unavailable
 	DdlRetry
 	TooManyRows
+	UnknownSink
+	SinkAlreadyExists
 )
 
 // Ingest errors
@@ -50,10 +52,6 @@ func NewSchemaNotInUseError() PranaError {
 	return NewPranaErrorf(SchemaNotInUse, "No schema in use")
 }
 
-func NewInvalidStatementError(msg string) PranaError {
-	return NewPranaErrorf(InvalidStatement, msg)
-}
-
 func NewInvalidConfigurationError(msg string) PranaError {
 	return NewPranaErrorf(InvalidConfiguration, "Invalid configuration: %s", msg)
 }
@@ -68,6 +66,10 @@ func NewUnknownIndexError(schemaName string, tableName string, indexName string)
 
 func NewUnknownMaterializedViewError(schemaName string, mvName string) PranaError {
 	return NewPranaErrorf(UnknownMaterializedView, "Unknown materialized view: %s.%s", schemaName, mvName)
+}
+
+func NewUnknownSinkError(schemaName string, mvName string) PranaError {
+	return NewPranaErrorf(UnknownMaterializedView, "Unknown sink: %s.%s", schemaName, mvName)
 }
 
 func NewUnknownTableError(schemaName string, tableName string) PranaError {

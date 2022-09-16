@@ -32,7 +32,7 @@ func (p *PushSelect) ReCalcSchemaFromChildren() error {
 	return nil
 }
 
-func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error {
+func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) error { //nolint:gocyclo
 
 	numRows := rowsBatch.Len()
 	resultRows := p.rowsFactory.NewRows(numRows)
@@ -83,7 +83,10 @@ func (p *PushSelect) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) erro
 			}
 		}
 	}
-	return p.parent.HandleRows(resultBatch, ctx)
+	if resultBatch.Len() > 0 {
+		return p.parent.HandleRows(resultBatch, ctx)
+	}
+	return nil
 }
 
 func (p *PushSelect) evalPredicates(row *common.Row) (bool, error) {

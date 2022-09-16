@@ -151,7 +151,7 @@ func (d *DropIndexCommand) getIndexInfo() (*common.IndexInfo, error) {
 		d.tableName = strings.ToLower(ast.Drop.TableName)
 	}
 	if d.tableName == "" {
-		return nil, errors.NewInvalidStatementError("Drop index requires a table")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Drop index requires a table")
 	}
 	indexInfo, ok := d.e.metaController.GetIndex(d.schemaName, d.tableName, d.indexName)
 	if !ok {

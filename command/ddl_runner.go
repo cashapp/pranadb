@@ -69,6 +69,8 @@ type DDLCommandType int
 const (
 	DDLCommandTypeCreateSource = iota
 	DDLCommandTypeDropSource
+	DDLCommandTypeCreateSink
+	DDLCommandTypeDropSink
 	DDLCommandTypeCreateMV
 	DDLCommandTypeDropMV
 	DDLCommandTypeCreateIndex
@@ -90,10 +92,14 @@ func NewDDLCommand(e *Executor, commandType DDLCommandType, schemaName string, s
 		return NewCreateSourceCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeCreateMV:
 		return NewCreateMVCommand(e, schemaName, sql, tableSequences, extraData)
+	case DDLCommandTypeCreateSink:
+		return NewCreateSinkCommand(e, schemaName, sql, tableSequences)
 	case DDLCommandTypeDropSource:
 		return NewDropSourceCommand(e, schemaName, sql)
 	case DDLCommandTypeDropMV:
 		return NewDropMVCommand(e, schemaName, sql)
+	case DDLCommandTypeDropSink:
+		return NewDropSinkCommand(e, schemaName, sql)
 	case DDLCommandTypeCreateIndex:
 		return NewCreateIndexCommand(e, schemaName, sql, tableSequences, extraData)
 	case DDLCommandTypeDropIndex:

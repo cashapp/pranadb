@@ -107,7 +107,7 @@ func (c *CreateMVCommand) Before() error {
 	}
 	c.mv = mv
 
-	if err := c.e.metaController.ExistsMvOrSource(c.schema, mv.Info.Name); err != nil {
+	if err := c.e.metaController.ExistsTable(c.schema, mv.Info.Name); err != nil {
 		return err
 	}
 
@@ -257,7 +257,7 @@ func (c *CreateMVCommand) Cleanup() {
 }
 
 func (c *CreateMVCommand) createMVFromAST(ast *parser.CreateMaterializedView) (*push.MaterializedView, error) {
-	mvName := strings.ToLower(ast.Name.String())
+	mvName := strings.ToLower(ast.Name)
 	querySQL := ast.Query.String()
 	seqGenerator := common.NewPreallocSeqGen(c.tableSequences)
 	tableID := seqGenerator.GenerateSequence()

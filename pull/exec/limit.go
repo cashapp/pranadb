@@ -37,13 +37,13 @@ func (l *PullLimit) GetRows(maxRowsToReturn int) (*common.Rows, error) {
 	}
 	// OFFSET is unsupported for now.
 	if l.offset != 0 {
-		return nil, errors.NewInvalidStatementError("Offset must be zero")
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Offset must be zero")
 	}
 	// Because LIMIT is often used together with ORDER BY which is limited to orderByMaxRows rows,
 	// we impose the same max on LIMIT.
 	maxRows := getOrderByMaxRows(l.maxRows)
 	if l.count > uint64(maxRows) {
-		return nil, errors.NewInvalidStatementError(
+		return nil, errors.NewPranaErrorf(errors.InvalidStatement,
 			fmt.Sprintf("Limit count cannot be larger than %d", maxRows),
 		)
 	}

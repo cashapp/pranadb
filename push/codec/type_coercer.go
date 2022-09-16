@@ -1,7 +1,6 @@
-package source
+package codec
 
 import (
-	"fmt"
 	"math"
 	"reflect"
 	"strconv"
@@ -98,10 +97,24 @@ func CoerceString(val interface{}) (string, error) {
 	switch v := val.(type) {
 	case string:
 		return v, nil
-	case int64, int32, uint64, int16, uint32, uint16, int:
-		return fmt.Sprintf("%d", v), nil
-	case float64, float32:
-		return fmt.Sprintf("%f", v), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case int32:
+		return strconv.FormatInt(int64(v), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(v), 10), nil
+	case int:
+		return strconv.FormatInt(int64(v), 10), nil
+	case uint64:
+		return strconv.FormatUint(v, 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
 	case common.Decimal:
 		return v.String(), nil
 	case protoreflect.Enum:

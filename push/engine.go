@@ -41,6 +41,7 @@ type Engine struct {
 	schedulers        map[uint64]*sched.ShardScheduler
 	sources           map[uint64]*source.Source
 	materializedViews map[uint64]*MaterializedView
+	sinks             map[uint64]*Sink
 	reapers           map[uint64]*reaper.Reaper
 	remoteConsumers   sync.Map
 	cluster           cluster.Cluster
@@ -171,6 +172,11 @@ func (p *Engine) stop() ([]*source.Source, bool) {
 	for _, src := range p.sources {
 		sources = append(sources, src)
 	}
+	for _, sink := range p.sinks {
+		if err := sink.Stop(); err != nil {
+			log.Warnf("failed to stop sink %v", err)
+		}
+	}
 	for _, rpr := range p.reapers {
 		rpr.Stop()
 	}
@@ -269,6 +275,34 @@ func (p *Engine) RegisterMV(mv *MaterializedView) error {
 	defer p.lock.Unlock()
 	p.materializedViews[mv.Info.TableInfo.ID] = mv
 	return nil
+}
+
+func (p *Engine) RemoveSink(sinkID uint64) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	_, ok := p.sinks[sinkID]
+	if !ok {
+		return errors.Errorf("cannot find sink with id %d", sinkID)
+	}
+	delete(p.sinks, sinkID)
+	return nil
+}
+
+func (p *Engine) RegisterSink(sink *Sink) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.sinks[sink.Info.TableInfo.ID] = sink
+	return nil
+}
+
+func (p *Engine) GetSink(sinkID uint64) (*Sink, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	sink, ok := p.sinks[sinkID]
+	if !ok {
+		return nil, errors.Errorf("no such sink %d", sinkID)
+	}
+	return sink, nil
 }
 
 func (p *Engine) CreateIndex(indexInfo *common.IndexInfo, fill bool, shardIDs []uint64, interruptor *interruptor.Interruptor) error {
@@ -390,7 +424,16 @@ func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, rowCache sched.RowC
 	if first {
 		// For the first batch we actually load it directly from the receiver table - there may be pending data there
 		// That was undelivered from the last time the server was started - we need to deliver everything in there first
-		return p.loadReceivedRows(ctx)
+		loaded, err := p.loadReceivedRows(ctx)
+		if err != nil {
+			return 0, err
+		}
+		// We also load any persistent state for any sinks
+		if err := p.loadSinkPersistentState(ctx); err != nil {
+			return 0, err
+		}
+
+		return loaded, nil
 	}
 
 	receiveBatch := &receiveBatch{
@@ -434,6 +477,22 @@ func (p *Engine) removeScheduler(shardID uint64) {
 type receiveBatch struct {
 	ctx     *exec.ExecutionContext
 	rawRows map[uint64][]RawRow
+}
+
+func (p *Engine) loadSinkPersistentState(ctx *exec.ExecutionContext) error {
+	shardID := ctx.WriteBatch.ShardID
+	var sinks []*Sink
+	p.lock.Lock()
+	for _, sink := range p.sinks {
+		sinks = append(sinks, sink)
+	}
+	p.lock.Unlock()
+	for _, sink := range sinks {
+		if err := sink.loadPersistentState(shardID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p *Engine) loadReceivedRows(ctx *exec.ExecutionContext) (int64, error) {
@@ -732,7 +791,8 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		}
 	}
 
-	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient, sourceInfo.RetentionDuration)
+	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient,
+		sourceInfo.RetentionDuration, false)
 
 	var rowTimeIndexName string
 	if sourceInfo.RetentionDuration != 0 {
@@ -847,6 +907,7 @@ func (p *Engine) clearState() {
 	p.remoteConsumers = sync.Map{}
 	p.sources = make(map[uint64]*source.Source)
 	p.materializedViews = make(map[uint64]*MaterializedView)
+	p.sinks = make(map[uint64]*Sink)
 	p.schedulers = make(map[uint64]*sched.ShardScheduler)
 	p.reapers = make(map[uint64]*reaper.Reaper)
 }
@@ -930,16 +991,6 @@ func (p *Engine) getScheduler(shardID uint64) *sched.ShardScheduler {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	return p.schedulers[shardID]
-}
-
-func (p *Engine) getLocalLeaderShards() []uint64 {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	var shardIDs []uint64
-	for shardID := range p.schedulers {
-		shardIDs = append(shardIDs, shardID)
-	}
-	return shardIDs
 }
 
 // Used in testing only

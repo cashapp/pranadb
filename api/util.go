@@ -13,7 +13,7 @@ func MaybeConvertError(err error) errors.PranaError {
 	}
 	var participleErr participle.Error
 	if errors.As(err, &participleErr) {
-		return errors.NewInvalidStatementError(participleErr.Error())
+		return errors.NewPranaErrorf(errors.InvalidStatement, participleErr.Error())
 	}
 	return common.LogInternalError(err)
 }

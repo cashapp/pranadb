@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var _ kafka.MessageProviderFactory = &LoadClientMessageProviderFactory{}
+var _ kafka.MessageClient = &LoadClientMessageProviderFactory{}
 
 type LoadClientMessageProviderFactory struct {
 	bufferSize             int
@@ -114,6 +114,10 @@ func (l *LoadClientMessageProviderFactory) NewMessageProvider() (kafka.MessagePr
 		msgGenerator:          msgGen,
 		committedOffsets:      map[int32]int64{},
 	}, nil
+}
+
+func (l *LoadClientMessageProviderFactory) NewMessageProducer() (kafka.MessageProducer, error) {
+	panic("not implemented")
 }
 
 func (l *LoadClientMessageProviderFactory) getMessageGenerator(name string) (msggen.MessageGenerator, error) {

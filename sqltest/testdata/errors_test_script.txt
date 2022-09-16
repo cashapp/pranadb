@@ -1397,3 +1397,324 @@ create source test_source_1(
 );
 
 --delete topic testtopic;
+
+-- sink errors;
+
+--create topic testtopic1;
+--create topic testtopic2;
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "-10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "foo",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = -10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "foobroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "foo",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "foo",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "foo",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 0,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = -10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1, v2, v3, v4)
+) as select * from test_source_1;
+
+create sink test_sink_already_exists
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink_already_exists
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_source_1
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create materialized view test_mv_1 as select * from test_source_1;
+
+create sink test_mv_1
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select col1, count(*) from test_source_1 group by col1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from;
+
+create sink test_sink
+with (
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s"
+) as select * from test_source_1;
+
+drop sink test_sink_already_exists;
+drop materialized view test_mv_1;
+drop source test_source_1;
+
+--delete topic testtopic2;
+--delete topic testtopic1;
