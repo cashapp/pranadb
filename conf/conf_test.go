@@ -225,6 +225,18 @@ func invalidDataCacheSize() Config {
 	return cnf
 }
 
+func invalidOrderByMaxRows1() Config {
+	cnf := confAllFields
+	cnf.OrderByMaxRows = -1
+	return cnf
+}
+
+func invalidOrderByMaxRows2() Config {
+	cnf := confAllFields
+	cnf.OrderByMaxRows = 0
+	return cnf
+}
+
 const (
 	lifeCycleListenAddress = "localhost:8765"
 	startupEndpointPath    = "/started"
@@ -400,6 +412,8 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled", intraClusterTLSCAPathNotSpecifiedConfig()},
 
 	{"PDB3000 - Invalid configuration: GlobalCacheSize must be > 0", invalidDataCacheSize()},
+	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows1()},
+	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows2()},
 }
 
 func TestValidate(t *testing.T) {
@@ -467,4 +481,6 @@ var confAllFields = Config{
 		ClientCertsPath: "intra_cluster_client_certs_path",
 		ClientAuth:      "intra_cluster_client_auth",
 	},
+	GlobalCacheSize: DefaultGlobalCacheSize,
+	OrderByMaxRows:  DefaultOrderByMaxRows,
 }

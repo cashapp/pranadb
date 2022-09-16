@@ -23,6 +23,7 @@ const (
 	DefaultMaxForwardWriteBatchSize   = 500
 	DefaultMaxTableReaperBatchSize    = 1000
 	DefaultGlobalCacheSize            = 1024 * 1024 * 1024
+	DefaultOrderByMaxRows             = 50000
 )
 
 type Config struct {
@@ -76,6 +77,7 @@ type Config struct {
 	MaxTableReaperBatchSize      int
 	GlobalCacheSize              int64
 	DataCompressionDisabled      bool
+	OrderByMaxRows               int
 }
 
 type TLSConfig struct {
@@ -145,6 +147,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.GlobalCacheSize == 0 {
 		c.GlobalCacheSize = DefaultGlobalCacheSize
+	}
+	if c.OrderByMaxRows == 0 {
+		c.OrderByMaxRows = DefaultOrderByMaxRows
 	}
 }
 
@@ -299,6 +304,9 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.GlobalCacheSize < 1 {
 		return errors.NewInvalidConfigurationError("GlobalCacheSize must be > 0")
 	}
+	if c.OrderByMaxRows < 1 {
+		return errors.NewInvalidConfigurationError("OrderByMaxRows must be > 0")
+	}
 	return nil
 }
 
@@ -335,6 +343,7 @@ func NewDefaultConfig() *Config {
 		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:    DefaultMaxTableReaperBatchSize,
 		GlobalCacheSize:            DefaultGlobalCacheSize,
+		OrderByMaxRows:             DefaultOrderByMaxRows,
 	}
 }
 
@@ -349,6 +358,7 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:  DefaultMaxTableReaperBatchSize,
 		GlobalCacheSize:          DefaultGlobalCacheSize,
+		OrderByMaxRows:           DefaultOrderByMaxRows,
 		NodeID:                   0,
 		NumShards:                10,
 		TestServer:               true,

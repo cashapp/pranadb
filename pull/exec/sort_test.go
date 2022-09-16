@@ -524,7 +524,7 @@ func testSort(t *testing.T, inpRows [][]interface{}, expRows [][]interface{}, so
 func setupSort(t *testing.T, inputRows [][]interface{}, colNames []string, colTypes []common.ColumnType, descending []bool, sortByExprs ...*common.Expression) PullExecutor {
 	t.Helper()
 
-	sort := NewPullSort(colNames, colTypes, descending, sortByExprs)
+	sort := NewPullSort(colNames, colTypes, descending, sortByExprs, 10000)
 	inpRows := toRows(t, inputRows, colTypes)
 	rf := common.NewRowsFactory(colTypes)
 	rowsProvider := rowProvider{

@@ -18,8 +18,8 @@ import (
 )
 
 func (p *Engine) buildPullDAGWithOutputNames(ctx *execctx.ExecutionContext, logicalPlan planner.LogicalPlan,
-	plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
-	dag, err := p.buildPullDAG(ctx, plan, remote)
+	plan planner.PhysicalPlan, remote bool, orderByMaxRows int) (exec.PullExecutor, error) {
+	dag, err := p.buildPullDAG(ctx, plan, remote, orderByMaxRows)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func (p *Engine) buildPullDAGWithOutputNames(ctx *execctx.ExecutionContext, logi
 }
 
 // nolint: gocyclo
-func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.PhysicalPlan, remote bool) (exec.PullExecutor, error) {
+func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.PhysicalPlan, remote bool, orderByMaxRows int) (exec.PullExecutor, error) {
 	cols := plan.Schema().Columns
 	colTypes := make([]common.ColumnType, 0, len(cols))
 	colNames := make([]string, 0, len(cols))
@@ -71,7 +71,7 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 				return nil, errors.WithStack(err)
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(ctx, op, true)
+			remoteDag, err := p.buildPullDAG(ctx, op, true, orderByMaxRows)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -101,7 +101,7 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 				}
 			}
 		} else {
-			remoteDag, err := p.buildPullDAG(ctx, op, true)
+			remoteDag, err := p.buildPullDAG(ctx, op, true, orderByMaxRows)
 			if err != nil {
 				return nil, err
 			}
@@ -110,13 +110,13 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 		}
 	case *planner.PhysicalSort:
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, ctx.Planner().SessionContext())
-		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
+		executor = exec.NewPullSort(colNames, colTypes, desc, sortByExprs, orderByMaxRows)
 	case *planner.PhysicalLimit:
-		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
+		executor = exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset, orderByMaxRows)
 	case *planner.PhysicalTopN:
-		limit := exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset)
+		limit := exec.NewPullLimit(colNames, colTypes, op.Count, op.Offset, orderByMaxRows)
 		desc, sortByExprs := p.byItemsToDescAndSortExpression(op.ByItems, ctx.Planner().SessionContext())
-		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs)
+		sort := exec.NewPullSort(colNames, colTypes, desc, sortByExprs, orderByMaxRows)
 		executor = exec.NewPullChain(limit, sort)
 	default:
 		log.Errorf("unexpected plan type %T", plan)
@@ -125,7 +125,7 @@ func (p *Engine) buildPullDAG(ctx *execctx.ExecutionContext, plan planner.Physic
 
 	var childExecutors []exec.PullExecutor
 	for _, child := range plan.Children() {
-		childExecutor, err := p.buildPullDAG(ctx, child, remote)
+		childExecutor, err := p.buildPullDAG(ctx, child, remote, orderByMaxRows)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

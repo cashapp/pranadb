@@ -124,5 +124,6 @@ func createConfigWithAllFields() conf.Config {
 
 		GlobalCacheSize:         12345,
 		DataCompressionDisabled: true,
+		OrderByMaxRows:          123456,
 	}
 }
