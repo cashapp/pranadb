@@ -4,6 +4,7 @@ import (
 	"github.com/squareup/pranadb/kafka/load"
 	"github.com/squareup/pranadb/push/util"
 	"go.uber.org/ratelimit"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,6 +134,12 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 			return nil, errors.WithStack(err)
 		}
 	case conf.BrokerClientDefault:
+		// Remove the Prana properties - the Confluent client will choke on them otherwise
+		for propName := range props {
+			if strings.HasPrefix(propName, "prana.") {
+				delete(props, propName)
+			}
+		}
 		msgProvFact = kafka.NewMessageProviderFactory(ti.TopicName, props, groupID)
 	case conf.BrokerClientGenerator:
 		msgProvFact, err = load.NewMessageProviderFactory(10000, numConsumers, cluster.GetNodeID(), sourceInfo.OriginInfo.Properties)
