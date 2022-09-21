@@ -46,8 +46,8 @@ func (p *Partition) Nodes() int {
 // Replicas returns the number of replicas in the partition.
 func (p *Partition) Replicas() int {
 	count := 0
-	for i, score := range p.replicaScores {
-		if p.leaderIndex != i && score >= 0 {
+	for _, score := range p.replicaScores {
+		if score >= 0 {
 			count++
 		}
 	}
@@ -286,8 +286,12 @@ func (c Cluster) Rebalance(r *rand.Rand, simulations int, options ...SAOption) [
 	var bestSwaps []Swap
 	for i := 0; i < simulations; i++ {
 		swaps := c.SimulatedAnnealing(r, options...)
-		if c.Score() < bestScore {
-			bestScore = c.Score()
+		newScore := c.Score()
+		if newScore < bestScore {
+			bestScore = newScore
+			bestSwaps = swaps
+		} else if newScore == bestScore && len(swaps) < len(bestSwaps) {
+			bestScore = newScore
 			bestSwaps = swaps
 		}
 		_ = c.UndoSwaps(swaps)

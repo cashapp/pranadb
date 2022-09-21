@@ -26,12 +26,12 @@ func TestNewPartition(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "no replicas",
+			name: "no followers",
 			args: args{
 				scores:      []int{1},
 				leaderIndex: 0,
 			},
-			wantErr: true,
+			want: Partition{replicaScores: []int{1}, leaderIndex: 0},
 		},
 		{
 			name:    "no scores",
@@ -227,22 +227,22 @@ func randomCluster(r *rand.Rand, n int) Cluster {
 }
 
 func BenchmarkCluster_SimulatedAnnealing20(b *testing.B) {
-	benchmarkCluster_SimulatedAnnealing(b, 20)
+	benchmarkClusterSimulatedAnnealing(b, 20)
 }
 
 func BenchmarkCluster_SimulatedAnnealing100(b *testing.B) {
-	benchmarkCluster_SimulatedAnnealing(b, 100)
+	benchmarkClusterSimulatedAnnealing(b, 100)
 }
 
 func BenchmarkCluster_SimulatedAnnealing200(b *testing.B) {
-	benchmarkCluster_SimulatedAnnealing(b, 200)
+	benchmarkClusterSimulatedAnnealing(b, 200)
 }
 
 func BenchmarkCluster_SimulatedAnnealing400(b *testing.B) {
-	benchmarkCluster_SimulatedAnnealing(b, 400)
+	benchmarkClusterSimulatedAnnealing(b, 400)
 }
 
-func benchmarkCluster_SimulatedAnnealing(b *testing.B, n int, options ...SAOption) {
+func benchmarkClusterSimulatedAnnealing(b *testing.B, n int, options ...SAOption) {
 	r := rand.New(rand.NewSource(0))
 	c := randomCluster(r, n)
 	b.ResetTimer()
