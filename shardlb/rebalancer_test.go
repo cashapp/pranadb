@@ -62,15 +62,15 @@ func TestNewPartition(t *testing.T) {
 			want: Partition{replicaScores: []int{1, 2, 3}, leaderIndex: 1},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewPartition(tt.args.scores, tt.args.leaderIndex)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewPartition() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := NewPartition(test.args.scores, test.args.leaderIndex)
+			if (err != nil) != test.wantErr {
+				t.Errorf("NewPartition() error = %v, wantErr %v", err, test.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewPartition() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("NewPartition() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -97,14 +97,14 @@ func TestPartition_Nodes(t *testing.T) {
 			want:   5,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			p := &Partition{
-				replicaScores: tt.fields.scores,
-				leaderIndex:   tt.fields.leaderIndex,
+				replicaScores: test.fields.scores,
+				leaderIndex:   test.fields.leaderIndex,
 			}
-			if got := p.Nodes(); got != tt.want {
-				t.Errorf("Partition.Nodes() = %v, want %v", got, tt.want)
+			if got := p.Nodes(); got != test.want {
+				t.Errorf("Partition.Nodes() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -131,14 +131,14 @@ func TestPartition_Replicas(t *testing.T) {
 			want:   5,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			p := &Partition{
-				replicaScores: tt.fields.scores,
-				leaderIndex:   tt.fields.leaderIndex,
+				replicaScores: test.fields.scores,
+				leaderIndex:   test.fields.leaderIndex,
 			}
-			if got := p.Replicas(); got != tt.want {
-				t.Errorf("Partition.Replicas() = %v, want %v", got, tt.want)
+			if got := p.Replicas(); got != test.want {
+				t.Errorf("Partition.Replicas() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -186,18 +186,18 @@ func TestPartition_SwapLeader(t *testing.T) {
 			want:    Partition{replicaScores: []int{0, 1, -1, 2, -1}, leaderIndex: 0},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := Partition{
-				replicaScores: tt.fields.scores,
-				leaderIndex:   tt.fields.leaderIndex,
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			partition := Partition{
+				replicaScores: test.fields.scores,
+				leaderIndex:   test.fields.leaderIndex,
 			}
-			if err := p.SwapLeader(tt.args.newLeaderIndex); (err != nil) != tt.wantErr {
-				t.Errorf("Partition.SwapLeader() error = %v, wantErr %v", err, tt.wantErr)
+			if err := partition.SwapLeader(test.args.newLeaderIndex); (err != nil) != test.wantErr {
+				t.Errorf("Partition.SwapLeader() error = %v, wantErr %v", err, test.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(p, tt.want) {
-				t.Errorf("NewPartition() = %v, want %v", p, tt.want)
+			if !reflect.DeepEqual(partition, test.want) {
+				t.Errorf("NewPartition() = %v, want %v", partition, test.want)
 			}
 		})
 	}
@@ -242,12 +242,13 @@ func BenchmarkCluster_SimulatedAnnealing400(b *testing.B) {
 	benchmarkClusterSimulatedAnnealing(b, 400)
 }
 
-func benchmarkClusterSimulatedAnnealing(b *testing.B, n int, options ...SAOption) {
+func benchmarkClusterSimulatedAnnealing(b *testing.B, n int) {
+	b.Helper()
 	r := rand.New(rand.NewSource(0))
 	c := randomCluster(r, n)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		swaps := c.SimulatedAnnealing(r, options...)
+		swaps := c.SimulatedAnnealing(r)
 		b.StopTimer()
 		if err := c.UndoSwaps(swaps); err != nil {
 			b.FailNow()
@@ -274,7 +275,7 @@ func TestNewCluster(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "partitionts with different node count",
+			name: "partitions with different node count",
 			args: args{
 				partitions: []Partition{
 					{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
@@ -284,7 +285,7 @@ func TestNewCluster(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "partitionts with different replica count",
+			name: "partitions with different replica count",
 			args: args{
 				partitions: []Partition{
 					{replicaScores: []int{0, 0, 0, 0, -1}, leaderIndex: 0},
@@ -310,43 +311,43 @@ func TestNewCluster(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewCluster(tt.args.partitions)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewCluster() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := NewCluster(test.args.partitions)
+			if (err != nil) != test.wantErr {
+				t.Errorf("NewCluster() error = %v, wantErr %v", err, test.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCluster() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("NewCluster() = %v, want %v", got, test.want)
 			}
 		})
 	}
 }
 
 func TestCluster_Partitions(t *testing.T) {
-	c := must(NewCluster(
+	cluster := must(NewCluster(
 		[]Partition{
 			{replicaScores: []int{1, 3, -1, 4, -1}, leaderIndex: 0},
 			{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 			{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 		},
 	))
-	if c.Partitions() != 3 {
-		t.Fatalf("Cluster.Partitions() = %v, want %v", c.Partitions(), 3)
+	if cluster.Partitions() != 3 {
+		t.Fatalf("Cluster.Partitions() = %v, want %v", cluster.Partitions(), 3)
 	}
 }
 
 func TestCluster_Nodes(t *testing.T) {
-	c := must(NewCluster(
+	cluster := must(NewCluster(
 		[]Partition{
 			{replicaScores: []int{1, 3, -1, 4, -1}, leaderIndex: 0},
 			{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 			{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 		},
 	))
-	if c.Nodes() != 5 {
-		t.Fatalf("Cluster.Nodes() = %v, want %v", c.Nodes(), 5)
+	if cluster.Nodes() != 5 {
+		t.Fatalf("Cluster.Nodes() = %v, want %v", cluster.Nodes(), 5)
 	}
 }
 
@@ -434,19 +435,19 @@ func TestCluster_SwapLeader(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.cluster.SwapLeader(tt.args.partitionIndex, tt.args.newLeaderIndex)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Cluster.SwapLeader() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := test.cluster.SwapLeader(test.args.partitionIndex, test.args.newLeaderIndex)
+			if (err != nil) != test.wantErr {
+				t.Errorf("Cluster.SwapLeader() error = %v, wantErr %v", err, test.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want.swap) {
-				t.Errorf("Cluster.SwapLeader() = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got, test.want.swap) {
+				t.Errorf("Cluster.SwapLeader() = %v, want %v", got, test.want)
 			}
-			if !reflect.DeepEqual(tt.want.cluster, Cluster{}) {
-				if !reflect.DeepEqual(tt.cluster, tt.want.cluster) {
-					t.Errorf("Cluster.SwapLeader() = %v, want %v", tt.cluster, tt.want.cluster)
+			if !reflect.DeepEqual(test.want.cluster, Cluster{partitions: []Partition{}, perNodeScores: []int{}}) {
+				if !reflect.DeepEqual(test.cluster, test.want.cluster) {
+					t.Errorf("Cluster.SwapLeader() = %v, want %v", test.cluster, test.want.cluster)
 				}
 			}
 		})
@@ -454,7 +455,7 @@ func TestCluster_SwapLeader(t *testing.T) {
 }
 
 func TestCluster_Score(t *testing.T) {
-	c := must(NewCluster(
+	cluster := must(NewCluster(
 		[]Partition{
 			{replicaScores: []int{1, 3, -1, 4, -1}, leaderIndex: 0},
 			{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
@@ -463,8 +464,8 @@ func TestCluster_Score(t *testing.T) {
 		},
 	))
 	score := math.Sqrt(float64(14) / 5)
-	if c.Score() != score {
-		t.Fatalf("Cluster.Score() = %v, want %v", c.Score(), score)
+	if cluster.Score() != score {
+		t.Fatalf("Cluster.Score() = %v, want %v", cluster.Score(), score)
 	}
 }
 
@@ -534,14 +535,14 @@ func TestCluster_Undo(t *testing.T) {
 			})),
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.cluster.Undo(tt.args.s); (err != nil) != tt.wantErr {
-				t.Errorf("Cluster.Undo() error = %v, wantErr %v", err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.cluster.Undo(test.args.s); (err != nil) != test.wantErr {
+				t.Errorf("Cluster.Undo() error = %v, wantErr %v", err, test.wantErr)
 			}
-			if !reflect.DeepEqual(tt.want, Cluster{}) {
-				if !reflect.DeepEqual(tt.cluster, tt.want) {
-					t.Errorf("Cluster.SwapLeader() = %v, want %v", tt.cluster, tt.want)
+			if !reflect.DeepEqual(test.want, Cluster{partitions: []Partition{}, perNodeScores: []int{}}) {
+				if !reflect.DeepEqual(test.cluster, test.want) {
+					t.Errorf("Cluster.SwapLeader() = %v, want %v", test.cluster, test.want)
 				}
 			}
 		})
@@ -605,14 +606,14 @@ func TestPartition_RandomFollowerIndex(t *testing.T) {
 			want: 1,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			p := &Partition{
-				replicaScores: tt.fields.replicaScores,
-				leaderIndex:   tt.fields.leaderIndex,
+				replicaScores: test.fields.replicaScores,
+				leaderIndex:   test.fields.leaderIndex,
 			}
-			if got := p.RandomFollowerIndex(tt.args.r); got != tt.want {
-				t.Errorf("Partition.RandomFollowerIndex() = %v, want %v", got, tt.want)
+			if got := p.RandomFollowerIndex(test.args.r); got != test.want {
+				t.Errorf("Partition.RandomFollowerIndex() = %v, want %v", got, test.want)
 			}
 		})
 	}

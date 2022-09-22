@@ -1,11 +1,13 @@
+// Package shardlb implements algorithms to balance the leaders and load between nodes.
 package shardlb
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"strings"
+
+	"github.com/squareup/pranadb/errors"
 )
 
 // Partition represents a data subset replicated across some nodes.
@@ -67,17 +69,17 @@ func (p *Partition) SwapLeader(newLeaderIndex int) error {
 }
 
 // RandomFollowerIndex returns a random follower index or -1 if there are no followers.
-func (p *Partition) RandomFollowerIndex(r *rand.Rand) int {
+func (p *Partition) RandomFollowerIndex(randSrc *rand.Rand) int {
 	randomFollowerIndex, followers := -1, 0
-	for i, score := range p.replicaScores {
-		if score < 0 || i == p.leaderIndex {
+	for replicaIndex, score := range p.replicaScores {
+		if score < 0 || replicaIndex == p.leaderIndex {
 			continue
 		}
 		followers++
 		if followers == 1 {
-			randomFollowerIndex = i
-		} else if r.Intn(followers) == 0 {
-			randomFollowerIndex = i
+			randomFollowerIndex = replicaIndex
+		} else if randSrc.Intn(followers) == 0 {
+			randomFollowerIndex = replicaIndex
 		}
 	}
 	return randomFollowerIndex
@@ -161,17 +163,17 @@ func (c Cluster) SwapLeader(partitionIndex, newLeaderIndex int) (Swap, error) {
 	}, nil
 }
 
-func (c Cluster) randomPartitionIndex(r *rand.Rand, excludedPartitions map[int]struct{}) int {
+func (c Cluster) randomPartitionIndex(randSrc *rand.Rand, excludedPartitions map[int]struct{}) int {
 	randomPartitionIndex, availablePartitions := -1, 0
-	for i := 0; i < len(c.partitions); i++ {
-		if _, ok := excludedPartitions[i]; ok {
+	for partitionIndex := 0; partitionIndex < len(c.partitions); partitionIndex++ {
+		if _, ok := excludedPartitions[partitionIndex]; ok {
 			continue
 		}
 		availablePartitions++
 		if availablePartitions == 1 {
-			randomPartitionIndex = i
-		} else if r.Intn(availablePartitions) == 0 {
-			randomPartitionIndex = i
+			randomPartitionIndex = partitionIndex
+		} else if randSrc.Intn(availablePartitions) == 0 {
+			randomPartitionIndex = partitionIndex
 		}
 	}
 	return randomPartitionIndex
@@ -180,17 +182,18 @@ func (c Cluster) randomPartitionIndex(r *rand.Rand, excludedPartitions map[int]s
 // SwapRandom randomly changes the leader of a random partition.
 //
 // If all partitions indexes are excluded, or if there are no followers, a no-op swap is applied.
-func (c Cluster) SwapRandom(r *rand.Rand, excludedPartitionIndexes map[int]struct{}) Swap {
+func (c Cluster) SwapRandom(randSrc *rand.Rand, excludedPartitionIndexes map[int]struct{}) Swap {
 	noSwap := Swap{
-		OldLeaderIndex: c.partitions[0].leaderIndex,
+		PartitionIndex: 0,
 		NewLeaderIndex: c.partitions[0].leaderIndex,
+		OldLeaderIndex: c.partitions[0].leaderIndex,
 	}
-	randomPartitionIndex := c.randomPartitionIndex(r, excludedPartitionIndexes)
+	randomPartitionIndex := c.randomPartitionIndex(randSrc, excludedPartitionIndexes)
 	if randomPartitionIndex < 0 {
 		return noSwap
 	}
 	randomPartition := &c.partitions[randomPartitionIndex]
-	newLeaderIndex := randomPartition.RandomFollowerIndex(r)
+	newLeaderIndex := randomPartition.RandomFollowerIndex(randSrc)
 	if newLeaderIndex < 0 { // no followers
 		return noSwap
 	}
@@ -215,16 +218,16 @@ func (c Cluster) Score() float64 {
 }
 
 func (c *Cluster) String() string {
-	var b strings.Builder
+	var result strings.Builder
 	for _, partition := range c.partitions {
-		fmt.Fprintf(&b, "%s\n", partition.String())
+		fmt.Fprintf(&result, "%s\n", partition.String())
 	}
 	for i := 0; i < c.Nodes(); i++ {
-		fmt.Fprintf(&b, "-------  ")
+		fmt.Fprintf(&result, "-------  ")
 	}
-	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "%s -> %.2f\n", formatScores(c.perNodeScores, -1), c.Score())
-	return b.String()
+	fmt.Fprintln(&result)
+	fmt.Fprintf(&result, "%s -> %.2f\n", formatScores(c.perNodeScores, -1), c.Score())
+	return result.String()
 }
 
 // Undo reverses a swap.
@@ -249,7 +252,7 @@ func (c Cluster) UndoSwaps(swaps []Swap) error {
 //
 // The algorithm applies limits only one leader swap per partition which
 // requires some adjustments to the classic implementation.
-func (c Cluster) SimulatedAnnealing(r *rand.Rand, options ...SAOption) []Swap {
+func (c Cluster) SimulatedAnnealing(randSrc *rand.Rand, options ...SAOption) []Swap {
 	config := defaultSAConfig
 	config.applyOptions(options)
 	var temperature float64 = 1
@@ -259,13 +262,13 @@ func (c Cluster) SimulatedAnnealing(r *rand.Rand, options ...SAOption) []Swap {
 	for i := 0; i < c.Partitions(); i++ { // Swap each partition once.
 		temperature *= config.coolingFraction
 		for j := 0; j < config.repeats; j++ {
-			swap := c.SwapRandom(r, excludedPartitions)
+			swap := c.SwapRandom(randSrc, excludedPartitions)
 			newScore := c.Score()
 			acceptWin := newScore < currentScore
 			acceptLoss := false
 			if newScore > currentScore { // Accept a worse score?
 				exponent := (1 - newScore/currentScore) / (config.k * temperature)
-				acceptLoss = math.Exp(exponent) > r.Float64()
+				acceptLoss = math.Exp(exponent) > randSrc.Float64()
 			}
 			if acceptWin || acceptLoss {
 				currentScore = newScore
@@ -331,14 +334,14 @@ type SAOption func(*saConfig)
 
 // SACoolingFraction controls the temperature drop of the simulated annealing.
 func SACoolingFraction(coolingFraction float64) SAOption {
-	return func(c *saConfig) {
+	return func(config *saConfig) {
 		if coolingFraction > 1 {
 			coolingFraction = 1
 		}
 		if coolingFraction < 0 {
 			coolingFraction = 0
 		}
-		c.coolingFraction = coolingFraction
+		config.coolingFraction = coolingFraction
 	}
 }
 
@@ -357,18 +360,18 @@ func SARetries(repeats int) SAOption {
 }
 
 func formatScores(scores []int, leaderIndex int) string {
-	var b strings.Builder
-	for i, score := range scores {
+	var result strings.Builder
+	for scoreIndex, score := range scores {
 		if score >= 0 {
-			fmt.Fprintf(&b, "%7d", score)
+			fmt.Fprintf(&result, "%7d", score)
 		} else {
-			b.WriteString("       ")
+			result.WriteString("       ")
 		}
-		if i == leaderIndex {
-			b.WriteString("* ")
+		if scoreIndex == leaderIndex {
+			result.WriteString("* ")
 		} else {
-			b.WriteString("  ")
+			result.WriteString("  ")
 		}
 	}
-	return b.String()
+	return result.String()
 }
