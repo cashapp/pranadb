@@ -445,7 +445,7 @@ func TestCluster_SwapLeader(t *testing.T) {
 			if !reflect.DeepEqual(got, test.want.swap) {
 				t.Errorf("Cluster.SwapLeader() = %v, want %v", got, test.want)
 			}
-			if !reflect.DeepEqual(test.want.cluster, Cluster{partitions: []Partition{}, perNodeScores: []int{}}) {
+			if !reflect.DeepEqual(test.want.cluster, Cluster{partitions: nil, perNodeScores: nil}) {
 				if !reflect.DeepEqual(test.cluster, test.want.cluster) {
 					t.Errorf("Cluster.SwapLeader() = %v, want %v", test.cluster, test.want.cluster)
 				}
@@ -540,7 +540,7 @@ func TestCluster_Undo(t *testing.T) {
 			if err := test.cluster.Undo(test.args.s); (err != nil) != test.wantErr {
 				t.Errorf("Cluster.Undo() error = %v, wantErr %v", err, test.wantErr)
 			}
-			if !reflect.DeepEqual(test.want, Cluster{partitions: []Partition{}, perNodeScores: []int{}}) {
+			if !reflect.DeepEqual(test.want, Cluster{partitions: nil, perNodeScores: nil}) {
 				if !reflect.DeepEqual(test.cluster, test.want) {
 					t.Errorf("Cluster.SwapLeader() = %v, want %v", test.cluster, test.want)
 				}
@@ -563,7 +563,7 @@ func TestCluster_SimulatedAnnealing(t *testing.T) {
 
 func TestCluster_Rebalance(t *testing.T) {
 	r := rand.New(rand.NewSource(0))
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		c := randomCluster(r, 100)
 		startScore := c.Score()
 		c.Rebalance(r, 100, SACoolingFraction(0.6), SAK(10), SARetries(3))
