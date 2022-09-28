@@ -218,12 +218,12 @@ type TableInfo struct {
 	ColsVisible       []bool
 	Internal          bool
 	RetentionDuration time.Duration
-	LastUpdateIndexID uint64
+	RowTimeIndexID    uint64
 	pKColsSet         map[int]struct{}
 }
 
 func NewTableInfo(id uint64, schemaName string, name string, pkCols []int, colNames []string, colTypes []ColumnType,
-	retentionDuration time.Duration, lastUpdateIndexID uint64) *TableInfo {
+	retentionDuration time.Duration, rowTimeIndexID uint64) *TableInfo {
 	ti := &TableInfo{
 		ID:                id,
 		SchemaName:        schemaName,
@@ -232,7 +232,7 @@ func NewTableInfo(id uint64, schemaName string, name string, pkCols []int, colNa
 		ColumnNames:       colNames,
 		ColumnTypes:       colTypes,
 		RetentionDuration: retentionDuration,
-		LastUpdateIndexID: lastUpdateIndexID,
+		RowTimeIndexID:    rowTimeIndexID,
 	}
 	ti.CalcPKColsSet()
 	return ti

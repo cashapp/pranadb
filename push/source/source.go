@@ -233,8 +233,8 @@ func (s *Source) Drop() error {
 	}
 	if s.sourceInfo.RetentionDuration != 0 {
 		// Delete any last update index data
-		indexStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.LastUpdateIndexID)
-		indexEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.LastUpdateIndexID+1)
+		indexStartPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.RowTimeIndexID)
+		indexEndPrefix := common.AppendUint64ToBufferBE(nil, s.sourceInfo.RowTimeIndexID+1)
 		if err := s.cluster.DeleteAllDataInRangeForAllShardsLocally(indexStartPrefix, indexEndPrefix); err != nil {
 			return err
 		}
@@ -371,15 +371,7 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 	start := time.Now()
 
-	var lastUpdateTime int64
-	if s.sourceInfo.RetentionDuration != 0 {
-		lastUpdateTime = start.UnixMilli()
-		log.Debugf("source ingest update time is %d", lastUpdateTime)
-	} else {
-		lastUpdateTime = -1
-	}
-
-	rows, err := mp.ParseMessages(messages, lastUpdateTime)
+	rows, err := mp.ParseMessages(messages)
 	if err != nil {
 		return errors.WithStack(err)
 	}

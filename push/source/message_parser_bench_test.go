@@ -64,7 +64,7 @@ func doParseJSON(b *testing.B) {
 		Value:     []byte(valJSON),
 		Headers:   nil,
 	}
-	rows, err := messageParserJSON.ParseMessages([]*kafka.Message{msg}, -1)
+	rows, err := messageParserJSON.ParseMessages([]*kafka.Message{msg})
 	require.NoError(b, err)
 	require.NotNil(b, rows)
 	require.Equal(b, 1, rows.RowCount())

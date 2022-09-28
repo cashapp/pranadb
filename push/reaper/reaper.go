@@ -140,10 +140,13 @@ func (r *Reaper) doRun() (time.Duration, error) {
 	rowsDeleted := 0
 	for rowsDeleted < r.maxDeleteBatchSize {
 		oldest = r.tableHeap.peek()
-		nowUnixMillis := time.Now().UnixMilli()
-		if oldest != nil && nowUnixMillis-oldest.CheckTime >= 0 {
+		nowUnixMicros := time.Now().UnixMicro()
+		if oldest != nil && nowUnixMicros-oldest.CheckTime >= 0 {
 			r.tableHeap.pop()
-			nextTime, numDeleted := r.processDeletes(r.shardID, oldest.Table, nowUnixMillis, wb, r.maxDeleteBatchSize-rowsDeleted)
+			nextTime, numDeleted, err := r.processDeletes(r.shardID, oldest.Table, nowUnixMicros, wb, r.maxDeleteBatchSize-rowsDeleted)
+			if err != nil {
+				return 0, err
+			}
 			rowsDeleted += numDeleted
 			r.tableHeap.push(itemHolder{
 				CheckTime: nextTime,
@@ -165,7 +168,7 @@ func (r *Reaper) doRun() (time.Duration, error) {
 		// There are more rows, schedule a batch immediately
 		return 0, nil
 	}
-	delay := time.Duration(oldest.CheckTime-time.Now().UnixMilli()) * time.Millisecond
+	delay := time.Duration(oldest.CheckTime-time.Now().UnixMicro()) * time.Microsecond
 	if delay < minBatchDelay {
 		// We have a min batch delay to avoid a busy loop
 		delay = minBatchDelay
@@ -191,12 +194,12 @@ func (r *Reaper) scheduleRunNoLock(delay time.Duration) {
 }
 
 // Process deletes for the table, returning time when next check for this table will occur
-func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMillis int64, wb *cluster.WriteBatch, maxRows int) (int64, int) {
-	keyStart := table.EncodeTableKeyPrefix(tab.LastUpdateIndexID, shardID, 16)
-	keyEnd := table.EncodeTableKeyPrefix(tab.LastUpdateIndexID+1, shardID, 16)
+func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMicros int64, wb *cluster.WriteBatch, maxRows int) (int64, int, error) {
+	keyStart := table.EncodeTableKeyPrefix(tab.RowTimeIndexID, shardID, 16)
+	keyEnd := table.EncodeTableKeyPrefix(tab.RowTimeIndexID+1, shardID, 16)
 	pkKeyBase := table.EncodeTableKeyPrefix(tab.ID, shardID, 16)
 
-	retentionMillis := tab.RetentionDuration.Milliseconds()
+	retentionMicros := tab.RetentionDuration.Microseconds()
 
 	iter := r.store.LocalIterator(keyStart, keyEnd)
 	defer func() {
@@ -208,13 +211,21 @@ func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMi
 	for iter.HasNext() && rowCount < maxRows {
 		pair := iter.Next()
 
-		// The index key is shard_id|index_id|1|update_time|pk
+		// The index key is shard_id|index_id|1|row_time|pk
 		// The last update time is unix millis
-		updateTime, _ := common.KeyDecodeInt64(pair.Key, 17)
+		rowTime, _, err := common.KeyDecodeTimestamp(pair.Key, 17, 6)
+		if err != nil {
+			return 0, 0, err
+		}
+		gt, err := rowTime.GoTime(time.UTC)
+		if err != nil {
+			return 0, 0, err
+		}
+		rowTimeUnixMicros := gt.UnixMicro()
 
-		if nowUnixMillis-updateTime < retentionMillis {
+		if nowUnixMicros-rowTimeUnixMicros < retentionMicros {
 			// Not ready to delete
-			return updateTime + retentionMillis, rowCount
+			return rowTimeUnixMicros + retentionMicros, rowCount, nil
 		}
 
 		pk := pair.Key[25:]
@@ -229,9 +240,9 @@ func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMi
 	if rowCount == maxRows {
 		// We have exceeded batch size but there are more rows, return 0 to ensure it's rescheduled next time at
 		// the top of the heap
-		return 0, rowCount
+		return 0, rowCount, nil
 	}
 
 	// There are no more rows for the table so we schedule the next check in retention time from now
-	return nowUnixMillis + retentionMillis, rowCount
+	return nowUnixMicros + retentionMicros, rowCount, nil
 }

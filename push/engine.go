@@ -710,19 +710,35 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 
 	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient, sourceInfo.RetentionDuration)
 
-	var lastUpdateIndexName string
+	var rowTimeIndexName string
 	if sourceInfo.RetentionDuration != 0 {
+
+		// The source must have a column called "row_time" of type TIMESTAMP
+		rowTimeIndex := -1
+		for i, colName := range sourceInfo.ColumnNames {
+			if colName == "row_time" {
+				colType := sourceInfo.ColumnTypes[i]
+				if colType.Type != common.TypeTimestamp || colType.FSP != 6 {
+					return nil, errors.NewPranaErrorf(errors.InvalidStatement, "row_time column must be of type timestamp(6)")
+				}
+				rowTimeIndex = i
+			}
+		}
+		if rowTimeIndex == -1 {
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, "when RetentionTime is specified there must be a column 'row_time' in the source of type timestamp(6) on which to base the retention time")
+		}
+
 		// We include the id in the name to make it unique and deterministic
-		lastUpdateIndexName = fmt.Sprintf("%s_last_updated_%d", sourceInfo.Name, sourceInfo.LastUpdateIndexID)
+		rowTimeIndexName = fmt.Sprintf("%s_row_time_%d", sourceInfo.Name, sourceInfo.RowTimeIndexID)
 		indexInfo := &common.IndexInfo{
 			SchemaName: sourceInfo.SchemaName,
-			ID:         sourceInfo.LastUpdateIndexID,
+			ID:         sourceInfo.RowTimeIndexID,
 			TableName:  sourceInfo.Name,
-			Name:       lastUpdateIndexName,
-			IndexCols:  []int{len(sourceInfo.ColumnTypes) - 1},
+			Name:       rowTimeIndexName,
+			IndexCols:  []int{rowTimeIndex},
 		}
 		indexExecutor := exec.NewIndexExecutor(sourceInfo.TableInfo, indexInfo, p.cluster)
-		tableExecutor.AddConsumingNode(lastUpdateIndexName, indexExecutor)
+		tableExecutor.AddConsumingNode(rowTimeIndexName, indexExecutor)
 	}
 
 	src, err := source.NewSource(
@@ -734,7 +750,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 		p.cfg,
 		p.queryExec,
 		p.protoRegistry,
-		lastUpdateIndexName,
+		rowTimeIndexName,
 	)
 	if err != nil {
 		return nil, errors.WithStack(err)
