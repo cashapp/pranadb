@@ -1236,6 +1236,7 @@ drop source test_source_1;
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1246,7 +1247,8 @@ create source test_source_1(
     retentiontime = "1000",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1000. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1254,6 +1256,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1000. Must be an in
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1264,7 +1267,8 @@ create source test_source_1(
     retentiontime = "10ms",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 10ms. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1272,6 +1276,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 10ms. Must be an in
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1282,7 +1287,8 @@ create source test_source_1(
     retentiontime = "1000ms",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1000ms. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1290,6 +1296,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1000ms. Must be an 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1300,7 +1307,8 @@ create source test_source_1(
     retentiontime = "1us",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1us. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1308,6 +1316,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1us. Must be an int
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1318,7 +1327,8 @@ create source test_source_1(
     retentiontime = "1000000us",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000us. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1326,6 +1336,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000us. Must be 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1336,7 +1347,8 @@ create source test_source_1(
     retentiontime = "1µs",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1µs. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1344,6 +1356,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1µs. Must be an in
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1354,7 +1367,8 @@ create source test_source_1(
     retentiontime = "1000000µs",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000µs. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1362,6 +1376,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000µs. Must be
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1372,7 +1387,8 @@ create source test_source_1(
     retentiontime = "1ns",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1ns. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1380,6 +1396,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1ns. Must be an int
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1390,7 +1407,8 @@ create source test_source_1(
     retentiontime = "1000000000ns",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000000ns. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1398,6 +1416,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime 1000000000ns. Must 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1408,7 +1427,8 @@ create source test_source_1(
     retentiontime = "-1d",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime -1d. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1416,6 +1436,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime -1d. Must be an int
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1426,7 +1447,8 @@ create source test_source_1(
     retentiontime = "-1h",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime -1h. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
@@ -1434,6 +1456,7 @@ Failed to execute statement: PDB1000 - Invalid RetentionTime -1h. Must be an int
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1444,10 +1467,31 @@ create source test_source_1(
     retentiontime = "-1m",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 Failed to execute statement: PDB1000 - Invalid RetentionTime -1m. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+Failed to execute statement: PDB1000 - Invalid RetentionTime -1s. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
 
 create source test_source_1(
     col0 bigint,
@@ -1459,12 +1503,72 @@ create source test_source_1(
     headerencoding = "json",
     keyencoding = "json",
     valueencoding = "json",
-    retentiontime = "-1s",
+    retentiontime = "10s",
     columnselectors = (
         v0,
         v1
     )
 );
-Failed to execute statement: PDB1000 - Invalid RetentionTime -1s. Must be an integer > 0 followed by a unit. Valid units are "d", "s", "m", "h"
+Failed to execute statement: PDB1000 - when RetentionTime is specified there must be a column 'row_time' in the source of type timestamp(6) on which to base the retention time
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+Failed to execute statement: PDB1000 - row_time column must be of type timestamp(6)
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+Failed to execute statement: PDB1000 - row_time column must be of type timestamp(6)
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp(3),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+Failed to execute statement: PDB1000 - row_time column must be of type timestamp(6)
 
 --delete topic testtopic;

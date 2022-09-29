@@ -400,22 +400,6 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		lastUpdateIndexID = 0
 	} else {
 		lastUpdateIndexID = c.tableSequences[1]
-		// We include an extra column in the table which stores the last update time
-		id, err := uuid.NewRandom()
-		if err != nil {
-			return nil, err
-		}
-		colName := fmt.Sprintf("lu_%s", id.String())
-		colNames = append(colNames, colName)
-		colTypes = append(colTypes, common.BigIntColumnType)
-		colsVisible = make([]bool, len(colTypes))
-		for i := 0; i < len(colTypes); i++ {
-			if i == len(colTypes)-1 {
-				colsVisible[i] = false
-			} else {
-				colsVisible[i] = true
-			}
-		}
 	}
 	tableInfo := common.NewTableInfo(c.tableSequences[0], c.schemaName, ast.Name, pkCols, colNames, colTypes,
 		retentionTime, lastUpdateIndexID)

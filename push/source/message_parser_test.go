@@ -441,7 +441,7 @@ func testParseMessage(t *testing.T, colNames []string, colTypes []common.ColumnT
 		Value:     valueBytes,
 		Headers:   headers,
 	}
-	rows, err := mp.ParseMessages([]*kafka.Message{msg}, -1)
+	rows, err := mp.ParseMessages([]*kafka.Message{msg})
 	require.NoError(t, err)
 	require.NotNil(t, rows)
 	require.Equal(t, 1, rows.RowCount())

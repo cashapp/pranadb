@@ -14,6 +14,8 @@ import (
 
 const shardID uint64 = 12345
 
+var TS6ColType = common.ColumnType{Type: common.TypeTimestamp, FSP: 6}
+
 func init() {
 	log.SetLevel(log.DebugLevel)
 }
@@ -26,14 +28,14 @@ func TestSimple(t *testing.T) {
 	reaper.startNoSchedule()
 	tableID := uint64(23)
 	lastUpdatedIndexID := uint64(24)
-	colTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType}
-	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "last_updated"},
+	colTypes := []common.ColumnType{common.BigIntColumnType, TS6ColType}
+	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration, lastUpdatedIndexID)
 	reaper.addTableNoSchedule(tabInfo)
 	te := setupTableExecutor(store, tabInfo, retentionDuration, lastUpdatedIndexID)
 
 	numRows := 10
-	generateRows(t, numRows, 0, time.Now().UnixMilli(), 0, te, colTypes, store)
+	generateRows(t, numRows, 0, time.Now(), 0, te, colTypes, store)
 
 	dur, err := reaper.run(false)
 	require.NoError(t, err)
@@ -60,8 +62,8 @@ func TestOneTable(t *testing.T) {
 	reaper.startNoSchedule()
 	tableID := uint64(23)
 	lastUpdatedIndexID := uint64(24)
-	colTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType}
-	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "last_updated"},
+	colTypes := []common.ColumnType{common.BigIntColumnType, TS6ColType}
+	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration, lastUpdatedIndexID)
 	reaper.addTableNoSchedule(tabInfo)
 	te := setupTableExecutor(store, tabInfo, retentionDuration, lastUpdatedIndexID)
@@ -69,7 +71,7 @@ func TestOneTable(t *testing.T) {
 	now := time.Now()
 	numRows := 10
 	// gen 10 rows each one 1 second update time later than the next
-	generateRows(t, numRows, 0, now.UnixMilli()-10000, 1000, te, colTypes, store)
+	generateRows(t, numRows, 0, now.Add(-10*time.Second), 1000, te, colTypes, store)
 
 	dur, err := reaper.run(false)
 	require.NoError(t, err)
@@ -116,8 +118,8 @@ func TestUpdateRow(t *testing.T) {
 	reaper.startNoSchedule()
 	tableID := uint64(23)
 	lastUpdatedIndexID := uint64(24)
-	colTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType}
-	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "last_updated"},
+	colTypes := []common.ColumnType{common.BigIntColumnType, TS6ColType}
+	tabInfo := common.NewTableInfo(tableID, "test", "test_table", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration, lastUpdatedIndexID)
 	reaper.addTableNoSchedule(tabInfo)
 	te := setupTableExecutor(store, tabInfo, retentionDuration, lastUpdatedIndexID)
@@ -125,7 +127,7 @@ func TestUpdateRow(t *testing.T) {
 	now := time.Now()
 	numRows := 5
 	// gen 5 rows with time now
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te, colTypes, store)
 
 	dur, err := reaper.run(false)
 	require.NoError(t, err)
@@ -139,9 +141,9 @@ func TestUpdateRow(t *testing.T) {
 
 	now = time.Now()
 	// Update row with id 1
-	generateRows(t, 1, 1, now.UnixMilli(), 0, te, colTypes, store)
+	generateRows(t, 1, 1, now, 0, te, colTypes, store)
 	// Update row with id 3
-	generateRows(t, 1, 3, now.UnixMilli(), 0, te, colTypes, store)
+	generateRows(t, 1, 3, now, 0, te, colTypes, store)
 
 	_, err = reaper.run(false)
 	require.NoError(t, err)
@@ -158,24 +160,24 @@ func TestMultipleTables(t *testing.T) {
 	reaper := NewReaper(store, 10000, shardID)
 	reaper.startNoSchedule()
 
-	colTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType}
+	colTypes := []common.ColumnType{common.BigIntColumnType, TS6ColType}
 
 	tableID1 := uint64(23)
 	lastUpdatedIndexID1 := uint64(24)
 	retentionDuration1 := 500 * time.Millisecond
-	tabInfo1 := common.NewTableInfo(tableID1, "test", "test_table1", []int{0}, []string{"col0", "last_updated"},
+	tabInfo1 := common.NewTableInfo(tableID1, "test", "test_table1", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration1, lastUpdatedIndexID1)
 
 	tableID2 := uint64(25)
 	lastUpdatedIndexID2 := uint64(26)
 	retentionDuration2 := 2 * time.Second
-	tabInfo2 := common.NewTableInfo(tableID2, "test", "test_table2", []int{0}, []string{"col0", "last_updated"},
+	tabInfo2 := common.NewTableInfo(tableID2, "test", "test_table2", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration2, lastUpdatedIndexID2)
 
 	tableID3 := uint64(27)
 	lastUpdatedIndexID3 := uint64(28)
 	retentionDuration3 := 5 * time.Second
-	tabInfo3 := common.NewTableInfo(tableID3, "test", "test_table3", []int{0}, []string{"col0", "last_updated"},
+	tabInfo3 := common.NewTableInfo(tableID3, "test", "test_table3", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration3, lastUpdatedIndexID3)
 
 	reaper.addTableNoSchedule(tabInfo1)
@@ -190,9 +192,9 @@ func TestMultipleTables(t *testing.T) {
 	now := time.Now()
 	numRows := 5
 
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te1, colTypes, store)
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te2, colTypes, store)
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te3, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te1, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te2, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te3, colTypes, store)
 
 	dur, err := reaper.run(false)
 	require.NoError(t, err)
@@ -316,24 +318,24 @@ func TestBatchSize(t *testing.T) {
 	reaper := NewReaper(store, 3, shardID)
 	reaper.startNoSchedule()
 
-	colTypes := []common.ColumnType{common.BigIntColumnType, common.BigIntColumnType}
+	colTypes := []common.ColumnType{common.BigIntColumnType, TS6ColType}
 
 	retentionDuration1 := 50 * time.Millisecond
 	tableID1 := uint64(23)
 	lastUpdatedIndexID1 := uint64(24)
-	tabInfo1 := common.NewTableInfo(tableID1, "test", "test_table1", []int{0}, []string{"col0", "last_updated"},
+	tabInfo1 := common.NewTableInfo(tableID1, "test", "test_table1", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration1, lastUpdatedIndexID1)
 
 	retentionDuration2 := 100 * time.Millisecond
 	tableID2 := uint64(25)
 	lastUpdatedIndexID2 := uint64(26)
-	tabInfo2 := common.NewTableInfo(tableID2, "test", "test_table2", []int{0}, []string{"col0", "last_updated"},
+	tabInfo2 := common.NewTableInfo(tableID2, "test", "test_table2", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration2, lastUpdatedIndexID2)
 
 	retentionDuration3 := 150 * time.Millisecond
 	tableID3 := uint64(27)
 	lastUpdatedIndexID3 := uint64(28)
-	tabInfo3 := common.NewTableInfo(tableID3, "test", "test_table3", []int{0}, []string{"col0", "last_updated"},
+	tabInfo3 := common.NewTableInfo(tableID3, "test", "test_table3", []int{0}, []string{"col0", "row_time"},
 		colTypes, retentionDuration3, lastUpdatedIndexID3)
 
 	reaper.addTableNoSchedule(tabInfo1)
@@ -348,9 +350,9 @@ func TestBatchSize(t *testing.T) {
 	now := time.Now()
 	numRows := 5
 
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te1, colTypes, store)
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te2, colTypes, store)
-	generateRows(t, numRows, 0, now.UnixMilli(), 0, te3, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te1, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te2, colTypes, store)
+	generateRows(t, numRows, 0, now, 0, te3, colTypes, store)
 
 	time.Sleep(retentionDuration3)
 	// All the rows should be ready to reap but the batch size is only 3
@@ -423,7 +425,7 @@ func getIndexRows(t *testing.T, indexID uint64, store cluster.Cluster) []cluster
 	return indexRows
 }
 
-func generateRows(t *testing.T, numRows int, startID int64, timeStart int64, timeInc int64, te *exec.TableExecutor,
+func generateRows(t *testing.T, numRows int, startID int64, timeStart time.Time, timeInc int64, te *exec.TableExecutor,
 	colTypes []common.ColumnType, store cluster.Cluster) {
 	t.Helper()
 	rf := common.NewRowsFactory(colTypes)
@@ -431,8 +433,9 @@ func generateRows(t *testing.T, numRows int, startID int64, timeStart int64, tim
 	lastUpdate := timeStart
 	for i := 0; i < numRows; i++ {
 		rows.AppendInt64ToColumn(0, startID+int64(i))
-		rows.AppendInt64ToColumn(1, lastUpdate)
-		lastUpdate += timeInc
+		ts := common.NewTimestampFromGoTime(lastUpdate)
+		rows.AppendTimestampToColumn(1, ts)
+		lastUpdate = lastUpdate.Add(time.Duration(timeInc) * time.Millisecond)
 	}
 	wb := cluster.NewWriteBatch(shardID)
 

@@ -1078,6 +1078,7 @@ drop source test_source_1;
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1088,13 +1089,15 @@ create source test_source_1(
     retentiontime = "1000",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1105,13 +1108,15 @@ create source test_source_1(
     retentiontime = "10ms",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1122,13 +1127,15 @@ create source test_source_1(
     retentiontime = "1000ms",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1139,13 +1146,15 @@ create source test_source_1(
     retentiontime = "1us",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1156,13 +1165,15 @@ create source test_source_1(
     retentiontime = "1000000us",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1173,13 +1184,15 @@ create source test_source_1(
     retentiontime = "1µs",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1190,13 +1203,15 @@ create source test_source_1(
     retentiontime = "1000000µs",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1207,13 +1222,15 @@ create source test_source_1(
     retentiontime = "1ns",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1224,13 +1241,15 @@ create source test_source_1(
     retentiontime = "1000000000ns",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1241,13 +1260,15 @@ create source test_source_1(
     retentiontime = "-1d",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1258,13 +1279,15 @@ create source test_source_1(
     retentiontime = "-1h",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
     )
 );
 
 create source test_source_1(
     col0 bigint,
     col1 bigint,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -1275,7 +1298,27 @@ create source test_source_1(
     retentiontime = "-1m",
     columnselectors = (
         v0,
-        v1
+        v1,
+        v2
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "-1s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
     )
 );
 
@@ -1289,10 +1332,67 @@ create source test_source_1(
     headerencoding = "json",
     keyencoding = "json",
     valueencoding = "json",
-    retentiontime = "-1s",
+    retentiontime = "10s",
     columnselectors = (
         v0,
         v1
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
+    )
+);
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    row_time timestamp(3),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    retentiontime = "10s",
+    columnselectors = (
+        v0,
+        v1,
+        v2
     )
 );
 
