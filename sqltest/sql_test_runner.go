@@ -793,11 +793,6 @@ func (st *sqlTest) loadDataset(require *require.Assertions, fileName string, dsN
 				colTypes, err = parseColumnTypes(parts[3])
 				require.NoError(err)
 			}
-			if sourceInfo.RetentionDuration != 0 {
-				// If there's a retention time on the source there will be an extra hidden column at the end for
-				// last update time - we don't use this when loading
-				colTypes = colTypes[:len(colTypes)-1]
-			}
 			rf := common.NewRowsFactory(colTypes)
 			rows := rf.NewRows(100)
 			currDataSet = &dataset{name: dataSetName, sourceInfo: sourceInfo, rows: rows, colTypes: colTypes}
@@ -1228,7 +1223,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			res = st.execStatement(require, statement)
 			return res == waitUntilResults, nil
-		}, 1*time.Minute, 100*time.Millisecond)
+		}, 5*time.Second, 100*time.Millisecond)
 		require.NoError(err)
 		res = st.execStatement(require, statement)
 		if !ok {

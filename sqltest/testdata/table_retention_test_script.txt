@@ -5,6 +5,7 @@ create source test_source_1(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -16,57 +17,22 @@ create source test_source_1(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
 --load data dataset_1;
 
-select * from test_source_1 order by col0;
-
 select * from test_source_1 order by col0 wait for results
 +----------------------------------------------------------------------------------------------------------------------+
-| col0                 | col1                 | col2                                                                   |
+| col0                 | col1                 | col2                                      | row_time                   |
 +----------------------------------------------------------------------------------------------------------------------+
 0 rows returned
 ;
 
---load data dataset_1;
-
-select * from test_source_1 order by col0;
-
-select * from test_source_1 order by col0 wait for results
-+----------------------------------------------------------------------------------------------------------------------+
-| col0                 | col1                 | col2                                                                   |
-+----------------------------------------------------------------------------------------------------------------------+
-0 rows returned
-;
-
-drop source test_source_1;
---delete topic testtopic1;
-
---create topic testtopic1;
--- table retention is 2 days so rows won't be deleted;
-create source test_source_1(
-    col0 bigint,
-    col1 bigint,
-    col2 varchar,
-    primary key (col0)
-) with (
-    brokername = "testbroker",
-    topicname = "testtopic1",
-    headerencoding = "json",
-    keyencoding = "json",
-    valueencoding = "json",
-    retentiontime = "2d",
-    columnselectors = (
-        v0,
-        v1,
-        v2
-    )
-);
-
---load data dataset_1;
+-- this data has row_time in the future so won't get deleted;
+--load data dataset_2;
 
 select * from test_source_1 order by col0;
 
@@ -75,8 +41,8 @@ select * from test_source_1 order by col0;
 select * from test_source_1 order by col0;
 
 drop source test_source_1;
-
 --delete topic testtopic1;
+
 
 -- now try with different formats of retention time to make sure they can be parsed ok;
 
@@ -86,6 +52,7 @@ create source test_source_a(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -97,7 +64,8 @@ create source test_source_a(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
@@ -105,6 +73,7 @@ create source test_source_b(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -116,7 +85,8 @@ create source test_source_b(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
@@ -124,6 +94,7 @@ create source test_source_c(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -135,7 +106,8 @@ create source test_source_c(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
@@ -143,6 +115,7 @@ create source test_source_d(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -154,7 +127,8 @@ create source test_source_d(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
@@ -162,6 +136,7 @@ create source test_source_e(
     col0 bigint,
     col1 bigint,
     col2 varchar,
+    row_time timestamp(6),
     primary key (col0)
 ) with (
     brokername = "testbroker",
@@ -173,7 +148,8 @@ create source test_source_e(
     columnselectors = (
         v0,
         v1,
-        v2
+        v2,
+        v3
     )
 );
 
