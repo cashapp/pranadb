@@ -237,6 +237,18 @@ func invalidOrderByMaxRows2() Config {
 	return cnf
 }
 
+func invalidMaxRowCacheSize1() Config {
+	cnf := confAllFields
+	cnf.MaxRowCacheSize = -1
+	return cnf
+}
+
+func invalidMaxRowCacheSize2() Config {
+	cnf := confAllFields
+	cnf.MaxRowCacheSize = 0
+	return cnf
+}
+
 const (
 	lifeCycleListenAddress = "localhost:8765"
 	startupEndpointPath    = "/started"
@@ -414,6 +426,9 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: GlobalCacheSize must be > 0", invalidDataCacheSize()},
 	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows1()},
 	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows2()},
+
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be > 0", invalidMaxRowCacheSize1()},
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be > 0", invalidMaxRowCacheSize2()},
 }
 
 func TestValidate(t *testing.T) {
@@ -483,4 +498,5 @@ var confAllFields = Config{
 	},
 	GlobalCacheSize: DefaultGlobalCacheSize,
 	OrderByMaxRows:  DefaultOrderByMaxRows,
+	MaxRowCacheSize: DefaultMaxRowCacheSize,
 }

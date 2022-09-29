@@ -33,7 +33,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		cluster: pe.cluster,
 		sharder: pe.sharder,
 	}
-	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator, pe.cfg)
+	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -110,7 +110,6 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 		}
 	case *exec.Aggregator:
 		if disconnect {
-			m.pe.unregisterShardFailListener(op)
 			err := m.pe.UnregisterRemoteConsumer(op.AggTableInfo.ID)
 			if err != nil {
 				return errors.WithStack(err)
