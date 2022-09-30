@@ -3,6 +3,7 @@ package push
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
@@ -35,22 +36,21 @@ import (
 )
 
 type Engine struct {
-	lock               sync.RWMutex
-	started            bool
-	schedulers         map[uint64]*sched.ShardScheduler
-	sources            map[uint64]*source.Source
-	materializedViews  map[uint64]*MaterializedView
-	reapers            map[uint64]*reaper.Reaper
-	remoteConsumers    sync.Map
-	cluster            cluster.Cluster
-	sharder            *sharder.Sharder
-	meta               *meta.Controller
-	rnd                *rand.Rand
-	cfg                *conf.Config
-	queryExec          common.SimpleQueryExec
-	protoRegistry      protolib.Resolver
-	failInject         failinject.Injector
-	shardFailListeners sync.Map
+	lock              sync.RWMutex
+	started           bool
+	schedulers        map[uint64]*sched.ShardScheduler
+	sources           map[uint64]*source.Source
+	materializedViews map[uint64]*MaterializedView
+	reapers           map[uint64]*reaper.Reaper
+	remoteConsumers   sync.Map
+	cluster           cluster.Cluster
+	sharder           *sharder.Sharder
+	meta              *meta.Controller
+	rnd               *rand.Rand
+	cfg               *conf.Config
+	queryExec         common.SimpleQueryExec
+	protoRegistry     protolib.Resolver
+	failInject        failinject.Injector
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -353,7 +353,8 @@ func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 	if _, ok := p.schedulers[shardID]; ok {
 		panic(fmt.Sprintf("there is already a scheduler %d", shardID))
 	}
-	sh := sched.NewShardScheduler(shardID, p, p, p.cluster, p.cfg.MaxProcessBatchSize, p.cfg.MaxForwardWriteBatchSize)
+	sh := sched.NewShardScheduler(shardID, p, p.cluster, p.cfg.MaxProcessBatchSize, p.cfg.MaxForwardWriteBatchSize,
+		p.cfg.MaxRowCacheSize)
 	p.schedulers[shardID] = sh
 	if p.started {
 		sh.Start()
@@ -374,7 +375,8 @@ type RawRow struct {
 	Row              []byte
 }
 
-func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, rowGetter sched.RowGetter, rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
+func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, rowGetter sched.RowCache, rowCache simplelru.LRUCache,
+	rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
 	rawRows := make(map[uint64][]RawRow)
 
 	ctx := exec.NewExecutionContext(writeBatch, rowGetter, -1)
@@ -540,6 +542,22 @@ func (p *Engine) processReceiveBatch(batch *receiveBatch) error {
 		ctx.WriteBatch.SetBatchID(uid[:])
 		if err := p.cluster.WriteBatch(ctx.WriteBatch, true); err != nil {
 			return errors.WithStack(err)
+		}
+		// Now we update the row cache
+		if err := ctx.WriteBatch.ForEachPut(func(k []byte, v []byte) error {
+			ctx.RowCache.Put(k, v)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := ctx.WriteBatch.ForEachDelete(func(k []byte) error {
+			tableID, _ := common.ReadUint64FromBufferBE(k, 8)
+			if tableID != common.ReceiverTableID {
+				ctx.RowCache.Delete(k)
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -916,22 +934,6 @@ func (p *Engine) getLocalLeaderShards() []uint64 {
 		shardIDs = append(shardIDs, shardID)
 	}
 	return shardIDs
-}
-
-func (p *Engine) ShardFailed(shardID uint64) {
-	p.shardFailListeners.Range(func(key, _ interface{}) bool {
-		sfl := key.(sched.ShardFailListener) //nolint:forcetypeassert
-		sfl.ShardFailed(shardID)
-		return true
-	})
-}
-
-func (p *Engine) registerShardFailListener(shardFailListener sched.ShardFailListener) {
-	p.shardFailListeners.Store(shardFailListener, struct{}{})
-}
-
-func (p *Engine) unregisterShardFailListener(shardFailListener sched.ShardFailListener) {
-	p.shardFailListeners.Delete(shardFailListener)
 }
 
 // Used in testing only

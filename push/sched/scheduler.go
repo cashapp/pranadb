@@ -3,6 +3,7 @@ package sched
 import (
 	"bytes"
 	"fmt"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
@@ -60,7 +61,6 @@ type ShardScheduler struct {
 	queuedWriteRows              int
 	queuedActionWeights          int
 	batchHandler                 RowsBatchHandler
-	ShardFailListener            ShardFailListener
 	lastQueuedReceiverSeq        uint64
 	lastProcessedReceiverSeq     uint64
 	stopped                      bool
@@ -77,16 +77,11 @@ type ShardScheduler struct {
 	fillRun                      int
 	lastBatchID                  []byte
 	lastBatchProcessed           bool
+	rowCache                     simplelru.LRUCache
 }
 
 type RowsBatchHandler interface {
-	HandleBatch(writeBatch *cluster.WriteBatch, rowGetter RowGetter, rows []cluster.ForwardRow, first bool) (int64, error)
-}
-
-// ShardFailListener is called when a shard fails - this is only caused for unretryable errors where we need to stop
-// processing, and it allows other things (e.g. aggregations) to clear up any in memory state
-type ShardFailListener interface {
-	ShardFailed(shardID uint64)
+	HandleBatch(writeBatch *cluster.WriteBatch, rowGetter RowCache, rowCache simplelru.LRUCache, rows []cluster.ForwardRow, first bool) (int64, error)
 }
 
 type BatchEntry struct {
@@ -105,11 +100,49 @@ type actionEntry struct {
 	completionChannel chan error
 }
 
-type RowGetter interface {
+type RowCache interface {
 	Get(key []byte) ([]byte, error)
+	Put(key []byte, value []byte)
+	Delete(key []byte)
+}
+
+func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, clust cluster.Cluster, maxProcessBatchSize int,
+	maxForwardWriteBatchSize int, maxRowCacheSize int) *ShardScheduler {
+	sShardID := fmt.Sprintf("shard-%04d", shardID)
+	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
+	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
+	batchProcessingTimeHistogram := batchProcessingTimeVec.WithLabelValues(sShardID)
+	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
+	rowCache, err := simplelru.NewLRU(maxRowCacheSize, nil)
+	if err != nil {
+		// OK as only errors on size <= 0, which we validate anyway
+		panic("failed to create lru cache")
+	}
+	ss := &ShardScheduler{
+		shardID:                      shardID,
+		processChannel:               make(chan struct{}, 1),
+		batchHandler:                 batchHandler,
+		rowsProcessedCounter:         rowsProcessedCounter,
+		shardLagHistogram:            shardLagHistogram,
+		batchProcessingTimeHistogram: batchProcessingTimeHistogram,
+		batchSizeHistogram:           batchSizeHistogram,
+		clust:                        clust,
+		maxProcessBatchSize:          maxProcessBatchSize,
+		maxForwardWriteBatchSize:     maxForwardWriteBatchSize,
+		rowCache:                     rowCache,
+	}
+	ss.loopExitWaitGroup.Add(1)
+	return ss
 }
 
 func (s *ShardScheduler) Get(key []byte) ([]byte, error) {
+
+	skey := common.ByteSliceToStringZeroCopy(key)
+	v, ok := s.rowCache.Get(skey)
+	if ok {
+		return v.([]byte), nil //nolint:forcetypeassert
+	}
+
 	localGet := false
 	if s.lastBatchID != nil {
 		if s.lastBatchProcessed {
@@ -131,28 +164,14 @@ func (s *ShardScheduler) Get(key []byte) ([]byte, error) {
 	return s.clust.LinearizableGet(s.shardID, key)
 }
 
-func NewShardScheduler(shardID uint64, batchHandler RowsBatchHandler, shardFailListener ShardFailListener,
-	clust cluster.Cluster, maxProcessBatchSize int, maxForwardWriteBatchSize int) *ShardScheduler {
-	sShardID := fmt.Sprintf("shard-%04d", shardID)
-	rowsProcessedCounter := rowsProcessedVec.WithLabelValues(sShardID)
-	shardLagHistogram := shardLagVec.WithLabelValues(sShardID)
-	batchProcessingTimeHistogram := batchProcessingTimeVec.WithLabelValues(sShardID)
-	batchSizeHistogram := batchSizeVec.WithLabelValues(sShardID)
-	ss := &ShardScheduler{
-		shardID:                      shardID,
-		processChannel:               make(chan struct{}, 1),
-		batchHandler:                 batchHandler,
-		ShardFailListener:            shardFailListener,
-		rowsProcessedCounter:         rowsProcessedCounter,
-		shardLagHistogram:            shardLagHistogram,
-		batchProcessingTimeHistogram: batchProcessingTimeHistogram,
-		batchSizeHistogram:           batchSizeHistogram,
-		clust:                        clust,
-		maxProcessBatchSize:          maxProcessBatchSize,
-		maxForwardWriteBatchSize:     maxForwardWriteBatchSize,
-	}
-	ss.loopExitWaitGroup.Add(1)
-	return ss
+func (s *ShardScheduler) Put(key []byte, value []byte) {
+	skey := common.ByteSliceToStringZeroCopy(key)
+	s.rowCache.Add(skey, value)
+}
+
+func (s *ShardScheduler) Delete(key []byte) {
+	skey := common.ByteSliceToStringZeroCopy(key)
+	s.rowCache.Remove(skey)
 }
 
 // AddAction adds an action, defined by a function to be run on the processor. Actions will have priority over
@@ -508,7 +527,7 @@ func (s *ShardScheduler) runLoop() {
 
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool, fill bool) bool {
 	writeBatch := cluster.NewWriteBatch(s.shardID)
-	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, rowsToProcess, first)
+	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, s.rowCache, rowsToProcess, first)
 	if err != nil {
 		log.Errorf("failed to process batch batch: %+v", err)
 		s.setFailed(err)
@@ -574,7 +593,6 @@ func (s *ShardScheduler) setFailed(err error) {
 	}
 	s.stopped = true
 	s.failed = true
-	s.ShardFailListener.ShardFailed(s.shardID) // clean up state
 	// We unblock all waiting writes
 	s.unblockWaitingWrites(err)
 	s.processorRunning = false
@@ -633,4 +651,8 @@ func (s *ShardScheduler) unblockWaitingWrites(err error) {
 
 func (s *ShardScheduler) ShardID() uint64 {
 	return s.shardID
+}
+
+func (s *ShardScheduler) RowCache() simplelru.LRUCache {
+	return s.rowCache
 }

@@ -2,7 +2,6 @@ package push
 
 import (
 	"fmt"
-	"github.com/squareup/pranadb/conf"
 	"github.com/squareup/pranadb/tidb/planner"
 
 	"github.com/squareup/pranadb/errors"
@@ -16,7 +15,7 @@ import (
 
 // Builds the push DAG but does not register anything in memory
 func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *common.Schema, query string, mvName string,
-	seqGenerator common.SeqGenerator, cfg *conf.Config) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 
 	// Build the physical plan
 	physicalPlan, logicalPlan, _, err := pl.QueryToPlan(query, false, false)
@@ -24,7 +23,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 		return nil, nil, errors.WithStack(err)
 	}
 	// Build initial dag from the plan
-	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator, cfg)
+	dag, internalTables, err := m.buildPushDAG(physicalPlan, 0, schema, mvName, seqGenerator)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -45,7 +44,7 @@ func (m *MaterializedView) buildPushQueryExecution(pl *parplan.Planner, schema *
 
 // nolint: gocyclo
 func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence int, schema *common.Schema, mvName string,
-	seqGenerator common.SeqGenerator, cfg *conf.Config) (exec.PushExecutor, []*common.InternalTableInfo, error) {
+	seqGenerator common.SeqGenerator) (exec.PushExecutor, []*common.InternalTableInfo, error) {
 	var internalTables []*common.InternalTableInfo
 	var executor exec.PushExecutor
 	var err error
@@ -137,13 +136,10 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 			MaterializedViewName: mvName,
 		}
 		internalTables = append(internalTables, aggInfo)
-		lruCacheSize := cfg.AggregationCacheSizeRows / cfg.NumShards
-
-		agg, err := exec.NewAggregator(pkCols, aggFuncs, aggTableInfo, groupByCols, m.cluster, m.sharder, lruCacheSize)
+		agg, err := exec.NewAggregator(pkCols, aggFuncs, aggTableInfo, groupByCols, m.cluster, m.sharder)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
-		m.pe.registerShardFailListener(agg)
 		executor = agg
 	case *planner.PhysicalUnionAll:
 		executor, err = exec.NewUnionAll()
@@ -179,7 +175,7 @@ func (m *MaterializedView) buildPushDAG(plan planner.PhysicalPlan, aggSequence i
 
 	var childExecutors []exec.PushExecutor
 	for _, child := range plan.Children() {
-		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator, cfg)
+		childExecutor, it, err := m.buildPushDAG(child, aggSequence, schema, mvName, seqGenerator)
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
