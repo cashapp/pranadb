@@ -214,7 +214,7 @@ func (s *ShardOnDiskStateMachine) GetLastPersistedBatch() []byte {
 
 func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, offset int, bytes []byte, forward bool, fill bool,
 	timestamp uint64) ([]byte, int, error) {
-	puts, deletes, batchID, offsetOut := s.deserializeWriteBatch(bytes, offset, forward)
+	puts, deletes, deleteRanges, batchID, offsetOut := s.deserializeWriteBatch(bytes, offset, forward)
 	hasDups := false
 	for _, kvPair := range puts {
 
@@ -275,19 +275,30 @@ func (s *ShardOnDiskStateMachine) handleWrite(batch *pebble.Batch, offset int, b
 			return nil, 0, errors.WithStack(err)
 		}
 	}
+	for _, dl := range deleteRanges {
+		if err := batch.DeleteRange(dl.startKey, dl.endKey, nil); err != nil {
+			return nil, 0, errors.WithStack(err)
+		}
+	}
 	if hasDups {
 		log.Warnf("Write batch in shard %d - contained duplicates - these were screened out", s.shardID)
 	}
 	return batchID, offsetOut, nil
 }
 
+type deleteRange struct {
+	startKey []byte
+	endKey   []byte
+}
+
 // We deserialize into simple slices for puts and deletes as we don't need the actual WriteBatch instance in the
 // state machine
 func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int, forward bool) (puts []cluster.KVPair,
-	deletes [][]byte, batchID []byte, offsetOut int) {
-	var numPuts, numDeletes uint32
+	deletes [][]byte, deleteRanges []deleteRange, batchID []byte, offsetOut int) {
+	var numPuts, numDeletes, numDeleteRanges uint32
 	numPuts, offset = common.ReadUint32FromBufferLE(buff, offset)
 	numDeletes, offset = common.ReadUint32FromBufferLE(buff, offset)
+	numDeleteRanges, offset = common.ReadUint32FromBufferLE(buff, offset)
 	puts = make([]cluster.KVPair, numPuts)
 	for i := 0; i < int(numPuts); i++ {
 		var kl uint32
@@ -323,13 +334,33 @@ func (s *ShardOnDiskStateMachine) deserializeWriteBatch(buff []byte, offset int,
 		offset += kLen
 		deletes[i] = k
 	}
+
+	deleteRanges = make([]deleteRange, numDeleteRanges)
+	for i := 0; i < int(numDeleteRanges); i++ {
+		var kl uint32
+		kl, offset = common.ReadUint32FromBufferLE(buff, offset)
+		kLen := int(kl)
+		k := buff[offset : offset+kLen]
+		offset += kLen
+		var vl uint32
+		vl, offset = common.ReadUint32FromBufferLE(buff, offset)
+		vLen := int(vl)
+		v := buff[offset : offset+vLen]
+		offset += vLen
+
+		deleteRanges[i] = deleteRange{
+			startKey: k,
+			endKey:   v,
+		}
+	}
+
 	hasBatchID := buff[offset] == 1
 	offset++
 	if hasBatchID {
 		batchID = buff[offset : offset+16]
 		offset += 16
 	}
-	return puts, deletes, batchID, offset
+	return puts, deletes, deleteRanges, batchID, offset
 }
 
 func (s *ShardOnDiskStateMachine) checkDedup(key []byte, batch *pebble.Batch) (ignore bool, err error) {
