@@ -3,7 +3,7 @@ package sched
 import (
 	"bytes"
 	"fmt"
-	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/bserdar/golang-lru/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -81,7 +82,7 @@ type ShardScheduler struct {
 }
 
 type RowsBatchHandler interface {
-	HandleBatch(writeBatch *cluster.WriteBatch, rowGetter RowCache, rowCache simplelru.LRUCache, rows []cluster.ForwardRow, first bool) (int64, error)
+	HandleBatch(writeBatch *cluster.WriteBatch, rowCache RowCache, rows []cluster.ForwardRow, first bool) (int64, error)
 }
 
 type BatchEntry struct {
@@ -164,9 +165,15 @@ func (s *ShardScheduler) Get(key []byte) ([]byte, error) {
 	return s.clust.LinearizableGet(s.shardID, key)
 }
 
+const stringSizeOverhead = int(unsafe.Sizeof("x"))          //nolint:gosec
+const byteSliceSizeOverhead = int(unsafe.Sizeof([]byte{1})) //nolint:gosec
+
 func (s *ShardScheduler) Put(key []byte, value []byte) {
 	skey := common.ByteSliceToStringZeroCopy(key)
-	s.rowCache.Add(skey, value)
+	size := len(key) + len(value) + stringSizeOverhead + byteSliceSizeOverhead
+	// TODO there is actually significantly more overhead per entry in the LRU we use here as it maintains a linked list
+	// of elements. We should implement our own, more efficient lru cache
+	s.rowCache.Add(skey, value, size)
 }
 
 func (s *ShardScheduler) Delete(key []byte) {
@@ -527,7 +534,7 @@ func (s *ShardScheduler) runLoop() {
 
 func (s *ShardScheduler) processBatch(rowsToProcess []cluster.ForwardRow, first bool, fill bool) bool {
 	writeBatch := cluster.NewWriteBatch(s.shardID)
-	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, s.rowCache, rowsToProcess, first)
+	lastSequence, err := s.batchHandler.HandleBatch(writeBatch, s, rowsToProcess, first)
 	if err != nil {
 		log.Errorf("failed to process batch batch: %+v", err)
 		s.setFailed(err)

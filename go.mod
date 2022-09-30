@@ -11,6 +11,7 @@ require (
 	github.com/alecthomas/kong-hcl/v2 v2.0.0-20210826214724-5e9bf8bff126
 	github.com/alecthomas/participle/v2 v2.0.0-alpha6
 	github.com/alecthomas/repr v0.0.0-20210611225437-1a2716eca9d6
+	github.com/bserdar/golang-lru v0.0.0-20190506053902-559c5d14b56e
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/chzyer/test v0.0.0-20210722231415-061457976a23 // indirect
@@ -27,7 +28,6 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/lib/pq v1.10.4 // indirect
 	github.com/lni/dragonboat/v3 v3.3.5
-	github.com/myesui/uuid v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/opencontainers/runc v1.1.2 // indirect
 	github.com/ory/dockertest v3.3.5+incompatible
@@ -39,7 +39,6 @@ require (
 	github.com/segmentio/kafka-go v0.4.29
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/twinj/uuid v1.0.0
 	github.com/twmb/murmur3 v1.1.6
 	go.uber.org/atomic v1.7.0
 	go.uber.org/ratelimit v0.2.0
@@ -51,6 +50,5 @@ require (
 	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/DataDog/dd-trace-go.v1 v1.40.1
-	gopkg.in/stretchr/testify.v1 v1.2.2 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
 )
