@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -316,7 +317,10 @@ func (d *Dragon) start0() error {
 		return errors.WithStack(err)
 	}
 
-	pebbleOptions := d.createPebbleOpts()
+	pebbleOptions, err := d.createPebbleOpts()
+	if err != nil {
+		return err
+	}
 	peb, err := pebble.Open(pebbleDir, pebbleOptions)
 	if err != nil {
 		return errors.WithStack(err)
@@ -375,9 +379,13 @@ func (d *Dragon) start0() error {
 	return err
 }
 
-func (d *Dragon) createPebbleOpts() *pebble.Options {
+func (d *Dragon) createPebbleOpts() (*pebble.Options, error) {
+	pebCacheSize, err := strconv.ParseInt(d.cnf.GlobalCacheSize, 10, 64)
+	if err != nil {
+		return nil, err
+	}
 	opts := &pebble.Options{
-		Cache:                       pebble.NewCache(d.cnf.GlobalCacheSize),
+		Cache:                       pebble.NewCache(pebCacheSize),
 		FormatMajorVersion:          pebble.FormatNewest,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
@@ -410,7 +418,7 @@ func (d *Dragon) createPebbleOpts() *pebble.Options {
 
 	opts.EnsureDefaults()
 
-	return opts
+	return opts, nil
 }
 
 func (d *Dragon) Start() error { // nolint:gocyclo

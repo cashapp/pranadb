@@ -219,9 +219,21 @@ func nodeIDOutOfRangeConf() Config {
 	return cnf
 }
 
-func invalidDataCacheSize() Config {
+func invalidDataCacheSize1() Config {
 	cnf := confAllFields
-	cnf.GlobalCacheSize = -1
+	cnf.GlobalCacheSize = "-1"
+	return cnf
+}
+
+func invalidDataCacheSize2() Config {
+	cnf := confAllFields
+	cnf.GlobalCacheSize = "0"
+	return cnf
+}
+
+func invalidDataCacheSize3() Config {
+	cnf := confAllFields
+	cnf.GlobalCacheSize = "bar"
 	return cnf
 }
 
@@ -239,13 +251,19 @@ func invalidOrderByMaxRows2() Config {
 
 func invalidMaxRowCacheSize1() Config {
 	cnf := confAllFields
-	cnf.MaxRowCacheSize = -1
+	cnf.MaxRowCacheSize = "-1"
 	return cnf
 }
 
 func invalidMaxRowCacheSize2() Config {
 	cnf := confAllFields
-	cnf.MaxRowCacheSize = 0
+	cnf.MaxRowCacheSize = "0"
+	return cnf
+}
+
+func invalidMaxRowCacheSize3() Config {
+	cnf := confAllFields
+	cnf.MaxRowCacheSize = "foo"
 	return cnf
 }
 
@@ -423,12 +441,17 @@ var invalidConfigs = []configPair{
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.CertPath must be specified if intra cluster TLS is enabled", intraClusterTLSCertPathNotSpecifiedConfig()},
 	{"PDB3000 - Invalid configuration: IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled", intraClusterTLSCAPathNotSpecifiedConfig()},
 
-	{"PDB3000 - Invalid configuration: GlobalCacheSize must be > 0", invalidDataCacheSize()},
+	{"PDB3000 - Invalid configuration: GlobalCacheSize must be an integer > 0", invalidDataCacheSize1()},
+	{"PDB3000 - Invalid configuration: GlobalCacheSize must be an integer > 0", invalidDataCacheSize2()},
+	{"PDB3000 - Invalid configuration: GlobalCacheSize must be an integer > 0", invalidDataCacheSize3()},
+
 	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows1()},
 	{"PDB3000 - Invalid configuration: OrderByMaxRows must be > 0", invalidOrderByMaxRows2()},
 
-	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be > 0", invalidMaxRowCacheSize1()},
-	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be > 0", invalidMaxRowCacheSize2()},
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be an integer > 0", invalidMaxRowCacheSize1()},
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be an integer > 0", invalidMaxRowCacheSize2()},
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be an integer > 0", invalidMaxRowCacheSize1()},
+	{"PDB3000 - Invalid configuration: MaxRowCacheSize must be an integer > 0", invalidMaxRowCacheSize3()},
 }
 
 func TestValidate(t *testing.T) {
