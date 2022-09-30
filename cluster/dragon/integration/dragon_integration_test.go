@@ -117,6 +117,41 @@ func TestLocalPutDelete(t *testing.T) {
 	require.Nil(t, res)
 }
 
+func TestDeleteRange(t *testing.T) {
+	node, localShard := getLocalNodeAndLocalShard()
+
+	wb := cluster.NewWriteBatch(localShard)
+	for i := 0; i < 10; i++ {
+		key := []byte(fmt.Sprintf("somekey%d", i))
+		value := []byte(fmt.Sprintf("somevalue%d", i))
+		wb.AddPut(key, value)
+	}
+	err := node.WriteBatch(wb, false)
+	require.NoError(t, err)
+
+	wbDelRange := cluster.NewWriteBatch(localShard)
+	wbDelRange.AddDeleteRange([]byte("somekey3"), []byte("somekey6"))
+
+	err = node.WriteBatch(wbDelRange, false)
+	require.NoError(t, err)
+
+	var res []cluster.KVPair
+	keyEnd := common.IncrementBytesBigEndian([]byte("somekey9"))
+	res, err = node.LocalScan([]byte("somekey0"), keyEnd, -1)
+	require.NoError(t, err)
+
+	require.Equal(t, 7, len(res))
+	j := 0
+	for i := 0; i < 10; i++ {
+		if i == 3 {
+			i = 6
+		}
+		kvp := res[j]
+		require.Equal(t, fmt.Sprintf("somekey%d", i), string(kvp.Key))
+		j++
+	}
+}
+
 func TestLocalScan(t *testing.T) {
 	testLocalScan(t, -1, 10)
 }
