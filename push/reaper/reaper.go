@@ -208,6 +208,7 @@ func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMi
 		}
 	}()
 	rowCount := 0
+	var lastKey []byte
 	for iter.HasNext() && rowCount < maxRows {
 		pair := iter.Next()
 
@@ -224,6 +225,9 @@ func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMi
 		rowTimeUnixMicros := gt.UnixMicro()
 
 		if nowUnixMicros-rowTimeUnixMicros < retentionMicros {
+			if lastKey != nil {
+				wb.AddDeleteRange(keyStart, common.IncrementBytesBigEndian(lastKey))
+			}
 			// Not ready to delete
 			return rowTimeUnixMicros + retentionMicros, rowCount, nil
 		}
@@ -232,9 +236,12 @@ func (r *Reaper) processDeletes(shardID uint64, tab *common.TableInfo, nowUnixMi
 		pkKey := pkKeyBase
 		pkKey = append(pkKey, pk...)
 		wb.AddDelete(pkKey)
-		// TODO use a delete range instead of deleting each one in turn
-		wb.AddDelete(pair.Key)
 		rowCount++
+		lastKey = pair.Key
+	}
+	log.Printf("last key is %v", lastKey)
+	if lastKey != nil {
+		wb.AddDeleteRange(keyStart, common.IncrementBytesBigEndian(lastKey))
 	}
 
 	if rowCount == maxRows {

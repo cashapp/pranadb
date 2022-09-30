@@ -6,12 +6,14 @@ import (
 
 // WriteBatch represents some Puts and deletes that will be written atomically by the underlying storage implementation
 type WriteBatch struct {
-	ShardID    uint64
-	BatchID    []byte
-	Puts       []byte
-	Deletes    []byte
-	NumPuts    int
-	NumDeletes int
+	ShardID         uint64
+	BatchID         []byte
+	Puts            []byte
+	Deletes         []byte
+	DeleteRanges    []byte
+	NumPuts         int
+	NumDeletes      int
+	NumDeleteRanges int
 }
 
 func NewWriteBatch(shardID uint64) *WriteBatch {
@@ -37,12 +39,22 @@ func (wb *WriteBatch) AddDelete(k []byte) {
 	wb.NumDeletes++
 }
 
+func (wb *WriteBatch) AddDeleteRange(k []byte, v []byte) {
+	wb.DeleteRanges = appendBytesWithLength(wb.DeleteRanges, k)
+	wb.DeleteRanges = appendBytesWithLength(wb.DeleteRanges, v)
+	wb.NumDeleteRanges++
+}
+
 func (wb *WriteBatch) HasWrites() bool {
 	return len(wb.Puts) > 0 || len(wb.Deletes) > 0
 }
 
 func (wb *WriteBatch) HasPuts() bool {
 	return len(wb.Puts) > 0
+}
+
+func (wb *WriteBatch) HasDeleteRanges() bool {
+	return len(wb.DeleteRanges) > 0
 }
 
 func (wb *WriteBatch) SetBatchID(id []byte) {
@@ -55,8 +67,10 @@ func (wb *WriteBatch) SetBatchID(id []byte) {
 func (wb *WriteBatch) Serialize(buff []byte) []byte {
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumPuts))
 	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeletes))
+	buff = common.AppendUint32ToBufferLE(buff, uint32(wb.NumDeleteRanges))
 	buff = append(buff, wb.Puts...)
 	buff = append(buff, wb.Deletes...)
+	buff = append(buff, wb.DeleteRanges...)
 	if wb.BatchID == nil {
 		buff = append(buff, 0)
 	} else {
@@ -92,6 +106,24 @@ func (wb *WriteBatch) ForEachDelete(kReceiver KReceiver) error {
 		k := wb.Deletes[offset : offset+int(lk)]
 		offset += int(lk)
 		if err := kReceiver(k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (wb *WriteBatch) ForEachDeleteRange(kvReceiver KVReceiver) error {
+	offset := 0
+	for offset < len(wb.DeleteRanges) {
+		lk, _ := common.ReadUint32FromBufferLE(wb.DeleteRanges, offset)
+		offset += 4
+		k := wb.DeleteRanges[offset : offset+int(lk)]
+		offset += int(lk)
+		lv, _ := common.ReadUint32FromBufferLE(wb.DeleteRanges, offset)
+		offset += 4
+		v := wb.DeleteRanges[offset : offset+int(lv)]
+		offset += int(lv)
+		if err := kvReceiver(k, v); err != nil {
 			return err
 		}
 	}

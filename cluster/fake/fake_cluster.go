@@ -278,6 +278,11 @@ func (f *FakeCluster) writeBatchInternal(batch *cluster.WriteBatch, forward bool
 	}); err != nil {
 		return err
 	}
+	if err := batch.ForEachDeleteRange(func(startKey []byte, endKey []byte) error {
+		return f.deleteAllDataInRange(startKey, endKey)
+	}); err != nil {
+		return err
+	}
 	if forward {
 		shardListener := f.shardListeners[batch.ShardID]
 		shardListener.RemoteWriteOccurred(forwardRows)
@@ -306,7 +311,11 @@ func (f *FakeCluster) deleteAllDataInRangeForShard(shardID uint64, startPrefix [
 	endPref = common.AppendUint64ToBufferBE(endPref, shardID)
 	endPref = append(endPref, endPrefix...)
 
-	pairs, err := f.localScanWithBtree(f.btree, startPref, endPref, -1)
+	return f.deleteAllDataInRange(startPref, endPref)
+}
+
+func (f *FakeCluster) deleteAllDataInRange(startPrefix []byte, endPrefix []byte) error {
+	pairs, err := f.localScanWithBtree(f.btree, startPrefix, endPrefix, -1)
 	if err != nil {
 		return errors.WithStack(err)
 	}
