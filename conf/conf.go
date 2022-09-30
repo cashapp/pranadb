@@ -2,6 +2,7 @@ package conf
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/squareup/pranadb/errors"
@@ -21,9 +22,9 @@ const (
 	DefaultMaxProcessBatchSize        = 2000
 	DefaultMaxForwardWriteBatchSize   = 500
 	DefaultMaxTableReaperBatchSize    = 1000
-	DefaultGlobalCacheSize            = 1024 * 1024 * 1024
+	DefaultGlobalCacheSize            = "4294967296" // 4 GiB
 	DefaultOrderByMaxRows             = 50000
-	DefaultMaxRowCacheSize            = 100 * 1000000
+	DefaultMaxRowCacheSize            = "4294967296" // 4 GiB
 )
 
 type Config struct {
@@ -74,10 +75,10 @@ type Config struct {
 	MaxProcessBatchSize          int
 	MaxForwardWriteBatchSize     int
 	MaxTableReaperBatchSize      int
-	GlobalCacheSize              int64
+	GlobalCacheSize              string
 	DataCompressionDisabled      bool
 	OrderByMaxRows               int
-	MaxRowCacheSize              int
+	MaxRowCacheSize              string
 }
 
 type TLSConfig struct {
@@ -142,13 +143,13 @@ func (c *Config) ApplyDefaults() {
 	if c.MaxTableReaperBatchSize == 0 {
 		c.MaxTableReaperBatchSize = DefaultMaxTableReaperBatchSize
 	}
-	if c.GlobalCacheSize == 0 {
+	if c.GlobalCacheSize == "" {
 		c.GlobalCacheSize = DefaultGlobalCacheSize
 	}
 	if c.OrderByMaxRows == 0 {
 		c.OrderByMaxRows = DefaultOrderByMaxRows
 	}
-	if c.MaxRowCacheSize == 0 {
+	if c.MaxRowCacheSize == "" {
 		c.MaxRowCacheSize = DefaultMaxRowCacheSize
 	}
 }
@@ -301,14 +302,16 @@ func (c *Config) Validate() error { //nolint:gocyclo
 			return errors.NewInvalidConfigurationError("IntraClusterTLSConfig.ClientCertsPath must be provided if intra cluster TLS is enabled")
 		}
 	}
-	if c.GlobalCacheSize < 1 {
-		return errors.NewInvalidConfigurationError("GlobalCacheSize must be > 0")
+	i, err := strconv.ParseInt(c.GlobalCacheSize, 10, 64)
+	if err != nil || i <= 0 {
+		return errors.NewInvalidConfigurationError("GlobalCacheSize must be an integer > 0")
 	}
 	if c.OrderByMaxRows < 1 {
 		return errors.NewInvalidConfigurationError("OrderByMaxRows must be > 0")
 	}
-	if c.MaxRowCacheSize < 1 {
-		return errors.NewInvalidConfigurationError("MaxRowCacheSize must be > 0")
+	i, err = strconv.ParseInt(c.MaxRowCacheSize, 10, 64)
+	if err != nil || i <= 0 {
+		return errors.NewInvalidConfigurationError("MaxRowCacheSize must be an integer > 0")
 	}
 	return nil
 }

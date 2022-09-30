@@ -121,9 +121,9 @@ func createConfigWithAllFields() conf.Config {
 			ClientAuth:      "require-and-verify-client-cert",
 		},
 
-		GlobalCacheSize:         12345,
+		GlobalCacheSize:         "12345",
 		DataCompressionDisabled: true,
 		OrderByMaxRows:          123456,
-		MaxRowCacheSize:         987654,
+		MaxRowCacheSize:         "987654",
 	}
 }

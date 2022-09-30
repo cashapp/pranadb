@@ -12,6 +12,7 @@ import (
 	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -50,6 +51,7 @@ type Engine struct {
 	queryExec         common.SimpleQueryExec
 	protoRegistry     protolib.Resolver
 	failInject        failinject.Injector
+	maxRowCacheSize   int64
 }
 
 // RemoteConsumer is a wrapper for something that consumes rows that have arrived remotely from other shards
@@ -72,15 +74,20 @@ type remoteRowsHandler interface {
 
 func NewPushEngine(cluster cluster.Cluster, sharder *sharder.Sharder, meta *meta.Controller, cfg *conf.Config,
 	queryExec common.SimpleQueryExec, registry protolib.Resolver, failInject failinject.Injector) *Engine {
+	maxRowCacheSize, err := strconv.ParseInt(cfg.MaxRowCacheSize, 10, 64)
+	if err != nil {
+		panic("invalid maxRowCacheSize") // OK, we validate this on startup anyway
+	}
 	engine := &Engine{
-		cluster:       cluster,
-		sharder:       sharder,
-		meta:          meta,
-		rnd:           rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
-		cfg:           cfg,
-		queryExec:     queryExec,
-		protoRegistry: registry,
-		failInject:    failInject,
+		cluster:         cluster,
+		sharder:         sharder,
+		meta:            meta,
+		rnd:             rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		cfg:             cfg,
+		queryExec:       queryExec,
+		protoRegistry:   registry,
+		failInject:      failInject,
+		maxRowCacheSize: maxRowCacheSize,
 	}
 	engine.clearState()
 	return engine
@@ -353,7 +360,7 @@ func (p *Engine) CreateShardListener(shardID uint64) cluster.ShardListener {
 		panic(fmt.Sprintf("there is already a scheduler %d", shardID))
 	}
 	sh := sched.NewShardScheduler(shardID, p, p.cluster, p.cfg.MaxProcessBatchSize, p.cfg.MaxForwardWriteBatchSize,
-		p.cfg.MaxRowCacheSize)
+		int(p.maxRowCacheSize))
 	p.schedulers[shardID] = sh
 	if p.started {
 		sh.Start()
