@@ -22,11 +22,11 @@ type PushExecutor interface {
 	ColsVisible() []bool
 }
 
-func NewExecutionContext(writeBatch *cluster.WriteBatch, rowGetter sched.RowGetter, fillTableID int64) *ExecutionContext {
+func NewExecutionContext(writeBatch *cluster.WriteBatch, rowCache sched.RowCache, fillTableID int64) *ExecutionContext {
 	return &ExecutionContext{
 		WriteBatch:  writeBatch,
 		FillTableID: fillTableID,
-		Getter:      rowGetter,
+		RowCache:    rowCache,
 	}
 }
 
@@ -34,7 +34,7 @@ type ExecutionContext struct {
 	WriteBatch    *cluster.WriteBatch
 	RemoteBatches map[uint64]*cluster.WriteBatch
 	FillTableID   int64
-	Getter        sched.RowGetter
+	RowCache      sched.RowCache
 }
 
 func (e *ExecutionContext) AddToForwardBatch(shardID uint64, key []byte, value []byte) {

@@ -127,7 +127,7 @@ func (t *TableExecutor) HandleRows(rowsBatch RowsBatch, ctx *ExecutionContext) e
 				// yet been applied to the state machine of the replica where the processor is running. Raft only
 				// requires replication to a quorum for write to complete and that quorum might not contain the processor
 				// replica
-				v, err := ctx.Getter.Get(keyBuff)
+				v, err := ctx.RowCache.Get(keyBuff)
 				if err != nil {
 					return errors.WithStack(err)
 				}

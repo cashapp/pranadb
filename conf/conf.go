@@ -18,12 +18,12 @@ const (
 	DefaultRaftHeartbeatRTT           = 30
 	DefaultRaftElectionRTT            = 300
 	DefaultRaftCallTimeout            = 15 * time.Second
-	DefaultAggregationCacheSizeRows   = 20000
 	DefaultMaxProcessBatchSize        = 2000
 	DefaultMaxForwardWriteBatchSize   = 500
 	DefaultMaxTableReaperBatchSize    = 1000
 	DefaultGlobalCacheSize            = 1024 * 1024 * 1024
 	DefaultOrderByMaxRows             = 50000
+	DefaultMaxRowCacheSize            = 100 * 1000000
 )
 
 type Config struct {
@@ -71,13 +71,13 @@ type Config struct {
 	DDProfilerServiceName        string
 	DDProfilerEnvironmentName    string
 	DDProfilerVersionName        string
-	AggregationCacheSizeRows     int // The maximum number of rows for an aggregation to cache in memory
 	MaxProcessBatchSize          int
 	MaxForwardWriteBatchSize     int
 	MaxTableReaperBatchSize      int
 	GlobalCacheSize              int64
 	DataCompressionDisabled      bool
 	OrderByMaxRows               int
+	MaxRowCacheSize              int
 }
 
 type TLSConfig struct {
@@ -127,9 +127,6 @@ func (c *Config) ApplyDefaults() {
 	if c.RaftElectionRTT == 0 {
 		c.RaftElectionRTT = DefaultRaftElectionRTT
 	}
-	if c.AggregationCacheSizeRows == 0 {
-		c.AggregationCacheSizeRows = DefaultAggregationCacheSizeRows
-	}
 	if c.MaxProcessBatchSize == 0 {
 		c.MaxProcessBatchSize = DefaultMaxProcessBatchSize
 	}
@@ -150,6 +147,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.OrderByMaxRows == 0 {
 		c.OrderByMaxRows = DefaultOrderByMaxRows
+	}
+	if c.MaxRowCacheSize == 0 {
+		c.MaxRowCacheSize = DefaultMaxRowCacheSize
 	}
 }
 
@@ -307,6 +307,9 @@ func (c *Config) Validate() error { //nolint:gocyclo
 	if c.OrderByMaxRows < 1 {
 		return errors.NewInvalidConfigurationError("OrderByMaxRows must be > 0")
 	}
+	if c.MaxRowCacheSize < 1 {
+		return errors.NewInvalidConfigurationError("MaxRowCacheSize must be > 0")
+	}
 	return nil
 }
 
@@ -338,12 +341,12 @@ func NewDefaultConfig() *Config {
 		RaftHeartbeatRTT:           DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:            DefaultRaftElectionRTT,
 		RaftCallTimeout:            DefaultRaftCallTimeout,
-		AggregationCacheSizeRows:   DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:        DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize:   DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:    DefaultMaxTableReaperBatchSize,
 		GlobalCacheSize:            DefaultGlobalCacheSize,
 		OrderByMaxRows:             DefaultOrderByMaxRows,
+		MaxRowCacheSize:            DefaultMaxRowCacheSize,
 	}
 }
 
@@ -353,12 +356,12 @@ func NewTestConfig(fakeKafkaID int64) *Config {
 		RaftHeartbeatRTT:         DefaultRaftHeartbeatRTT,
 		RaftElectionRTT:          DefaultRaftElectionRTT,
 		RaftCallTimeout:          DefaultRaftCallTimeout,
-		AggregationCacheSizeRows: DefaultAggregationCacheSizeRows,
 		MaxProcessBatchSize:      DefaultMaxProcessBatchSize,
 		MaxForwardWriteBatchSize: DefaultMaxForwardWriteBatchSize,
 		MaxTableReaperBatchSize:  DefaultMaxTableReaperBatchSize,
 		GlobalCacheSize:          DefaultGlobalCacheSize,
 		OrderByMaxRows:           DefaultOrderByMaxRows,
+		MaxRowCacheSize:          DefaultMaxRowCacheSize,
 		NodeID:                   0,
 		NumShards:                10,
 		TestServer:               true,

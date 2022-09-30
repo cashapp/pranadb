@@ -451,6 +451,12 @@ type clusterGetter struct {
 	store cluster.Cluster
 }
 
+func (c *clusterGetter) Put(key []byte, value []byte) {
+}
+
+func (c *clusterGetter) Delete(key []byte) {
+}
+
 func (c *clusterGetter) Get(key []byte) ([]byte, error) {
 	return c.store.LocalGet(key)
 }

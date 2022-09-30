@@ -102,7 +102,6 @@ func createConfigWithAllFields() conf.Config {
 		RaftHeartbeatRTT:         30,
 		RaftCallTimeout:          17 * time.Second,
 		FsyncDisabled:            true,
-		AggregationCacheSizeRows: 1234,
 		MaxProcessBatchSize:      777,
 		MaxForwardWriteBatchSize: 888,
 		MaxTableReaperBatchSize:  999,
@@ -125,5 +124,6 @@ func createConfigWithAllFields() conf.Config {
 		GlobalCacheSize:         12345,
 		DataCompressionDisabled: true,
 		OrderByMaxRows:          123456,
+		MaxRowCacheSize:         987654,
 	}
 }
