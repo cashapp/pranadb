@@ -3,7 +3,6 @@ package push
 import (
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/parplan"
@@ -375,11 +374,11 @@ type RawRow struct {
 	Row              []byte
 }
 
-func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, rowGetter sched.RowCache, rowCache simplelru.LRUCache,
-	rowsBatch []cluster.ForwardRow, first bool) (int64, error) {
+func (p *Engine) HandleBatch(writeBatch *cluster.WriteBatch, rowCache sched.RowCache, rowsBatch []cluster.ForwardRow,
+	first bool) (int64, error) {
 	rawRows := make(map[uint64][]RawRow)
 
-	ctx := exec.NewExecutionContext(writeBatch, rowGetter, -1)
+	ctx := exec.NewExecutionContext(writeBatch, rowCache, -1)
 
 	if first {
 		// For the first batch we actually load it directly from the receiver table - there may be pending data there
