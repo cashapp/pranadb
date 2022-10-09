@@ -150,6 +150,21 @@ func (c *Controller) GetSource(schemaName string, name string) (*common.SourceIn
 	return source, ok
 }
 
+func (c *Controller) GetSink(schemaName string, name string) (*common.SinkInfo, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return nil, false
+	}
+	tb, ok := schema.GetTable(name)
+	if !ok {
+		return nil, false
+	}
+	sink, ok := tb.(*common.SinkInfo)
+	return sink, ok
+}
+
 func (c *Controller) GetIndex(schemaName string, tableName string, indexName string) (*common.IndexInfo, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -206,7 +221,7 @@ func (c *Controller) getOrCreateSchema(schemaName string) *common.Schema {
 	return schema
 }
 
-func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error {
+func (c *Controller) ExistsTable(schema *common.Schema, name string) error {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.existsTable(schema, name)
@@ -214,13 +229,14 @@ func (c *Controller) ExistsMvOrSource(schema *common.Schema, name string) error 
 
 func (c *Controller) existsTable(schema *common.Schema, name string) error {
 	if tbl, ok := schema.GetTable(name); ok {
-		_, isSource := tbl.(*common.SourceInfo)
-		_, isMV := tbl.(*common.MaterializedViewInfo)
-		if isSource {
+		switch tbl.(type) {
+		case *common.SourceInfo:
 			return errors.NewPranaErrorf(errors.SourceAlreadyExists, "Source %s.%s already exists", schema.Name, name)
-		} else if isMV {
+		case *common.MaterializedViewInfo:
 			return errors.NewPranaErrorf(errors.MaterializedViewAlreadyExists, "Materialized view %s.%s already exists", schema.Name, name)
-		} else {
+		case *common.SinkInfo:
+			return errors.NewPranaErrorf(errors.SinkAlreadyExists, "Sink %s.%s already exists", schema.Name, name)
+		default:
 			return errors.Errorf("Table %s.%s already exists", schema.Name, name)
 		}
 	}
@@ -295,6 +311,35 @@ func (c *Controller) PersistSource(sourceInfo *common.SourceInfo) error {
 	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
 	log.Debugf("source %s has id %d", sourceInfo.Name, sourceInfo.ID)
 	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSourceInfoToRow(sourceInfo), wb); err != nil {
+		return errors.WithStack(err)
+	}
+	return c.cluster.WriteBatch(wb, false)
+}
+
+// RegisterSink adds a Sink to the metadata controller, making it active. It does not persist it
+func (c *Controller) RegisterSink(sinkInfo *common.SinkInfo) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	log.Debugf("Registering sink %s with id %d", sinkInfo.Name, sinkInfo.ID)
+	if err := c.checkTableID(sinkInfo.ID); err != nil {
+		return errors.WithStack(err)
+	}
+	schema := c.getOrCreateSchema(sinkInfo.SchemaName)
+	err := c.existsTable(schema, sinkInfo.Name)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	schema.PutTable(sinkInfo.Name, sinkInfo)
+	c.tableIDs[sinkInfo.ID] = struct{}{}
+	return nil
+}
+
+func (c *Controller) PersistSink(sinkInfo *common.SinkInfo) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	wb := cluster.NewWriteBatch(cluster.SystemSchemaShardID)
+	log.Debugf("sink %s has id %d", sinkInfo.Name, sinkInfo.ID)
+	if err := table.Upsert(TableDefTableInfo.TableInfo, EncodeSinkInfoToRow(sinkInfo), wb); err != nil {
 		return errors.WithStack(err)
 	}
 	return c.cluster.WriteBatch(wb, false)
@@ -391,6 +436,10 @@ func (c *Controller) DeleteSource(sourceID uint64) error {
 	return c.deleteTableWithID(sourceID)
 }
 
+func (c *Controller) DeleteSink(sinkID uint64) error {
+	return c.deleteTableWithID(sinkID)
+}
+
 func (c *Controller) DeleteMaterializedView(mvInfo *common.MaterializedViewInfo, internalTableIDs []*common.InternalTableInfo) error {
 	if err := c.deleteTableWithID(mvInfo.ID); err != nil {
 		return errors.WithStack(err)
@@ -430,6 +479,26 @@ func (c *Controller) UnregisterMaterializedView(schemaName string, mvName string
 		delete(c.tableIDs, internalTbl.GetTableInfo().ID)
 		schema.DeleteTable(it)
 	}
+	c.deleteSchemaIfEmpty(schema)
+	return nil
+}
+
+func (c *Controller) UnregisterSink(schemaName string, sinkName string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	schema, ok := c.schemas[schemaName]
+	if !ok {
+		return errors.Errorf("no such schema %s", schemaName)
+	}
+	tbl, ok := schema.GetTable(sinkName)
+	if !ok {
+		return errors.Errorf("no such sink %s", sinkName)
+	}
+	if _, ok := tbl.(*common.SinkInfo); !ok {
+		return errors.Errorf("%s is not a sink", tbl)
+	}
+	delete(c.tableIDs, tbl.GetTableInfo().ID)
+	schema.DeleteTable(sinkName)
 	c.deleteSchemaIfEmpty(schema)
 	return nil
 }

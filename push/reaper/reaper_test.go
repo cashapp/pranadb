@@ -471,7 +471,7 @@ func setupTableExecutor(cluster cluster.Cluster, tabInfo *common.TableInfo, rete
 		IndexCols:  []int{1},
 	}
 	indexExecutor := exec.NewIndexExecutor(tabInfo, indexInfo, cluster)
-	te := exec.NewTableExecutor(tabInfo, cluster, false, retentionDuration)
+	te := exec.NewTableExecutor(tabInfo, cluster, false, retentionDuration, false)
 	te.AddConsumingNode(lastUpdateIndexName, indexExecutor)
 	return te
 }

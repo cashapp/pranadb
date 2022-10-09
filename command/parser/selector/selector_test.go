@@ -2,6 +2,7 @@ package selector
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/squareup/pranadb/errors"
@@ -67,7 +68,7 @@ func TestParseSelector(t *testing.T) {
 	tests := []struct {
 		name     string
 		selector string
-		want     Selector
+		want     SelectorInjector
 		wantErr  bool
 	}{
 		{
@@ -104,8 +105,8 @@ func TestParseSelector(t *testing.T) {
 	}
 }
 
-func newSelector(s ...interface{}) Selector {
-	sel := make(Selector, 0, len(s))
+func newSelector(s ...interface{}) SelectorInjector {
+	sel := make(SelectorInjector, 0, len(s))
 	for _, p := range s {
 		switch v := p.(type) {
 		case string:
@@ -113,10 +114,69 @@ func newSelector(s ...interface{}) Selector {
 		case int:
 			sel = append(sel, Path{NumberIndex: &v})
 		default:
-			panic("invalid selector")
+			panic("invalid selectorInjector")
 		}
 	}
 	return sel
+}
+
+func TestInject(t *testing.T) {
+
+	tests := []struct {
+		name             string
+		selectorInjector string
+		val              interface{}
+	}{
+		{name: "number", selectorInjector: "number", val: 123.456},
+		{name: "string", selectorInjector: "string", val: "hello world"},
+		{name: "list", selectorInjector: "list", val: []interface{}{float64(345), "foo"}},
+		{name: "number in list", selectorInjector: "list[0]", val: float64(345)},
+		{name: "string in list", selectorInjector: "list[1]", val: "foo"},
+		{name: "nested string", selectorInjector: "nested.string", val: "a nested string"},
+		{name: "object in list", selectorInjector: "objlist[1].tues", val: float64(2)},
+		{name: "list as object member", selectorInjector: "foo.objlist[1].tues", val: float64(2)},
+		{name: "object in list map index syntax", selectorInjector: `objlist[1]["tues"]`, val: float64(2)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sel, err := ParseSelector(test.selectorInjector)
+			require.NoError(t, err)
+			data := map[string]interface{}{}
+			err = sel.Inject(data, test.val)
+			require.NoError(t, err)
+			actual, err2 := sel.Select(data)
+			require.NoError(t, err2)
+			require.Equal(t, test.val, actual)
+		})
+	}
+}
+
+func TestInjectArrayIndexesDescendingOrder(t *testing.T) {
+	data := map[string]interface{}{}
+	for i := 4; i >= 0; i-- {
+		sel, err := ParseSelector(fmt.Sprintf("foo.some_array[%d]", i))
+		require.NoError(t, err)
+		err = sel.Inject(data, float64(i))
+		require.NoError(t, err)
+	}
+	sel2, err := ParseSelector("foo.some_array")
+	require.NoError(t, err)
+	arr, err := sel2.Select(data)
+	require.NoError(t, err)
+	require.Equal(t, []interface{}{float64(0), float64(1), float64(2), float64(3), float64(4)}, arr)
+}
+
+func TestInjectArrayIndexesAscendingOrderFails(t *testing.T) {
+	data := map[string]interface{}{}
+	sel, err := ParseSelector("foo.some_array[2]")
+	require.NoError(t, err)
+	err = sel.Inject(data, 23)
+	require.NoError(t, err)
+	sel, err = ParseSelector("foo.some_array[3]")
+	require.NoError(t, err)
+	err = sel.Inject(data, 23)
+	require.Error(t, err)
 }
 
 func TestSelect(t *testing.T) {
@@ -233,7 +293,7 @@ func TestSelectProto(t *testing.T) {
 		{name: "int map", selector: "int_map_field[88]", want: "eighty-eight"},
 		{name: "map message", selector: "map_message_field[\"batman\"].value", want: "robin"},
 		{name: "map message indexing", selector: "map_message_field[\"batman\"][\"value\"]", want: "robin"},
-		{name: "partial oneof selector", selector: "oneof_field", want: "one_int64"},
+		{name: "partial oneof selectorInjector", selector: "oneof_field", want: "one_int64"},
 		{name: "one of", selector: "oneof_field.one_int64", want: int64(1000)},
 		// respect that protos are nice about nil values
 		{name: "nil dereference", selector: "recursive_field.recursive_field.recursive_field.recursive_field.string_field", want: ""},

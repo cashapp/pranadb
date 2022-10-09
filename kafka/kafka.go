@@ -2,10 +2,11 @@ package kafka
 
 import "time"
 
-type ClientFactory func(topicName string, props map[string]string, groupID string) MessageProviderFactory
+type ClientFactory func(topicName string, props map[string]string, groupID string) MessageClient
 
-type MessageProviderFactory interface {
+type MessageClient interface {
 	NewMessageProvider() (MessageProvider, error)
+	NewMessageProducer() (MessageProducer, error)
 }
 
 type MessageProvider interface {
@@ -15,6 +16,12 @@ type MessageProvider interface {
 	Start() error
 	Close() error
 	SetRebalanceCallback(callback RebalanceCallback)
+}
+
+type MessageProducer interface {
+	SendMessages(messages []Message) error
+	Stop() error
+	Start() error
 }
 
 type Message struct {

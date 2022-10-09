@@ -1223,7 +1223,7 @@ func (st *sqlTest) executeSQLStatement(require *require.Assertions, statement st
 		ok, err := commontest.WaitUntilWithError(func() (bool, error) {
 			res = st.execStatement(require, statement)
 			return res == waitUntilResults, nil
-		}, 5*time.Second, 100*time.Millisecond)
+		}, 10*time.Second, 100*time.Millisecond)
 		require.NoError(err)
 		res = st.execStatement(require, statement)
 		if !ok {

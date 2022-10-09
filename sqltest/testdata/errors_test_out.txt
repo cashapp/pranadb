@@ -1572,3 +1572,352 @@ create source test_source_1(
 Failed to execute statement: PDB1000 - row_time column must be of type timestamp(6)
 
 --delete topic testtopic;
+
+-- sink errors;
+
+--create topic testtopic1;
+--create topic testtopic2;
+
+create source test_source_1(
+    col0 bigint,
+    col1 bigint,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1
+    )
+);
+0 rows returned
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "-10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Invalid EmitAfter -10s. Must be an integer >= 0 followed by a unit. Valid units are "ms", "s", "m", "h"
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "foo",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Invalid EmitAfter foo. Must be an integer >= 0 followed by a unit. Valid units are "ms", "s", "m", "h"
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = -10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - maxBufferedMessages must be >= 0
+
+create sink test_sink
+with (
+    brokername = "foobroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Unknown broker foobroker - has it been configured in the server config?
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "foo",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "foo",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "foo",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Unknown topic encoding foo
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 0,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - numPartitions must be > 0
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = -10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - numPartitions must be > 0
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1, v2, v3, v4)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - Number of injectors must match number of columns in sink query
+
+create sink test_sink_already_exists
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+0 rows returned
+
+create sink test_sink_already_exists
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1018 - Sink test.test_sink_already_exists already exists
+
+create sink test_source_1
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1006 - Source test.test_source_1 already exists
+
+create materialized view test_mv_1 as select * from test_source_1;
+0 rows returned
+
+create sink test_mv_1
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1007 - Materialized view test.test_mv_1 already exists
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+);
+Failed to execute statement: PDB1000 - 12:2: unexpected token "<EOF>" (expected "AS" RawQuery)
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select col1, count(*) from test_source_1 group by col1;
+Failed to execute statement: PDB1000 - Sink queries cannot contain aggregations
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from;
+Failed to execute statement: PDB1000 - line 1 column 14 near ""
+
+create sink test_sink
+with (
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - brokerName is required
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - topicName is required
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - headerEncoding is required
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - keyEncoding is required
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - valueEncoding is required
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 10,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    maxbufferedmessages = 10,
+    emitafter = "10s"
+) as select * from test_source_1;
+Failed to execute statement: PDB1000 - injectors must be specified
+
+drop sink test_sink_already_exists;
+0 rows returned
+drop materialized view test_mv_1;
+0 rows returned
+drop source test_source_1;
+0 rows returned
+
+--delete topic testtopic2;
+--delete topic testtopic1;

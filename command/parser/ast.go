@@ -38,18 +38,9 @@ func (r *RawQuery) String() string {
 	return out.String()
 }
 
-// A Ref to a view, table, column, etc.
-type Ref struct {
-	Path []string `@Ident ("." @Ident)*`
-}
-
-func (r *Ref) String() string {
-	return strings.Join(r.Path, ".")
-}
-
 // CreateMaterializedView statement.
 type CreateMaterializedView struct {
-	Name              *Ref                                 `@@`
+	Name              string                               `@Ident`
 	OriginInformation []*MaterializedViewOriginInformation `("WITH" "(" @@ ("," @@)* ")")?`
 	Query             *RawQuery                            `"AS" @@`
 }
@@ -117,6 +108,12 @@ type CreateSource struct {
 	OriginInformation []*SourceOriginInformation `"WITH" "(" @@ ("," @@)* ")"`
 }
 
+type CreateSink struct {
+	Name              string                   `@Ident`
+	TargetInformation []*SinkTargetInformation `("WITH" "(" @@ ("," @@)* ")")?`
+	Query             *RawQuery                `"AS" @@`
+}
+
 type SourceOriginInformation struct {
 	BrokerName     string                        `"BrokerName" "=" @String`
 	TopicName      string                        `|"TopicName" "=" @String`
@@ -129,6 +126,19 @@ type SourceOriginInformation struct {
 	RetentionTime  string                        `|"RetentionTime" "=" @String`
 	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
 	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+}
+
+type SinkTargetInformation struct {
+	BrokerName          string                        `"BrokerName" "=" @String`
+	TopicName           string                        `|"TopicName" "=" @String`
+	NumPartitions       int                           `|"NumPartitions" "=" @Number`
+	MaxBufferedMessages int                           `|"MaxBufferedMessages" "=" @Number`
+	EmitAfter           string                        `|"EmitAfter" "=" @String`
+	HeaderEncoding      string                        `|"HeaderEncoding" "=" @String`
+	KeyEncoding         string                        `|"KeyEncoding" "=" @String`
+	ValueEncoding       string                        `|"ValueEncoding" "=" @String`
+	Injectors           []*selector.ColumnSelectorAST `|"Injectors" "=" "(" (@@ ("," @@)*)? ")"`
+	Properties          []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type Boolean bool
@@ -169,6 +179,7 @@ type ColumnName struct {
 type Create struct {
 	MaterializedView *CreateMaterializedView `  "MATERIALIZED" "VIEW" @@`
 	Source           *CreateSource           `| "SOURCE" @@`
+	Sink             *CreateSink             `| "SINK" @@`
 	Index            *CreateIndex            `| "INDEX" @@`
 }
 
@@ -176,6 +187,7 @@ type Create struct {
 type Drop struct {
 	MaterializedView bool   `(   @"MATERIALIZED" "VIEW"`
 	Source           bool   `  | @"SOURCE"`
+	Sink             bool   `  | @"SINK"`
 	Index            bool   `  | @"INDEX" )`
 	Name             string `@Ident `
 	TableName        string `("ON" @Ident)?`

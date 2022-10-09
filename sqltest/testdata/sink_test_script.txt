@@ -1,0 +1,533 @@
+use test;
+
+-- test with JSON encoding;
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0, meta("header").h1.v1, meta("header").h2.v2, v3, v4, v5, meta("timestamp"))
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    injectors = (meta("key").k0, meta("header").h1.v1, meta("header").h2.v2, v3, v4, v5, meta("timestamp"))
+) as select * from test_source_1;
+
+--load data dataset_1;
+
+select * from test_source_2 order by col0 wait for results
++---------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3         | col4         | col5         | col6                       |
++---------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10   | 1000        | 1234.432100  | 12345678.99  | str1         | 2020-01-01 01:00:00.123450 |
+| 2                    | 20   | 2000        | 2234.432100  | 22345678.99  | str2         | 2020-01-02 01:00:01.123451 |
+| 3                    | 30   | 3000        | 3234.432100  | 32345678.99  | str3         | 2020-01-03 01:00:02.123452 |
+| 4                    | 40   | 4000        | 4234.432100  | 42345678.99  | str4         | 2020-01-04 01:00:03.123453 |
+| 5                    | 50   | 5000        | 5234.432100  | 52345678.99  | str5         | 2020-01-05 01:00:04.123454 |
+| 6                    | 60   | 6000        | 6234.432100  | 62345678.99  | str6         | 2020-01-06 01:00:05.123455 |
+| 7                    | 70   | 7000        | 7234.432100  | 72345678.99  | str7         | 2020-01-07 01:00:06.123456 |
+| 8                    | 80   | 8000        | 8234.432100  | 82345678.99  | str8         | 2020-01-08 01:00:07.123457 |
+| 9                    | 90   | 9000        | 9234.432100  | 92345678.99  | str9         | 2020-01-09 01:00:08.123458 |
+| 10                   | 100  | 10000       | 10234.432100 | 93345678.99  | str10        | 2020-01-10 01:00:09.123459 |
++---------------------------------------------------------------------------------------------------------------------+
+10 rows returned
+;
+
+drop sink test_sink;
+
+drop source test_source_2;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+--delete topic testtopic2;
+
+-- test with int key, string headers and json value encoding;
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "stringbytes",
+    keyencoding = "int64be",
+    valueencoding = "json",
+    columnselectors = (meta("key"), meta("header").h1, meta("header").h2, v3, v4, v5, meta("timestamp"))
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "stringbytes",
+    keyencoding = "int64be",
+    valueencoding = "json",
+    injectors = (meta("key"), meta("header").h1, meta("header").h2, v3, v4, v5, meta("timestamp"))
+) as select * from test_source_1;
+
+--load data dataset_1;
+
+select * from test_source_2 order by col0 wait for results
++---------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1 | col2        | col3         | col4         | col5         | col6                       |
++---------------------------------------------------------------------------------------------------------------------+
+| 1                    | 10   | 1000        | 1234.432100  | 12345678.99  | str1         | 2020-01-01 01:00:00.123450 |
+| 2                    | 20   | 2000        | 2234.432100  | 22345678.99  | str2         | 2020-01-02 01:00:01.123451 |
+| 3                    | 30   | 3000        | 3234.432100  | 32345678.99  | str3         | 2020-01-03 01:00:02.123452 |
+| 4                    | 40   | 4000        | 4234.432100  | 42345678.99  | str4         | 2020-01-04 01:00:03.123453 |
+| 5                    | 50   | 5000        | 5234.432100  | 52345678.99  | str5         | 2020-01-05 01:00:04.123454 |
+| 6                    | 60   | 6000        | 6234.432100  | 62345678.99  | str6         | 2020-01-06 01:00:05.123455 |
+| 7                    | 70   | 7000        | 7234.432100  | 72345678.99  | str7         | 2020-01-07 01:00:06.123456 |
+| 8                    | 80   | 8000        | 8234.432100  | 82345678.99  | str8         | 2020-01-08 01:00:07.123457 |
+| 9                    | 90   | 9000        | 9234.432100  | 92345678.99  | str9         | 2020-01-09 01:00:08.123458 |
+| 10                   | 100  | 10000       | 10234.432100 | 93345678.99  | str10        | 2020-01-10 01:00:09.123459 |
++---------------------------------------------------------------------------------------------------------------------+
+10 rows returned
+;
+
+drop sink test_sink;
+
+drop source test_source_2;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+--delete topic testtopic2;
+
+-- test with selective query;
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0, v1)
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1 where col0 > 1 and col0 < 7;
+
+--load data dataset_1;
+
+select * from test_source_2 order by col0 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| 2                    | str2                                                                                          |
+| 3                    | str3                                                                                          |
+| 4                    | str4                                                                                          |
+| 5                    | str5                                                                                          |
+| 6                    | str6                                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+5 rows returned
+;
+
+drop sink test_sink;
+
+drop source test_source_2;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+--delete topic testtopic2;
+
+-- test with emit after;
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0, v1)
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "5s",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+--load data dataset_1;
+
+--pause 1000;
+
+-- we shouldn't initially see any messages;
+
+select * from test_source_2;
+
+-- we should see the messages after the delay;
+
+select * from test_source_2 order by col0 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | str1                                                                                          |
+| 2                    | str2                                                                                          |
+| 3                    | str3                                                                                          |
+| 4                    | str4                                                                                          |
+| 5                    | str5                                                                                          |
+| 6                    | str6                                                                                          |
+| 7                    | str7                                                                                          |
+| 8                    | str8                                                                                          |
+| 9                    | str9                                                                                          |
+| 10                   | str10                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+10 rows returned
+;
+
+drop sink test_sink;
+
+drop source test_source_2;
+
+drop source test_source_1;
+
+--delete topic testtopic1;
+
+--delete topic testtopic2;
+
+-- test with emit after as above but also setting maxbufferedmessages to a small value to exercise that logic;
+
+--create topic testtopic1;
+
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp(6),
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic1",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        v0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--create topic testtopic2;
+
+create source test_source_2(
+    col0 bigint,
+    col1 varchar,
+    primary key (col0)
+) with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (meta("key").k0, v1)
+);
+
+create sink test_sink
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "5s",
+    maxbufferedmessages = 2,
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+--load data dataset_2;
+
+-- we should see the messages after the delay;
+
+select * from test_source_2 order by col0 wait for results
++----------------------------------------------------------------------------------------------------------------------+
+| col0                 | col1                                                                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| 1                    | str1                                                                                          |
+| 2                    | str2                                                                                          |
+| 3                    | str3                                                                                          |
+| 4                    | str4                                                                                          |
+| 5                    | str5                                                                                          |
+| 6                    | str6                                                                                          |
+| 7                    | str7                                                                                          |
+| 8                    | str8                                                                                          |
+| 9                    | str9                                                                                          |
+| 10                   | str10                                                                                         |
+| 11                   | str1                                                                                          |
+| 12                   | str2                                                                                          |
+| 13                   | str3                                                                                          |
+| 14                   | str4                                                                                          |
+| 15                   | str5                                                                                          |
+| 16                   | str6                                                                                          |
+| 17                   | str7                                                                                          |
+| 18                   | str8                                                                                          |
+| 19                   | str9                                                                                          |
+| 20                   | str10                                                                                         |
+| 21                   | str1                                                                                          |
+| 22                   | str2                                                                                          |
+| 23                   | str3                                                                                          |
+| 24                   | str4                                                                                          |
+| 25                   | str5                                                                                          |
+| 26                   | str6                                                                                          |
+| 27                   | str7                                                                                          |
+| 28                   | str8                                                                                          |
+| 29                   | str9                                                                                          |
+| 30                   | str10                                                                                         |
+| 31                   | str1                                                                                          |
+| 32                   | str2                                                                                          |
+| 33                   | str3                                                                                          |
+| 34                   | str4                                                                                          |
+| 35                   | str5                                                                                          |
+| 36                   | str6                                                                                          |
+| 37                   | str7                                                                                          |
+| 38                   | str8                                                                                          |
+| 39                   | str9                                                                                          |
+| 40                   | str10                                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+40 rows returned
+;
+
+drop sink test_sink;
+
+drop source test_source_2;
+
+--delete topic testtopic1;
+
+-- creating sinks with valid values of emitAfter;
+
+create sink test_sink_1
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "10ms",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+create sink test_sink_2
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "10s",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+create sink test_sink_3
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "10m",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+create sink test_sink_4
+with (
+    brokername = "testbroker",
+    topicname = "testtopic2",
+    numpartitions = 20,
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    emitafter = "10h",
+    injectors = (meta("key").k0, v1)
+) as select col0, col5 from test_source_1;
+
+drop sink test_sink_1;
+drop sink test_sink_2;
+drop sink test_sink_3;
+drop sink test_sink_4;
+drop source test_source_1;
+
+--delete topic testtopic2;

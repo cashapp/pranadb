@@ -14,7 +14,7 @@ import (
 
 // Kafka Message Provider implementation that uses the standard Confluent golang client
 
-func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageProviderFactory {
+func NewMessageProviderFactory(topicName string, props map[string]string, groupID string) MessageClient {
 	return &ConfluentMessageProviderFactory{
 		topicName: topicName,
 		props:     props,
@@ -29,12 +29,82 @@ type ConfluentMessageProviderFactory struct {
 }
 
 func (cmpf *ConfluentMessageProviderFactory) NewMessageProvider() (MessageProvider, error) {
-	log.Info("Creating ConfluentMessageProviderFactory")
 	kmp := &ConfluentMessageProvider{}
 	kmp.krpf = cmpf
 	kmp.topicName = cmpf.topicName
 	return kmp, nil
 }
+
+func (cmpf *ConfluentMessageProviderFactory) NewMessageProducer() (MessageProducer, error) {
+	kmp := &ConfluentMessageProducer{}
+	kmp.krpf = cmpf
+	kmp.topicName = cmpf.topicName
+	return kmp, nil
+}
+
+type ConfluentMessageProducer struct {
+	krpf      *ConfluentMessageProviderFactory
+	topicName string
+	producer  *kafka.Producer
+}
+
+func (c *ConfluentMessageProducer) Stop() error {
+	c.producer.Close()
+	return nil
+}
+
+func (c *ConfluentMessageProducer) Start() error {
+	cm := &kafka.ConfigMap{
+		"acks": "all",
+	}
+	for k, v := range c.krpf.props {
+		if err := cm.SetKey(k, v); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	producer, err := kafka.NewProducer(cm)
+	if err != nil {
+		return err
+	}
+	c.producer = producer
+	return nil
+}
+
+func (c *ConfluentMessageProducer) SendMessages(messages []Message) error {
+	deliveryChan := make(chan kafka.Event, len(messages))
+	for _, msg := range messages {
+		hdrs := make([]kafka.Header, len(msg.Headers))
+		for i, hdr := range msg.Headers {
+			hdrs[i] = kafka.Header{
+				Key:   hdr.Key,
+				Value: hdr.Value,
+			}
+		}
+		kmsg := &kafka.Message{
+			TopicPartition: kafka.TopicPartition{Topic: &c.topicName, Partition: msg.PartInfo.PartitionID},
+			Value:          msg.Value,
+			Key:            msg.Key,
+			Timestamp:      msg.TimeStamp,
+			Headers:        hdrs,
+		}
+		if err := c.producer.Produce(kmsg, deliveryChan); err != nil {
+			return err
+		}
+	}
+	for i := 0; i < len(messages); i++ {
+		ev, ok := <-deliveryChan
+		if !ok {
+			return errors.New("channel was closed")
+		}
+		m := ev.(*kafka.Message) //nolint:forcetypeassert
+		if m.TopicPartition.Error != nil {
+			return m.TopicPartition.Error
+		}
+	}
+	return nil
+}
+
+var _ MessageProducer = &ConfluentMessageProducer{}
 
 type ConfluentMessageProvider struct {
 	lock        sync.Mutex

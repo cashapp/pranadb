@@ -46,7 +46,7 @@ type Source struct {
 	sharder                 *sharder.Sharder
 	cluster                 cluster.Cluster
 	protoRegistry           protolib.Resolver
-	msgProvFact             kafka.MessageProviderFactory
+	msgProvFact             kafka.MessageClient
 	msgConsumers            []*MessageConsumer
 	queryExec               common.SimpleQueryExec
 	lock                    sync.Mutex
@@ -123,9 +123,9 @@ func NewSource(sourceInfo *common.SourceInfo, tableExec *exec.TableExecutor, ing
 	if !ok || cfg.KafkaBrokers == nil {
 		return nil, errors.NewPranaErrorf(errors.InvalidStatement, "Unknown broker %s - has it been configured in the server config?", ti.BrokerName)
 	}
-	props := copyAndAddAll(brokerConf.Properties, ti.Properties)
+	props := util.CopyAndAddAllProperties(brokerConf.Properties, ti.Properties)
 	groupID := sourceInfo.OriginInfo.ConsumerGroupID
-	var msgProvFact kafka.MessageProviderFactory
+	var msgProvFact kafka.MessageClient
 	switch brokerConf.ClientType {
 	case conf.BrokerClientFake:
 		var err error
@@ -245,19 +245,19 @@ func (s *Source) Drop() error {
 	return s.cluster.DeleteAllDataInRangeForAllShardsLocally(tableStartPrefix, tableEndPrefix)
 }
 
-func (s *Source) AddConsumingMV(mvName string, executor exec.PushExecutor) {
+func (s *Source) AddConsumingNode(mvName string, executor exec.PushExecutor) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.tableExecutor.AddConsumingNode(mvName, executor)
 }
 
-func (s *Source) RemoveConsumingMV(mvName string) {
+func (s *Source) RemoveConsumingNode(mvName string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.tableExecutor.RemoveConsumingNode(mvName)
 }
 
-func (s *Source) GetConsumingMVOrIndexNames() []string {
+func (s *Source) GetConsumingNodeNames() []string {
 	consumerNames := s.tableExecutor.GetConsumerNames()
 	if s.lastUpdateIndexName != "" {
 		// Screen out the internal last update index name
@@ -370,8 +370,8 @@ func (s *Source) stop() error {
 func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) error {
 
 	start := time.Now()
-
 	rows, err := mp.ParseMessages(messages)
+
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -393,6 +393,8 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 	rowsIngested := 0
 	for i := 0; i < rows.RowCount(); i++ {
 		row := rows.GetRow(i)
+
+		log.Debugf("source %s.%s ingesting row %s", s.sourceInfo.SchemaName, s.sourceInfo.Name, row.String())
 
 		filtered := false
 		if s.ingestExpressions != nil {
@@ -479,18 +481,6 @@ func (s *Source) ingestMessages(messages []*kafka.Message, mp *MessageParser) er
 
 func (s *Source) TableExecutor() *exec.TableExecutor {
 	return s.tableExecutor
-}
-
-func copyAndAddAll(p1 map[string]string, p2 map[string]string) map[string]string {
-	m := make(map[string]string, len(p1)+len(p2))
-	for k, v := range p2 {
-		m[k] = v
-	}
-	// p1 properties override p2 so we add them last
-	for k, v := range p1 {
-		m[k] = v
-	}
-	return m
 }
 
 func (s *Source) addCommittedCount(val int64) {

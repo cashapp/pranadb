@@ -8,7 +8,6 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/parplan"
 	"github.com/squareup/pranadb/push"
-	"github.com/squareup/pranadb/push/source"
 )
 
 // Loader is a service that loads existing table schemas from disk and applies them to the metadata
@@ -47,7 +46,6 @@ func (l *Loader) Start() error { //nolint:gocyclo
 
 	// MVs must be started in the load order so we maintain a slice
 	var mvsToLoad []tableKey
-	var srcsToStart []*source.Source
 
 	for i := 0; i < tableRows.RowCount(); i++ {
 		tableRow := tableRows.GetRow(i)
@@ -58,11 +56,10 @@ func (l *Loader) Start() error { //nolint:gocyclo
 			if err := l.meta.RegisterSource(info); err != nil {
 				return errors.WithStack(err)
 			}
-			src, err := l.pushEngine.CreateSource(info)
+			_, err := l.pushEngine.CreateSource(info)
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			srcsToStart = append(srcsToStart, src)
 		case meta.TableKindMaterializedView:
 			info := meta.DecodeMaterializedViewInfoRow(&tableRow)
 			tk := tableKey{info.SchemaName, info.Name}
@@ -73,6 +70,32 @@ func (l *Loader) Start() error { //nolint:gocyclo
 			mvt := &MVTables{mvInfo: info, sequences: []uint64{info.ID}}
 			mvTables[tk] = mvt
 			mvsToLoad = append(mvsToLoad, tk)
+		case meta.TableKindSink:
+			info := meta.DecodeSinkInfoRow(&tableRow)
+			tk := tableKey{info.SchemaName, info.Name}
+			_, ok := mvTables[tk]
+			if ok {
+				return errors.Errorf("sink %s %s already loaded", info.SchemaName, info.Name)
+			}
+			if err := l.meta.RegisterSink(info); err != nil {
+				return errors.WithStack(err)
+			}
+			schema := l.meta.GetOrCreateSchema(info.SchemaName)
+			pl := parplan.NewPlanner(schema)
+			seqGen := common.NewPreallocSeqGen([]uint64{info.ID})
+			sink, err := push.CreateSink(l.pushEngine, pl, schema, info.Name, info.Query, info.ID, seqGen, info.TargetInfo)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if err := l.pushEngine.RegisterSink(sink); err != nil {
+				return errors.WithStack(err)
+			}
+			if err := sink.Start(); err != nil {
+				return errors.WithStack(err)
+			}
+			if err := sink.Connect(); err != nil {
+				return errors.WithStack(err)
+			}
 		case meta.TableKindInternal:
 			info := meta.DecodeInternalTableInfoRow(&tableRow)
 			tk := tableKey{info.SchemaName, info.MaterializedViewName}

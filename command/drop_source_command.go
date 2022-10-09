@@ -71,7 +71,7 @@ func (d *DropSourceCommand) Before() error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	consuming := source.GetConsumingMVOrIndexNames()
+	consuming := source.GetConsumingNodeNames()
 	if len(consuming) != 0 {
 		return errors.NewSourceHasChildrenError(d.sourceInfo.SchemaName, d.sourceInfo.Name, consuming)
 	}

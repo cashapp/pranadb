@@ -48,7 +48,7 @@ func (s *ColumnSelectorAST) ToSelector() ColumnSelector {
 
 type ColumnSelector struct {
 	MetaKey  *string
-	Selector Selector
+	Selector SelectorInjector
 }
 
 func (s *ColumnSelector) Select(meta map[string]interface{}, body interface{}) (interface{}, error) {
@@ -84,7 +84,7 @@ type Index struct {
 	String *string `@String`
 }
 
-func (a *SelectorAST) ToSelector() Selector {
+func (a *SelectorAST) ToSelector() SelectorInjector {
 	var sel []Path
 	for ; a != nil; a = a.Next {
 		sel = append(sel, Path{Field: &a.Field})
@@ -101,18 +101,18 @@ func (a *SelectorAST) ToSelector() Selector {
 	return sel
 }
 
-// Selector is a protobuf path selector.
-type Selector []Path
+// SelectorInjector is a path selectorInjector/injector.
+type SelectorInjector []Path
 
 type Path struct {
 	Field       *string
 	NumberIndex *int
 }
 
-// ErrNotFound is returned when the selector references an invalid field
+// ErrNotFound is returned when the selectorInjector references an invalid field
 type ErrNotFound struct {
-	missingPath Selector
-	targetPath  Selector
+	missingPath SelectorInjector
+	targetPath  SelectorInjector
 }
 
 // Error returns the formatted error string
@@ -136,33 +136,33 @@ var columnSelectorParser = participle.MustBuild(&ColumnSelectorAST{},
 	participle.Unquote("String"),
 )
 
-// ParseColumnSelector parses a selector expression into an executable ColumnSelector.
+// ParseColumnSelector parses a selectorInjector expression into an executable ColumnSelector.
 func ParseColumnSelector(str string) (ColumnSelector, error) {
 	s := &ColumnSelectorAST{}
 	err := columnSelectorParser.ParseString("", str, s)
 	return s.ToSelector(), errors.WithStack(err)
 }
 
-// ParseSelector parses a selector expression into an executable Selector.
-func ParseSelector(str string) (Selector, error) {
+// ParseSelector parses a selectorInjector expression into an executable SelectorInjector.
+func ParseSelector(str string) (SelectorInjector, error) {
 	s := &SelectorAST{}
 	err := selectorParser.ParseString("", str, s)
 	return s.ToSelector(), errors.WithStack(err)
 }
 
-// Select evaluates the selector expression against the given value. The only supported types are
+// Select evaluates the selectorInjector expression against the given value. The only supported types are
 //     map[string]interface{}
 //     []interface{}
 //     google.golang.org/protobuf/reflect.Message
-func (s Selector) Select(v interface{}) (interface{}, error) {
+func (s SelectorInjector) Select(obj interface{}) (interface{}, error) {
 	var ok bool
 	for i, token := range s {
-		switch vv := v.(type) {
+		switch vv := obj.(type) {
 		case map[string]interface{}:
 			if token.NumberIndex != nil {
 				return nil, errors.Errorf("cannot use string to index map with number key at %q", s[0:i+1])
 			}
-			v, ok = vv[*token.Field]
+			obj, ok = vv[*token.Field]
 			if !ok {
 				return nil, nil
 			}
@@ -173,19 +173,77 @@ func (s Selector) Select(v interface{}) (interface{}, error) {
 			if len(vv) <= *token.NumberIndex {
 				return nil, &ErrNotFound{s[0 : i+1], s}
 			}
-			v = vv[*token.NumberIndex]
+			obj = vv[*token.NumberIndex]
 		case pref.Message:
 			return s[i:].SelectProto(vv)
 		}
 	}
-	return v, nil
+	return obj, nil
 }
 
-// SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selector
+func (s SelectorInjector) Inject(obj interface{}, value interface{}) error {
+	for i := 0; i < len(s); i++ {
+		token := s[i]
+		last := i == len(s)-1
+		switch vv := obj.(type) {
+		case map[string]interface{}:
+			if token.NumberIndex != nil {
+				return errors.Errorf("cannot use string to index map with number key at %q", s[0:i+1])
+			}
+			if !last {
+				var ok bool
+				var nestedObj interface{}
+				nestedObj, ok = vv[*token.Field]
+				if !ok {
+					// Create the nested member
+					nextToken := s[i+1]
+					if nextToken.NumberIndex != nil {
+						nestedObj = make([]interface{}, 1+*nextToken.NumberIndex)
+					} else {
+						nestedObj = make(map[string]interface{})
+					}
+					vv[*token.Field] = nestedObj
+				}
+				obj = nestedObj
+			} else {
+				vv[*token.Field] = value
+			}
+
+		case []interface{}:
+			if token.Field != nil {
+				return errors.Errorf("cannot index array using %q at %q", *token.Field, s[0:i+1])
+			}
+			if len(vv) <= *token.NumberIndex {
+				return errors.NewPranaErrorf(errors.InvalidStatement, "Sink injectors that use array indexes must be declared in descending order of array index")
+			}
+			if !last {
+				var nestedObj interface{}
+				nestedObj = vv[*token.NumberIndex]
+				if nestedObj == nil {
+					nextToken := s[i+1]
+					if nextToken.NumberIndex != nil {
+						nestedObj = make([]interface{}, 1+*nextToken.NumberIndex)
+					} else {
+						nestedObj = make(map[string]interface{})
+					}
+					vv[*token.NumberIndex] = nestedObj
+				}
+				obj = nestedObj
+			} else {
+				vv[*token.NumberIndex] = value
+			}
+		case pref.Message:
+			panic("todo")
+		}
+	}
+	return nil
+}
+
+// SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selectorInjector
 // references nested value of a nil message, the default Go value will be returned. Array out of index will still panic.
 // ErrNotFound is returned if a non-existing field is referenced. Other errors may be returned on failed type conversion.
 // nolint: gocyclo
-func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
+func (s SelectorInjector) SelectProto(msg pref.Message) (interface{}, error) {
 	if len(s) == 0 {
 		return msg, nil
 	}
@@ -258,7 +316,7 @@ func (s Selector) SelectProto(msg pref.Message) (interface{}, error) {
 		}
 	}
 	if oneOf != nil {
-		// When the selector terminates on a oneof field we return the name of the field as the value
+		// When the selectorInjector terminates on a oneof field we return the name of the field as the value
 		// or nil if the oneof field is not there
 		f := v.Message().WhichOneof(oneOf)
 		if f == nil {
@@ -293,7 +351,7 @@ func newIntMapKey(keyDesc pref.FieldDescriptor, k int) pref.MapKey {
 	return v.MapKey()
 }
 
-func (s Selector) String() string {
+func (s SelectorInjector) String() string {
 	sb := &strings.Builder{}
 	for i, p := range s {
 		if p.Field != nil {

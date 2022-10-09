@@ -22,7 +22,7 @@ func TestParse(t *testing.T) {
 		{"CreateMV", `CREATE MATERIALIZED VIEW myview AS SELECT * FROM table`, &AST{
 			Create: &Create{
 				MaterializedView: &CreateMaterializedView{
-					Name: &Ref{Path: []string{"myview"}},
+					Name: "myview",
 					Query: &RawQuery{
 						Tokens: []lexer.Token{
 							{Type: -6, Value: " ", Pos: lexer.Position{Offset: 34, Line: 1, Column: 35}},

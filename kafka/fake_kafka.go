@@ -90,14 +90,6 @@ func (f *FakeKafka) DeleteTopic(name string) error {
 	return nil
 }
 
-func (f *FakeKafka) IngestMessage(topicName string, message *Message) error {
-	topic, ok := f.getTopic(topicName)
-	if !ok {
-		return errors.Errorf("no such topic %s", topicName)
-	}
-	return topic.push(message)
-}
-
 func (f *FakeKafka) GetTopicNames() []string {
 	f.topicLock.Lock()
 	defer f.topicLock.Unlock()
@@ -511,7 +503,7 @@ func (c *Subscriber) Unsubscribe() error {
 	return c.group.unsubscribe(c)
 }
 
-func NewFakeMessageProviderFactory(topicName string, props map[string]string, groupName string) (MessageProviderFactory, error) {
+func NewFakeMessageProviderFactory(topicName string, props map[string]string, groupName string) (MessageClient, error) {
 	sFakeKafkaID, ok := props[FakeKafkaIDPropName]
 	if !ok {
 		return nil, errors.Error("no fakeKafkaID property in broker configuration")
@@ -601,4 +593,37 @@ func (f *FakeMessageProvider) Stop() error {
 
 func (f *FakeMessageProvider) Close() error {
 	return f.subscriber.Unsubscribe()
+}
+
+func (fmpf *FakeMessageProviderFactory) NewMessageProducer() (MessageProducer, error) {
+	topic, ok := fmpf.fk.GetTopic(fmpf.topicName)
+	if !ok {
+		return nil, errors.Errorf("no such topic %s", fmpf.topicName)
+	}
+	return &FakeMessageProducer{
+		topic: topic,
+	}, nil
+}
+
+type FakeMessageProducer struct {
+	topic *Topic
+}
+
+func (f *FakeMessageProducer) SendMessages(messages []Message) error {
+	for _, msg := range messages {
+		log.Debugf("fake kafka topic %s pushing message with key %s", f.topic.Name, string(msg.Key))
+		m := msg // copy it!
+		if err := f.topic.push(&m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FakeMessageProducer) Stop() error {
+	return nil
+}
+
+func (f *FakeMessageProducer) Start() error {
+	return nil
 }

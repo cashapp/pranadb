@@ -11,6 +11,7 @@ var indexInfoRowsFactory = common.NewRowsFactory(IndexDefTableInfo.ColumnTypes)
 
 const (
 	TableKindSource           = "source"
+	TableKindSink             = "sink"
 	TableKindMaterializedView = "materialized_view"
 	TableKindInternal         = "internal"
 )
@@ -48,6 +49,31 @@ func EncodeSourceInfoToRow(info *common.SourceInfo) *common.Row {
 	rows.AppendNullToColumn(7)
 	row := rows.GetRow(0)
 	return &row
+}
+
+func EncodeSinkInfoToRow(info *common.SinkInfo) *common.Row {
+	rows := tableInfoRowsFactory.NewRows(1)
+	rows.AppendInt64ToColumn(0, int64(info.TableInfo.ID))
+	rows.AppendStringToColumn(1, TableKindSink)
+	rows.AppendStringToColumn(2, info.SchemaName)
+	rows.AppendStringToColumn(3, info.Name)
+	rows.AppendStringToColumn(4, jsonEncode(info.TableInfo))
+	rows.AppendStringToColumn(5, jsonEncode(info.TargetInfo))
+	rows.AppendStringToColumn(6, info.Query)
+	rows.AppendNullToColumn(7)
+	row := rows.GetRow(0)
+	return &row
+}
+
+func DecodeSinkInfoRow(row *common.Row) *common.SinkInfo {
+	info := common.SinkInfo{
+		Name:  row.GetString(3),
+		Query: row.GetString(6),
+	}
+	jsonDecode(row.GetString(4), &info.TableInfo)
+	jsonDecode(row.GetString(5), &info.TargetInfo)
+	info.TableInfo.CalcPKColsSet()
+	return &info
 }
 
 // DecodeSourceInfoRow decodes a database row into a common.SourceInfo.

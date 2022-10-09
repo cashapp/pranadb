@@ -43,8 +43,7 @@ func TestSelectNoRows(t *testing.T) {
 		{2, "london", 35.1, "9.32"},
 		{3, "los angeles", 20.6, "11.75"},
 	}
-	var expectedRows [][]interface{}
-	testSelect(t, inpRows, expectedRows, "gt", colExpression(2), constDoubleExpression(2, 40.0))
+	testSelect(t, inpRows, nil, "gt", colExpression(2), constDoubleExpression(2, 40.0))
 }
 
 func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interface{}, funcName string, funcArgs ...*common.Expression) {
@@ -64,9 +63,11 @@ func testSelect(t *testing.T, inputRows [][]interface{}, expectedRows [][]interf
 	err = sel.HandleRows(NewCurrentRowsBatch(inpRows), execCtx)
 	require.NoError(t, err)
 
-	gathered := rg.Rows
-	require.NotNil(t, gathered)
-
-	exp := toRows(t, expectedRows, colTypes)
-	commontest.AllRowsEqual(t, exp, gathered, colTypes)
+	if gathered := rg.Rows; expectedRows == nil {
+		require.Nil(t, gathered)
+	} else {
+		require.NotNil(t, gathered)
+		exp := toRows(t, expectedRows, colTypes)
+		commontest.AllRowsEqual(t, exp, gathered, colTypes)
+	}
 }

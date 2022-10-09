@@ -11,7 +11,7 @@ type PushExecutor interface {
 
 	SetParent(parent PushExecutor)
 	GetParent() PushExecutor
-	AddChild(parent PushExecutor)
+	AddChild(child PushExecutor)
 	GetChildren() []PushExecutor
 	ClearChildren()
 	ReCalcSchemaFromChildren() error

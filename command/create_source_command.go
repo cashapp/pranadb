@@ -98,7 +98,7 @@ func (c *CreateSourceCommand) Before() error {
 
 func (c *CreateSourceCommand) validate() error {
 	schema := c.e.metaController.GetOrCreateSchema(c.schemaName)
-	if err := c.e.metaController.ExistsMvOrSource(schema, c.sourceInfo.Name); err != nil {
+	if err := c.e.metaController.ExistsTable(schema, c.sourceInfo.Name); err != nil {
 		return err
 	}
 	rows, err := c.e.pullEngine.ExecuteQuery("sys",

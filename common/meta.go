@@ -420,6 +420,19 @@ type SourceOriginInfo struct {
 	Transient       bool
 }
 
+type SinkTargetInfo struct {
+	BrokerName          string
+	TopicName           string
+	NumPartitions       int
+	MaxBufferedMessages int
+	EmitAfter           time.Duration
+	KeyEncoding         KafkaEncoding
+	ValueEncoding       KafkaEncoding
+	HeaderEncoding      KafkaEncoding
+	Injectors           []selector.ColumnSelector
+	Properties          map[string]string
+}
+
 type KafkaEncoding struct {
 	Encoding   Encoding
 	SchemaName string
@@ -515,7 +528,8 @@ func (i *MaterializedViewInfo) String() string {
 }
 
 type SinkInfo struct {
-	Name      string
-	Query     string
-	TopicInfo *SourceOriginInfo
+	*TableInfo
+	Name       string
+	Query      string
+	TargetInfo *SinkTargetInfo
 }

@@ -86,7 +86,7 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 	if err != nil {
 		var perr participle.Error
 		if errors.As(err, &perr) {
-			return nil, errors.NewInvalidStatementError(err.Error())
+			return nil, errors.NewPranaErrorf(errors.InvalidStatement, err.Error())
 		}
 		return nil, errors.WithStack(err)
 	}
@@ -126,6 +126,21 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 			return nil, errors.WithStack(err)
 		}
 		return exec.Empty, nil
+	case ast.Create != nil && ast.Create.Sink != nil:
+		if err := e.executeCommandWithRetry(execCtx.Ctx, func() (DDLCommand, error) {
+			sequences, err := e.generateTableIDSequences(2)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			command, err := NewOriginatingCreateSinkCommand(e, execCtx.Planner(), execCtx.Schema, sql, sequences, ast.Create.Sink)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return command, nil
+		}); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
 	case ast.Create != nil && ast.Create.Index != nil:
 		if err := e.executeCommandWithRetry(execCtx.Ctx, func() (DDLCommand, error) {
 			sequences, err := e.generateTableIDSequences(1)
@@ -150,6 +165,13 @@ func (e *Executor) ExecuteSQLStatement(execCtx *execctx.ExecutionContext, sql st
 		return exec.Empty, nil
 	case ast.Drop != nil && ast.Drop.MaterializedView:
 		command := NewOriginatingDropMVCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
+		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		return exec.Empty, nil
+	case ast.Drop != nil && ast.Drop.Sink:
+		command := NewOriginatingDropSinkCommand(e, execCtx.Schema.Name, sql, ast.Drop.Name)
 		err = e.ddlRunner.RunCommand(execCtx.Ctx, command)
 		if err != nil {
 			return nil, errors.WithStack(err)

@@ -17,9 +17,13 @@
 package util
 
 import (
+	"fmt"
 	"github.com/squareup/pranadb/cluster"
+	"github.com/squareup/pranadb/command/parser/selector"
 	"github.com/squareup/pranadb/common"
 	"github.com/squareup/pranadb/errors"
+	"github.com/squareup/pranadb/protolib"
+	"github.com/squareup/pranadb/push/codec"
 )
 
 func EncodeKeyForForwardIngest(sourceID uint64, partitionID uint64, offset uint64, remoteConsumerID uint64) []byte {
@@ -89,4 +93,64 @@ func SendForwardBatches(forwardBatches map[uint64]*cluster.WriteBatch, clust clu
 		}
 	}
 	return nil
+}
+
+func CopyAndAddAllProperties(p1 map[string]string, p2 map[string]string) map[string]string {
+	m := make(map[string]string, len(p1)+len(p2))
+	for k, v := range p2 {
+		m[k] = v
+	}
+	// p1 properties override p2 so we add them last
+	for k, v := range p1 {
+		m[k] = v
+	}
+	return m
+}
+
+func GetCodecs(registry protolib.Resolver, headerEncoding common.KafkaEncoding, keyEncoding common.KafkaEncoding, valueEncoding common.KafkaEncoding,
+	selectorInjectors []selector.ColumnSelector) (headerCodec codec.Codec, keyCodec codec.Codec, valueCodec codec.Codec, err error) {
+	// We pre-compute whether the selectors need headers, key and value so we don't unnecessary parse them if they
+	// don't use them
+	var (
+		decodeHeader, decodeKey, decodeValue bool
+	)
+	for _, selector := range selectorInjectors {
+		metaKey := selector.MetaKey
+		if metaKey == nil {
+			decodeValue = true
+		} else {
+			switch *metaKey {
+			case "header":
+				decodeHeader = true
+			case "key":
+				decodeKey = true
+			case "timestamp":
+				// timestamp selector, no decoding required
+			default:
+				panic(fmt.Sprintf("invalid selector %q", selector))
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+	if decodeHeader {
+		headerCodec, err = codec.GetCodec(registry, headerEncoding)
+		if err != nil {
+			return
+		}
+	}
+	if decodeKey {
+		keyCodec, err = codec.GetCodec(registry, keyEncoding)
+		if err != nil {
+			return
+		}
+	}
+	if decodeValue {
+		valueCodec, err = codec.GetCodec(registry, valueEncoding)
+		if err != nil {
+			return
+		}
+	}
+	return headerCodec, keyCodec, valueCodec, err
 }

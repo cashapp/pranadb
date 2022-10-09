@@ -33,7 +33,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		cluster: pe.cluster,
 		sharder: pe.sharder,
 	}
-	dag, internalTables, err := mv.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
+	dag, internalTables, err := pe.buildPushQueryExecution(pl, schema, query, mvName, seqGenerator)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -54,7 +54,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false, 0)
+	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false, 0, false)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
@@ -67,24 +67,24 @@ func (m *MaterializedView) Connect(addConsuming bool, registerRemote bool) error
 }
 
 func (m *MaterializedView) Disconnect() error {
-	return m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, true, false)
+	return m.disconnectOrDeleteDataForMV(m.tableExecutor, true, false)
 }
 
 func (m *MaterializedView) Drop() error {
 	// Will already have been disconnected
-	err := m.disconnectOrDeleteDataForMV(m.schema, m.tableExecutor, false, true)
+	err := m.disconnectOrDeleteDataForMV(m.tableExecutor, false, true)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	return m.deleteTableData(m.Info.ID)
 }
 
-func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, node exec.PushExecutor, disconnect bool, deleteData bool) error {
+func (m *MaterializedView) disconnectOrDeleteDataForMV(node exec.PushExecutor, disconnect bool, deleteData bool) error {
 
 	switch op := node.(type) {
 	case *exec.Scan:
 		tableName := op.TableName
-		tbl, ok := schema.GetTable(tableName)
+		tbl, ok := m.schema.GetTable(tableName)
 		if !ok {
 			return errors.Errorf("unknown source or materialized view %s", tableName)
 		}
@@ -95,7 +95,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 				if err != nil {
 					return errors.WithStack(err)
 				}
-				source.RemoveConsumingMV(m.Info.Name)
+				source.RemoveConsumingNode(m.Info.Name)
 			}
 		case *common.MaterializedViewInfo:
 			if disconnect {
@@ -124,7 +124,7 @@ func (m *MaterializedView) disconnectOrDeleteDataForMV(schema *common.Schema, no
 	}
 
 	for _, child := range node.GetChildren() {
-		err := m.disconnectOrDeleteDataForMV(schema, child, disconnect, deleteData)
+		err := m.disconnectOrDeleteDataForMV(child, disconnect, deleteData)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -172,7 +172,7 @@ func (m *MaterializedView) connect(executor exec.PushExecutor, addConsuming bool
 				if err != nil {
 					return errors.WithStack(err)
 				}
-				source.AddConsumingMV(m.Info.Name, executor)
+				source.AddConsumingNode(m.Info.Name, executor)
 			case *common.MaterializedViewInfo:
 				mv, err := m.pe.GetMaterializedView(tbl.ID)
 				if err != nil {

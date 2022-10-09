@@ -207,6 +207,8 @@ func (c *consumer) getMessages() []*Message {
 func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string) []*Message {
 	t.Helper()
 	var sentMsgs []*Message
+	topic, ok := fk.GetTopic(topicName)
+	require.True(t, ok)
 	for i := 0; i < numMessages; i++ {
 		key := []byte(fmt.Sprintf("key-%d", i))
 		value := []byte(fmt.Sprintf("value-%d", i))
@@ -224,7 +226,7 @@ func sendMessages(t *testing.T, fk *FakeKafka, numMessages int, topicName string
 			Value:   value,
 			Headers: headers,
 		}
-		err := fk.IngestMessage(topicName, msg)
+		err := topic.push(msg)
 		require.NoError(t, err)
 		sentMsgs = append(sentMsgs, msg)
 	}

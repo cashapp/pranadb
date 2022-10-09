@@ -121,7 +121,7 @@ func (d *DropMVCommand) onPhase0() error {
 func (d *DropMVCommand) onPhase1() error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	// Remove the mv from the push engine and delete all it's data
+	// Remove the sink from the push engine and delete all it's data
 	// Deleting the data could take some time
 	if err := d.e.pushEngine.RemoveMV(d.mv.Info.ID); err != nil {
 		return errors.WithStack(err)
@@ -140,7 +140,7 @@ func (d *DropMVCommand) AfterPhase(phase int32) error {
 			return err
 		}
 
-		// Delete the mv from the tables table - we must do this before we delete the data for the MV otherwise we can
+		// Delete the sink from the tables table - we must do this before we delete the data for the MV otherwise we can
 		// end up with a partial MV on restart after failure
 		return d.e.metaController.DeleteMaterializedView(d.mv.Info, d.mv.InternalTables)
 	case 1:

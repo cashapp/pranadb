@@ -193,7 +193,7 @@ func (c *Client) doExecuteStatementWithError(statement string, argTypes []string
 	}
 	ast, err := parser.Parse(statement)
 	if err != nil {
-		return 0, errors.NewInvalidStatementError(err.Error())
+		return 0, errors.NewPranaErrorf(errors.InvalidStatement, err.Error())
 	}
 	if ast.Use != "" {
 		c.currentSchema = strings.ToLower(ast.Use)
