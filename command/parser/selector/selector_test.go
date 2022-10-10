@@ -321,3 +321,55 @@ func TestSelectProto(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectProto(t *testing.T) {
+	data := &testproto.TestTypes{}
+	dynmsg := dynamicpb.NewMessage(data.ProtoReflect().Descriptor())
+
+	tests := []struct {
+		name       string
+		selector string
+		value    interface{}
+		wantErr  error
+		wantErrMsg string
+	}{
+	//	{name: "basic", selector: "double_field", value: 1.2},
+		{name: "list", selector: "repeated_string_field[1]", value: "two"},
+		//{name: "deep", selector: "nested_field.nested_string", value: "good evening"},
+		//{name: "recursive", selector: "recursive_field.recursive_field.string_field", value: "ten"},
+		//{name: "nested map", selector: "nested_field.nested_map[\"monday\"]", value: "1"},
+		//{name: "nested repeated string", selector: "nested_field.nested_repeated_string[2]", value: "orange"},
+		//{name: "string map", selector: "string_map_field[\"lois\"]", value: "lane"},
+		//{name: "int map", selector: "int_map_field[88]", value: "eighty-eight"},
+		//{name: "map message", selector: "map_message_field[\"batman\"].value", value: "robin"},
+		//{name: "map message indexing", selector: "map_message_field[\"batman\"][\"value\"]", value: "robin"},
+		//{name: "partial oneof selectorInjector", selector: "oneof_field", value: "one_int64"},
+		//{name: "one of", selector: "oneof_field.one_int64", value: int64(1000)},
+		//// respect that protos are nice about nil values
+		//{name: "nil dereference", selector: "recursive_field.recursive_field.recursive_field.recursive_field.string_field", value: ""},
+		//{name: "invalid field", selector: "recursive_field.not_a_field.nope", wantErr: &ErrNotFound{}, wantErrMsg: "Value at \"recursive_field.not_a_field\" not found while looking for \"recursive_field.not_a_field.nope\""},
+		//{name: "index list using string", selector: "repeated_string_field[\"hello\"]", wantErr: errors.Error(""), wantErrMsg: "cannot index list at \"repeated_string_field.hello\" with string"},
+		//{name: "index list twice", selector: "repeated_string_field[1][2]", wantErr: errors.Error(""), wantErrMsg: "cannot get index 2 of \"string\""},
+		//{name: "index string map using int", selector: "string_map_field[88]", wantErr: errors.Error(""), wantErrMsg: "cannot convert int to map key of kind \"string\" at \"string_map_field\""},
+		//{name: "index string map twice", selector: "string_map_field[\"lois\"][\"nope\"]", wantErr: errors.Error(""), wantErrMsg: "cannot get field \"nope\" of \"string\""},
+		//{name: "index into oneof field", selector: "oneof_field[3]", wantErr: errors.Error(""), wantErrMsg: "cannot get index 3 of oneof field at \"oneof_field\""},
+		//{name: "enum", selector: "enum_field", value: dynamicpb.NewEnumType(fd.Enums().ByName("Count")).New(1)},
+		//{name: "invalid oneof", selector: "oneof_field.one_wibble", wantErr: errors.Error(""), wantErrMsg: "unknown oneof field \"one_wibble\""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			inj, err := ParseSelector(test.selector)
+			require.NoError(t, err)
+			err = inj.Inject(dynmsg, test.value)
+			if test.wantErr != nil {
+				require.Error(t, err)
+				require.ErrorAs(t, err, &test.wantErr)
+				require.Equal(t, test.wantErrMsg, test.wantErr.Error())
+			} else {
+				gotVal, err := inj.Select(dynmsg)
+				require.NoError(t, err)
+				require.Equal(t, test.value, gotVal)
+			}
+		})
+	}
+}

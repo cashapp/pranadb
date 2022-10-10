@@ -208,7 +208,6 @@ func (s SelectorInjector) Inject(obj interface{}, value interface{}) error {
 			} else {
 				vv[*token.Field] = value
 			}
-
 		case []interface{}:
 			if token.Field != nil {
 				return errors.Errorf("cannot index array using %q at %q", *token.Field, s[0:i+1])
@@ -233,7 +232,7 @@ func (s SelectorInjector) Inject(obj interface{}, value interface{}) error {
 				vv[*token.NumberIndex] = value
 			}
 		case pref.Message:
-			panic("todo")
+			return s.InjectProto(vv, value)
 		}
 	}
 	return nil
@@ -269,9 +268,28 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 			idx := *token.NumberIndex
 			switch {
 			case f.IsList():
-				v = v.List().Get(idx)
+				list := v.List()
+				if list.Len() == 0 {
+					v = msg.NewField(f)
+					msg.Set(f, v)
+					list = v.List()
+				}
+				ln := list.Len()
+				if idx >= ln {
+					// Expand list if necessary to accommodate new value
+					elems := idx + 1 - ln
+					for i := 0; i < elems; i++ {
+						list.Append(list.NewElement())
+					}
+				}
+				v = list.Get(idx)
 				f = noRepeatField{f}
 			case f.IsMap():
+				if !v.IsValid() {
+					// nil
+					v = msg.NewField(f)
+					msg.Set(f, v)
+				}
 				var k pref.MapKey
 				k = newIntMapKey(f.MapKey(), idx)
 				if !k.IsValid() {
@@ -313,7 +331,6 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 		}
 		return nil
 	}
-	msg = v.Message()
 
 	var pv pref.Value
 	switch vt := val.(type) {
