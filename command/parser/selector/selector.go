@@ -239,6 +239,98 @@ func (s SelectorInjector) Inject(obj interface{}, value interface{}) error {
 	return nil
 }
 
+func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error) {
+	if len(s) == 0 {
+		return nil
+	}
+	v, f, oneOf, ok := getField(msg, *s[0].Field)
+	if !ok {
+		return &ErrNotFound{missingPath: s[0:1], targetPath: s}
+	}
+	for i, token := range s[1:] {
+		tail := i + 2
+		switch { // order matters!
+		case oneOf != nil:
+			msg = v.Message()
+			if token.NumberIndex != nil {
+				return errors.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
+			}
+			f = oneOf.Fields().ByName(pref.Name(*token.Field))
+			if f == nil {
+				return errors.Errorf("unknown oneof field \"%s\"", *token.Field)
+			}
+			populated := msg.WhichOneof(oneOf)
+			if populated.Number() != f.Number() {
+				// Different one_of field than the one being accessed is populated.
+				return &ErrNotFound{missingPath: s[0:tail], targetPath: s}
+			}
+			v = msg.Get(f)
+		case token.NumberIndex != nil:
+			idx := *token.NumberIndex
+			switch {
+			case f.IsList():
+				v = v.List().Get(idx)
+				f = noRepeatField{f}
+			case f.IsMap():
+				var k pref.MapKey
+				k = newIntMapKey(f.MapKey(), idx)
+				if !k.IsValid() {
+					return errors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
+				}
+				v = v.Map().Get(k)
+				f = f.MapValue()
+			default:
+				return errors.Errorf("cannot get index %d of %q", idx, f.Kind())
+			}
+		case token.Field != nil:
+			fieldName := *token.Field
+			switch {
+			case f.IsMap():
+				if f.MapKey().Kind() != pref.StringKind {
+					return errors.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
+				}
+				v = v.Map().Get(pref.ValueOfString(fieldName).MapKey())
+				f = f.MapValue()
+			case f.IsList():
+				return errors.Errorf("cannot index list at %q with string", s[0:tail])
+			case f.Message() != nil:
+				var ok bool
+				v, f, oneOf, ok = getField(v.Message(), fieldName)
+				if !ok {
+					return &ErrNotFound{missingPath: s[0:tail], targetPath: s}
+				}
+			default:
+				return errors.Errorf("cannot get field %q of %q", fieldName, f.Kind())
+			}
+		default:
+			panic("invalid path token")
+		}
+	}
+	if oneOf != nil {
+		f = v.Message().WhichOneof(oneOf)
+		if f == nil {
+			return nil
+		}
+		return nil
+	}
+	msg = v.Message()
+
+	var pv pref.Value
+	switch vt := val.(type) {
+	case int64:
+		pv = pref.ValueOfInt64(vt)
+	case float64:
+		pv = pref.ValueOfFloat64(vt)
+	case string:
+		pv = pref.ValueOfString(vt)
+	default:
+		return errors.Errorf("unsupported type %v", pv)
+	}
+	msg.Set(f, pv)
+
+	return nil
+}
+
 // SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selectorInjector
 // references nested value of a nil message, the default Go value will be returned. Array out of index will still panic.
 // ErrNotFound is returned if a non-existing field is referenced. Other errors may be returned on failed type conversion.
