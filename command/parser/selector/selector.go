@@ -246,7 +246,9 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 	if !ok {
 		return &ErrNotFound{missingPath: s[0:1], targetPath: s}
 	}
-	for i, token := range s[1:] {
+	ss := s[1:]
+	for i, token := range ss {
+		last := i == len(ss) - 1
 		tail := i + 2
 		switch { // order matters!
 		case oneOf != nil:
@@ -282,8 +284,17 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 						list.Append(list.NewElement())
 					}
 				}
-				v = list.Get(idx)
-				f = noRepeatField{f}
+				if last {
+					vv, err := getValue(val)
+					if err != nil {
+						return err
+					}
+					list.Set(idx, vv)
+					msg = nil
+				} else {
+					v = list.Get(idx)
+					f = noRepeatField{f}
+				}
 			case f.IsMap():
 				if !v.IsValid() {
 					// nil
@@ -332,6 +343,18 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 		return nil
 	}
 
+	if msg != nil {
+		vv, err := getValue(val)
+		if err != nil {
+			return err
+		}
+		msg.Set(f, vv)
+	}
+
+	return nil
+}
+
+func getValue(val interface{}) (pref.Value, error) {
 	var pv pref.Value
 	switch vt := val.(type) {
 	case int64:
@@ -341,11 +364,9 @@ func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error)
 	case string:
 		pv = pref.ValueOfString(vt)
 	default:
-		return errors.Errorf("unsupported type %v", pv)
+		return pref.Value{}, errors.Errorf("unsupported type %v", pv)
 	}
-	msg.Set(f, pv)
-
-	return nil
+	return pv, nil
 }
 
 // SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selectorInjector

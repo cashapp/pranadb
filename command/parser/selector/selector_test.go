@@ -334,8 +334,8 @@ func TestInjectProto(t *testing.T) {
 		wantErrMsg string
 	}{
 	//	{name: "basic", selector: "double_field", value: 1.2},
-		{name: "list", selector: "repeated_string_field[1]", value: "two"},
-		//{name: "deep", selector: "nested_field.nested_string", value: "good evening"},
+	//	{name: "list", selector: "repeated_string_field[1]", value: "two"},
+		{name: "deep", selector: "nested_field.nested_string", value: "good evening"},
 		//{name: "recursive", selector: "recursive_field.recursive_field.string_field", value: "ten"},
 		//{name: "nested map", selector: "nested_field.nested_map[\"monday\"]", value: "1"},
 		//{name: "nested repeated string", selector: "nested_field.nested_repeated_string[2]", value: "orange"},
