@@ -426,7 +426,7 @@ func TestCluster_SwapLeader(t *testing.T) {
 			})),
 			args: args{partitionIndex: 0, newLeaderIndex: 1},
 			want: want{
-				swap: Swap{PartitionIndex: 0, NewLeaderIndex: 1, OldLeaderIndex: 0},
+				swap: Swap{PartitionIndex: 0, OldLeaderIndex: 0, NewLeaderIndex: 1},
 				cluster: must(NewCluster([]Partition{
 					{replicaScores: []int{3, 1, -1, 4, -1}, leaderIndex: 1},
 					{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
@@ -487,7 +487,7 @@ func TestCluster_Undo(t *testing.T) {
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 				{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 			})),
-			args:    args{s: Swap{PartitionIndex: -1, NewLeaderIndex: 0, OldLeaderIndex: 1}},
+			args:    args{s: Swap{PartitionIndex: -1, OldLeaderIndex: 1, NewLeaderIndex: 0}},
 			wantErr: true,
 		},
 		{
@@ -497,7 +497,7 @@ func TestCluster_Undo(t *testing.T) {
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 				{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 			})),
-			args:    args{s: Swap{PartitionIndex: 10, NewLeaderIndex: 0, OldLeaderIndex: 1}},
+			args:    args{s: Swap{PartitionIndex: 10, OldLeaderIndex: 1, NewLeaderIndex: 0}},
 			wantErr: true,
 		},
 		{
@@ -507,7 +507,7 @@ func TestCluster_Undo(t *testing.T) {
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 				{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 			})),
-			args:    args{s: Swap{PartitionIndex: 0, NewLeaderIndex: 0, OldLeaderIndex: -1}},
+			args:    args{s: Swap{PartitionIndex: 0, OldLeaderIndex: -1, NewLeaderIndex: 0}},
 			wantErr: true,
 		},
 		{
@@ -517,7 +517,7 @@ func TestCluster_Undo(t *testing.T) {
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 				{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 			})),
-			args:    args{s: Swap{PartitionIndex: 0, NewLeaderIndex: 0, OldLeaderIndex: 10}},
+			args:    args{s: Swap{PartitionIndex: 0, OldLeaderIndex: 10, NewLeaderIndex: 0}},
 			wantErr: true,
 		},
 		{
@@ -527,7 +527,7 @@ func TestCluster_Undo(t *testing.T) {
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
 				{replicaScores: []int{0, 0, 0, -1, -1}, leaderIndex: 0},
 			})),
-			args: args{s: Swap{PartitionIndex: 0, NewLeaderIndex: 0, OldLeaderIndex: 1}},
+			args: args{s: Swap{PartitionIndex: 0, OldLeaderIndex: 1, NewLeaderIndex: 0}},
 			want: must(NewCluster([]Partition{
 				{replicaScores: []int{3, 1, -1, 4, -1}, leaderIndex: 1},
 				{replicaScores: []int{2, 0, 0, -1, -1}, leaderIndex: 0},
@@ -661,6 +661,53 @@ func TestCluster_SwapRandom(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.cluster.SwapRandom(tt.args.r, tt.args.excludedPartitionIndexes); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Cluster.SwapRandom() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSwap_String(t *testing.T) {
+	type fields struct {
+		PartitionIndex int
+		OldLeaderIndex int
+		NewLeaderIndex int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{name: "empty", want: "0:0->0"},
+		{name: "one two three", fields: fields{1, 2, 3}, want: "1:2->3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Swap{
+				PartitionIndex: tt.fields.PartitionIndex,
+				OldLeaderIndex: tt.fields.OldLeaderIndex,
+				NewLeaderIndex: tt.fields.NewLeaderIndex,
+			}
+			if got := s.String(); got != tt.want {
+				t.Errorf("Swap.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSwaps_String(t *testing.T) {
+	tests := []struct {
+		name string
+		s    Swaps
+		want string
+	}{
+		{name: "empty", want: ""},
+		{name: "one", s: Swaps{Swap{0, 1, 2}}, want: "0:1->2"},
+		{name: "many", s: Swaps{Swap{0, 1, 2}, Swap{1, 2, 3}, Swap{2, 3, 4}}, want: "0:1->2, 1:2->3, 2:3->4"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.s.String(); got != tt.want {
+				t.Errorf("Swaps.String() = %v, want %v", got, tt.want)
 			}
 		})
 	}

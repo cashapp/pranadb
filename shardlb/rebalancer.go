@@ -158,8 +158,8 @@ func (c Cluster) SwapLeader(partitionIndex, newLeaderIndex int) (Swap, error) {
 	c.perNodeScores[newLeaderIndex] += -newLeaderScore + oldLeaderScore
 	return Swap{
 		PartitionIndex: partitionIndex,
-		NewLeaderIndex: newLeaderIndex,
 		OldLeaderIndex: oldLeaderIndex,
+		NewLeaderIndex: newLeaderIndex,
 	}, nil
 }
 
@@ -185,8 +185,8 @@ func (c Cluster) randomPartitionIndex(randSrc *rand.Rand, excludedPartitions map
 func (c Cluster) SwapRandom(randSrc *rand.Rand, excludedPartitionIndexes map[int]struct{}) Swap {
 	noSwap := Swap{
 		PartitionIndex: 0,
-		NewLeaderIndex: c.partitions[0].leaderIndex,
 		OldLeaderIndex: c.partitions[0].leaderIndex,
+		NewLeaderIndex: c.partitions[0].leaderIndex,
 	}
 	randomPartitionIndex := c.randomPartitionIndex(randSrc, excludedPartitionIndexes)
 	if randomPartitionIndex < 0 {
@@ -239,7 +239,7 @@ func (c Cluster) Undo(s Swap) error {
 // UndoSwaps reverses a series of swaps.
 //
 // The swaps are undone from right to left.
-func (c Cluster) UndoSwaps(swaps []Swap) error {
+func (c Cluster) UndoSwaps(swaps Swaps) error {
 	for i := len(swaps) - 1; i >= 0; i-- {
 		if err := c.Undo(swaps[i]); err != nil {
 			return err
@@ -252,13 +252,13 @@ func (c Cluster) UndoSwaps(swaps []Swap) error {
 //
 // The algorithm applies limits only one leader swap per partition which
 // requires some adjustments to the classic implementation.
-func (c Cluster) SimulatedAnnealing(randSrc *rand.Rand, options ...SAOption) []Swap {
+func (c Cluster) SimulatedAnnealing(randSrc *rand.Rand, options ...SAOption) Swaps {
 	config := defaultSAConfig
 	config.applyOptions(options)
 	var temperature float64 = 1
 	currentScore := c.Score()
 	excludedPartitions := make(map[int]struct{}, c.Partitions())
-	swaps := make([]Swap, 0, c.Partitions())
+	swaps := make(Swaps, 0, c.Partitions())
 	for i := 0; i < c.Partitions(); i++ { // Swap each partition once.
 		temperature *= config.coolingFraction
 		for j := 0; j < config.repeats; j++ {
@@ -284,9 +284,9 @@ func (c Cluster) SimulatedAnnealing(randSrc *rand.Rand, options ...SAOption) []S
 }
 
 // Rebalance the cluster by running multiple rounds of simulated annealing and keeping the best result.
-func (c Cluster) Rebalance(r *rand.Rand, simulations int, options ...SAOption) []Swap {
+func (c Cluster) Rebalance(r *rand.Rand, simulations int, options ...SAOption) Swaps {
 	bestScore := c.Score()
-	var bestSwaps []Swap
+	var bestSwaps Swaps
 	for i := 0; i < simulations; i++ {
 		swaps := c.SimulatedAnnealing(r, options...)
 		newScore := c.Score()
@@ -308,8 +308,22 @@ func (c Cluster) Rebalance(r *rand.Rand, simulations int, options ...SAOption) [
 // Swap represents a leader change applied to the cluster.
 type Swap struct {
 	PartitionIndex int
-	NewLeaderIndex int
 	OldLeaderIndex int
+	NewLeaderIndex int
+}
+
+func (s Swap) String() string {
+	return fmt.Sprintf("%d:%d->%d", s.PartitionIndex, s.OldLeaderIndex, s.NewLeaderIndex)
+}
+
+type Swaps []Swap
+
+func (s Swaps) String() string {
+	swaps := make([]string, 0, len(s))
+	for _, swap := range s {
+		swaps = append(swaps, swap.String())
+	}
+	return strings.Join(swaps, ", ")
 }
 
 type saConfig struct {
