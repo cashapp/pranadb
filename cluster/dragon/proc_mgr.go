@@ -2,6 +2,9 @@ package dragon
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,19 +35,20 @@ func newProcManager(d *Dragon, serverAddresses []string) *procManager {
 }
 
 type procManager struct {
-	started          bool
-	nodeID           uint64
-	dragon           *Dragon
-	setLeaderChannel chan raftio.LeaderInfo
-	closeWG          sync.WaitGroup
-	lock             sync.Mutex
-	broadcastTimer   *time.Timer
-	broadcastClient  *remoting.Client
-	serverAddresses  []string
-	leaders          sync.Map
-	fillInterruptor  *interruptor.Interruptor
-	leadersCount     int64
-	numLeadersGuage  prometheus.Gauge
+	started            bool
+	nodeID             uint64
+	dragon             *Dragon
+	setLeaderChannel   chan raftio.LeaderInfo
+	closeWG            sync.WaitGroup
+	lock               sync.Mutex
+	broadcastTimer     *time.Timer
+	custerLoggingTimer *time.Timer
+	broadcastClient    *remoting.Client
+	serverAddresses    []string
+	leaders            sync.Map
+	fillInterruptor    *interruptor.Interruptor
+	leadersCount       int64
+	numLeadersGuage    prometheus.Gauge
 }
 
 // returns leaders for all *data* shards
@@ -177,6 +181,7 @@ func (p *procManager) Start() error {
 	go p.setLeaderLoop()
 	p.started = true
 	p.scheduleBroadcast()
+	p.scheduleClusterAllocationsLogging()
 	return nil
 }
 
@@ -186,6 +191,7 @@ func (p *procManager) Stop() {
 	p.started = false
 	p.broadcastTimer.Stop()
 	p.broadcastClient.Stop()
+	p.custerLoggingTimer.Stop()
 	close(p.setLeaderChannel)
 	p.leaders.Range(func(key, _ interface{}) bool {
 		p.leaders.Delete(key)
@@ -220,6 +226,13 @@ func (p *procManager) scheduleBroadcast() {
 	p.broadcastTimer = time.AfterFunc(1*time.Second, p.broadcastInfo)
 }
 
+func (p *procManager) scheduleClusterAllocationsLogging() {
+	if !p.started {
+		return
+	}
+	p.custerLoggingTimer = time.AfterFunc(time.Minute, p.logClusterAllocations)
+}
+
 func (p *procManager) broadcastInfo() {
 	var infos []*clustermsgs.LeaderInfo
 	p.leaders.Range(func(key, value interface{}) bool {
@@ -241,6 +254,50 @@ func (p *procManager) broadcastInfo() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.scheduleBroadcast()
+}
+
+type uint64slice []uint64
+
+var _ sort.Interface = (uint64slice)(nil)
+
+func (s uint64slice) Len() int {
+	return len(s)
+}
+
+func (s uint64slice) Less(i, j int) bool {
+	return s[i] < s[j]
+}
+
+func (s uint64slice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (p *procManager) logClusterAllocations() {
+	leadersMap := p.getLeadersMap()
+	shardIDs := make(uint64slice, 0, len(leadersMap))
+	for shardID := range leadersMap {
+		shardIDs = append(shardIDs, shardID)
+	}
+	sort.Sort(shardIDs)
+	clusterAllocations := make([]string, 0, len(leadersMap))
+	for _, shardID := range shardIDs {
+		var nodeAlloc sort.IntSlice
+		nodeAlloc = p.dragon.shardAllocs[shardID]
+		sort.Sort(nodeAlloc)
+		nodeAllocStr := make([]string, 0, len(nodeAlloc))
+		for _, alloc := range nodeAlloc {
+			nodeAllocStr = append(nodeAllocStr, strconv.Itoa(alloc))
+		}
+		nodeAllocs := strings.Join(nodeAllocStr, ",")
+		leaderNodeID := leadersMap[shardID]
+		clusterAllocations = append(clusterAllocations, fmt.Sprintf("%d[%s]:%d", shardID, nodeAllocs, leaderNodeID))
+	}
+	if len(clusterAllocations) > 0 {
+		log.Infof("Cluster allocations: %s", strings.Join(clusterAllocations, " "))
+	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.scheduleClusterAllocationsLogging()
 }
 
 func (p *procManager) addNumberLeadersCount(delta int64) {
