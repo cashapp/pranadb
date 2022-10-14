@@ -31,6 +31,7 @@ func newProcManager(d *Dragon, serverAddresses []string) *procManager {
 		dragon:          d,
 		serverAddresses: serverAddresses,
 		numLeadersGuage: numLeadersVec.WithLabelValues(fmt.Sprintf("node-%04d", d.cnf.NodeID)),
+		shardLB:         NewStaticShardLB(uint64(len(serverAddresses))),
 	}
 }
 
@@ -43,12 +44,14 @@ type procManager struct {
 	lock               sync.Mutex
 	broadcastTimer     *time.Timer
 	custerLoggingTimer *time.Timer
+	shardLBTimer       *time.Timer
 	broadcastClient    *remoting.Client
 	serverAddresses    []string
 	leaders            sync.Map
 	fillInterruptor    *interruptor.Interruptor
 	leadersCount       int64
 	numLeadersGuage    prometheus.Gauge
+	shardLB            ShardLeaderBalancer
 }
 
 // returns leaders for all *data* shards
@@ -182,6 +185,7 @@ func (p *procManager) Start() error {
 	p.started = true
 	p.scheduleBroadcast()
 	p.scheduleClusterAllocationsLogging()
+	p.scheduleShardLeaderBalancer()
 	return nil
 }
 
@@ -192,6 +196,7 @@ func (p *procManager) Stop() {
 	p.broadcastTimer.Stop()
 	p.broadcastClient.Stop()
 	p.custerLoggingTimer.Stop()
+	p.shardLBTimer.Stop()
 	close(p.setLeaderChannel)
 	p.leaders.Range(func(key, _ interface{}) bool {
 		p.leaders.Delete(key)
@@ -231,6 +236,21 @@ func (p *procManager) scheduleClusterAllocationsLogging() {
 		return
 	}
 	p.custerLoggingTimer = time.AfterFunc(time.Minute, p.logClusterAllocations)
+}
+
+func (p *procManager) scheduleShardLeaderBalancer() {
+	if !p.started {
+		return
+	}
+	// We attempt to run the leader balancer at roughly the same time on all
+	// nodes so that each node sees the same state of the world and
+	// independently produces the same sequence of leader swaps.
+	// To do so, we schedule the next execution at 5m multiples. This works well
+	// if the node clocks are well synchronized to minimize skew.
+	// TODO[sever]: make the wait interval configurable.
+	wait := 5 * time.Minute
+	nextRun := time.Now().Add(wait + time.Second).Truncate(wait)
+	p.shardLBTimer = time.AfterFunc(time.Until(nextRun), p.balanceShardLeaders)
 }
 
 func (p *procManager) broadcastInfo() {
