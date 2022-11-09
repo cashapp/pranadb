@@ -1,6 +1,9 @@
 package reaper
 
 import (
+	"testing"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/fake"
@@ -8,8 +11,6 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 const shardID uint64 = 12345
@@ -471,7 +472,7 @@ func setupTableExecutor(cluster cluster.Cluster, tabInfo *common.TableInfo, rete
 		IndexCols:  []int{1},
 	}
 	indexExecutor := exec.NewIndexExecutor(tabInfo, indexInfo, cluster)
-	te := exec.NewTableExecutor(tabInfo, cluster, false, retentionDuration, false)
+	te := exec.NewTableExecutor(tabInfo, cluster, false, false, retentionDuration, false)
 	te.AddConsumingNode(lastUpdateIndexName, indexExecutor)
 	return te
 }
