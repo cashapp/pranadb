@@ -418,6 +418,7 @@ type SourceOriginInfo struct {
 	InitialState    string
 	ConsumerGroupID string
 	Transient       bool
+	IngestOnFirstMV bool
 }
 
 type SinkTargetInfo struct {

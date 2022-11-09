@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/pull/exec"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/pull/exec"
 
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/interruptor"
@@ -873,7 +874,7 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	}
 	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.colTypes, dataset.rows, encoder)
 	require.NoError(err)
-	if !noWait {
+	if !noWait && !dataset.sourceInfo.OriginInfo.IngestOnFirstMV {
 		st.waitForCommitted(require, dataset.rows.RowCount()+initialCommitted, dataset.sourceInfo.ID)
 	}
 	end := time.Now()
