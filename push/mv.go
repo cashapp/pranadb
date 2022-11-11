@@ -55,7 +55,7 @@ func CreateMaterializedView(pe *Engine, pl *parplan.Planner, schema *common.Sche
 		OriginInfo: &common.MaterializedViewOriginInfo{InitialState: initTable},
 	}
 	mv.Info = &mvInfo
-	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false, false, 0, false)
+	mv.tableExecutor = exec.NewTableExecutor(tableInfo, pe.cluster, false, 0, false)
 	mv.InternalTables = internalTables
 	exec.ConnectPushExecutors([]exec.PushExecutor{dag}, mv.tableExecutor)
 	return &mv, nil
