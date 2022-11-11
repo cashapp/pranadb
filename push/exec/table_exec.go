@@ -38,14 +38,13 @@ type TableExecutor struct {
 	fillTableID       uint64
 	delayer           interruptor.InterruptManager
 	transient         bool
-	ingestOnFirstMV   bool
 	storeTombstones   bool
 	retentionDuration time.Duration
 	rowsFilledCounter prometheus.Counter
 }
 
-func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient, ingestOnFirstMV bool,
-	retentionDuration time.Duration, storeTombstones bool) *TableExecutor {
+func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transient bool, retentionDuration time.Duration,
+	storeTombstones bool) *TableExecutor {
 	rowsFilledCounter := rowsFilledVec.WithLabelValues(tableInfo.Name)
 	return &TableExecutor{
 		pushExecutorBase: pushExecutorBase{
@@ -60,7 +59,6 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transi
 		consumingNodes:    make(map[string]PushExecutor),
 		delayer:           interruptor.GetInterruptManager(),
 		transient:         transient,
-		ingestOnFirstMV:   ingestOnFirstMV,
 		retentionDuration: retentionDuration,
 		rowsFilledCounter: rowsFilledCounter,
 		storeTombstones:   storeTombstones,
@@ -69,10 +67,6 @@ func NewTableExecutor(tableInfo *common.TableInfo, store cluster.Cluster, transi
 
 func (t *TableExecutor) IsTransient() bool {
 	return t.transient
-}
-
-func (t *TableExecutor) IngestOnFirstMV() bool {
-	return t.ingestOnFirstMV
 }
 
 func (t *TableExecutor) ReCalcSchemaFromChildren() error {

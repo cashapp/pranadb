@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix           = "start_source_on_first_mv" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefixes = ""
 	TestClusterID        = 12345678
 	ProtoDescriptorDir   = "../protos"
@@ -874,7 +874,7 @@ func (st *sqlTest) doLoadData(require *require.Assertions, command string, noWai
 	}
 	err := kafka.IngestRows(fakeKafka, dataset.sourceInfo, dataset.colTypes, dataset.rows, encoder)
 	require.NoError(err)
-	if !noWait && !dataset.sourceInfo.OriginInfo.IngestOnFirstMV {
+	if !noWait {
 		st.waitForCommitted(require, dataset.rows.RowCount()+initialCommitted, dataset.sourceInfo.ID)
 	}
 	end := time.Now()

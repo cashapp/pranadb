@@ -210,12 +210,17 @@ func (m *MaterializedView) Fill(shardIDs []uint64, interruptor *interruptor.Inte
 
 	// Start any sources that wait to ingest on first MV
 	for _, tableExec := range tes {
-		if tableExec.IngestOnFirstMV() {
-			source, err := m.pe.GetSource(tableExec.TableInfo.ID)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			if !source.IsRunning() {
+		table, ok := m.schema.GetTable(tableExec.TableInfo.Name)
+		if !ok {
+			return errors.Errorf("unknown source or materialized view %s", tableExec.TableInfo.Name)
+		}
+		sourceInfo, ok := table.(*common.SourceInfo)
+		if ok {
+			if sourceInfo.OriginInfo.StartWithFirstMV {
+				source, err := m.pe.GetSource(tableExec.TableInfo.ID)
+				if err != nil {
+					return errors.WithStack(err)
+				}
 				if err := source.Start(); err != nil {
 					return errors.WithStack(err)
 				}

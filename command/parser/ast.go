@@ -115,18 +115,18 @@ type CreateSink struct {
 }
 
 type SourceOriginInformation struct {
-	BrokerName      string                        `"BrokerName" "=" @String`
-	TopicName       string                        `|"TopicName" "=" @String`
-	HeaderEncoding  string                        `|"HeaderEncoding" "=" @String`
-	KeyEncoding     string                        `|"KeyEncoding" "=" @String`
-	ValueEncoding   string                        `|"ValueEncoding" "=" @String`
-	IngestFilter    string                        `|"IngestFilter" "=" @String`
-	InitialState    string                        `|"InitialState" "=" @String`
-	Transient       *Boolean                      `|"Transient" "=" @Ident`
-	IngestOnFirstMV *Boolean                      `|"IngestOnFirstMV" "=" @Ident`
-	RetentionTime   string                        `|"RetentionTime" "=" @String`
-	ColSelectors    []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
-	Properties      []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+	BrokerName       string                        `"BrokerName" "=" @String`
+	TopicName        string                        `|"TopicName" "=" @String`
+	HeaderEncoding   string                        `|"HeaderEncoding" "=" @String`
+	KeyEncoding      string                        `|"KeyEncoding" "=" @String`
+	ValueEncoding    string                        `|"ValueEncoding" "=" @String`
+	IngestFilter     string                        `|"IngestFilter" "=" @String`
+	InitialState     string                        `|"InitialState" "=" @String`
+	Transient        *Boolean                      `|"Transient" "=" @Ident`
+	StartWithFirstMV *Boolean                      `|"StartWithFirstMV" "=" @Ident`
+	RetentionTime    string                        `|"RetentionTime" "=" @String`
+	ColSelectors     []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
+	Properties       []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type SinkTargetInformation struct {

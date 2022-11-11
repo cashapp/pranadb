@@ -207,7 +207,7 @@ func (c *CreateSourceCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Activate the message consumers for the source
-	if !c.sourceInfo.OriginInfo.IngestOnFirstMV {
+	if !c.sourceInfo.OriginInfo.StartWithFirstMV {
 		if err := c.source.Start(); err != nil {
 			return errors.WithStack(err)
 		}
@@ -291,7 +291,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		brokerName, topicName                      string
 		initialiseFrom                             string
 		transient                                  bool
-		ingestOnFirstMV                            bool
+		startWithFirstMV                           bool
 		sRetentionTime                             string
 	)
 	for _, opt := range ast.OriginInformation {
@@ -336,8 +336,8 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		if opt.Transient != nil && *opt.Transient {
 			transient = true
 		}
-		if opt.IngestOnFirstMV != nil && *opt.IngestOnFirstMV {
-			ingestOnFirstMV = true
+		if opt.StartWithFirstMV != nil && *opt.StartWithFirstMV {
+			startWithFirstMV = true
 		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
@@ -389,18 +389,18 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 
 	originInfo := &common.SourceOriginInfo{
-		BrokerName:      brokerName,
-		TopicName:       topicName,
-		HeaderEncoding:  headerEncoding,
-		KeyEncoding:     keyEncoding,
-		ValueEncoding:   valueEncoding,
-		IngestFilter:    ingestFilter,
-		ColSelectors:    colSelectors,
-		Properties:      propsMap,
-		InitialState:    initialiseFrom,
-		ConsumerGroupID: c.consumerGroupID,
-		Transient:       transient,
-		IngestOnFirstMV: ingestOnFirstMV,
+		BrokerName:       brokerName,
+		TopicName:        topicName,
+		HeaderEncoding:   headerEncoding,
+		KeyEncoding:      keyEncoding,
+		ValueEncoding:    valueEncoding,
+		IngestFilter:     ingestFilter,
+		ColSelectors:     colSelectors,
+		Properties:       propsMap,
+		InitialState:     initialiseFrom,
+		ConsumerGroupID:  c.consumerGroupID,
+		Transient:        transient,
+		StartWithFirstMV: startWithFirstMV,
 	}
 	var colsVisible []bool
 	var lastUpdateIndexID uint64

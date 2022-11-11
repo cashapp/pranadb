@@ -407,18 +407,18 @@ func (i *MetaTableInfo) String() string {
 }
 
 type SourceOriginInfo struct {
-	BrokerName      string
-	TopicName       string
-	KeyEncoding     KafkaEncoding
-	ValueEncoding   KafkaEncoding
-	HeaderEncoding  KafkaEncoding
-	ColSelectors    []selector.ColumnSelector
-	Properties      map[string]string
-	IngestFilter    string
-	InitialState    string
-	ConsumerGroupID string
-	Transient       bool
-	IngestOnFirstMV bool
+	BrokerName       string
+	TopicName        string
+	KeyEncoding      KafkaEncoding
+	ValueEncoding    KafkaEncoding
+	HeaderEncoding   KafkaEncoding
+	ColSelectors     []selector.ColumnSelector
+	Properties       map[string]string
+	IngestFilter     string
+	InitialState     string
+	ConsumerGroupID  string
+	Transient        bool
+	StartWithFirstMV bool
 }
 
 type SinkTargetInfo struct {

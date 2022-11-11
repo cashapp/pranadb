@@ -11,7 +11,7 @@ create source test_source_1(
     col6 timestamp,
     primary key (col0)
 ) with (
-    ingestonfirstmv = true,
+    startwithfirstmv = true,
     brokername = "testbroker",
     topicname = "testtopic",
     headerencoding = "json",
@@ -29,7 +29,9 @@ create source test_source_1(
 );
 0 rows returned
 
---load data dataset_1;
+--load data dataset_1 no wait;
+
+--pause 1000;
 
 select * from test_source_1 order by col0;
 +---------------------------------------------------------------------------------------------------------------------+
