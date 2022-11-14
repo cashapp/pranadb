@@ -793,7 +793,7 @@ func (p *Engine) CreateSource(sourceInfo *common.SourceInfo) (*source.Source, er
 	}
 
 	tableExecutor := exec.NewTableExecutor(sourceInfo.TableInfo, p.cluster, sourceInfo.OriginInfo.Transient,
-		sourceInfo.OriginInfo.StartWithFirstMV, sourceInfo.RetentionDuration, false)
+		sourceInfo.RetentionDuration, false)
 
 	var rowTimeIndexName string
 	if sourceInfo.RetentionDuration != 0 {
