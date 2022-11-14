@@ -2,6 +2,11 @@ package push
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/squareup/pranadb/failinject"
 	"github.com/squareup/pranadb/interruptor"
@@ -11,10 +16,6 @@ import (
 	"github.com/squareup/pranadb/push/util"
 	"github.com/squareup/pranadb/remoting"
 	"github.com/squareup/pranadb/tidb/planner"
-	"math/rand"
-	"strconv"
-	"sync"
-	"time"
 
 	"github.com/squareup/pranadb/errors"
 

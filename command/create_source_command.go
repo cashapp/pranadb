@@ -2,6 +2,11 @@ package command
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/alecthomas/repr"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -13,10 +18,6 @@ import (
 	"github.com/squareup/pranadb/meta"
 	"github.com/squareup/pranadb/push/source"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type CreateSourceCommand struct {
@@ -206,8 +207,10 @@ func (c *CreateSourceCommand) onPhase1() error {
 	defer c.lock.Unlock()
 
 	// Activate the message consumers for the source
-	if err := c.source.Start(); err != nil {
-		return errors.WithStack(err)
+	if !c.sourceInfo.OriginInfo.StartWithFirstMV {
+		if err := c.source.Start(); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 
 	// Register the source in the in memory meta data
@@ -288,6 +291,7 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		brokerName, topicName                      string
 		initialiseFrom                             string
 		transient                                  bool
+		startWithFirstMV                           bool
 		sRetentionTime                             string
 	)
 	for _, opt := range ast.OriginInformation {
@@ -331,6 +335,9 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 		}
 		if opt.Transient != nil && *opt.Transient {
 			transient = true
+		}
+		if opt.StartWithFirstMV != nil && *opt.StartWithFirstMV {
+			startWithFirstMV = true
 		}
 	}
 	if headerEncoding == common.KafkaEncodingUnknown {
@@ -382,17 +389,18 @@ func (c *CreateSourceCommand) getSourceInfo(ast *parser.CreateSource) (*common.S
 	}
 
 	originInfo := &common.SourceOriginInfo{
-		BrokerName:      brokerName,
-		TopicName:       topicName,
-		HeaderEncoding:  headerEncoding,
-		KeyEncoding:     keyEncoding,
-		ValueEncoding:   valueEncoding,
-		IngestFilter:    ingestFilter,
-		ColSelectors:    colSelectors,
-		Properties:      propsMap,
-		InitialState:    initialiseFrom,
-		ConsumerGroupID: c.consumerGroupID,
-		Transient:       transient,
+		BrokerName:       brokerName,
+		TopicName:        topicName,
+		HeaderEncoding:   headerEncoding,
+		KeyEncoding:      keyEncoding,
+		ValueEncoding:    valueEncoding,
+		IngestFilter:     ingestFilter,
+		ColSelectors:     colSelectors,
+		Properties:       propsMap,
+		InitialState:     initialiseFrom,
+		ConsumerGroupID:  c.consumerGroupID,
+		Transient:        transient,
+		StartWithFirstMV: startWithFirstMV,
 	}
 	var colsVisible []bool
 	var lastUpdateIndexID uint64

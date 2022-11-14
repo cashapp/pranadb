@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/squareup/pranadb/pull/exec"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/squareup/pranadb/pull/exec"
 
 	"github.com/squareup/pranadb/command"
 	"github.com/squareup/pranadb/interruptor"
@@ -46,7 +47,7 @@ import (
 )
 
 const (
-	TestPrefix           = "" // Set this to the name of a test if you want to only run that test, e.g. during development
+	TestPrefix           = "start_source_on_first_mv" // Set this to the name of a test if you want to only run that test, e.g. during development
 	ExcludedTestPrefixes = ""
 	TestClusterID        = 12345678
 	ProtoDescriptorDir   = "../protos"

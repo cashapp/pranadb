@@ -1,6 +1,9 @@
 package exec
 
 import (
+	"sync"
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/squareup/pranadb/cluster"
@@ -8,8 +11,6 @@ import (
 	"github.com/squareup/pranadb/errors"
 	"github.com/squareup/pranadb/interruptor"
 	"github.com/squareup/pranadb/table"
-	"sync"
-	"time"
 )
 
 const (

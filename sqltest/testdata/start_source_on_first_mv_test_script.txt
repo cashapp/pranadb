@@ -1,0 +1,48 @@
+--create topic testtopic;
+use test;
+create source test_source_1(
+    col0 bigint,
+    col1 tinyint,
+    col2 int,
+    col3 double,
+    col4 decimal(10, 2),
+    col5 varchar,
+    col6 timestamp,
+    primary key (col0)
+) with (
+    startwithfirstmv = true,
+    brokername = "testbroker",
+    topicname = "testtopic",
+    headerencoding = "json",
+    keyencoding = "json",
+    valueencoding = "json",
+    columnselectors = (
+        meta("key").k0,
+        v1,
+        v2,
+        v3,
+        v4,
+        v5,
+        v6
+    )
+);
+
+--load data dataset_1 no wait;
+
+--pause 1000;
+
+select * from test_source_1 order by col0;
+
+create materialized view test_mv1 as select * from test_source_1;
+
+--wait for rows test_source_1 10;
+
+select * from test_source_1 order by col0;
+
+select * from test_mv1 order by col0;
+
+drop materialized view test_mv1;
+
+drop source test_source_1;
+
+--delete topic testtopic;

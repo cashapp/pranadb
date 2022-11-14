@@ -1,6 +1,8 @@
 package push
 
 import (
+	"reflect"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/common"
@@ -10,7 +12,6 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/push/sched"
 	"github.com/squareup/pranadb/sharder"
-	"reflect"
 )
 
 type MaterializedView struct {
@@ -205,6 +206,26 @@ func (m *MaterializedView) Fill(shardIDs []uint64, interruptor *interruptor.Inte
 	tes, tss, err := m.getFeedingExecutors(m.tableExecutor)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+
+	// Start any sources that wait to ingest on first MV
+	for _, tableExec := range tes {
+		table, ok := m.schema.GetTable(tableExec.TableInfo.Name)
+		if !ok {
+			return errors.Errorf("unknown source or materialized view %s", tableExec.TableInfo.Name)
+		}
+		sourceInfo, ok := table.(*common.SourceInfo)
+		if ok {
+			if sourceInfo.OriginInfo.StartWithFirstMV {
+				source, err := m.pe.GetSource(tableExec.TableInfo.ID)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				if err := source.Start(); err != nil {
+					return errors.WithStack(err)
+				}
+			}
+		}
 	}
 
 	log.Debugf("materialized view fill for shards %v", shardIDs)

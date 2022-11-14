@@ -115,17 +115,18 @@ type CreateSink struct {
 }
 
 type SourceOriginInformation struct {
-	BrokerName     string                        `"BrokerName" "=" @String`
-	TopicName      string                        `|"TopicName" "=" @String`
-	HeaderEncoding string                        `|"HeaderEncoding" "=" @String`
-	KeyEncoding    string                        `|"KeyEncoding" "=" @String`
-	ValueEncoding  string                        `|"ValueEncoding" "=" @String`
-	IngestFilter   string                        `|"IngestFilter" "=" @String`
-	InitialState   string                        `|"InitialState" "=" @String`
-	Transient      *Boolean                      `|"Transient" "=" @Ident`
-	RetentionTime  string                        `|"RetentionTime" "=" @String`
-	ColSelectors   []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
-	Properties     []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
+	BrokerName       string                        `"BrokerName" "=" @String`
+	TopicName        string                        `|"TopicName" "=" @String`
+	HeaderEncoding   string                        `|"HeaderEncoding" "=" @String`
+	KeyEncoding      string                        `|"KeyEncoding" "=" @String`
+	ValueEncoding    string                        `|"ValueEncoding" "=" @String`
+	IngestFilter     string                        `|"IngestFilter" "=" @String`
+	InitialState     string                        `|"InitialState" "=" @String`
+	Transient        *Boolean                      `|"Transient" "=" @Ident`
+	StartWithFirstMV *Boolean                      `|"StartWithFirstMV" "=" @Ident`
+	RetentionTime    string                        `|"RetentionTime" "=" @String`
+	ColSelectors     []*selector.ColumnSelectorAST `|"ColumnSelectors" "=" "(" (@@ ("," @@)*)? ")"`
+	Properties       []*TopicInfoProperty          `|"Properties" "=" "(" (@@ ("," @@)*)? ")"`
 }
 
 type SinkTargetInformation struct {
@@ -150,7 +151,7 @@ func (b *Boolean) Capture(values []string) error {
 	} else if lv == "false" {
 		*b = false
 	} else {
-		return participle.Errorf(lexer.Position{}, "invalid value for 'Transient' field in source definition: %s", values[0])
+		return participle.Errorf(lexer.Position{}, "invalid value for boolean field in source definition: %s", values[0])
 	}
 	*b = values[0] == "true"
 	return nil

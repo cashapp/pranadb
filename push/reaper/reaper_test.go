@@ -1,6 +1,9 @@
 package reaper
 
 import (
+	"testing"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/squareup/pranadb/cluster"
 	"github.com/squareup/pranadb/cluster/fake"
@@ -8,8 +11,6 @@ import (
 	"github.com/squareup/pranadb/push/exec"
 	"github.com/squareup/pranadb/table"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 const shardID uint64 = 12345
