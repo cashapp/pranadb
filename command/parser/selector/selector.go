@@ -150,6 +150,40 @@ func ParseSelector(str string) (SelectorInjector, error) {
 	return s.ToSelector(), errors.WithStack(err)
 }
 
+func (s SelectorInjector) expectScalar(orig SelectorInjector) error {
+	if len(s) > 0 {
+		return &ErrNotFound{missingPath: s, targetPath: orig}
+	}
+	return nil
+}
+
+func (s SelectorInjector) expectNonScalar(orig SelectorInjector) error {
+	if len(s) == 0 {
+		return errors.Errorf("selector %q does not point to a scalar value", orig)
+	}
+	return nil
+}
+
+func (s SelectorInjector) expectNonScalarString(orig SelectorInjector) error {
+	if err := s.expectNonScalar(orig); err != nil {
+		return err
+	}
+	if s[0].Field == nil {
+		return errors.Errorf("selector %q should be a string in %q", s, orig)
+	}
+	return nil
+}
+
+func (s SelectorInjector) expectListIndex(orig SelectorInjector) error {
+	if err := s.expectNonScalar(orig); err != nil {
+		return err
+	}
+	if s[0].NumberIndex == nil {
+		return errors.Errorf("cannot index list with string %q", *s[0].Field)
+	}
+	return nil
+}
+
 // Select evaluates the selectorInjector expression against the given value. The only supported types are
 //     map[string]interface{}
 //     []interface{}
@@ -232,141 +266,143 @@ func (s SelectorInjector) Inject(obj interface{}, value interface{}) error {
 				vv[*token.NumberIndex] = value
 			}
 		case pref.Message:
-			return s.InjectProto(vv, value)
+			return s[i:].InjectProto(vv, value)
 		}
 	}
 	return nil
 }
 
-func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) (error) {
-	if len(s) == 0 {
-		return nil
+func (s SelectorInjector) InjectProto(msg pref.Message, val interface{}) error {
+	return s.traverseMessage(s, msg, val)
+}
+
+func (s SelectorInjector) traverseMessage(orig SelectorInjector, msg pref.Message, val interface{}) error {
+	if err := s.expectNonScalarString(orig); err != nil {
+		return err
 	}
-	v, f, oneOf, ok := getField(msg, *s[0].Field)
-	if !ok {
-		return &ErrNotFound{missingPath: s[0:1], targetPath: s}
+	tailSelectorInjector := s[1:]
+	if field := msg.Descriptor().Fields().ByName(pref.Name(*s[0].Field)); field != nil {
+		switch {
+		case field.IsList():
+			return tailSelectorInjector.traverseList(orig, msg.Mutable(field).List(), field, val)
+		case field.IsMap():
+			return tailSelectorInjector.traverseMap(orig, msg.Mutable(field).Map(), field, val)
+		case field.Message() != nil:
+			return tailSelectorInjector.traverseMessage(orig, msg.Mutable(field).Message(), val)
+		default: // not a composite value
+			return tailSelectorInjector.injectScalar(orig, msg, field, val)
+		}
 	}
-	ss := s[1:]
-	for i, token := range ss {
-		last := i == len(ss) - 1
-		tail := i + 2
-		switch { // order matters!
-		case oneOf != nil:
-			msg = v.Message()
-			if token.NumberIndex != nil {
-				return errors.Errorf("cannot get index %d of oneof field at %q", *token.NumberIndex, s[0:tail-1])
-			}
-			f = oneOf.Fields().ByName(pref.Name(*token.Field))
-			if f == nil {
-				return errors.Errorf("unknown oneof field \"%s\"", *token.Field)
-			}
-			populated := msg.WhichOneof(oneOf)
-			if populated.Number() != f.Number() {
-				// Different one_of field than the one being accessed is populated.
-				return &ErrNotFound{missingPath: s[0:tail], targetPath: s}
-			}
-			v = msg.Get(f)
-		case token.NumberIndex != nil:
-			idx := *token.NumberIndex
-			switch {
-			case f.IsList():
-				list := v.List()
-				if list.Len() == 0 {
-					v = msg.NewField(f)
-					msg.Set(f, v)
-					list = v.List()
-				}
-				ln := list.Len()
-				if idx >= ln {
-					// Expand list if necessary to accommodate new value
-					elems := idx + 1 - ln
-					for i := 0; i < elems; i++ {
-						list.Append(list.NewElement())
-					}
-				}
-				if last {
-					vv, err := getValue(val)
-					if err != nil {
-						return err
-					}
-					list.Set(idx, vv)
-					msg = nil
-				} else {
-					v = list.Get(idx)
-					f = noRepeatField{f}
-				}
-			case f.IsMap():
-				if !v.IsValid() {
-					// nil
-					v = msg.NewField(f)
-					msg.Set(f, v)
-				}
-				var k pref.MapKey
-				k = newIntMapKey(f.MapKey(), idx)
-				if !k.IsValid() {
-					return errors.Errorf("cannot convert int to map key of kind %q at %q", f.MapKey().Kind(), s[0:tail-1])
-				}
-				v = v.Map().Get(k)
-				f = f.MapValue()
-			default:
-				return errors.Errorf("cannot get index %d of %q", idx, f.Kind())
-			}
-		case token.Field != nil:
-			fieldName := *token.Field
-			switch {
-			case f.IsMap():
-				if f.MapKey().Kind() != pref.StringKind {
-					return errors.Errorf("cannot use string to index map with %q key", f.MapKey().Kind())
-				}
-				v = v.Map().Get(pref.ValueOfString(fieldName).MapKey())
-				f = f.MapValue()
-			case f.IsList():
-				return errors.Errorf("cannot index list at %q with string", s[0:tail])
-			case f.Message() != nil:
-				var ok bool
-				v, f, oneOf, ok = getField(v.Message(), fieldName)
-				if !ok {
-					return &ErrNotFound{missingPath: s[0:tail], targetPath: s}
-				}
-			default:
-				return errors.Errorf("cannot get field %q of %q", fieldName, f.Kind())
-			}
+	if oneOf := msg.Descriptor().Oneofs().ByName(pref.Name(*s[0].Field)); oneOf != nil {
+		return tailSelectorInjector.traverseOneOf(orig, msg, oneOf, val)
+	}
+	return &ErrNotFound{missingPath: s, targetPath: orig}
+}
+
+func (s SelectorInjector) traverseOneOf(orig SelectorInjector, msg pref.Message, oneOf pref.OneofDescriptor, val interface{}) error {
+	if err := s.expectNonScalarString(orig); err != nil {
+		return err
+	}
+	tailSelectorInjector := s[1:]
+	if field := oneOf.Fields().ByName(pref.Name(*s[0].Field)); field != nil {
+		switch {
+		case field.IsList():
+			return tailSelectorInjector.traverseList(orig, msg.Mutable(field).List(), field, val)
+		case field.IsMap():
+			return tailSelectorInjector.traverseMap(orig, msg.Mutable(field).Map(), field, val)
+		case field.Message() != nil:
+			return tailSelectorInjector.traverseMessage(orig, msg.Mutable(field).Message(), val)
 		default:
-			panic("invalid path token")
+			return tailSelectorInjector.injectScalar(orig, msg, field, val)
 		}
 	}
-	if oneOf != nil {
-		f = v.Message().WhichOneof(oneOf)
-		if f == nil {
-			return nil
-		}
-		return nil
-	}
-
-	if msg != nil {
-		vv, err := getValue(val)
-		if err != nil {
-			return err
-		}
-		msg.Set(f, vv)
-	}
-
 	return nil
 }
 
-func getValue(val interface{}) (pref.Value, error) {
-	var pv pref.Value
-	switch vt := val.(type) {
-	case int64:
-		pv = pref.ValueOfInt64(vt)
-	case float64:
-		pv = pref.ValueOfFloat64(vt)
-	case string:
-		pv = pref.ValueOfString(vt)
-	default:
-		return pref.Value{}, errors.Errorf("unsupported type %v", pv)
+func (s SelectorInjector) traverseList(orig SelectorInjector, list pref.List, field pref.FieldDescriptor, val interface{}) error {
+	if err := s.expectListIndex(orig); err != nil {
+		return err
 	}
-	return pv, nil
+	tailSelectorInjector := s[1:]
+	idx := *s[0].NumberIndex
+	if field.Message() != nil {
+		for idx >= list.Len() {
+			list.AppendMutable()
+		}
+		element := list.Get(idx)
+		return tailSelectorInjector.traverseMessage(orig, element.Message(), val)
+	}
+	if err := tailSelectorInjector.expectScalar(orig); err != nil {
+		return err
+	}
+	for idx >= list.Len() {
+		list.Append(list.NewElement())
+	}
+	rVal, err := reflectValue(field, val)
+	if err == nil {
+		list.Set(idx, rVal)
+	}
+	return err
+}
+
+func (s SelectorInjector) traverseMap(orig SelectorInjector, m pref.Map, field pref.FieldDescriptor, val interface{}) error {
+	if err := s.expectNonScalar(orig); err != nil {
+		return err
+	}
+	tailSelectorInjector := s[1:]
+	var key pref.MapKey
+	switch {
+	case s[0].Field != nil:
+		key = pref.ValueOfString(*s[0].Field).MapKey()
+	case s[0].NumberIndex != nil:
+		key = pref.ValueOfInt64(int64(*s[0].NumberIndex)).MapKey()
+	default:
+		return errors.Error("invalid selector")
+	}
+	mapValueDescriptor := field.MapValue()
+	if mapValueDescriptor.Message() != nil {
+		mapValue := m.Get(key)
+		if !mapValue.IsValid() {
+			mapValue = m.NewValue()
+			m.Set(key, mapValue)
+		}
+		return tailSelectorInjector.traverseMessage(orig, mapValue.Message(), val)
+	}
+	if err := tailSelectorInjector.expectScalar(orig); err != nil {
+		return err
+	}
+	rVal, err := reflectValue(field.MapValue(), val)
+	if err == nil {
+		m.Set(key, rVal)
+	}
+	return err
+}
+
+func (s SelectorInjector) injectScalar(orig SelectorInjector, msg pref.Message, field pref.FieldDescriptor, val interface{}) error {
+	if err := s.expectScalar(orig); err != nil {
+		return err
+	}
+	rVal, err := reflectValue(field, val)
+	if err == nil {
+		msg.Set(field, rVal)
+	}
+	return err
+}
+
+func reflectValue(field pref.FieldDescriptor, val interface{}) (pref.Value, error) {
+	if field.Enum() != nil {
+		var enumValueDescriptor pref.EnumValueDescriptor
+		switch vv := val.(type) {
+		case string:
+			enumValueDescriptor = field.Enum().Values().ByName(pref.Name(vv))
+		case int:
+			enumValueDescriptor = field.Enum().Values().ByNumber(pref.EnumNumber(vv))
+		default:
+			return pref.Value{}, errors.Error("enum value must be either int or string")
+		}
+		return pref.ValueOfEnum(enumValueDescriptor.Number()), nil
+	}
+	return pref.ValueOf(val), nil
 }
 
 // SelectProto returns the referenced value from the protobuf message. Adhering to Golang protobuf behavior, if a selectorInjector

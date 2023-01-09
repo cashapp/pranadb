@@ -6,6 +6,55 @@ import "squareup/cash/pranadb/testproto/v1/imports.proto";
 
 option go_package = "github.com/squareup/pranadb/protos/squareup/cash/pranadb/v1/testproto";
 
+message ComprehensiveTestMessage {
+  // scalars
+  double double_field = 1;
+  float float_field = 2;
+  int32 int32_field = 3;
+  int64 int64_field = 4;
+  uint32 uint32_field = 5;
+  uint64 uint64_field = 6;
+  sint32 sint32_field = 7;
+  sint64 sint64_field = 8;
+  fixed32 fixed32_field = 9;
+  fixed64 fixed64_field = 10;
+  sfixed32 sfixed32_field = 11;
+  sfixed64 sfixed64_field = 12;
+  bool bool_field = 13;
+  string string_field = 14;
+  bytes bytes_field = 15;
+
+  // enum
+  enum TestEnum {
+    TEST_ENUM_UNSPECIFIED = 0;
+    TEST_ENUM_OPTION_1 = 1;
+    TEST_ENUM_OPTION_2 = 2;
+    TEST_ENUM_OPTION_3 = 3;
+  }
+  TestEnum enum_field = 20;
+
+  // message
+  ComprehensiveTestMessage recursive_field = 30;
+
+  // oneof
+  oneof oneof_field {
+    int64 oneof_int64_field = 41;
+    bool oneof_bool_field = 42;
+    string oneof_string_field = 43;
+    ComprehensiveTestMessage oneof_recursive_field = 44;
+  }
+
+  // map
+  map<string, int64> map_string_int_field = 50;
+  map<int64, string> map_int_string_field = 51;
+  map<string, ComprehensiveTestMessage> map_string_recursive_field = 52;
+  map<string, TestEnum> map_string_enum_field = 53;
+
+  // repeated
+  repeated int64 repeated_int64_field = 60;
+  repeated ComprehensiveTestMessage repeated_recursive_field = 61;
+}
+
 message TestTypes {
   message Nested {
     string nested_string = 1;
